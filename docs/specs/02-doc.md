@@ -1,0 +1,222 @@
+# 02 — `TakeCareDoc`
+
+| | |
+|---|---|
+| Status | Proposed (engine details confirmed by spike 001) |
+| Date | 2026-10-16 |
+| Related decisions | ADR 0001, 0003, 0004, 0006, 0007, 0008, 0009 |
+
+## Purpose
+
+The Doc diagnoses incidents, day and night. On every alert in its scope, it investigates read-only and publishes a sourced diagnosis: what it found and where, the root cause, the recommended action and who should take it, the leads it ruled out. **You decide on the treatment.**
+
+This spec turns the challenge POC (Alertmanager → receiver → HolmesGPT → Slack) into an operator-managed role running on kagent, whose tools are connectors (ADR 0007, 0008).
+
+## Resources
+
+### `TakeCareDoc`
+
+```yaml
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareDoc
+metadata:
+  name: doc
+  namespace: takecare-system
+spec:
+  # RoleCommonSpec (ADR 0003)
+  level: service                 # trial | service | seasoned
+  scope:
+    namespaces: [demo-apps]      # must be covered by the bound cluster connector
+  # Doc-specific
+  connectors:                    # TakeCareConnector names, by type
+    cluster: [kubernetes]
+    metrics: [prometheus]
+    knowledge: [incidents, runbooks, vendor]
+    changes: [deployments]
+    tickets: [support]
+    report: report               # the report connector (Slack adapter, or log in a demo without Slack)
+  report:
+    trial: review                # destination of the report connector at the trial level (optional: status only)
+    service: on-call             # destination at the service level
+  alerts:
+    matchers:                    # optional, Alertmanager-style; default: every alert in scope
+      - { name: severity, value: critical }
+  investigation:
+    timeout: 300s
+    cooldown: 15m                # per alert fingerprint
+    maxConcurrent: 1
+  actTools: []                   # seasoned level only (not implemented in milestone 1)
+```
+
+**Connector requirements** (ADR 0008): `cluster` and `metrics` are **required**; `report` is **required from the `service` level** (at `trial`, without a report connector, diagnoses stay in status); `knowledge` and `changes` are **recommended**. Missing required types give `Ready=False`, reason `MissingConnectorType`; missing recommended types give a warning event and a `Degraded` condition.
+
+Milestone 1 supports **one `TakeCareDoc` per cluster**; a second one gets `Ready=False`, reason `SingleDocOnly`.
+
+### `TakeCareInvestigation`
+
+One per handled alert, created by the operator, namespaced with the Doc. It is the investigation's record and the deduplication state (it replaces the POC's reliance on Holmes `HealthCheck` objects).
+
+```yaml
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareInvestigation
+metadata:
+  name: doc-3fa29c1b07-a1b2c3          # from the alert fingerprint and startsAt
+  namespace: takecare-system
+  labels:
+    takecare.agaetis.fr/role: doc
+    takecare.agaetis.fr/fingerprint: 3fa29c1b07e4d2aa
+    takecare.agaetis.fr/alert-namespace: demo-apps
+    takecare.agaetis.fr/alertname: HighErrorRate
+spec:
+  roleRef: { kind: TakeCareDoc, name: doc }
+  alert: { name: HighErrorRate, service: billing-api, namespace: demo-apps, firedAt: "2026-10-16T03:00:12Z", labels: {}, annotations: {} }
+  level: service                       # level at creation time
+  silent: false
+status:
+  phase: Completed                     # Queued | Running | Completed | Failed | TimedOut | Dropped
+  startedAt: "2026-10-16T03:00:13Z"
+  completedAt: "2026-10-16T03:00:51Z"
+  engine: { kind: kagent, agent: takecare-system/doc, taskID: "…" }
+  diagnosis: "…"                       # the agent's answer, unchanged
+  published: { connector: report, destination: on-call, ok: true }
+  usage: { modelCalls: 7, inputTokens: 41250, cachedInputTokens: 30200, outputTokens: 1310, estimatedCost: "0.0093 USD", approximate: false }
+  traceID: 4bf92f3577b34da6a3ce929d0e0e4736
+  resolvedAt: null
+```
+
+Printer columns: `ALERT`, `PHASE`, `PUBLISHED`, `AGE`. Investigations older than 7 days are deleted (chart value).
+
+## Flow
+
+```
+Alertmanager ──POST /v1/alerts──▶ operator (alert intake)
+                                    │ 1. authenticate, parse, keep firing alerts in scope
+                                    │ 2. dedup: create TakeCareInvestigation (deterministic name), cooldown
+                                    │ 3. start trace: invoke_agent doc
+                                    ▼
+                    A2A message/send ──▶ agentgateway ──▶ kagent Agent "doc"
+                                                            │ MCP tools through the gateway,
+                                                            │ restricted to the level's allow-list
+                                                            ▼
+                    task completed, artifact = diagnosis
+                                    │
+                                    ▼
+          operator publishes through the report connector (destination by level), ends the trace,
+          writes the TakeCareInvestigation status
+```
+
+### 1. Alert intake
+
+- Built into the operator binary: `POST /v1/alerts` on the `takecare-alerts` Service, port 8080, Alertmanager webhook payload (version 4). It is the Doc's trigger, configured on the Doc's controller, not on the platform.
+- Bearer token from a Secret generated by the chart (`takecare-alerting`, key `token`); the chart prints the Alertmanager receiver snippet to use (and creates an `AlertmanagerConfig` when Prometheus Operator is detected). Missing or wrong token: `401`. Body limited to 1 MiB; malformed payload: `400`.
+- Only `firing` alerts are investigated; `resolved` alerts set `resolvedAt` on the matching investigation.
+- **In scope**: the alert's `namespace` label is in `spec.scope.namespaces` and the alert matches `spec.alerts.matchers`. Out-of-scope alerts are counted (`takecare_alerts_ignored_total{reason}`) and dropped.
+- **Deduplication**: the investigation name is derived from the fingerprint and `startsAt`; creating it is the deduplication (`AlreadyExists` is success). Every replica serves the webhook; reconciliation runs on the leader. A fingerprint with an investigation created within `cooldown` is skipped. Deleting investigations clears their cooldown.
+- **Silent alerts**: label `takecare_silent="true"` → investigated, never published (status only). Used by the bench (spec 04).
+- The endpoint answers `202` once the investigation is created; the work is asynchronous.
+
+### 2. The engine: a kagent `Agent` (ADR 0007)
+
+The Doc controller generates and keeps up to date one kagent `Agent` per `TakeCareDoc`:
+
+- `ModelConfig`: the platform model (or `spec.model`), routed through the gateway.
+- **Gateway routes**: for each bound connector (except `report`), the controller generates the Doc's own MCP route on the gateway (`/mcp/<namespace>/<role>/<connector>`) with an authorization policy listing only the tools the current level allows, and a kagent `RemoteMCPServer` pointing at that route. The route is the Doc's identity at the gateway (ADR 0008). The controller also generates the A2A route to the Doc's agent (`/a2a/<namespace>/<role>`), through which the operator triggers investigations.
+- **Tools**: one `RemoteMCPServer` reference per bound connector, each restricted with `toolNames` to the tools the **current level** allows:
+
+  | Level | Tools rendered |
+  |---|---|
+  | `trial` | `read` tools of the bound connectors |
+  | `service` | `read` tools (the agent never posts: publishing is done by the operator, step 4) |
+  | `seasoned` | not implemented in milestone 1 |
+
+  The same allow-list is applied at the gateway as per-tool authorization for the Doc's identity (ADR 0008): two independent layers.
+- **Instructions** (`systemMessage`): the investigation guidance, generated from `internal/doc/instructions.md` (golden-tested). It includes HolmesGPT-inspired investigation practice (credited) and the output rules below.
+- **A2A**: an `a2aConfig` with the skill `diagnose-alert` (ADR 0009). The agent card is reachable through the gateway.
+- Exact field names follow the kagent version pinned after spike 001; the spike's working manifests are the reference.
+
+The operator sends **one A2A message per investigation** through the gateway, with W3C trace context, and follows the task until a terminal state or `timeout`. The message is rendered from this template:
+
+```
+An alert just fired on the cluster: {alertname} on {service} (namespace {namespace}).
+{description}
+
+Diagnose the root cause and recommend an action. Back every conclusion with a verifiable source and cite it.
+
+Answer in three parts: what you observed and where, the root cause, the recommended action, stating who should act. List the leads you ruled out and why. If the sources do not allow a conclusion, say so instead of guessing.
+
+Be brief: at most three observations and two ruled-out leads, one sentence each; the root cause in one sentence, the action in one sentence. State the root cause only once. Do not repeat what the alert already says, nor the name of a source you just cited. Do not name the tools you used: cite the source (pod log, ticket ID, runbook ID), not the tool that read it. One sentence = 25 words at most. No preamble, no conclusion. Absolute limit: 1,500 characters.
+```
+
+This is the English translation of the POC prompt, without its example identifiers. Accuracy is checked with the bench before merging (spec 04).
+
+At most `maxConcurrent` investigations run at once; others wait in a queue held by the leader replica and rebuilt from `Queued` investigations after a failover (bounded at 20; overflow sets the phase to `Dropped` with a reason, a warning event and a metric).
+
+### 3. Scope and read-only
+
+The Doc has no RBAC of its own: it reads the cluster through its `cluster` connector, whose ServiceAccount RBAC is read-only and limited to the connector's namespaces (spec 05). The Doc's `scope.namespaces` must be a subset of the bound cluster connector's namespaces; otherwise `Ready=False`, reason `ScopeNotCovered`.
+
+### 4. Publishing the diagnosis
+
+- When the task completes, the operator stores the artifact text in `status.diagnosis` and publishes it by calling the `report` connector's posting tool itself. The model never decides where or whether to publish.
+- **Destination by level**:
+
+  | Level | Destination |
+  |---|---|
+  | `trial` | `spec.report.trial` if set, otherwise status only. **Never** the `service` destination. |
+  | `service` | `spec.report.service` |
+  | `seasoned` | treated as `service` (see 7) |
+
+- **Message** (the `slack` adapter renders Block Kit; the `log` adapter renders the same content as text), in English:
+  - header: `Doc · {alertname} on {service}`;
+  - body: the diagnosis, unchanged;
+  - context line: time since the alert, model calls, tokens, estimated cost, trace ID;
+  - at the `trial` level, a banner: `Trial: shadow diagnosis, no one was paged by TakeCare.`
+- Failures are retried 3 times with backoff; a final failure is recorded (`published: { ok: false, reason }`) and as a warning event.
+
+### 5. Cost and usage
+
+- Model calls and tokens come from the gateway's Prometheus metrics, queried on the platform's `spec.observability.metrics.prometheusURL` (a Prometheus that scrapes the gateway, spec 01): `agentgateway_gen_ai_client_token_usage_sum` and `_count` by `gen_ai_token_type` (`input`, `output`, `input_cache_read` as observed with agentgateway 1.5 in the POC; to re-check on 1.6), and `agentgateway_gen_ai_server_request_duration`. Values are deltas between the start and the end of the investigation plus one scrape interval (method of the POC's `mesures.py`), priced with the platform's `pricing`.
+- Exact only without overlapping investigations: with `maxConcurrent: 1` (default) usage is exact; above 1, it is marked `approximate: true`.
+- If the A2A task or the traces carry usage (spike 001 checks it), that source replaces the metrics deltas.
+
+### 6. Telemetry (ADR 0006)
+
+- Root span `invoke_agent doc`, from alert acceptance to publication. Attributes: `gen_ai.operation.name=invoke_agent`, `gen_ai.agent.name=doc`, `gen_ai.agent.id=<TakeCareDoc UID>`, `gen_ai.conversation.id=<investigation name>`, `gen_ai.provider.name`, `gen_ai.request.model`, `takecare.role=doc`, `takecare.level`, `takecare.alert.name`, `takecare.alert.fingerprint`.
+- Span events: `alert.accepted`, `investigation.started`, `investigation.completed`, `diagnosis.published`.
+- The A2A call carries `traceparent`; kagent's spans, the gateway's `chat` spans and the MCP servers' spans should join the trace (spike 001 checks where the chain breaks; fallback: correlation by `gen_ai.conversation.id`).
+
+### 7. The `seasoned` level in milestone 1
+
+Accepted by the schema, not implemented. The controller sets `LevelSupported=False`, reason `NotImplemented`, message `The seasoned level is not available yet; the Doc behaves as in service.`, and renders the `service` tools and destination. `actTools` is ignored.
+
+## `TakeCareDoc` status
+
+```yaml
+status:
+  observedGeneration: 5
+  level: service                 # effective level
+  conditions:
+    - type: Ready
+    - type: LevelSupported
+    - type: ConnectorsReady      # every bound connector exists and is Ready; required types covered
+    - type: EngineReady          # kagent Agent accepted, A2A endpoint reachable through the gateway
+  lastInvestigation: doc-3fa29c1b07-a1b2c3
+  lastInvestigationTime: "2026-10-16T03:00:51Z"
+```
+
+## Metrics (operator)
+
+`takecare_alerts_received_total`, `takecare_alerts_ignored_total{reason}`, `takecare_investigations_total{role,phase}`, `takecare_investigation_duration_seconds{role}` (alert accepted to diagnosis published).
+
+## Acceptance criteria
+
+1. With the demo scenery, a `HighErrorRate` alert on `billing-api` produces one `TakeCareInvestigation`, one message to the `on-call` destination of the report connector at the `service` level, and phase `Completed`, less than 3 minutes after the alert fires.
+2. The same alert sent twice (same fingerprint and `startsAt`) produces one investigation. Sent again with a new `startsAt` within `cooldown`, it is skipped and counted.
+3. At the `trial` level, the diagnosis goes to the `review` destination with the trial banner, or to status only; nothing goes to `on-call`. Switching to `service` with `kubectl apply` changes the destination for the next alert, with an event.
+4. The kagent `Agent` generated for each level lists only `read` tools; a forged call to an `act` tool through the gateway with the Doc's identity is refused.
+5. A webhook call without the token, or with a wrong one, gets `401` and creates nothing; an out-of-scope alert creates nothing and increments `takecare_alerts_ignored_total{reason="out_of_scope"}`.
+6. A missing required connector type gives `Ready=False` (`MissingConnectorType`); a scope not covered by the cluster connector gives `Ready=False` (`ScopeNotCovered`).
+7. Every investigation produces a trace with an `invoke_agent doc` root span carrying the attributes above, exported over OTLP (in-memory exporter in tests, collector in e2e).
+8. `level: seasoned` gives `LevelSupported=False` and the `service` tools and destination.
+9. With the fake model provider (spec 04), the end-to-end test checks the Slack message structure against a golden file.
+10. The bench gives at least 4 correct diagnoses out of 5 (spec 04 defines "correct").

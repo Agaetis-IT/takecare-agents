@@ -1,0 +1,59 @@
+# --- Go / kubebuilder ---
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+coverage.*
+cover.out
+go.work
+go.work.sum
+/vendor/
+# envtest binaries downloaded by setup-envtest
+/testbin/
+
+# --- Python (demo app, MCP corpus, spike scripts) ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ruff_cache/
+.pytest_cache/
+
+# --- Helm ---
+charts/*/charts/
+charts/*/Chart.lock
+*.tgz
+
+# --- Secrets and local config (never commit) ---
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+kubeconfig
+*.kubeconfig
+/.kube/
+
+# --- Demo working files (k3d kubeconfig, port-forward PIDs, logs) ---
+/.demo/
+/demo/.work/
+*.pid
+*.log
+
+# --- Bench: committed reports are test/bench/report-*.json; scratch runs are not ---
+/test/bench/tmp/
+
+# --- Spikes: throwaway outputs ---
+/spikes/**/out/
+
+# --- Claude Code: personal settings stay local ---
+.claude/settings.local.json
+CLAUDE.local.md
+
+# --- Editors / OS ---
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store

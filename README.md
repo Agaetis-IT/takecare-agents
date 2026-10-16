@@ -1,107 +1,136 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/takecare-logo-blanc.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/takecare-logo-white.svg">
     <img src="docs/assets/takecare-logo.svg" alt="TakeCare Agents by Agaetis" width="360">
   </picture>
 </p>
 
-<p align="center"><b>Le staff AIOps qui prend soin de votre production.</b><br>
-<i>Toujours là, jamais à votre place.</i></p>
+<p align="center"><b>The AIOps staff that takes care of your production.</b><br>
+<i>Always there, never in your place.</i></p>
 
 ---
 
-TakeCare Agents est un staff d'agents IA, d'exercices et de garde-fous qui préparent, soignent et protègent une production Kubernetes. Il s'installe chez le client sous la forme d'un **opérateur Kubernetes**, sur une pile open source (agentgateway, HolmesGPT, puis kagent), avec le modèle de son choix. Un **mode démo** intégré monte le même produit sur un cluster local, avec un décor et des incidents rejouables.
+TakeCare Agents is a staff of AI agents, exercises and guardrails that prepare, heal and protect a Kubernetes production. It installs at the customer's site as a **Kubernetes operator**, on an open source stack (agentgateway, kagent, MCP), with the model of their choice. A built-in **demo mode** runs the same product on a local cluster, with a scenery and replayable incidents.
 
-> **Statut : en construction.** Le jalon 1 (socle, Doc, mode démo) est spécifié dans [`docs/`](docs/) ; le code arrive au fil des PR. Rien n'est encore installable.
+> **Status: under construction.** Milestone 1 (platform, Doc, demo mode) is specified in [`docs/`](docs/); the code arrives PR by PR. Nothing is installable yet.
 
-## Le staff
+## The staff
 
-Onze rôles, rangés en trois piliers. Chaque rôle commence par un essai, sans rien toucher.
+Eleven roles, grouped in three pillars. Every role starts with a trial, touching nothing.
 
-| Préparer | Soigner | Protéger |
+<p align="center">
+  <img src="docs/assets/takecare-staff.jpg" alt="The TakeCare staff: eleven role cards grouped by pillar (prepare, heal, protect) and the three intervention levels" width="100%">
+</p>
+
+| Prepare | Heal | Protect |
 |---|---|---|
-| **Coach** · Un pic d'activité en vue ? | **Doc** · Un incident en pleine nuit ? | **Ranger** · Vos agents tentés par le hors-piste ? |
-| **Nutri** · Une facture cloud qui grimpe sans prévenir ? | **Kiné** · Une douleur qui revient à chaque incident ? | **Checkpoint** · Des agents et des outils qui arrivent de partout ? |
-| **Guide** · Votre équipe doit monter en compétence ? | **Mécano** · Une montée de version que tout le monde repousse ? | **Psy** · Des agents qui inventent des chemins ou tournent en rond ? |
-| **Bootcamp** · Votre plan B n'a jamais servi ? | | **Sparring** · Vos agents tiendraient-ils face à une attaque ? |
+| **Coach** · A peak of activity ahead? | **Doc** · An incident in the middle of the night? | **Ranger** · Your agents tempted to go off-piste? |
+| **Nutri** · A cloud bill that climbs without warning? | **Kiné** · A pain that comes back with every incident? | **Checkpoint** · Agents and tools coming from everywhere? |
+| **Guide** · Your team needs to level up? | **Mécano** · A version upgrade everyone keeps postponing? | **Psy** · Agents that make up paths or go round in circles? |
+| **Bootcamp** · Your plan B has never been used? | | **Sparring** · Would your agents hold up against an attack? |
 
-Agents : Coach, Nutri, Guide, Doc, Kiné, Mécano. Exercices menés par Agaetis : Bootcamp, Sparring. Garde-fous : Ranger, Checkpoint, Psy.
+Agents: Coach, Nutri, Guide, Doc, Kiné, Mécano. Exercises run by Agaetis: Bootcamp, Sparring. Guardrails: Ranger, Checkpoint, Psy.
 
-Le jalon 1 livre le **Doc** : à chaque alerte, il mène l'enquête en lecture seule et publie dans Slack un diagnostic sourcé (la cause, les pistes écartées, qui doit agir). Vous décidez du traitement.
+Milestone 1 delivers the **Doc**: on every alert, it investigates read-only and posts a sourced diagnosis to Slack (the root cause, the ruled-out leads, who should act). You decide on the treatment.
 
-## Le principe : le palier se déclare
+## The principle: the level is declared
 
-Chaque rôle est une ressource Kubernetes qui porte son **palier d'intervention**. L'opérateur en déduit ce que le rôle a le droit de faire.
+Every role is a Kubernetes resource that carries its **intervention level**. The operator derives from it what the role is allowed to do.
 
-| Palier | Valeur | Ce que fait le rôle |
+| Level | Value | What the role does |
 |---|---|---|
-| À l'essai | `trial` | Il analyse, sur votre historique ou à blanc, sans rien toucher |
-| En service | `service` | Il travaille au quotidien et propose ; vous validez et lancez |
-| Aguerri | `seasoned` | Il agit seul, dans le cadre que vous avez validé (après le jalon 1) |
+| On trial | `trial` | It analyses, on your history or dry-run, touching nothing |
+| In service | `service` | It works daily and proposes; you approve and launch |
+| Seasoned | `seasoned` | It acts alone, within the frame you approved (after milestone 1) |
 
 ```yaml
 apiVersion: takecare.agaetis.fr/v1alpha1
 kind: TakeCareDoc
 metadata:
   name: doc
-  namespace: takecare
+  namespace: takecare-system
 spec:
   level: service              # trial | service | seasoned
   scope:
-    namespaces: [facturation]
-  channel: astreinte          # canal déclaré dans la TakeCarePlatform
+    namespaces: [demo-apps]
+  connectors:                 # MCP connectors behind the gateway, by type
+    cluster: [kubernetes]
+    metrics: [prometheus]
+    knowledge: [runbooks, incidents]
+    report: report            # the report connector (here: Slack)
+  report:
+    trial: review             # where diagnoses go at each level
+    service: on-call
 ```
 
-Changer de palier, c'est modifier cette ressource : une PR relue, un changement tracé. `kubectl get takecare -A` liste tout le staff, avec le rôle, le palier et l'état de chacun.
+Changing level means changing this resource: a reviewed PR, a traced change. `kubectl get takecare -A` lists the whole staff, with each role's level and state.
 
-## Architecture du jalon 1
+## Milestone 1 architecture
 
 ```
-Alertmanager ──webhook──▶ takecare-operator ──HealthCheck──▶ HolmesGPT ──▶ Slack
-                              │                                 │
-                              │ génère config et RBAC           ├─ Kubernetes, Prometheus (lecture)
-                              ▼                                 └─ sources MCP : post-mortems, runbooks…
-                       agentgateway ◀──── tous les appels au modèle (coût, traces)
-                              │
-                              ▼
-                 modèle compatible OpenAI (au choix du client)
+Alertmanager ──webhook──▶ takecare-operator ──A2A task──▶ kagent agent "doc"
+                                │  ◀────── diagnosis ──────────┘    │
+                                │                                   │ only the tools its level allows
+                                ▼                                   ▼
+                  report connector ──▶ Slack        ┌───────── agentgateway ─────────┐
+                                                    │  models · MCP tools · A2A      │
+                                                    └────────────────────────────────┘
+                                                        │                    │
+                                        OpenAI-compatible model     connectors (MCP servers):
+                                        (customer's choice)         kubernetes, prometheus,
+                                                                    runbooks, post-mortems…
+
+every investigation = one OpenTelemetry trace (GenAI semantic conventions) ──▶ OTLP
 ```
 
-- **`takecare-operator`** (Go, kubebuilder) traduit les ressources TakeCare en configuration des briques et en RBAC. Il n'installe rien et n'enquête pas lui-même.
-- **Le chart `takecare`** installe l'opérateur, ses CRD et les briques tierces, en profil `prod` ou `demo`.
-- **agentgateway** reçoit tous les appels au modèle : la clé du fournisseur n'est jamais exposée aux agents, et le coût de chaque enquête est mesuré.
+A2A calls, tool calls and model calls all go through agentgateway.
 
-Les choix et leurs raisons sont dans les [ADR](docs/adr/).
+- **`takecare-operator`** (Go, kubebuilder) translates TakeCare resources into building-block configuration and RBAC, triggers investigations and publishes their results. It installs nothing and does not reason itself.
+- **kagent** runs the agents ([ADR 0007](docs/adr/0007-agent-engine-kagent.md), to be confirmed by [spike 001](docs/spikes/001-kagent-doc-engine.md)). Agents talk to each other over **A2A** ([ADR 0009](docs/adr/0009-agents-talk-over-a2a.md)).
+- **Connectors**: everything an agent reads or writes is an MCP server behind the gateway; the level decides which tools are allowed ([ADR 0008](docs/adr/0008-everything-is-an-mcp-connector.md)).
+- **The `takecare` chart** installs the operator, its CRDs and the third-party building blocks, with a `prod` or `demo` profile.
+- **agentgateway** is the single control point: every model call (provider key never exposed, cost measured), every tool call (authorized tool by tool), every agent-to-agent call.
+- **OpenTelemetry** from day one, following the [GenAI semantic conventions](https://github.com/open-telemetry/semantic-conventions-genai): the groundwork for the Psy, which will evaluate the agents.
 
-## Mode démo (prévu au jalon 1)
+The choices and their reasons are in the [ADRs](docs/adr/).
+
+## Demo mode (planned for milestone 1)
 
 ```bash
-export TAKECARE_MODEL_API_KEY=...     # clé du fournisseur de modèle, jamais écrite dans le dépôt
-make demo-up          # cluster k3d + TakeCare en profil démo + décor facturation-api
-make demo-incident    # déclenche la panne ; l'alerte part environ 2 min 30 plus tard
-make demo-bench N=5   # rejoue N enquêtes et compte les bons diagnostics
-make demo-reset       # remet le décor en état
-make demo-down        # supprime le cluster
+export TAKECARE_MODEL_API_KEY=...     # model provider key, never written to the repository
+make demo-up          # k3d cluster + TakeCare with the demo profile + billing-api scenery
+make demo-incident    # triggers the failure; the alert fires about 2 min 30 later
+make demo-bench N=5   # replays N investigations and counts the correct diagnoses
+make demo-reset       # puts the scenery back in shape
+make demo-down        # deletes the cluster
 ```
 
-Prérequis : Docker (4 Go de mémoire au moins), k3d, kubectl, helm, make.
+Prerequisites: Docker (at least 4 GB of memory), k3d, kubectl, helm, make.
 
 ## Documentation
 
-| Document | Contenu |
+| Document | Content |
 |---|---|
-| [`docs/specs/00-vision-jalon-1.md`](docs/specs/00-vision-jalon-1.md) | Vision, principes, périmètre et critères de sortie du jalon 1 |
-| [`docs/adr/`](docs/adr/) | Décisions d'architecture |
+| [`docs/specs/00-vision-milestone-1.md`](docs/specs/00-vision-milestone-1.md) | Vision, principles, scope and exit criteria of milestone 1 |
+| [`docs/specs/01-platform.md`](docs/specs/01-platform.md) | `TakeCarePlatform`, the core: models, gateway, observability; production vs demo |
+| [`docs/specs/02-doc.md`](docs/specs/02-doc.md) | `TakeCareDoc` and `TakeCareInvestigation`: alert intake, kagent agent, tools by level, publishing, cost, traces |
+| [`docs/specs/03-demo.md`](docs/specs/03-demo.md) | Demo mode and `TakeCareDemo`: the `proxy-timeout` scenario, `make demo-*` |
+| [`docs/specs/04-quality-ci.md`](docs/specs/04-quality-ci.md) | Layout, tests, accuracy bench, CI, definition of done |
+| [`docs/specs/05-connectors.md`](docs/specs/05-connectors.md) | `TakeCareConnector` and add-ons: MCP servers behind the gateway, tool classes |
+| [`docs/spikes/001-kagent-doc-engine.md`](docs/spikes/001-kagent-doc-engine.md) | Spike 001: can kagent run the Doc as well as HolmesGPT? |
+| [`docs/specs/90-agent-output-localization.md`](docs/specs/90-agent-output-localization.md) | Localized agent output (deferred) |
+| [`docs/adr/`](docs/adr/) | Architecture decisions |
+| [`CLAUDE.md`](CLAUDE.md) | How to work on this repository: ground rules, PR sequence, known pitfalls |
 
-## Comment on travaille
+## How we work
 
-Les specs et les décisions sont écrites et relues avant le code. Chaque spec donne lieu à une PR, relue avant fusion. Une décision qui change donne un nouvel ADR, jamais une réécriture de l'ancien.
+Specs and decisions are written and reviewed before the code. Every spec leads to a PR, reviewed before merging. A decision that changes gives a new ADR, never a rewrite of the old one. Everything in this repository is written in English; only the role names keep their French flavour.
 
-## Licence
+## License
 
-Dépôt privé. La licence sera choisie avant toute ouverture.
+Private repository. The license will be chosen before any opening.
 
 ---
 
-<p align="center"><i>Comme un cairn sur le sentier, nos agents balisent votre chemin.</i><br>
+<p align="center"><i>Like a cairn on the trail, our agents mark your way.</i><br>
 TakeCare Agents by <a href="https://www.agaetis.fr">Agaetis</a></p>
