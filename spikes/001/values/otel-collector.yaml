@@ -1,0 +1,29 @@
+# OpenTelemetry Collector: one OTLP entry point for every component, traces
+# forwarded to Jaeger. The debug exporter stays at basic verbosity so that no
+# message content ends up in logs.
+mode: deployment
+image:
+  repository: otel/opentelemetry-collector-contrib
+resources:
+  requests: { cpu: 50m, memory: 128Mi }
+  limits: { memory: 512Mi }
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc: { endpoint: "0.0.0.0:4317" }
+        http: { endpoint: "0.0.0.0:4318" }
+  exporters:
+    otlp_grpc/jaeger:
+      endpoint: jaeger.observability.svc.cluster.local:4317
+      tls: { insecure: true }
+    debug:
+      verbosity: basic
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [otlp_grpc/jaeger, debug]
+      metrics: null
+      logs: null

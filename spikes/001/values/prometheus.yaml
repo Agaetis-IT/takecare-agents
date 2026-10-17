@@ -1,0 +1,96 @@
+# prometheus-community/prometheus: Prometheus, kube-state-metrics and
+# Alertmanager, without node-exporter or pushgateway. Rules and cadence are the
+# POC's (scrape and evaluation every 15 s; HighErrorRate over [1m], for: 30s).
+# Changing the window or `for` without the app's ramp breaks the timing.
+prometheus-node-exporter:
+  enabled: false
+prometheus-pushgateway:
+  enabled: false
+
+server:
+  global:
+    scrape_interval: 15s
+    evaluation_interval: 15s
+  retention: 12h
+  persistentVolume:
+    size: 2Gi
+  resources:
+    requests: { cpu: 100m, memory: 512Mi }
+    limits: { memory: 1Gi }
+
+# The spike's trigger reads firing alerts from the Alertmanager API, so the
+# receiver is a no-op. group_wait and group_interval at 1 s, as in the POC.
+alertmanager:
+  enabled: true
+  persistence:
+    enabled: false
+  config:
+    route:
+      receiver: "null"
+      group_by: ["alertname"]
+      group_wait: 1s
+      group_interval: 1s
+      repeat_interval: 4h
+    inhibit_rules:
+      - source_matchers: ['alertname="HighErrorRate"']
+        target_matchers: ['alertname="HighLatencyP99"']
+        equal: ["service"]
+    receivers:
+      - name: "null"
+
+serverFiles:
+  alerting_rules.yml:
+    groups:
+      - name: spike-001
+        rules:
+          - alert: HighLatencyP99
+            expr: http_request_duration_seconds{quantile="0.99"} > 2
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "P99 latency above 2s on {{ $labels.service }}"
+              description: "P99 latency of {{ $labels.service }} has been {{ $value | printf \"%.2f\" }}s for 5 minutes."
+          - alert: HighErrorRate
+            expr: |
+              sum by (service, namespace) (rate(http_requests_total{status="504"}[1m]))
+                / sum by (service, namespace) (rate(http_requests_total[1m])) > 0.02
+            for: 30s
+            labels:
+              severity: critical
+            annotations:
+              summary: "High error rate on {{ $labels.service }}"
+              description: "{{ $value | humanizePercentage }} of {{ $labels.service }} requests have answered 504 for 30 seconds."
+          - alert: PodNotReady
+            expr: kube_pod_status_ready{condition="true", namespace="demo-apps"} == 0
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} not ready"
+              description: "The pod has not reached the Ready state for 5 minutes."
+          - alert: PodCrashLooping
+            expr: increase(kube_pod_container_status_restarts_total{namespace="demo-apps"}[15m]) > 3
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} restarting repeatedly"
+              description: "More than 3 restarts in 15 minutes."
+
+# agentgateway proxy metrics (tokens, model calls), the source of the usage
+# deltas. The proxy pod is created by the controller from the Gateway, so it
+# is discovered by its gateway-name label.
+extraScrapeConfigs: |
+  - job_name: agentgateway
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [agentgateway-system]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_gateway_networking_k8s_io_gateway_name]
+        regex: agentgateway-proxy
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_ip]
+        target_label: __address__
+        replacement: $1:${AGW_METRICS_PORT}

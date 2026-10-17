@@ -1,0 +1,39 @@
+# kagent 0.10.3, minimal: no bundled agents or tool servers. Field names taken
+# from the 0.10.3 chart (values.yaml), not from the POC's 0.9.12.
+k8s-agent: { enabled: false }
+kgateway-agent: { enabled: false }
+istio-agent: { enabled: false }
+promql-agent: { enabled: false }
+observability-agent: { enabled: false }
+argo-rollouts-agent: { enabled: false }
+helm-agent: { enabled: false }
+cilium-policy-agent: { enabled: false }
+cilium-manager-agent: { enabled: false }
+cilium-debug-agent: { enabled: false }
+kagent-tools: { enabled: false }
+grafana-mcp: { enabled: false }
+kmcp: { enabled: false }
+
+# The chart always renders a `default-model-config`; point it at the gateway
+# with a dummy key too, so that nothing in kagent can reach a provider directly
+# (ADR 0004). The spike's agents use their own ModelConfig.
+providers:
+  default: openAI
+  openAI:
+    provider: OpenAI
+    model: google/gemini-3.7-flash
+    apiKeySecretRef: kagent-gateway-dummy
+    apiKeySecretKey: OPENAI_API_KEY
+    apiKey: dummy
+    config:
+      baseUrl: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1
+
+# The controller copies every OTEL_* variable into the agent pods.
+otel:
+  tracing:
+    enabled: true
+    exporter:
+      otlp:
+        endpoint: http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4317
+        protocol: grpc
+        insecure: true
