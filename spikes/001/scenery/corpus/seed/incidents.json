@@ -1,0 +1,54 @@
+[
+  {
+    "id": "INC-2024-0312",
+    "date": "2024-03-12",
+    "started_at": "03:40",
+    "title": "Intermittent 504s and growing memory on billing-api, off-peak hours",
+    "service": "billing-api",
+    "severity": "major",
+    "duration": "3h20",
+    "symptoms": "First 504s at 03:40, intermittent. Container RSS growing steadily. No restart, no OOMKill, probes green. Traffic normal for the hour, that is very low. Nothing abnormal had been seen during the previous day, nor in the week's load tests.",
+    "false_lead": "Two, and they reinforced each other. (1) Initial diagnosis: application memory leak; the limit was raised from 512Mi to 1Gi. (2) That change restarted the pod and the errors stopped within a minute: we believed it was fixed. They came back 40 minutes later. The restart had created a fresh connection pool, hence empty of dead connections; it fixed nothing, it reset the counter. The time to come back matches the time the pool took to fill up and go idle again.",
+    "root_cause": "Connection pool exhaustion. The RDS Proxy idleClientTimeout (300 s) was SHORTER than the idle connection recycling delay of the application pool (600 s). The proxy closed connections the application still believed valid; every request landing on a dead socket failed and consumed a fresh slot, and the pool saturated. AWS documents the opposite rule: the pool must recycle BEFORE the proxy. The RSS growth was a consequence (failing requests held their objects), not the cause. The defect can only show off-peak: under load, no connection stays idle long enough to reach the proxy threshold. That is why neither the previous day nor the load tests showed anything.",
+    "fix": "Removed the idleClientTimeout field from the DBProxy resource, which restores the AWS default of 1800 s, well above the application recycling. See RB-014.",
+    "follow_up": "1. Write a dedicated runbook - DONE, RB-014 published on 2024-03-20. 2. Annotate RB-007 at the top to exclude this case - DONE on 2024-03-20. 3. Add an automatic check comparing the proxy idle timeout with the pool recycling at each deployment - NOT DONE, judged disproportionate for a single case. The two values belong to two teams and live in two repositories; no tool brings them together today.",
+    "resolved_by": "M. Sorel (left the team in 2025-09)",
+    "tags": "pool connections rds proxy dbproxy idleclienttimeout idle timeout recycling memory rss 504 false-positive restart off-peak night billing"
+  },
+  {
+    "id": "INC-2024-0455",
+    "date": "2024-04-28",
+    "title": "Expired certificate on the payment gateway",
+    "service": "payments-api",
+    "severity": "critical",
+    "duration": "48min",
+    "symptoms": "Mass TLS failures on outgoing calls.",
+    "root_cause": "Client certificate not renewed, expiry alert routed to an inactive mailbox.",
+    "fix": "Renewal, and expiry alerts moved to the on-call rotation.",
+    "tags": "tls certificate expiry payments"
+  },
+  {
+    "id": "INC-2024-0501",
+    "date": "2024-05-15",
+    "title": "Disk saturation on compute nodes",
+    "service": "platform",
+    "severity": "major",
+    "duration": "2h10",
+    "symptoms": "Pod evictions in series, DiskPressure on three nodes.",
+    "root_cause": "Application log rotation disabled by a chart change.",
+    "fix": "Rotation restored, alert added on node disk space.",
+    "tags": "disk eviction diskpressure logs rotation"
+  },
+  {
+    "id": "INC-2024-0632",
+    "date": "2024-06-30",
+    "title": "Higher latency after the checkout database migration",
+    "service": "checkout-api",
+    "severity": "minor",
+    "duration": "1h05",
+    "symptoms": "P95 doubled after a planned migration.",
+    "root_cause": "Missing index on the new instance, not carried over by the migration script.",
+    "fix": "Index created, post-migration check added.",
+    "tags": "latency database migration index checkout"
+  }
+]

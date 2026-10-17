@@ -1,0 +1,73 @@
+# billing-api, scenario proxy-timeout. One Deployment, MODE switches between
+# healthy and leaky; everything else is identical in both variants.
+# Recreate: a single pod at a time, so the metrics never mix two pods.
+# Rendered with: APP_NS PYTHON_IMAGE APP_CODE_SHA BILLING_MODE RAMP_MINUTES LEAK_MINUTES
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing-api
+  namespace: ${APP_NS}
+  labels:
+    app: billing-api
+    app.kubernetes.io/part-of: takecare-spike-scenery
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: billing-api
+  template:
+    metadata:
+      labels:
+        app: billing-api
+        app.kubernetes.io/part-of: takecare-spike-scenery
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+        takecare.demo/app-code: "${APP_CODE_SHA}"
+    spec:
+      volumes:
+        - name: code
+          configMap:
+            name: demo-app-code
+      containers:
+        - name: app
+          image: ${PYTHON_IMAGE}
+          command: ["python", "-u", "/code/app.py"]
+          volumeMounts:
+            - name: code
+              mountPath: /code
+          env:
+            - { name: MODE, value: "${BILLING_MODE}" }
+            - { name: SERVICE, value: "billing-api" }
+            - { name: RAMP_MINUTES, value: "${RAMP_MINUTES}" }
+            - { name: LEAK_MINUTES, value: "${LEAK_MINUTES}" }
+            - { name: LEAK_CEILING_MB, value: "360" }
+            - { name: MEMORY_LIMIT_MB, value: "512" }
+            - { name: DB_POOL_IDLE_TIMEOUT_SECONDS, value: "900" }
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /ready, port: 8080 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 20m, memory: 64Mi }
+            limits: { memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing-api
+  namespace: ${APP_NS}
+  labels:
+    app.kubernetes.io/part-of: takecare-spike-scenery
+spec:
+  selector:
+    app: billing-api
+  ports:
+    - { name: http, port: 8080, targetPort: 8080 }

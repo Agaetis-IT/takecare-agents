@@ -1,0 +1,82 @@
+# notifications-worker, scenario missing-secret-key.
+# The Secret holds key `smtp-password`. Version 2.0.0 references key
+# `SMTP_PASSWORD` instead. The reference is `optional: true` (as the chart has
+# it in both versions), so the kubelet does NOT block the start with
+# CreateContainerConfigError: the variable is simply absent, the process logs
+# "missing required setting SMTP_PASSWORD" and exits 1, Kubernetes restarts it
+# and the pod goes CrashLoopBackOff, which is what PodCrashLooping
+# (restart count increase > 3 over 15m, for 5m) needs.
+# Rendered with: APP_NS PYTHON_IMAGE APP_CODE_SHA NOTIFICATIONS_VERSION SMTP_SECRET_KEY
+apiVersion: v1
+kind: Secret
+metadata:
+  name: notifications-smtp
+  namespace: ${APP_NS}
+  labels:
+    app.kubernetes.io/part-of: takecare-spike-scenery
+type: Opaque
+stringData:
+  smtp-password: not-a-real-password
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notifications-worker
+  namespace: ${APP_NS}
+  labels:
+    app: notifications-worker
+    app.kubernetes.io/part-of: takecare-spike-scenery
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: notifications-worker
+  template:
+    metadata:
+      labels:
+        app: notifications-worker
+        app.kubernetes.io/part-of: takecare-spike-scenery
+        app.kubernetes.io/version: "${NOTIFICATIONS_VERSION}"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+        takecare.demo/app-code: "${APP_CODE_SHA}"
+    spec:
+      volumes:
+        - name: code
+          configMap:
+            name: demo-app-code
+      containers:
+        - name: worker
+          image: ${PYTHON_IMAGE}
+          command: ["python", "-u", "/code/app.py"]
+          volumeMounts:
+            - name: code
+              mountPath: /code
+          env:
+            - { name: MODE, value: "healthy" }
+            - { name: SERVICE, value: "notifications-worker" }
+            - { name: APP_VERSION, value: "${NOTIFICATIONS_VERSION}" }
+            - { name: REQUIRED_SETTINGS, value: "SMTP_HOST,SMTP_USER,SMTP_PASSWORD" }
+            - { name: SMTP_HOST, value: "smtp.example.invalid:587" }
+            - { name: SMTP_USER, value: "notifications" }
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: notifications-smtp
+                  key: ${SMTP_SECRET_KEY}
+                  optional: true
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /ready, port: 8080 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }

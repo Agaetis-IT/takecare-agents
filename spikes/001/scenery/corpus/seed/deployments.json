@@ -1,0 +1,111 @@
+[
+  {
+    "id": "CI-SEED-ORDERS",
+    "scenario": "bad-config-rollout",
+    "date": "@TS1@",
+    "title": "orders-config v3.9.0 rolled out",
+    "service": "orders-api",
+    "type": "configmap",
+    "author": "CI pipeline (orders team)",
+    "summary": "ConfigMap orders-config updated and orders-api restarted to pick it up. Database host switched to the primary endpoint, ahead of the read/write split planned with the database team.",
+    "diff": "DB_HOST: orders-db.demo-apps.svc:5432 -> orders-db-primary.demo-apps.svc:5432",
+    "review": "One approval from the orders team.",
+    "status": "success",
+    "tags": "orders configmap database host endpoint primary split"
+  },
+  {
+    "id": "CI-SEED-NOTIF",
+    "scenario": "missing-secret-key",
+    "date": "@TS1@",
+    "title": "notifications-worker v2.0.0 rolled out",
+    "service": "notifications-worker",
+    "type": "image",
+    "author": "CI pipeline (notifications team)",
+    "summary": "Major version. Settings are now read from environment variables named after the setting (SMTP_HOST, SMTP_USER, SMTP_PASSWORD) instead of the old configuration file. Chart values aligned with the new names.",
+    "diff": "image: notifications-worker:1.9.4 -> 2.0.0; chart: env names upper-cased, secretKeyRef keys aligned with the env names",
+    "review": "Two approvals from the notifications team. Tested locally with a .env file.",
+    "status": "success",
+    "tags": "notifications release major settings environment variables chart"
+  },
+  {
+    "id": "CI-SEED-NOTIF-ROT",
+    "date": "@TS12960@",
+    "title": "Secret rotation on notifications-worker",
+    "service": "notifications-worker",
+    "type": "secret",
+    "author": "CI pipeline (platform team)",
+    "summary": "Scheduled rotation of the SMTP credentials held in Secret notifications-smtp (managed by the platform team). Key names unchanged: smtp-password. No change to the workload.",
+    "status": "success",
+    "tags": "notifications secret rotation credentials smtp"
+  },
+  {
+    "id": "CI-SEED-NOTIF-194",
+    "date": "@TS20160@",
+    "title": "notifications-worker v1.9.4 rolled out",
+    "service": "notifications-worker",
+    "type": "image",
+    "author": "CI pipeline (notifications team)",
+    "summary": "Retry with backoff on transient SMTP 4xx answers.",
+    "status": "success",
+    "tags": "notifications retry smtp fix"
+  },
+  {
+    "id": "CI-SEED-ORDERS-380",
+    "date": "@TS5800@",
+    "title": "orders-config v3.8.0 rolled out",
+    "service": "orders-api",
+    "type": "configmap",
+    "author": "CI pipeline (orders team)",
+    "summary": "Connection pool size raised from 10 to 20.",
+    "diff": "DB_POOL_MAX_SIZE: 10 -> 20",
+    "status": "success",
+    "tags": "orders configmap pool connections"
+  },
+  {
+    "id": "CI-SEED-WEB",
+    "date": "@TS95@",
+    "title": "web-front v5.1.0 rolled out",
+    "service": "web-front",
+    "type": "image",
+    "author": "CI pipeline (front team)",
+    "summary": "Application release, no configuration change.",
+    "status": "success",
+    "tags": "front image release"
+  },
+  {
+    "id": "CI-SEED-INFRA",
+    "scenario": "proxy-timeout",
+    "date": "@TS732@",
+    "title": "infra-aws: idleClientTimeout set on the billing DBProxy",
+    "service": "billing-api",
+    "type": "infrastructure",
+    "author": "CI pipeline (infrastructure team)",
+    "summary": "Applied the infra-aws repository. Added the idleClientTimeout field to the DBProxy resource billing-db-proxy (namespace ack-system). The field was not set, so the proxy fell back to the AWS default of 1800 s. Goal stated in the merge request: purge idle client connections earlier, as the RDS Proxy documentation explicitly allows.",
+    "diff": "DBProxy/billing-db-proxy: idleClientTimeout: (field absent, AWS default 1800) -> 600",
+    "review": "Two approvals from the infrastructure team. No value was overwritten and the resource carried no comment: there was nothing to contradict.",
+    "status": "success",
+    "tags": "infrastructure aws rds proxy dbproxy idleclienttimeout idle timeout idle connections ack billing"
+  },
+  {
+    "id": "CI-SEED-CHECKOUT",
+    "date": "@TS1500@",
+    "title": "checkout-api v4.7.1 rolled out",
+    "service": "checkout-api",
+    "type": "image",
+    "author": "CI pipeline (checkout team)",
+    "summary": "Latest checkout-api release. No deployment since.",
+    "status": "success",
+    "tags": "checkout release"
+  },
+  {
+    "id": "CI-SEED-BILLING-FAIL",
+    "date": "@TS1600@",
+    "title": "Deployment failed: billing-api v2.9.0",
+    "service": "billing-api",
+    "type": "image",
+    "author": "CI pipeline (billing team)",
+    "summary": "Automatic rollback after startup probe failures.",
+    "status": "failed",
+    "tags": "billing rollback failed probe"
+  }
+]

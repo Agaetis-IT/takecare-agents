@@ -1,0 +1,74 @@
+[
+  {
+    "id": "RB-014",
+    "title": "Connection pool exhaustion - idle timeout mismatch on the network path",
+    "domain": "databases",
+    "services": "billing-api, payments-api, checkout-api",
+    "created": "2024-03-20 (follow-up of INC-2024-0312)",
+    "revision": "2025-04-02",
+    "warning": "READ BEFORE APPLYING - Two traps, and both give the illusion of a fix. (1) THIS DEFECT IS INVISIBLE UNDER LOAD: when traffic is sustained, no connection stays idle long enough to be cut. The symptom stops by itself when traffic comes back; do not conclude it is solved. (2) ANY RESTART HIDES THE SYMPTOM: a fresh pool holds no dead connection, so errors stop at once, then come back once the pool has filled up and gone idle again. A fix that restarts the pod (raising a memory limit, for example) will therefore seem to work. Never conclude on an observation made right after a restart.",
+    "symptoms": "Intermittent 5xx errors (502/504) not correlated with traffic volume, often off-peak. Container RSS growing steadily and monotonically. No restart, no OOMKill, liveness and readiness probes green. In the application logs: 'connection reset by peer', not 'timeout'.",
+    "procedure": "1. Read app_heap_bytes and db_connection_wait_seconds over the same window. If the connection wait grows together with the RSS, memory is a symptom, not the cause.\n2. Read the application container logs. 'connection reset by peer' means a close SUFFERED: the other end hung up. A 'timeout' would mean the opposite, a wait abandoned by the application. That nuance drives everything that follows.\n3. List EVERY element of the network path able to close an idle connection, with its value: RDS Proxy (idleClientTimeout field of the DBProxy resource), NAT Gateway, load balancer (idle timeout), service mesh, stateful firewall. Each carries its own value and none knows the others'.\n4. Compare the SHORTEST of these values with the idle connection recycling delay of the application pool. The latter is logged at pod start (line 'db pool ... idle_timeout=') and set by the DB_POOL_IDLE_TIMEOUT_SECONDS variable. GENERAL RULE: the pool must recycle BEFORE the most impatient element of the path. AWS writes it for RDS Proxy: 'configure your pool with an idle connection timeout of a value lower than your client connection idle timeout setting for RDS Proxy to avoid unexpected connection drops'.\n5. If the relation is inverted, that is the cause. Fix ONE of the two values: lower the pool recycling below the network threshold, or raise the network threshold above the recycling. The two values usually belong to two teams: saying which one changes is part of the verdict.\n6. DO NOT raise the memory limit. No effect on the cause, and the restart it triggers will hide the symptom until the pool fills up again. That is exactly what cost 40 minutes on INC-2024-0312.\n7. Verify the fix OFF-PEAK. A verification under load proves nothing.",
+    "verification": "db_connection_wait_seconds goes back under 50 ms and RSS stabilises. Verification is conclusive only after a low-traffic period at least twice as long as the shortest idle timeout of the path.",
+    "escalation": "Infrastructure team when the value at fault belongs to an object only they deploy: DBProxy, load balancer, NAT Gateway.",
+    "tags": "pool connections rds proxy dbproxy idle timeout idleclienttimeout recycling memory rss 504 502 connection reset by peer off-peak db_pool_idle_timeout_seconds"
+  },
+  {
+    "id": "RB-007",
+    "title": "Memory growth of an application container",
+    "domain": "resources",
+    "services": "all",
+    "created": "2023-11-18",
+    "revision": "2024-03-20 (warning added after INC-2024-0312)",
+    "warning": "READ BEFORE APPLYING - This procedure does NOT apply to memory growth without restart together with intermittent 5xx errors: memory is then a symptom, not the cause. See RB-014.",
+    "symptoms": "Container RSS growing, risk of OOMKill.",
+    "procedure": "1. Check the pod restart history.\n2. Note the current memory limit and the peak over 24 h.\n3. If the peak is close to the limit, raise the memory limit by 50 % and watch for 24 h.\n4. If growth persists after the increase, open a ticket with the application team to look for a leak.",
+    "verification": "No OOMKill over 24 h.",
+    "tags": "memory rss limit oomkill increase raise leak generic"
+  },
+  {
+    "id": "RB-021",
+    "title": "Pod stuck out of the Ready state",
+    "domain": "kubernetes",
+    "services": "all",
+    "revision": "2025-06-11",
+    "symptoms": "The container starts, the liveness probe passes, the readiness probe keeps failing. The pod receives no traffic; a rolling update stays stuck behind it.",
+    "procedure": "1. Describe the pod and read the readiness probe failure event.\n2. Find what the readiness probe really tests: it often validates an external dependency (database, cache, queue) while liveness tests only the process.\n3. If liveness is green and readiness red, the dependency is at fault, not the application.\n4. List the configuration changes of the service over the previous 2 hours, ConfigMaps and Secrets included. A changed dependency host or port is the most frequent cause.\n5. Check that the dependency name exists as a Service in the namespace and has endpoints.",
+    "verification": "The readiness probe turns green and the endpoint shows up again in the Service.",
+    "tags": "readiness liveness probe ready dependency configmap dns rollout stuck"
+  },
+  {
+    "id": "RB-026",
+    "title": "Container restarting in a loop after a release",
+    "domain": "kubernetes",
+    "services": "all",
+    "revision": "2025-11-04",
+    "symptoms": "Pod in CrashLoopBackOff, restart count growing, exit code 1 a few seconds after start. The previous version ran fine.",
+    "procedure": "1. Read the logs of the previous container instance: the last lines before the exit usually state the reason.\n2. A configuration error at startup means the problem is in what the pod receives, not in the code path under load.\n3. Compare the settings the new version expects with the release notes in the deployment log.\n4. Check how each setting reaches the container: env value, envFrom, configMapKeyRef, secretKeyRef. A reference to a missing key normally blocks the start with CreateContainerConfigError; a reference marked optional does not, and the variable is simply absent.\n5. Secret contents are not readable with read-only access. The key names of managed Secrets are recorded in the deployment log at each rotation.\n6. Fix the reference or the Secret, through the owning team. Never put the value in the pod spec.",
+    "verification": "The pod reaches Running and the restart count stops growing for 15 minutes.",
+    "tags": "crashloopbackoff restart loop exit code release configuration environment secret configmap"
+  },
+  {
+    "id": "RB-032",
+    "title": "Latency rising without application change",
+    "domain": "performance",
+    "services": "all",
+    "revision": "2025-08-20",
+    "symptoms": "P99 degrading progressively. Pods Running and Ready, no restart, normal traffic.",
+    "procedure": "1. First rule out the application: list the service deployments. A progressive degradation WITHOUT recent deployment is not a code regression.\n2. Tell a step change (failover, configuration change) from a continuous ramp (saturation or infrastructure drift).\n3. Break the latency down: if db_connection_wait_seconds carries most of the increase, the cause is below the database, not in the service.\n4. Check the cloud vendor status for the region AND the availability zone that hosts the storage. A zone degradation shows in none of our dashboards.\n5. Cross-check with user reports to establish the real impact before escalating.",
+    "verification": "The cause is tied to a dated source of evidence, internal or external.",
+    "escalation": "If the vendor confirms a zone incident: move storage to another availability zone or wait for the resolution, depending on criticality.",
+    "tags": "latency p99 degradation progressive zone vendor cloud ebs storage"
+  },
+  {
+    "id": "RB-003",
+    "title": "Rotation of the mesh TLS certificates",
+    "domain": "security",
+    "services": "all",
+    "revision": "2024-09-30",
+    "symptoms": "TLS handshake failures between services, certificate verification errors.",
+    "procedure": "1. Check the expiry date of the intermediate certificate.\n2. Trigger the rotation through the internal certificate authority.\n3. Restart the sidecars in waves of 25 %.",
+    "verification": "No TLS handshake error for 30 minutes.",
+    "tags": "tls certificate rotation mesh mtls security"
+  }
+]

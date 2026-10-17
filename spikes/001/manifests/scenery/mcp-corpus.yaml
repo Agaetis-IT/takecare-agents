@@ -1,0 +1,73 @@
+# One corpus MCP server (rendered once per source). Streamable HTTP on
+# http://mcp-${SOURCE}.${MCP_NS}.svc:3000/mcp. The corpus comes from
+# ConfigMap corpus-${SOURCE} and is hot-reloaded by the server.
+# Rendered with: MCP_NS SOURCE DOMAIN MCP_IMAGE MCP_CODE_SHA
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-${SOURCE}
+  namespace: ${MCP_NS}
+  labels:
+    app: mcp-${SOURCE}
+    app.kubernetes.io/part-of: takecare-spike-scenery
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-${SOURCE}
+  template:
+    metadata:
+      labels:
+        app: mcp-${SOURCE}
+        app.kubernetes.io/part-of: takecare-spike-scenery
+      annotations:
+        takecare.demo/server-code: "${MCP_CODE_SHA}"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+        - name: mcp
+          image: ${MCP_IMAGE}
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: TOOL_PREFIX, value: "${SOURCE}" }
+            - { name: DOMAIN, value: "${DOMAIN}" }
+            - { name: CORPUS_PATH, value: "/corpus/data.json" }
+            - { name: PORT, value: "3000" }
+          ports:
+            - { name: http, containerPort: 3000 }
+          readinessProbe:
+            tcpSocket: { port: 3000 }
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - name: corpus
+              mountPath: /corpus
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests: { cpu: 10m, memory: 64Mi }
+            limits: { memory: 256Mi }
+      volumes:
+        - name: corpus
+          configMap:
+            name: corpus-${SOURCE}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-${SOURCE}
+  namespace: ${MCP_NS}
+  labels:
+    app.kubernetes.io/part-of: takecare-spike-scenery
+spec:
+  selector:
+    app: mcp-${SOURCE}
+  ports:
+    - { name: http, port: 3000, targetPort: 3000 }

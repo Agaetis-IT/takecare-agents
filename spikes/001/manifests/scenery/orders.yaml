@@ -1,0 +1,148 @@
+# orders-api and its database, scenario bad-config-rollout.
+# orders-api is ready only when DB_HOST (from ConfigMap orders-config) accepts
+# a TCP connection. The broken variant points DB_HOST at a Service that does
+# not exist; the rollout creates a new pod that never becomes Ready, while the
+# old pod keeps serving (RollingUpdate, maxUnavailable 0): PodNotReady fires.
+# Rendered with: APP_NS PYTHON_IMAGE APP_CODE_SHA ORDERS_DB_HOST ORDERS_CONFIG_VERSION
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-db
+  namespace: ${APP_NS}
+  labels:
+    app: orders-db
+    app.kubernetes.io/part-of: takecare-spike-scenery
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orders-db
+  template:
+    metadata:
+      labels:
+        app: orders-db
+        app.kubernetes.io/part-of: takecare-spike-scenery
+      annotations:
+        takecare.demo/app-code: "${APP_CODE_SHA}"
+    spec:
+      volumes:
+        - name: code
+          configMap:
+            name: demo-app-code
+      containers:
+        # Stand-in for the database: only a TCP listener is needed.
+        - name: db
+          image: ${PYTHON_IMAGE}
+          command: ["python", "-u", "/code/app.py"]
+          volumeMounts:
+            - name: code
+              mountPath: /code
+          env:
+            - { name: MODE, value: "healthy" }
+            - { name: SERVICE, value: "orders-db" }
+            - { name: PORT, value: "5432" }
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            tcpSocket: { port: 5432 }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders-db
+  namespace: ${APP_NS}
+  labels:
+    app.kubernetes.io/part-of: takecare-spike-scenery
+spec:
+  selector:
+    app: orders-db
+  ports:
+    - { name: postgres, port: 5432, targetPort: 5432 }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orders-config
+  namespace: ${APP_NS}
+  labels:
+    app.kubernetes.io/part-of: takecare-spike-scenery
+    app.kubernetes.io/version: "${ORDERS_CONFIG_VERSION}"
+data:
+  DB_HOST: "${ORDERS_DB_HOST}"
+  DB_POOL_MAX_SIZE: "20"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-api
+  namespace: ${APP_NS}
+  labels:
+    app: orders-api
+    app.kubernetes.io/part-of: takecare-spike-scenery
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels:
+      app: orders-api
+  template:
+    metadata:
+      labels:
+        app: orders-api
+        app.kubernetes.io/part-of: takecare-spike-scenery
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+        takecare.demo/app-code: "${APP_CODE_SHA}"
+        # Like a Helm checksum annotation: a config change rolls the pods.
+        takecare.demo/config-version: "${ORDERS_CONFIG_VERSION}"
+    spec:
+      volumes:
+        - name: code
+          configMap:
+            name: demo-app-code
+      containers:
+        - name: app
+          image: ${PYTHON_IMAGE}
+          command: ["python", "-u", "/code/app.py"]
+          volumeMounts:
+            - name: code
+              mountPath: /code
+          envFrom:
+            - configMapRef:
+                name: orders-config
+          env:
+            - { name: MODE, value: "db-check" }
+            - { name: SERVICE, value: "orders-api" }
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /ready, port: 8080 }
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 20m, memory: 64Mi }
+            limits: { memory: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders-api
+  namespace: ${APP_NS}
+  labels:
+    app.kubernetes.io/part-of: takecare-spike-scenery
+spec:
+  selector:
+    app: orders-api
+  ports:
+    - { name: http, port: 8080, targetPort: 8080 }

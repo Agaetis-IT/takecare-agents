@@ -1,0 +1,27 @@
+# Infrastructure half of the proxy-timeout invariant: the proxy closes client
+# connections idle for 600 s, while billing-api's pool recycles them at 900 s.
+# AWS documents the opposite rule (pool idle timeout LOWER than the proxy's).
+# No ACK controller runs: the object is real, its status stays empty.
+# Rendered with: PLATFORM_NS
+apiVersion: rds.services.k8s.aws/v1alpha1
+kind: DBProxy
+metadata:
+  name: billing-db-proxy
+  namespace: ${PLATFORM_NS}
+  labels:
+    app.kubernetes.io/part-of: takecare-spike-scenery
+spec:
+  name: billing-db-proxy
+  engineFamily: POSTGRESQL
+  requireTLS: true
+  roleARN: arn:aws:iam::123456789012:role/rds-proxy-billing
+  idleClientTimeout: 600
+  auth:
+    - authScheme: SECRETS
+      iamAuth: REQUIRED
+      userName: billing_app
+      description: Application account of billing-api
+      secretARN: arn:aws:secretsmanager:eu-west-3:123456789012:secret:rds/billing-app
+  vpcSubnetIDs:
+    - subnet-0f1c9a2b3d4e5f601
+    - subnet-0f1c9a2b3d4e5f602
