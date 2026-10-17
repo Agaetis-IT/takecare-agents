@@ -1,0 +1,50 @@
+# MCP servers are reachable only through the gateway (ADR 0008). k3s enforces
+# NetworkPolicies (embedded kube-router), so a direct call from any other pod
+# is dropped.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-ingress-from-gateway-only
+  namespace: mcp
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: agentgateway-system }
+          podSelector:
+            matchLabels: { gateway.networking.k8s.io/gateway-name: agentgateway-proxy }
+---
+# SSRF mitigation for mcp-prometheus: whatever `prometheus_url` a caller
+# passes, the pod can only reach the demo Prometheus, the collector and DNS.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-prometheus-egress
+  namespace: mcp
+spec:
+  podSelector:
+    matchLabels: { app: mcp-prometheus }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: monitoring }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: prometheus, app.kubernetes.io/component: server }
+      ports:
+        - { protocol: TCP, port: 9090 }
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: observability }
+      ports:
+        - { protocol: TCP, port: 4318 }
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }

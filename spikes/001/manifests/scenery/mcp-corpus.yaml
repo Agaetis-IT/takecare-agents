@@ -35,6 +35,7 @@ spec:
             - { name: DOMAIN, value: "${DOMAIN}" }
             - { name: CORPUS_PATH, value: "/corpus/data.json" }
             - { name: PORT, value: "3000" }
+            - { name: ACT_STUB, value: "${ACT_STUB}" }
           ports:
             - { name: http, containerPort: 3000 }
           readinessProbe:

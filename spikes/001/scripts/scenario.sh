@@ -101,13 +101,14 @@ cmd_sources() {
   [[ -f "$STATE_FILE" ]] && current="$(cat "$STATE_FILE")"
   log "corpus (scenario ${current})"
   refresh_corpus "$current"
-  export MCP_CODE_SHA SOURCE DOMAIN
+  export MCP_CODE_SHA SOURCE DOMAIN ACT_STUB
   # The image tag is fixed, so the server code hash goes in the pod template:
   # a rebuilt image with new code rolls the pods.
   MCP_CODE_SHA="$(sha "${SCENERY_DIR}/corpus/server.py")"
   for src in "${SOURCES[@]}"; do
     SOURCE="$src"; DOMAIN="$(source_domain "$src")"
-    render "${MANIFESTS}/mcp-corpus.yaml" MCP_NS SOURCE DOMAIN MCP_IMAGE MCP_CODE_SHA | sapply
+    ACT_STUB=false; [[ "$src" == support ]] && ACT_STUB=true  # stub act tool, see server.py
+    render "${MANIFESTS}/mcp-corpus.yaml" MCP_NS SOURCE DOMAIN ACT_STUB MCP_IMAGE MCP_CODE_SHA | sapply
   done
   for src in "${SOURCES[@]}"; do
     kubectl rollout status "deployment/mcp-${src}" -n "$MCP_NS" --timeout=120s >/dev/null \

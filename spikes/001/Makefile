@@ -3,11 +3,7 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
-SCENARIO ?= proxy-timeout
-ENGINE   ?= kagent
-N        ?= 1
-
-.PHONY: help up down status scenario-% reset run screens
+.PHONY: help up down status scenario-% reset
 
 help: ## list targets
 	@grep -E '^[a-zA-Z_%-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -23,12 +19,6 @@ scenario-%: ## start a scenario: proxy-timeout | bad-config-rollout | missing-se
 
 reset: ## put every scenario back to healthy
 	scripts/scenario.sh reset
-
-run: ## run N investigations: make run ENGINE=kagent|holmes-native|holmes-mcp SCENARIO=... N=5
-	scripts/run.sh $(ENGINE) $(SCENARIO) $(N)
-
-screens: ## port-forward Jaeger, Prometheus, Alertmanager
-	scripts/screens.sh
 
 down: ## delete the k3d cluster
 	k3d cluster delete spike-001

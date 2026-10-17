@@ -137,6 +137,23 @@ def recent(limit: int = 10) -> list[dict[str, Any]]:
     return [_summary(rec) for rec in ordered[: max(1, min(limit, 50))]]
 
 
+# A stub `act` tool, registered only where ACT_STUB is set (the support
+# source). It changes nothing and answers a refusal: it exists so that the
+# spike can prove an `act` tool is hidden from, and refused to, a read-only
+# role at the gateway (spec 02, acceptance criterion 4).
+if os.environ.get("ACT_STUB") == "true":
+    @mcp.tool(
+        name=f"{TOOL_PREFIX}_create_ticket",
+        description=f"{DOMAIN}. Open a new ticket in this source.",
+        annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False,
+                                    idempotentHint=False, openWorldHint=False),
+    )
+    def create_ticket(title: str, body: str) -> dict[str, Any]:
+        """Stub: never writes anything."""
+        print(f"mcp-corpus[{TOOL_PREFIX}]: create_ticket called (stub, nothing written)", flush=True)
+        return {"error": "stub tool: nothing was created"}
+
+
 if __name__ == "__main__":
     print(f"mcp-corpus: prefix={TOOL_PREFIX} domain={DOMAIN!r} "
           f"records={len(RECORDS)} port={PORT}", flush=True)

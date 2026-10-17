@@ -1,0 +1,70 @@
+# giantswarm/mcp-prometheus v0.11.11, read-only (every tool is readOnlyHint).
+# The binary defaults to stdio: streamable HTTP is set explicitly. No OAuth, so
+# tenancy does not apply (`none`). No Kubernetes rights at all.
+#
+# SSRF: every tool accepts a caller-supplied `prometheus_url` (and
+# get_alertmanager_alerts an `alertmanager_url`). Mitigations in the spike:
+# the gateway allow-list excludes the Alertmanager tools, and an egress
+# NetworkPolicy (network-policies.yaml) lets this pod reach only the demo
+# Prometheus and DNS.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-prometheus
+  namespace: mcp
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-prometheus
+  namespace: mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: mcp-prometheus }
+  template:
+    metadata:
+      labels: { app: mcp-prometheus, takecare.spike/mcp: "true" }
+    spec:
+      serviceAccountName: mcp-prometheus
+      automountServiceAccountToken: false
+      securityContext: { runAsNonRoot: true, runAsUser: 65532 }
+      containers:
+        - name: server
+          image: ${MCP_PROMETHEUS_IMAGE}
+          args:
+            - serve
+            - --transport=streamable-http
+            - --http-addr=:8080
+            - --http-endpoint=/mcp
+            - --metrics-addr=:9091
+            - --tenancy-mode=none
+          env:
+            - { name: PROMETHEUS_URL, value: "http://prometheus-server.monitoring.svc.cluster.local" }
+            # OTLP over HTTP only for this server.
+            - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4318" }
+            - { name: OTEL_SERVICE_NAME, value: mcp-prometheus }
+          ports:
+            - { name: http, containerPort: 8080 }
+            - { name: metrics, containerPort: 9091 }
+          readinessProbe:
+            httpGet: { path: /readyz, port: metrics }
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-prometheus
+  namespace: mcp
+spec:
+  selector: { app: mcp-prometheus }
+  ports:
+    - { name: http, port: 8080, targetPort: http }

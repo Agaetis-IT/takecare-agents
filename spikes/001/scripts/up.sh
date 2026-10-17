@@ -76,6 +76,20 @@ install_monitoring() {
     -f "$values" --wait --timeout 10m
 }
 
+install_tools() {
+  log "MCP servers (namespace ${MCP_NS}), reachable only through the gateway"
+  ensure_ns "$MCP_NS"; ensure_ns "$APP_NS"; ensure_ns "$PLATFORM_NS"
+  kubectl apply -f "${SPIKE_DIR}/manifests/mcp/network-policies.yaml" >/dev/null
+  KMS_CONFIG_SHA="$(shasum -a 256 "${SPIKE_DIR}/manifests/mcp/kubernetes-mcp-server.yaml" | cut -c1-16)" \
+    render "${SPIKE_DIR}/manifests/mcp/kubernetes-mcp-server.yaml" KUBERNETES_MCP_SERVER_IMAGE KMS_CONFIG_SHA \
+    | kubectl apply -f - >/dev/null
+  render "${SPIKE_DIR}/manifests/mcp/mcp-prometheus.yaml" MCP_PROMETHEUS_IMAGE | kubectl apply -f - >/dev/null
+  "${SPIKE_DIR}/scripts/scenario.sh" sources
+  kubectl -n "$MCP_NS" rollout status deploy/kubernetes-mcp-server --timeout=120s
+  kubectl -n "$MCP_NS" rollout status deploy/mcp-prometheus --timeout=120s
+  "${SPIKE_DIR}/scripts/routes.sh" --apply
+}
+
 install_kagent() {
   log "kagent ${KAGENT_VERSION} (CRDs, then controller)"
   # CRDs applied by their own chart, installed separately from the controller
@@ -89,15 +103,30 @@ install_kagent() {
   kubectl -n "$KAGENT_NS" get pods
 }
 
+status() {
+  k3d cluster list "$CLUSTER_NAME" >/dev/null 2>&1 || die "cluster ${CLUSTER_NAME} does not exist (make up)"
+  log "Helm releases"
+  helm list -A -o json | jq -r '.[] | "  \(.namespace)/\(.name)\t\(.chart)\t\(.status)"'
+  log "Pods not Running/Succeeded or not ready"
+  kubectl get pods -A --no-headers \
+    | awk '{ split($3, r, "/"); if ($4 != "Completed" && ($4 != "Running" || r[1] != r[2])) print "  " $0 }'
+  log "Gateway"
+  kubectl -n "$AGW_NS" get gateway,httproute,agentgatewaymodel,agentgatewaybackend,agentgatewaypolicy -o name 2>/dev/null | sed 's/^/  /'
+  log "kagent agents and MCP servers"
+  kubectl get agents.kagent.dev,remotemcpservers.kagent.dev -A 2>/dev/null | sed 's/^/  /' || true
+}
+
 main() {
+  if [[ "${1:-}" == status ]]; then status; return; fi
   check_prereqs
   case "${1:-all}" in
     cluster) create_cluster ;;
     observability) install_observability ;;
     gateway) install_gateway ;;
     monitoring) install_monitoring ;;
+    tools) install_tools ;;
     kagent) install_kagent ;;
-    all) create_cluster; install_observability; install_gateway; install_monitoring; install_kagent ;;
+    all) create_cluster; install_observability; install_gateway; install_monitoring; install_tools; install_kagent ;;
     *) die "unknown stage: $1" ;;
   esac
 }
