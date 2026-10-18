@@ -50,5 +50,41 @@
     "root_cause": "Missing index on the new instance, not carried over by the migration script.",
     "fix": "Index created, post-migration check added.",
     "tags": "latency database migration index checkout"
+  },
+  {
+    "id": "INC-2025-0611",
+    "date": "2025-06-11",
+    "title": "504s on billing-api during invoice exports",
+    "service": "billing-api",
+    "severity": "major",
+    "duration": "1h50",
+    "symptoms": "504 on billing-api for long invoice exports only, at the end of the month. Memory and connection pool stable, no restart.",
+    "root_cause": "The billing-api load balancer idle timeout (60 s) was shorter than the longest exports.",
+    "fix": "Load balancer idle timeout raised for billing-api; exports made asynchronous.",
+    "tags": "billing-api 504 load balancer idle timeout export memory stable"
+  },
+  {
+    "id": "INC-2025-0918",
+    "date": "2025-09-18",
+    "title": "billing-api memory leak in the PDF renderer",
+    "service": "billing-api",
+    "severity": "major",
+    "duration": "2h40",
+    "symptoms": "billing-api memory growing by 40 MB an hour, then OOMKilled; 504 while the pod restarted. Memory growth visible in app_heap_bytes.",
+    "root_cause": "The PDF renderer kept every rendered invoice in memory: a real memory leak in billing-api.",
+    "fix": "Bounded memory cache for rendered PDFs (64 MB); memory limit unchanged.",
+    "tags": "billing-api memory leak oomkilled 504 pdf heap memory growth"
+  },
+  {
+    "id": "INC-2025-0207",
+    "date": "2025-02-07",
+    "title": "notifications-worker in CrashLoopBackOff after a memory limit cut",
+    "service": "notifications-worker",
+    "severity": "minor",
+    "duration": "35min",
+    "symptoms": "notifications-worker restarting in a loop, CrashLoopBackOff, last state OOMKilled.",
+    "root_cause": "A Helm values change cut the memory limit from 256Mi to 64Mi, below the working set at startup.",
+    "fix": "Memory limit restored; limits reviewed in the chart.",
+    "tags": "notifications crashloopbackoff restart oomkilled memory limit helm"
   }
 ]

@@ -10,8 +10,8 @@ signals) + generated NOISE around them. Without noise, finding the signal
 proves only that the agent can call a tool; the noise makes the haystack.
 
 Dates are relative to the incident time (default: now, UTC). Seeds express
-them with @TS<minutes>@ and @DAY<days>@ markers, resolved here. UTC, never
-local time: the agent compares these dates with what it reads in the cluster
+them with @TS<minutes>@ and @DAY<days>@ markers, resolved here into explicit
+UTC ISO 8601 (2026-10-17T18:30:00Z). Never local time: the agent compares these dates with what it reads in the cluster
 (pod logs, object ages, alert time), all in UTC.
 
 Curated records carrying a `scenario` field are the "live" changes of one
@@ -55,12 +55,31 @@ VOLUME = {
 CI_BASE = 2300
 
 
+# Every generated date is explicit UTC ISO 8601 (2026-10-17T18:30:00Z), like
+# the cluster and the alerts. Static historical dates in the seeds (2024-03-12)
+# stay date-only.
+ISO_UTC = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def iso(t: datetime) -> str:
+    return t.astimezone(timezone.utc).strftime(ISO_UTC)
+
+
 def ts(minutes_ago: float) -> str:
-    return (NOW - timedelta(minutes=minutes_ago)).strftime("%Y-%m-%d %H:%M")
+    return iso(NOW - timedelta(minutes=minutes_ago))
 
 
 def day(days_ago: float) -> str:
-    return (NOW - timedelta(days=days_ago)).strftime("%Y-%m-%d")
+    return iso(NOW - timedelta(days=days_ago))
+
+
+def parse_date(stamp: str) -> datetime:
+    for fmt in (ISO_UTC, "%Y-%m-%d"):
+        try:
+            return datetime.strptime(stamp, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    raise ValueError(f"unreadable date: {stamp}")
 
 
 def load_seed(name: str, scenario: str) -> list:
@@ -78,13 +97,7 @@ def load_seed(name: str, scenario: str) -> list:
 
 
 def minutes_since(stamp: str) -> float:
-    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
-        try:
-            d = datetime.strptime(stamp, fmt).replace(tzinfo=timezone.utc)
-            return (NOW - d).total_seconds() / 60
-        except ValueError:
-            continue
-    raise ValueError(f"unreadable date: {stamp}")
+    return (NOW - parse_date(stamp)).total_seconds() / 60
 
 
 # =============================================================================
@@ -282,9 +295,10 @@ RUNBOOK_NOISE = [
 TEAM_OF = {s: f"CI pipeline ({t} team)" for s, t in SERVICES.items()}
 
 # Quiet windows (minutes) per service in the deployment log: no noise change
-# there, so that each scenario's change is the only recent one to examine.
+# there: recent changes on these services are curated (the signal and its
+# hand-written competitors), never random.
 QUIET = {
-    "billing-api": 24 * 60,           # proxy-timeout: only the DBProxy change
+    "billing-api": 24 * 60,           # proxy-timeout
     "orders-api": 6 * 60,             # bad-config-rollout
     "notifications-worker": 6 * 60,   # missing-secret-key
     "checkout-api": 24 * 60,          # silence behind the checkout tickets
@@ -392,7 +406,7 @@ def noise_incidents(n, curated):
             iid += "b"
         used.add(iid)
         out.append({
-            "_m": d * 24 * 60, "id": iid, "date": dt.strftime("%Y-%m-%d"),
+            "_m": d * 24 * 60, "id": iid, "date": iso(dt),
             "title": title, "service": svc, "severity": sev, "duration": duration,
             "symptoms": sympt, "root_cause": cause, "fix": fix, "tags": tags,
         })
@@ -460,7 +474,7 @@ def renumber_aws(entries):
     for e in entries:
         if e.get("id"):
             continue
-        y, m, d = e["date"].split("-")
+        y, m, d = e["date"][:10].split("-")
         rank = RNG.randint(1, 4)
         while f"AWS-{y}-{m}{d}-{rank:02d}" in taken:
             rank += 1
@@ -508,14 +522,17 @@ def check(corpora, scenario):
     dep = corpora["deployments"]
     want = (lambda s: scenario in (s, "all"))
 
-    billing = recent_changes(dep, "billing-api", 24 * 60)
+    # Several billing-api changes are recent on purpose (competitors); only one
+    # may touch the proxy idle timeout, and only in proxy-timeout.
+    billing = [e for e in recent_changes(dep, "billing-api", 24 * 60)
+               if "idleClientTimeout" in e.get("diff", "")]
     if want("proxy-timeout"):
         if len(billing) != 1 or billing[0].get("type") != "infrastructure" \
-                or "idleClientTimeout" not in billing[0].get("diff", ""):
-            fail(f"proxy-timeout: exactly one billing-api change < 24 h, infrastructure, naming "
-                 f"idleClientTimeout, expected; found {[(e['id'], e.get('type')) for e in billing]}")
+                or "-> 600" not in billing[0]["diff"]:
+            fail(f"proxy-timeout: exactly one billing-api infrastructure change < 24 h setting "
+                 f"idleClientTimeout to 600 expected; found {[e['id'] for e in billing]}")
     elif billing:
-        fail(f"billing-api must have no change < 24 h outside proxy-timeout, found {[e['id'] for e in billing]}")
+        fail(f"billing-api: no idleClientTimeout change outside proxy-timeout, found {[e['id'] for e in billing]}")
 
     orders = recent_changes(dep, "orders-api", 6 * 60)
     if want("bad-config-rollout"):
@@ -573,8 +590,7 @@ def check(corpora, scenario):
         for e in data:
             if "date" not in e:
                 continue
-            fmt = "%Y-%m-%d %H:%M" if " " in e["date"] else "%Y-%m-%d"
-            if (datetime.strptime(e["date"], fmt).replace(tzinfo=timezone.utc) - utc_now).total_seconds() > 60:
+            if (parse_date(e["date"]) - utc_now).total_seconds() > 60:
                 fail(f"{name}: {e['id']} dated in the future ({e['date']})")
         ids = [e["id"] for e in data]
         if len(ids) != len(set(ids)):
@@ -617,9 +633,12 @@ def main():
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(data, fh, ensure_ascii=False, indent=2)
         print(f"{path}: {len(data)} records")
-    print(f"dates relative to {NOW.strftime('%Y-%m-%d %H:%M')} UTC, scenario={s}")
+    print(f"dates relative to {iso(NOW)}, scenario={s}")
+    dates = {e["id"]: e.get("date", "-") for data in corpora.values() for e in data}
     for name, ids in signals(corpora, s).items():
         print(f"signals {name}: {' '.join(ids)}")
+        for i in ids:
+            print(f"  {i:14s} {dates.get(i, '-')}")
 
 
 if __name__ == "__main__":

@@ -84,7 +84,7 @@
     "diff": "DBProxy/billing-db-proxy: idleClientTimeout: (field absent, AWS default 1800) -> 600",
     "review": "Two approvals from the infrastructure team. No value was overwritten and the resource carried no comment: there was nothing to contradict.",
     "status": "success",
-    "tags": "infrastructure aws rds proxy dbproxy idleclienttimeout idle timeout idle connections ack billing"
+    "tags": "infrastructure aws rds dbproxy idleclienttimeout ack billing"
   },
   {
     "id": "CI-SEED-CHECKOUT",
@@ -107,5 +107,111 @@
     "summary": "Automatic rollback after startup probe failures.",
     "status": "failed",
     "tags": "billing rollback failed probe"
+  },
+  {
+    "id": "CI-SEED-BILLING-ALB",
+    "date": "@TS300@",
+    "title": "infra-aws: idle timeout raised on the billing-api load balancer",
+    "service": "billing-api",
+    "type": "infrastructure",
+    "author": "CI pipeline (infrastructure team)",
+    "summary": "Idle timeout of the billing-api load balancer raised from 60 s to 120 s so that long invoice exports are no longer cut. The billing-api HTTP keep-alive idle timeout was raised in the same change to stay above the load balancer idle timeout, as required.",
+    "diff": "ALB billing-api-alb: idle timeout 60 -> 120; billing-api: HTTP keep-alive idle timeout 65 -> 125",
+    "review": "One approval from the infrastructure team, one from the billing team.",
+    "status": "success",
+    "tags": "infrastructure aws alb load balancer idle timeout keep-alive billing-api export"
+  },
+  {
+    "id": "CI-SEED-BILLING-REL",
+    "date": "@TS420@",
+    "title": "billing-api v3.2.1 rolled out",
+    "service": "billing-api",
+    "type": "image",
+    "author": "CI pipeline (billing team)",
+    "summary": "In-memory cache for rendered invoice PDFs (bounded at 64 MB). Fix of a timeout on the tax rate lookup.",
+    "status": "success",
+    "tags": "billing release cache memory pdf timeout"
+  },
+  {
+    "id": "CI-SEED-BILLING-CFG",
+    "date": "@TS1180@",
+    "title": "billing-config v4.1.0 rolled out",
+    "service": "billing-api",
+    "type": "configmap",
+    "author": "CI pipeline (billing team)",
+    "summary": "Connection pool max size raised from 10 to 20 for the end-of-month peak. Other pool settings unchanged.",
+    "diff": "DB_POOL_MAX_SIZE: 10 -> 20",
+    "status": "success",
+    "tags": "billing configmap pool connections database"
+  },
+  {
+    "id": "CI-SEED-PAYMENTS-PROXY",
+    "date": "@TS2900@",
+    "title": "infra-aws: idleClientTimeout set on the payments DBProxy",
+    "service": "payments-api",
+    "type": "infrastructure",
+    "author": "CI pipeline (infrastructure team)",
+    "summary": "Added the idleClientTimeout field to the DBProxy resource payments-db-proxy (namespace ack-system), below the AWS default of 1800 s, to purge idle client connections earlier. The payments-api pool recycles idle connections after 300 s.",
+    "diff": "DBProxy/payments-db-proxy: idleClientTimeout: (field absent, AWS default 1800) -> 1200",
+    "status": "success",
+    "tags": "infrastructure aws rds proxy dbproxy idleclienttimeout idle timeout payments"
+  },
+  {
+    "id": "CI-SEED-ORDERS-WORKER",
+    "date": "@TS130@",
+    "title": "orders-worker-config v1.4.0 rolled out",
+    "service": "orders-worker",
+    "type": "configmap",
+    "author": "CI pipeline (orders team)",
+    "summary": "ConfigMap orders-worker-config updated: DB_HOST of orders-worker moved to the orders read replica for the nightly reconciliation job.",
+    "diff": "DB_HOST: orders-db.demo-apps.svc:5432 -> orders-db-replica.demo-apps.svc:5432",
+    "status": "success",
+    "tags": "orders worker configmap database DB_HOST host replica reconciliation"
+  },
+  {
+    "id": "CI-SEED-ORDER-HISTORY",
+    "date": "@TS200@",
+    "title": "order-history-config v2.0.0 rolled out",
+    "service": "order-history-api",
+    "type": "configmap",
+    "author": "CI pipeline (orders team)",
+    "summary": "ConfigMap order-history-config updated: order history tables merged into the orders database, DB_HOST switched accordingly.",
+    "diff": "DB_HOST: order-history-db.demo-apps.svc:5432 -> orders-db.demo-apps.svc:5432",
+    "status": "success",
+    "tags": "orders history configmap DB_HOST database host migration"
+  },
+  {
+    "id": "CI-SEED-ORDERS-SPLIT",
+    "date": "@TS4400@",
+    "title": "orders-db read/write split scheduled",
+    "service": "orders-db",
+    "type": "infrastructure",
+    "author": "Database team",
+    "summary": "Planning record. The orders database will expose a primary endpoint (Service orders-db-primary) and a replica endpoint (Service orders-db-replica). Clients move only after the database team announces each endpoint as available.",
+    "status": "scheduled",
+    "tags": "orders database primary replica split planning"
+  },
+  {
+    "id": "CI-SEED-NOTIF-API",
+    "date": "@TS260@",
+    "title": "notifications-api v2.0.0 rolled out",
+    "service": "notifications-api",
+    "type": "image",
+    "author": "CI pipeline (notifications team)",
+    "summary": "Major release of the notifications API. Secret notifications-api-smtp: key SMTP_PASSWORD renamed to smtp-password to follow the platform naming convention for Secret keys; the notifications-api chart was updated in the same release.",
+    "diff": "image: notifications-api:1.12.0 -> 2.0.0; Secret notifications-api-smtp: key SMTP_PASSWORD -> smtp-password",
+    "status": "success",
+    "tags": "notifications api release major secret smtp key rename"
+  },
+  {
+    "id": "CI-SEED-NOTIF-API-ROT",
+    "date": "@TS10000@",
+    "title": "Secret rotation on notifications-api",
+    "service": "notifications-api",
+    "type": "secret",
+    "author": "CI pipeline (platform team)",
+    "summary": "Scheduled rotation of the SMTP credentials held in Secret notifications-api-smtp (managed by the platform team). Key names unchanged: smtp-user, SMTP_PASSWORD.",
+    "status": "success",
+    "tags": "notifications secret rotation credentials smtp"
   }
 ]

@@ -1,17 +1,14 @@
 [
   {
-    "id": "RB-014",
-    "title": "Connection pool exhaustion - idle timeout mismatch on the network path",
-    "domain": "databases",
-    "services": "billing-api, payments-api, checkout-api",
-    "created": "2024-03-20 (follow-up of INC-2024-0312)",
-    "revision": "2025-04-02",
-    "warning": "READ BEFORE APPLYING - Two traps, and both give the illusion of a fix. (1) THIS DEFECT IS INVISIBLE UNDER LOAD: when traffic is sustained, no connection stays idle long enough to be cut. The symptom stops by itself when traffic comes back; do not conclude it is solved. (2) ANY RESTART HIDES THE SYMPTOM: a fresh pool holds no dead connection, so errors stop at once, then come back once the pool has filled up and gone idle again. A fix that restarts the pod (raising a memory limit, for example) will therefore seem to work. Never conclude on an observation made right after a restart.",
-    "symptoms": "Intermittent 5xx errors (502/504) not correlated with traffic volume, often off-peak. Container RSS growing steadily and monotonically. No restart, no OOMKill, liveness and readiness probes green. In the application logs: 'connection reset by peer', not 'timeout'.",
-    "procedure": "1. Read app_heap_bytes and db_connection_wait_seconds over the same window. If the connection wait grows together with the RSS, memory is a symptom, not the cause.\n2. Read the application container logs. 'connection reset by peer' means a close SUFFERED: the other end hung up. A 'timeout' would mean the opposite, a wait abandoned by the application. That nuance drives everything that follows.\n3. List EVERY element of the network path able to close an idle connection, with its value: RDS Proxy (idleClientTimeout field of the DBProxy resource), NAT Gateway, load balancer (idle timeout), service mesh, stateful firewall. Each carries its own value and none knows the others'.\n4. Compare the SHORTEST of these values with the idle connection recycling delay of the application pool. The latter is logged at pod start (line 'db pool ... idle_timeout=') and set by the DB_POOL_IDLE_TIMEOUT_SECONDS variable. GENERAL RULE: the pool must recycle BEFORE the most impatient element of the path. AWS writes it for RDS Proxy: 'configure your pool with an idle connection timeout of a value lower than your client connection idle timeout setting for RDS Proxy to avoid unexpected connection drops'.\n5. If the relation is inverted, that is the cause. Fix ONE of the two values: lower the pool recycling below the network threshold, or raise the network threshold above the recycling. The two values usually belong to two teams: saying which one changes is part of the verdict.\n6. DO NOT raise the memory limit. No effect on the cause, and the restart it triggers will hide the symptom until the pool fills up again. That is exactly what cost 40 minutes on INC-2024-0312.\n7. Verify the fix OFF-PEAK. A verification under load proves nothing.",
-    "verification": "db_connection_wait_seconds goes back under 50 ms and RSS stabilises. Verification is conclusive only after a low-traffic period at least twice as long as the shortest idle timeout of the path.",
-    "escalation": "Infrastructure team when the value at fault belongs to an object only they deploy: DBProxy, load balancer, NAT Gateway.",
-    "tags": "pool connections rds proxy dbproxy idle timeout idleclienttimeout recycling memory rss 504 502 connection reset by peer off-peak db_pool_idle_timeout_seconds"
+    "id": "RB-003",
+    "title": "Rotation of the mesh TLS certificates",
+    "domain": "security",
+    "services": "all",
+    "revision": "2024-09-30",
+    "symptoms": "TLS handshake failures between services, certificate verification errors.",
+    "procedure": "1. Check the expiry date of the intermediate certificate.\n2. Trigger the rotation through the internal certificate authority.\n3. Restart the sidecars in waves of 25 %.",
+    "verification": "No TLS handshake error for 30 minutes.",
+    "tags": "tls certificate rotation mesh mtls security"
   },
   {
     "id": "RB-007",
@@ -27,6 +24,31 @@
     "tags": "memory rss limit oomkill increase raise leak generic"
   },
   {
+    "id": "RB-014",
+    "title": "Connection pool exhaustion - idle timeout mismatch on the network path",
+    "domain": "databases",
+    "services": "billing-api, payments-api, checkout-api",
+    "created": "2024-03-20 (follow-up of INC-2024-0312)",
+    "revision": "2025-04-02",
+    "warning": "READ BEFORE APPLYING - Two traps, and both give the illusion of a fix. (1) THIS DEFECT IS INVISIBLE UNDER LOAD: when traffic is sustained, no connection stays idle long enough to be cut. The symptom stops by itself when traffic comes back; do not conclude it is solved. (2) ANY RESTART HIDES THE SYMPTOM: a fresh pool holds no dead connection, so errors stop at once, then come back once the pool has filled up and gone idle again. A fix that restarts the pod (raising a memory limit, for example) will therefore seem to work. Never conclude on an observation made right after a restart.",
+    "symptoms": "Intermittent 5xx errors (502/504) not correlated with traffic volume, often off-peak. Container RSS growing steadily and monotonically. No restart, no OOMKill, liveness and readiness probes green. In the application logs: 'connection reset by peer', not 'timeout'.",
+    "procedure": "1. Read app_heap_bytes and db_connection_wait_seconds over the same window. If the connection wait grows together with the RSS, memory is a symptom, not the cause.\n2. Read the application container logs. 'connection reset by peer' means a close SUFFERED: the other end hung up. A 'timeout' would mean the opposite, a wait abandoned by the application. That nuance drives everything that follows.\n3. List EVERY element of the network path able to close an idle connection, with its value: RDS Proxy (idleClientTimeout field of the DBProxy resource), NAT Gateway, load balancer (idle timeout), service mesh, stateful firewall. Each carries its own value and none knows the others'.\n4. Compare the SHORTEST of these values with the idle connection recycling delay of the application pool. The latter is logged at pod start (line 'db pool ... idle_timeout=') and set by the DB_POOL_IDLE_TIMEOUT_SECONDS variable. GENERAL RULE: the pool must recycle BEFORE the most impatient element of the path. AWS writes it for RDS Proxy: 'configure your pool with an idle connection timeout of a value lower than your client connection idle timeout setting for RDS Proxy to avoid unexpected connection drops'.\n5. If the relation is inverted, that is the cause. Fix ONE of the two values: lower the pool recycling below the network threshold, or raise the network threshold above the recycling. The two values usually belong to two teams: saying which one changes is part of the verdict.\n6. DO NOT raise the memory limit. No effect on the cause, and the restart it triggers will hide the symptom until the pool fills up again. That is exactly what cost 40 minutes on INC-2024-0312.\n7. Verify the fix OFF-PEAK. A verification under load proves nothing.",
+    "verification": "db_connection_wait_seconds goes back under 50 ms and RSS stabilises. Verification is conclusive only after a low-traffic period at least twice as long as the shortest idle timeout of the path.",
+    "escalation": "Infrastructure team when the value at fault belongs to an object only they deploy: DBProxy, load balancer, NAT Gateway.",
+    "tags": "pool connections rds proxy dbproxy idleclienttimeout recycling db_pool_idle_timeout_seconds"
+  },
+  {
+    "id": "RB-019",
+    "title": "Intermittent 502/504 behind the load balancer",
+    "domain": "network",
+    "services": "all",
+    "revision": "2025-02-14",
+    "symptoms": "Intermittent 502 and 504 at the load balancer, more frequent at low traffic. 'connection reset by peer' in the load balancer and application logs. Pods Ready, no restart.",
+    "procedure": "1. Compare the load balancer idle timeout with the application HTTP keep-alive idle timeout.\n2. If the application closes idle keep-alive connections before the load balancer does, the load balancer reuses a connection the application already closed: 'connection reset by peer', then 502 or 504.\n3. Set the application keep-alive idle timeout above the load balancer idle timeout.\n4. Long requests (exports) hitting 504 point at the load balancer idle timeout itself: raise it for that route.\n5. Count the connection resets per upstream connection: when every reset hits a connection that sat idle, one side of the connection has a shorter idle timeout than the other. Reused idle connections are the only ones reset.",
+    "verification": "No 502/504 and no 'connection reset by peer' for 30 minutes of low traffic.",
+    "tags": "502 504 load balancer alb idle timeout keep-alive connection reset by peer upstream intermittent"
+  },
+  {
     "id": "RB-021",
     "title": "Pod stuck out of the Ready state",
     "domain": "kubernetes",
@@ -36,6 +58,17 @@
     "procedure": "1. Describe the pod and read the readiness probe failure event.\n2. Find what the readiness probe really tests: it often validates an external dependency (database, cache, queue) while liveness tests only the process.\n3. If liveness is green and readiness red, the dependency is at fault, not the application.\n4. List the configuration changes of the service over the previous 2 hours, ConfigMaps and Secrets included. A changed dependency host or port is the most frequent cause.\n5. Check that the dependency name exists as a Service in the namespace and has endpoints.",
     "verification": "The readiness probe turns green and the endpoint shows up again in the Service.",
     "tags": "readiness liveness probe ready dependency configmap dns rollout stuck"
+  },
+  {
+    "id": "RB-023",
+    "title": "Readiness probe flapping under load",
+    "domain": "kubernetes",
+    "services": "all",
+    "revision": "2025-03-30",
+    "symptoms": "Pods flip between Ready and not ready under load; readiness probe failing with timeouts, then passing again. Endpoints come and go.",
+    "procedure": "1. Read the readiness probe failure events: a probe timeout is not a probe failure.\n2. Check CPU throttling of the container while the probe is failing.\n3. Raise the readiness probe timeoutSeconds or the CPU request before anything else.\n4. A readiness probe that never passes, even at rest, is not this runbook.",
+    "verification": "No readiness probe failure for 30 minutes at peak load.",
+    "tags": "readiness probe failing flapping not ready timeout cpu throttling load"
   },
   {
     "id": "RB-026",
@@ -49,6 +82,17 @@
     "tags": "crashloopbackoff restart loop exit code release configuration environment secret configmap"
   },
   {
+    "id": "RB-028",
+    "title": "Container OOMKilled and restarting in a loop",
+    "domain": "resources",
+    "services": "all",
+    "revision": "2025-07-08",
+    "symptoms": "Pod in CrashLoopBackOff, restart count growing, last state OOMKilled with exit code 137.",
+    "procedure": "1. Confirm the last termination reason is OOMKilled (kubectl describe pod, last state).\n2. Compare the memory limit with the working set before each restart.\n3. If the limit is below the normal working set, raise it; otherwise look for a leak.\n4. A CrashLoopBackOff with exit code 1 and no OOMKilled is not this runbook.",
+    "verification": "No restart for 30 minutes.",
+    "tags": "crashloopbackoff restart oomkilled memory limit exit code 137 restart loop"
+  },
+  {
     "id": "RB-032",
     "title": "Latency rising without application change",
     "domain": "performance",
@@ -59,16 +103,5 @@
     "verification": "The cause is tied to a dated source of evidence, internal or external.",
     "escalation": "If the vendor confirms a zone incident: move storage to another availability zone or wait for the resolution, depending on criticality.",
     "tags": "latency p99 degradation progressive zone vendor cloud ebs storage"
-  },
-  {
-    "id": "RB-003",
-    "title": "Rotation of the mesh TLS certificates",
-    "domain": "security",
-    "services": "all",
-    "revision": "2024-09-30",
-    "symptoms": "TLS handshake failures between services, certificate verification errors.",
-    "procedure": "1. Check the expiry date of the intermediate certificate.\n2. Trigger the rotation through the internal certificate authority.\n3. Restart the sidecars in waves of 25 %.",
-    "verification": "No TLS handshake error for 30 minutes.",
-    "tags": "tls certificate rotation mesh mtls security"
   }
 ]
