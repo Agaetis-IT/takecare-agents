@@ -1,0 +1,51 @@
+# Shared by every Doc agent of the spike: namespace, model through the
+# gateway with a dummy key (ADR 0004), and the A2A route to kagent.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: takecare-system
+---
+# kagent's runtimes refuse to start without a key in env; the gateway holds the
+# real one and ignores this.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gateway-dummy-key
+  namespace: takecare-system
+stringData:
+  OPENAI_API_KEY: dummy
+---
+apiVersion: kagent.dev/v1alpha2
+kind: ModelConfig
+metadata:
+  name: doc-model
+  namespace: takecare-system
+spec:
+  provider: OpenAI
+  model: ${MODEL}
+  apiKeySecret: gateway-dummy-key
+  apiKeySecretKey: OPENAI_API_KEY
+  openAI:
+    baseUrl: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1
+    apiFormat: chatCompletions
+---
+# A2A to every kagent agent goes through the gateway (ADR 0009). The path is
+# kagent's own (/api/a2a/<namespace>/<agent>/): no rewrite.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: kagent-a2a
+  namespace: agentgateway-system
+spec:
+  a2a: { host: kagent-controller.kagent.svc.cluster.local, port: 8083 }
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: a2a-kagent
+  namespace: agentgateway-system
+spec:
+  parentRefs: [{ name: agentgateway-proxy, sectionName: http }]
+  rules:
+    - matches: [{ path: { type: PathPrefix, value: /api/a2a/ } }]
+      backendRefs: [{ group: agentgateway.dev, kind: AgentgatewayBackend, name: kagent-a2a }]

@@ -1,0 +1,85 @@
+# The Doc on kagent 0.10.3 (kagent.dev/v1alpha2), hand-written for the spike.
+# Rendered per agent by scripts/agents.sh with:
+#   AGENT    agent name (doc-trial, doc-service, doc-service-py, ...)
+#   IDENTITY the agent's identity at the gateway: its MCP routes are
+#            /mcp/${IDENTITY}/<server>, restricted by the gateway's policy
+#   RUNTIME  go | python
+# Tool names come from stage 2 (no prefix: one target per gateway backend).
+# Every mcpServer reference sets kind and apiGroup: left empty, kagent 0.10.3
+# resolves it to a kmcp MCPServer, not a RemoteMCPServer.
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: ${AGENT}
+  namespace: takecare-system
+  labels: { takecare.spike/identity: ${IDENTITY}, takecare.spike/runtime: ${RUNTIME} }
+spec:
+  type: Declarative
+  description: "TakeCare Doc: diagnoses one firing alert, read-only, and returns a sourced diagnosis."
+  declarative:
+    runtime: ${RUNTIME}
+    modelConfig: doc-model
+    stream: false
+    systemMessageFrom: { type: ConfigMap, name: doc-instructions, key: instructions.md }
+    tools:
+      - type: McpServer
+        mcpServer:
+          apiGroup: kagent.dev
+          kind: RemoteMCPServer
+          name: ${IDENTITY}-kubernetes
+          toolNames: [events_list, pods_list, pods_list_in_namespace, pods_get, pods_log, pods_top, resources_list, resources_get]
+          allowedHeaders: [traceparent, x-conversation-id]
+      - type: McpServer
+        mcpServer:
+          apiGroup: kagent.dev
+          kind: RemoteMCPServer
+          name: ${IDENTITY}-prometheus
+          toolNames: [execute_query, execute_range_query, list_label_names, list_label_values, find_series, get_metric_metadata, get_alerts, get_rules, get_targets]
+          allowedHeaders: [traceparent, x-conversation-id]
+      - type: McpServer
+        mcpServer:
+          apiGroup: kagent.dev
+          kind: RemoteMCPServer
+          name: ${IDENTITY}-incidents
+          toolNames: [incidents_search, incidents_get, incidents_recent]
+          allowedHeaders: [traceparent, x-conversation-id]
+      - type: McpServer
+        mcpServer:
+          apiGroup: kagent.dev
+          kind: RemoteMCPServer
+          name: ${IDENTITY}-runbooks
+          toolNames: [runbooks_search, runbooks_get, runbooks_recent]
+          allowedHeaders: [traceparent, x-conversation-id]
+      - type: McpServer
+        mcpServer:
+          apiGroup: kagent.dev
+          kind: RemoteMCPServer
+          name: ${IDENTITY}-deployments
+          toolNames: [deployments_search, deployments_get, deployments_recent]
+          allowedHeaders: [traceparent, x-conversation-id]
+      - type: McpServer
+        mcpServer:
+          apiGroup: kagent.dev
+          kind: RemoteMCPServer
+          name: ${IDENTITY}-vendor
+          toolNames: [vendor_search, vendor_get, vendor_recent]
+          allowedHeaders: [traceparent, x-conversation-id]
+      - type: McpServer
+        mcpServer:
+          apiGroup: kagent.dev
+          kind: RemoteMCPServer
+          name: ${IDENTITY}-support
+          toolNames: [support_search, support_get, support_recent]
+          allowedHeaders: [traceparent, x-conversation-id]
+    a2aConfig:
+      skills:
+        - id: diagnose-alert
+          name: diagnose-alert
+          description: "Investigate one firing alert, read-only, and return a sourced diagnosis: observations and where, root cause, recommended action and who should act, leads ruled out."
+          tags: [sre, diagnosis, read-only]
+          inputModes: [text]
+          outputModes: [text]
+    deployment:
+      resources:
+        requests: { cpu: 50m, memory: 128Mi }
+        limits: { memory: 512Mi }
