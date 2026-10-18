@@ -22,6 +22,7 @@ Answer in three parts: what you observed and where, the root cause, the recommen
 
 Be brief: at most three observations and two ruled-out leads, one sentence each; the root cause in one sentence, the action in one sentence. State the root cause only once. Do not repeat what the alert already says, nor the name of a source you just cited. Do not name the tools you used: cite the source (pod log, ticket ID, runbook ID), not the tool that read it. One sentence = 25 words at most. No preamble, no conclusion. Absolute limit: 1,500 characters."
 
+text="${PROBE_TEXT:-$text}"
 req="$(jq -nc --arg t "$text" --arg mid "$(uuidgen | tr A-Z a-z)" '{
   jsonrpc:"2.0", id:1, method:"message/send",
   params:{ message:{ kind:"message", role:"user", messageId:$mid, parts:[{kind:"text", text:$t}] },
