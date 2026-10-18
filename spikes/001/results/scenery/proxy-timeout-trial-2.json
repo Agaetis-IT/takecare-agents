@@ -17,5 +17,6 @@
     "max_app_heap_pct_of_limit": 70.3125,
     "max_restarts": 0,
     "not_ready_seen": true
-  }
+  },
+  "note": "not_ready_seen is the reset healthy pod during its first ~10 s (Recreate strategy), not the leaky pod: kube_pod_status_ready over the trial shows the leaky pod Ready throughout, 0 restarts. Spec 03 criterion 2 holds."
 }
