@@ -1,0 +1,27 @@
+{
+  "event_ttl": "10m",
+  "events_list_chars": {
+    "missing_secret_key_at_alert": 3488,
+    "proxy_timeout_at_alert": 2444,
+    "proxy_timeout_alert_plus_12min": 18
+  },
+  "previous_events_policy": "deleted in demo-apps and ack-system at every scenario start",
+  "investigations": [
+    {
+      "label": "events-early",
+      "model_calls": 7,
+      "tool_calls": 19,
+      "input_tokens": 65494,
+      "cache_pct": 46,
+      "cost_usd": 0.0313
+    },
+    {
+      "label": "events-late",
+      "model_calls": 6,
+      "tool_calls": 18,
+      "input_tokens": 51934,
+      "cache_pct": 52,
+      "cost_usd": 0.0235
+    }
+  ]
+}

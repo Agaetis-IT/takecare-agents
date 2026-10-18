@@ -22,6 +22,7 @@ create_cluster() {
       --image "$K3S_IMAGE" \
       --agents 1 \
       --k3s-arg "--disable=traefik@server:*" \
+      --k3s-arg "--kube-apiserver-arg=event-ttl=${EVENT_TTL}@server:*" \
       --port "${GATEWAY_HOST_PORT}:80@loadbalancer" \
       --kubeconfig-update-default=false \
       --kubeconfig-switch-context=false \
@@ -119,6 +120,11 @@ status() {
   kubectl get agents.kagent.dev,remotemcpservers.kagent.dev -A 2>/dev/null | sed 's/^/  /' || true
 }
 
+install_agents() {
+  log "the Doc on kagent: go and python runtimes, identity doc-service"
+  "${SPIKE_DIR}/scripts/agents.sh" doc-service:doc-service:go doc-service-py:doc-service:python
+}
+
 main() {
   if [[ "${1:-}" == status ]]; then status; return; fi
   check_prereqs
@@ -129,7 +135,8 @@ main() {
     monitoring) install_monitoring ;;
     tools) install_tools ;;
     kagent) install_kagent ;;
-    all) create_cluster; install_observability; install_gateway; install_monitoring; install_tools; install_kagent ;;
+    agents) install_agents ;;
+    all) create_cluster; install_observability; install_gateway; install_monitoring; install_tools; install_kagent; install_agents ;;
     *) die "unknown stage: $1" ;;
   esac
 }

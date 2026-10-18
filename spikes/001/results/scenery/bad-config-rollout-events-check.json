@@ -1,0 +1,23 @@
+{
+  "scenario": "bad-config-rollout",
+  "trial": "events-check",
+  "started": "2026-10-18T11:54:43Z",
+  "alert": "PodNotReady",
+  "app": "orders-api",
+  "seconds": {
+    "pending": 20,
+    "firing": 320,
+    "received_by_alertmanager": 320
+  },
+  "fired": true,
+  "decisive_evidence_readable": true,
+  "decisive_evidence": " DB_HOST: orders-db-primary.demo-apps.svc:5432",
+  "limit_seconds": 900,
+  "samples": 64,
+  "app_pod": {
+    "max_working_set_pct_of_limit": 0,
+    "max_app_heap_pct_of_limit": 0,
+    "max_restarts": 0,
+    "not_ready_seen": false
+  }
+}

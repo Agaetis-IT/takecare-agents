@@ -184,6 +184,12 @@ cmd_start() {
   local s="${1:-}"
   require_scenario "$s"
   reset_apps
+  # Events of earlier scenarios would otherwise stay visible (API server
+  # event TTL, 10 min in this cluster) and change what `events_list` returns,
+  # hence the token volume of the first investigations of this incident.
+  # Cluster-level, so identical for every engine and every tool.
+  kubectl delete events --all -n "$APP_NS" >/dev/null
+  kubectl delete events --all -n "$PLATFORM_NS" >/dev/null
   if sources_deployed; then
     log "corpus for ${s}, dates relative to now"
     refresh_corpus "$s"
