@@ -23,6 +23,10 @@ create_cluster() {
       --agents 1 \
       --k3s-arg "--disable=traefik@server:*" \
       --k3s-arg "--kube-apiserver-arg=event-ttl=${EVENT_TTL}@server:*" \
+      --k3s-arg "--kube-apiserver-arg=feature-gates=${K8S_FEATURE_GATES}@server:*" \
+      --k3s-arg "--kube-apiserver-arg=runtime-config=certificates.k8s.io/v1beta1=true@server:*" \
+      --k3s-arg "--kube-controller-manager-arg=feature-gates=${K8S_FEATURE_GATES}@server:*" \
+      --k3s-arg "--kubelet-arg=feature-gates=${K8S_FEATURE_GATES}@server:*;agent:*" \
       --port "${GATEWAY_HOST_PORT}:80@loadbalancer" \
       --kubeconfig-update-default=false \
       --kubeconfig-switch-context=false \
@@ -95,34 +99,45 @@ install_tools() {
 }
 
 install_kagent() {
-  log "kagent ${KAGENT_VERSION} (CRDs, then controller)"
-  # CRDs applied by their own chart, installed separately from the controller
-  # so that an upgrade of the controller never relies on Helm's crds/ handling.
-  helm upgrade -i kagent-crds oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds \
-    --version "$KAGENT_VERSION" -n "$KAGENT_NS" --create-namespace \
-    --set kmcp.enabled=false --wait
-  helm upgrade -i kagent oci://ghcr.io/kagent-dev/kagent/helm/kagent \
-    --version "$KAGENT_VERSION" -n "$KAGENT_NS" \
-    -f "${SPIKE_DIR}/values/kagent-0.10.3.yaml" --wait --timeout 10m
+  # kagent 1.0 line (ADR 0010): installed by kagent's own CLI, pinned by
+  # checksum, which also installs Substrate, its pod-certificate controller
+  # and a bundled PostgreSQL. Chart versions are pinned in the CLI config.
+  local cli="${OUT_DIR}/bin/kagent-${KAGENT_VERSION}"
+  if [[ ! -x "$cli" ]]; then
+    log "downloading the kagent CLI v${KAGENT_VERSION}"
+    mkdir -p "${OUT_DIR}/bin"
+    gh release download "v${KAGENT_VERSION}" --repo kagent-dev/kagent --pattern kagent-darwin-arm64 \
+      --output "$cli" --clobber
+    [[ "$(shasum -a 256 "$cli" | awk '{print $1}')" == "$KAGENT_CLI_SHA256_DARWIN_ARM64" ]] \
+      || { rm -f "$cli"; die "kagent CLI checksum mismatch"; }
+    chmod +x "$cli"
+  fi
+  local cfg="${OUT_DIR}/kagent-cli-config.yaml"
+  cat > "$cfg" <<EOF
+install:
+  defaultModelProvider: OpenAI
+  kagent:
+    repository: "oci://ghcr.io/kagent-dev/kagent/helm/"
+    version: "${KAGENT_VERSION}"
+    valuesFiles: ["${SPIKE_DIR}/values/kagent-1.0.yaml"]
+  substrate:
+    repository: "oci://ghcr.io/kagent-dev/substrate/helm/"
+    version: "${SUBSTRATE_VERSION}"
+  podCertificate:
+    repository: "oci://ghcr.io/kagent-dev/substrate/helm/"
+    version: "${SUBSTRATE_VERSION}"
+EOF
+  log "kagent ${KAGENT_VERSION} with Substrate ${SUBSTRATE_VERSION} (kagent install)"
+  # The CLI requires a provider key for the default OpenAI provider; models are
+  # reached through the gateway, so a dummy is enough (ADR 0004).
+  OPENAI_API_KEY=dummy "$cli" --config "$cfg" --timeout 20m install
   kubectl -n "$KAGENT_NS" get pods
-}
-
-status() {
-  k3d cluster list "$CLUSTER_NAME" >/dev/null 2>&1 || die "cluster ${CLUSTER_NAME} does not exist (make up)"
-  log "Helm releases"
-  helm list -A -o json | jq -r '.[] | "  \(.namespace)/\(.name)\t\(.chart)\t\(.status)"'
-  log "Pods not Running/Succeeded or not ready"
-  kubectl get pods -A --no-headers \
-    | awk '{ split($3, r, "/"); if ($4 != "Completed" && ($4 != "Running" || r[1] != r[2])) print "  " $0 }'
-  log "Gateway"
-  kubectl -n "$AGW_NS" get gateway,httproute,agentgatewaymodel,agentgatewaybackend,agentgatewaypolicy -o name 2>/dev/null | sed 's/^/  /'
-  log "kagent agents and MCP servers"
-  kubectl get agents.kagent.dev,remotemcpservers.kagent.dev -A 2>/dev/null | sed 's/^/  /' || true
+  kubectl -n ate-system get pods
 }
 
 install_agents() {
-  log "the Doc on kagent: go and python runtimes, identity doc-service"
-  "${SPIKE_DIR}/scripts/agents.sh" doc-service:doc-service:go doc-service-py:doc-service:python
+  log "the Doc on kagent (Go runtime), identity doc-service"
+  "${SPIKE_DIR}/scripts/agents.sh" doc-service:doc-service
 }
 
 main() {

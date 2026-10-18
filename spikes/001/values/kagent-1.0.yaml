@@ -1,0 +1,23 @@
+# kagent v1.0.0-alpha14 chart values, passed through `kagent install`.
+# Field names from the 1.0.0-alpha14 chart (values.yaml) and
+# proto/kagent/config/v1/config.proto at that tag.
+kagent-tools: { enabled: false }
+grafana-mcp: { enabled: false }
+oauth2-proxy: { enabled: false }
+config:
+  gateway:
+    # The agent card's interface URL: our gateway, not the controller
+    # Service (ADR 0009: every A2A call goes through agentgateway).
+    publicUrl: http://agentgateway-proxy.agentgateway-system.svc.cluster.local
+  telemetry:
+    traces:
+      endpoint: http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4317
+      protocol: grpc
+  runtimeDefaults:
+    telemetry:
+      traces:
+        endpoint: http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4317
+        protocol: grpc
+      # ADR 0006: no message content by default. The spike checks what the
+      # Go runtime still writes with this off (adk-go tool payloads).
+      captureContent: false

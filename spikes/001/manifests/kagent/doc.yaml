@@ -1,0 +1,48 @@
+# The Doc on kagent v1.0.0-alpha14: AgentTemplate (what the agent is) +
+# Agent (template + harness). Rendered per agent by scripts/agents.sh with
+#   AGENT    agent name; IDENTITY its gateway identity (/mcp/${IDENTITY}/<server>)
+# Changes from 0.10.3: toolNames -> tools[].mcp.tools; systemMessageFrom ->
+# systemPromptFrom; no allowedHeaders (traceparent comes from otelhttp); no
+# a2aConfig skills (the card publishes none); no per-agent deployment.
+apiVersion: api.kagent.dev/v1alpha3
+kind: AgentTemplate
+metadata:
+  name: ${AGENT}
+  namespace: kagent
+  labels: { takecare.spike/identity: ${IDENTITY} }
+spec:
+  description: "TakeCare Doc: diagnoses one firing alert, read-only, and returns a sourced diagnosis."
+  modelConfig: { name: doc-model }
+  systemPromptFrom: { name: doc-instructions, key: instructions.md }
+  tools:
+    - mcp:
+        server: { kind: RemoteMCPServer, name: ${IDENTITY}-kubernetes }
+        tools: [events_list, pods_list, pods_list_in_namespace, pods_get, pods_log, pods_top, resources_list, resources_get]
+    - mcp:
+        server: { kind: RemoteMCPServer, name: ${IDENTITY}-prometheus }
+        tools: [execute_query, execute_range_query, list_label_names, list_label_values, find_series, get_metric_metadata, get_alerts, get_rules, get_targets]
+    - mcp:
+        server: { kind: RemoteMCPServer, name: ${IDENTITY}-incidents }
+        tools: [incidents_search, incidents_get, incidents_recent]
+    - mcp:
+        server: { kind: RemoteMCPServer, name: ${IDENTITY}-runbooks }
+        tools: [runbooks_search, runbooks_get, runbooks_recent]
+    - mcp:
+        server: { kind: RemoteMCPServer, name: ${IDENTITY}-deployments }
+        tools: [deployments_search, deployments_get, deployments_recent]
+    - mcp:
+        server: { kind: RemoteMCPServer, name: ${IDENTITY}-vendor }
+        tools: [vendor_search, vendor_get, vendor_recent]
+    - mcp:
+        server: { kind: RemoteMCPServer, name: ${IDENTITY}-support }
+        tools: [support_search, support_get, support_recent]
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: Agent
+metadata:
+  name: ${AGENT}
+  namespace: kagent
+  labels: { takecare.spike/identity: ${IDENTITY} }
+spec:
+  template: { ref: { name: ${AGENT} } }
+  harnessRef: { name: doc-go }
