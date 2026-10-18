@@ -1,0 +1,21 @@
+{
+  "scenario": "proxy-timeout",
+  "trial": "trial-1",
+  "started": "2026-10-18T06:42:05Z",
+  "alert": "HighErrorRate",
+  "app": "billing-api",
+  "seconds": {
+    "pending": 158,
+    "firing": 189,
+    "received_by_alertmanager": 189
+  },
+  "fired": true,
+  "limit_seconds": 600,
+  "samples": 38,
+  "app_pod": {
+    "max_memory_pct_of_limit": 0,
+    "max_restarts": 0,
+    "not_ready_seen": false
+  },
+  "note": "instrument check only: memory and restart queries selected container=billing-api, which does not exist (container is app; k3s cAdvisor has no container label). Alert timings are valid; app_pod values are not."
+}

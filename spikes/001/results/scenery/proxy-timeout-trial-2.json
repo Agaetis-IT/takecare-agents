@@ -1,0 +1,21 @@
+{
+  "scenario": "proxy-timeout",
+  "trial": "trial-2",
+  "started": "2026-10-18T06:53:18Z",
+  "alert": "HighErrorRate",
+  "app": "billing-api",
+  "seconds": {
+    "pending": 159,
+    "firing": 190,
+    "received_by_alertmanager": 190
+  },
+  "fired": true,
+  "limit_seconds": 600,
+  "samples": 38,
+  "app_pod": {
+    "max_working_set_pct_of_limit": 73.33450317382812,
+    "max_app_heap_pct_of_limit": 70.3125,
+    "max_restarts": 0,
+    "not_ready_seen": true
+  }
+}

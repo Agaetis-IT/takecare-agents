@@ -1,0 +1,21 @@
+{
+  "scenario": "bad-config-rollout",
+  "trial": "trial-1",
+  "started": "2026-10-18T06:57:54Z",
+  "alert": "PodNotReady",
+  "app": "orders-api",
+  "seconds": {
+    "pending": 0,
+    "firing": 336,
+    "received_by_alertmanager": 336
+  },
+  "fired": true,
+  "limit_seconds": 900,
+  "samples": 67,
+  "app_pod": {
+    "max_working_set_pct_of_limit": 0,
+    "max_app_heap_pct_of_limit": 0,
+    "max_restarts": 0,
+    "not_ready_seen": false
+  }
+}
