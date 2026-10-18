@@ -713,3 +713,213 @@ spec:
         policy:
           matchExpressions:
             - 'mcp.tool.name in ["support_search", "support_get", "support_recent"]'
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: mcp-doc-narrow-kubernetes
+  namespace: agentgateway-system
+  labels: { takecare.spike/identity: doc-narrow, takecare.spike/server: kubernetes }
+spec:
+  parentRefs: [{ name: agentgateway-proxy, sectionName: http }]
+  rules:
+    - matches: [{ path: { type: PathPrefix, value: /mcp/doc-narrow/kubernetes } }]
+      backendRefs: [{ group: agentgateway.dev, kind: AgentgatewayBackend, name: mcp-kubernetes }]
+---
+# Require, with a single expression: several expressions under Allow are OR'd,
+# and policies from different attachment levels merge.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: mcp-doc-narrow-kubernetes-tools
+  namespace: agentgateway-system
+  labels: { takecare.spike/identity: doc-narrow, takecare.spike/server: kubernetes }
+spec:
+  targetRefs: [{ group: gateway.networking.k8s.io, kind: HTTPRoute, name: mcp-doc-narrow-kubernetes }]
+  backend:
+    mcp:
+      authorization:
+        action: Require
+        policy:
+          matchExpressions:
+            - 'mcp.tool.name in ["events_list", "pods_list", "pods_list_in_namespace", "pods_get"]'
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: mcp-doc-narrow-prometheus
+  namespace: agentgateway-system
+  labels: { takecare.spike/identity: doc-narrow, takecare.spike/server: prometheus }
+spec:
+  parentRefs: [{ name: agentgateway-proxy, sectionName: http }]
+  rules:
+    - matches: [{ path: { type: PathPrefix, value: /mcp/doc-narrow/prometheus } }]
+      backendRefs: [{ group: agentgateway.dev, kind: AgentgatewayBackend, name: mcp-prometheus }]
+---
+# Require, with a single expression: several expressions under Allow are OR'd,
+# and policies from different attachment levels merge.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: mcp-doc-narrow-prometheus-tools
+  namespace: agentgateway-system
+  labels: { takecare.spike/identity: doc-narrow, takecare.spike/server: prometheus }
+spec:
+  targetRefs: [{ group: gateway.networking.k8s.io, kind: HTTPRoute, name: mcp-doc-narrow-prometheus }]
+  backend:
+    mcp:
+      authorization:
+        action: Require
+        policy:
+          matchExpressions:
+            - 'mcp.tool.name in ["execute_query", "execute_range_query", "list_label_names", "list_label_values", "find_series", "get_metric_metadata", "get_alerts", "get_rules", "get_targets"]'
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: mcp-doc-narrow-incidents
+  namespace: agentgateway-system
+  labels: { takecare.spike/identity: doc-narrow, takecare.spike/server: incidents }
+spec:
+  parentRefs: [{ name: agentgateway-proxy, sectionName: http }]
+  rules:
+    - matches: [{ path: { type: PathPrefix, value: /mcp/doc-narrow/incidents } }]
+      backendRefs: [{ group: agentgateway.dev, kind: AgentgatewayBackend, name: mcp-incidents }]
+---
+# Require, with a single expression: several expressions under Allow are OR'd,
+# and policies from different attachment levels merge.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: mcp-doc-narrow-incidents-tools
+  namespace: agentgateway-system
+  labels: { takecare.spike/identity: doc-narrow, takecare.spike/server: incidents }
+spec:
+  targetRefs: [{ group: gateway.networking.k8s.io, kind: HTTPRoute, name: mcp-doc-narrow-incidents }]
+  backend:
+    mcp:
+      authorization:
+        action: Require
+        policy:
+          matchExpressions:
+            - 'mcp.tool.name in ["incidents_search", "incidents_get", "incidents_recent"]'
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: mcp-doc-narrow-runbooks
+  namespace: agentgateway-system
+  labels: { takecare.spike/identity: doc-narrow, takecare.spike/server: runbooks }
+spec:
+  parentRefs: [{ name: agentgateway-proxy, sectionName: http }]
+  rules:
+    - matches: [{ path: { type: PathPrefix, value: /mcp/doc-narrow/runbooks } }]
+      backendRefs: [{ group: agentgateway.dev, kind: AgentgatewayBackend, name: mcp-runbooks }]
+---
+# Require, with a single expression: several expressions under Allow are OR'd,
+# and policies from different attachment levels merge.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: mcp-doc-narrow-runbooks-tools
+  namespace: agentgateway-system
+  labels: { takecare.spike/identity: doc-narrow, takecare.spike/server: runbooks }
+spec:
+  targetRefs: [{ group: gateway.networking.k8s.io, kind: HTTPRoute, name: mcp-doc-narrow-runbooks }]
+  backend:
+    mcp:
+      authorization:
+        action: Require
+        policy:
+          matchExpressions:
+            - 'mcp.tool.name in ["runbooks_search", "runbooks_get", "runbooks_recent"]'
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: mcp-doc-narrow-deployments
+  namespace: agentgateway-system
+  labels: { takecare.spike/identity: doc-narrow, takecare.spike/server: deployments }
+spec:
+  parentRefs: [{ name: agentgateway-proxy, sectionName: http }]
+  rules:
+    - matches: [{ path: { type: PathPrefix, value: /mcp/doc-narrow/deployments } }]
+      backendRefs: [{ group: agentgateway.dev, kind: AgentgatewayBackend, name: mcp-deployments }]
+---
+# Require, with a single expression: several expressions under Allow are OR'd,
+# and policies from different attachment levels merge.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: mcp-doc-narrow-deployments-tools
+  namespace: agentgateway-system
+  labels: { takecare.spike/identity: doc-narrow, takecare.spike/server: deployments }
+spec:
+  targetRefs: [{ group: gateway.networking.k8s.io, kind: HTTPRoute, name: mcp-doc-narrow-deployments }]
+  backend:
+    mcp:
+      authorization:
+        action: Require
+        policy:
+          matchExpressions:
+            - 'mcp.tool.name in ["deployments_search", "deployments_get", "deployments_recent"]'
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: mcp-doc-narrow-vendor
+  namespace: agentgateway-system
+  labels: { takecare.spike/identity: doc-narrow, takecare.spike/server: vendor }
+spec:
+  parentRefs: [{ name: agentgateway-proxy, sectionName: http }]
+  rules:
+    - matches: [{ path: { type: PathPrefix, value: /mcp/doc-narrow/vendor } }]
+      backendRefs: [{ group: agentgateway.dev, kind: AgentgatewayBackend, name: mcp-vendor }]
+---
+# Require, with a single expression: several expressions under Allow are OR'd,
+# and policies from different attachment levels merge.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: mcp-doc-narrow-vendor-tools
+  namespace: agentgateway-system
+  labels: { takecare.spike/identity: doc-narrow, takecare.spike/server: vendor }
+spec:
+  targetRefs: [{ group: gateway.networking.k8s.io, kind: HTTPRoute, name: mcp-doc-narrow-vendor }]
+  backend:
+    mcp:
+      authorization:
+        action: Require
+        policy:
+          matchExpressions:
+            - 'mcp.tool.name in ["vendor_search", "vendor_get", "vendor_recent"]'
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: mcp-doc-narrow-support
+  namespace: agentgateway-system
+  labels: { takecare.spike/identity: doc-narrow, takecare.spike/server: support }
+spec:
+  parentRefs: [{ name: agentgateway-proxy, sectionName: http }]
+  rules:
+    - matches: [{ path: { type: PathPrefix, value: /mcp/doc-narrow/support } }]
+      backendRefs: [{ group: agentgateway.dev, kind: AgentgatewayBackend, name: mcp-support }]
+---
+# Require, with a single expression: several expressions under Allow are OR'd,
+# and policies from different attachment levels merge.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: mcp-doc-narrow-support-tools
+  namespace: agentgateway-system
+  labels: { takecare.spike/identity: doc-narrow, takecare.spike/server: support }
+spec:
+  targetRefs: [{ group: gateway.networking.k8s.io, kind: HTTPRoute, name: mcp-doc-narrow-support }]
+  backend:
+    mcp:
+      authorization:
+        action: Require
+        policy:
+          matchExpressions:
+            - 'mcp.tool.name in ["support_search", "support_get", "support_recent"]'

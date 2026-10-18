@@ -43,7 +43,19 @@ read_tools() {
     support) echo "support_search support_get support_recent" ;;
   esac
 }
-IDENTITIES=(doc-trial doc-service holmes)
+IDENTITIES=(doc-trial doc-service holmes doc-narrow)
+
+# Tools allowed to an identity on a server. doc-trial, doc-service and holmes
+# share the `read` list (milestone 1). doc-narrow is a throwaway identity with
+# a deliberately narrower Kubernetes list (no logs, no generic resources): it
+# exists only so that check-tools.sh can show the allow-list discriminates
+# between identities on the same server. It is not a TakeCare level.
+allowed_tools() {  # $1 identity, $2 server
+  case "$1:$2" in
+    doc-narrow:kubernetes) echo "events_list pods_list pods_list_in_namespace pods_get" ;;
+    *) read_tools "$2" ;;
+  esac
+}
 
 cel_list() { local t out=""; for t in $1; do out+="\"${t}\", "; done; printf '[%s]' "${out%, }"; }
 
@@ -98,7 +110,7 @@ spec:
         action: Require
         policy:
           matchExpressions:
-            - 'mcp.tool.name in $(cel_list "$(read_tools "$s")")'
+            - 'mcp.tool.name in $(cel_list "$(allowed_tools "$id" "$s")")'
 EOF
     done
   done

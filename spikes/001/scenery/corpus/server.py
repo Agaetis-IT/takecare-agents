@@ -137,10 +137,13 @@ def recent(limit: int = 10) -> list[dict[str, Any]]:
     return [_summary(rec) for rec in ordered[: max(1, min(limit, 50))]]
 
 
-# A stub `act` tool, registered only where ACT_STUB is set (the support
-# source). It changes nothing and answers a refusal: it exists so that the
-# spike can prove an `act` tool is hidden from, and refused to, a read-only
+# SPIKE-ONLY. A stub `act` tool, registered only where ACT_STUB is set (the
+# support source). It changes nothing and answers a refusal: it exists so that
+# the spike can prove an `act` tool is hidden from, and refused to, a read-only
 # role at the gateway (spec 02, acceptance criterion 4).
+# It must NOT follow the corpus servers into the product (spec 03): an `act`
+# tool on a `knowledge` connector is exactly what the product's read-only
+# guard has to reject. Remove this block when porting the server.
 if os.environ.get("ACT_STUB") == "true":
     @mcp.tool(
         name=f"{TOOL_PREFIX}_create_ticket",
