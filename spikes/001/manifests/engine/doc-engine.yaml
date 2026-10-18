@@ -1,0 +1,91 @@
+# Spike 001 homemade engine (engine/cmd/doc-engine). Rendered by
+# scripts/engine.sh per instance: ENGINE_NAME, IDENTITY (its gateway MCP
+# routes) and its own tool allow-list (ConfigMap ${ENGINE_NAME}).
+# Same conditions as the kagent agents: model through the gateway, MCP tools
+# through the identity's gateway routes with the same allow-lists, the same
+# instructions, A2A through the gateway at /engine/doc-service.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: takecare-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${ENGINE_NAME}
+  namespace: takecare-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: ${ENGINE_NAME} }
+  template:
+    metadata:
+      labels: { app: ${ENGINE_NAME} }
+      annotations:
+        takecare.spike/config: "${ENGINE_CONFIG_SHA}"
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 65532 }
+      containers:
+        - name: engine
+          image: ${DOC_ENGINE_IMAGE}
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: MODEL, value: "${MODEL}" }
+            - { name: MODEL_BASE_URL, value: "http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1" }
+            - { name: MCP_BASE_URL, value: "http://agentgateway-proxy.agentgateway-system.svc.cluster.local/mcp/${IDENTITY}" }
+            - { name: PUBLIC_URL, value: "http://agentgateway-proxy.agentgateway-system.svc.cluster.local/" }  # the gateway prefixes its route path when it rewrites the card
+            - { name: TOOLS_FILE, value: /etc/doc/tools.json }
+            - { name: INSTRUCTIONS_FILE, value: /etc/doc/instructions.md }
+            - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4317" }
+            - { name: OTEL_EXPORTER_OTLP_INSECURE, value: "true" }
+            # ADR 0006: content is dropped in the binary unless this is "true".
+            - { name: CAPTURE_CONTENT, value: "false" }
+          ports:
+            - { name: http, containerPort: 8080 }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: config, mountPath: /etc/doc }
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits: { memory: 256Mi }
+      volumes:
+        - name: config
+          configMap: { name: ${ENGINE_NAME} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${ENGINE_NAME}
+  namespace: takecare-system
+spec:
+  selector: { app: ${ENGINE_NAME} }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: ${ENGINE_NAME}-a2a
+  namespace: agentgateway-system
+spec:
+  a2a: { host: ${ENGINE_NAME}.takecare-system.svc.cluster.local, port: 8080 }
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: a2a-${ENGINE_NAME}
+  namespace: agentgateway-system
+spec:
+  parentRefs: [{ name: agentgateway-proxy, sectionName: http }]
+  rules:
+    - matches: [{ path: { type: PathPrefix, value: /engine/${ENGINE_NAME} } }]
+      filters:
+        - type: URLRewrite
+          urlRewrite: { path: { type: ReplacePrefixMatch, replacePrefixMatch: / } }
+      backendRefs: [{ group: agentgateway.dev, kind: AgentgatewayBackend, name: ${ENGINE_NAME}-a2a }]

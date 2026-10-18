@@ -1,0 +1,26 @@
+{
+  "agent": "doc-engine-narrow",
+  "artifact_text": "TOOL_NOT_AVAILABLE pods_log",
+  "client": "a2a-go",
+  "conversation_id": "spike-toolcheck-doc-engine-narrow",
+  "label": "toolcheck-doc-engine-narrow",
+  "latency_seconds": 9,
+  "metadata": {
+    "adk_app_name": "doc",
+    "adk_session_id": "01a15046-a4b0-73d1-a674-37f552140cb2",
+    "adk_user_id": "A2A_USER_01a15046-a4b0-73d1-a674-37f552140cb2",
+    "https://google.github.io/adk-docs/a2a/a2a-extension/": true,
+    "takecare.usage": {
+      "cachedInputTokens": 0,
+      "inputTokens": 4473,
+      "modelCalls": 1,
+      "outputTokens": 1190,
+      "thoughtsTokens": 1182,
+      "toolUsePromptTokens": 0,
+      "totalTokens": 5663
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "01a15046-a4b0-7384-ad1e-3b01232f633b",
+  "trace_id": "a338935b9e190b6ef67ed4224e41f0a3"
+}

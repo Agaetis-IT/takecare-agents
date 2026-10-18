@@ -6,7 +6,7 @@
 # Usage: scripts/run-usage.sh <label>   (reads results/runtime/<label>.json)
 source "$(dirname "$0")/lib.sh"
 label="${1:?label}"
-R="${SPIKE_DIR}/results/runtime"
+R="${RESULTS_DIR:-${SPIKE_DIR}/results/runtime}"
 PIN=0.75 PCACHE=0.075 POUT=3.75
 
 TID="$(jq -r .trace_id "${R}/${label}.json")"

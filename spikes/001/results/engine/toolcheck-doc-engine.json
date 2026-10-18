@@ -1,0 +1,26 @@
+{
+  "agent": "doc-engine",
+  "artifact_text": "**Tool check:**\n`WARN  memory pressure: heap 360 MB / 512 MB limit (70%), gc pauses rising`\n\n**Observations:**\n1. Pod `billing-api-76964b6978-rdr5x` logs repeatedly report `WARN  db connection reset by peer, retrying (pool acquire 2.80s)`.\n2. Deployment `billing-api` configures `DB_POOL_IDLE_TIMEOUT_SECONDS=900` in `spec.template.spec.containers[0].env`.\n3. Resource `DBProxy/billing-db-proxy` (`ack-system`) sets `spec.idleClientTimeout: 600` via change CI-2452.\n\n**Ruled-out leads:**\n1. Application memory leak (CI-2454) ruled out because memory pressure is a consequence of connection acquisition retries holding objects (INC-2024-0312, RB-014).\n2. Load balancer idle timeout change (CI-2455) ruled out because upstream connection drops occur between the application pool and RDS proxy, not ALB.\n\n**Root cause:**\nThe RDS Proxy closes idle client connections after 600 seconds, while `billing-api` retains pooled connections for 900 seconds, exhausting the connection pool with dead sockets.\n\n**Recommended action:**\nThe infrastructure team must remove or raise `idleClientTimeout` in `DBProxy/billing-db-proxy` above 900 seconds, following runbook RB-014.",
+  "client": "a2a-go",
+  "conversation_id": "spike-toolcheck-doc-engine",
+  "label": "toolcheck-doc-engine",
+  "latency_seconds": 36,
+  "metadata": {
+    "adk_app_name": "doc",
+    "adk_session_id": "01a15047-036e-7418-aa6a-f42375f8bfe8",
+    "adk_user_id": "A2A_USER_01a15047-036e-7418-aa6a-f42375f8bfe8",
+    "https://google.github.io/adk-docs/a2a/a2a-extension/": true,
+    "takecare.usage": {
+      "cachedInputTokens": 0,
+      "inputTokens": 46393,
+      "modelCalls": 6,
+      "outputTokens": 1031,
+      "thoughtsTokens": 317,
+      "toolUsePromptTokens": 0,
+      "totalTokens": 47424
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "01a15047-036e-71fd-ba5c-110523aea584",
+  "trace_id": "0c7e9b6091bdc80344f8e2ac22c3722b"
+}

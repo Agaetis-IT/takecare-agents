@@ -1,0 +1,17 @@
+{
+  "agent": "doc-engine",
+  "artifact_text": "**Observations**\n- Pod `billing-api-76964b6978-rdr5x` logs repeated `WARN db connection reset by peer, retrying (pool acquire ...)` alongside memory pressure warnings.\n- The `DBProxy` resource `billing-db-proxy` sets `spec.idleClientTimeout` to 600s (`ack-system`).\n- The `billing-api` Deployment sets `DB_POOL_IDLE_TIMEOUT_SECONDS` to 900s (`demo-apps`).\n\n**Ruled-out leads**\n- Application memory leak ruled out because memory pressure is a known symptom of failed connections retaining request objects per RB-014.\n- Pod crash or container restart ruled out because `billing-api-76964b6978-rdr5x` has 0 restarts and stays Ready.\n\n**Root cause**\nThe database proxy idle client timeout (600s) is shorter than the application connection pool idle timeout (900s), causing dropped connections per RB-014.\n\n**Recommended action**\nThe infrastructure team must raise `spec.idleClientTimeout` on `billing-db-proxy` or remove it to restore the 1800s default.",
+  "client": "a2a-go",
+  "conversation_id": "spike-engine-1",
+  "label": "engine-1",
+  "latency_seconds": 16,
+  "metadata": {
+    "adk_app_name": "doc",
+    "adk_session_id": "01a15043-58a6-7be3-84bb-80c715fc3596",
+    "adk_user_id": "A2A_USER_01a15043-58a6-7be3-84bb-80c715fc3596",
+    "https://google.github.io/adk-docs/a2a/a2a-extension/": true
+  },
+  "state": "TASK_STATE_FAILED",
+  "task_id": "01a15043-58a6-79ae-8274-773b34bec9c1",
+  "trace_id": "f821ee5031054cd33f4f1de35a519f09"
+}

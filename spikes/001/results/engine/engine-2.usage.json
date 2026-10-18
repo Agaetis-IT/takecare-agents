@@ -1,0 +1,22 @@
+{
+  "label": "engine-2",
+  "agent": "doc-engine",
+  "latency_seconds": 48,
+  "model_calls": 7,
+  "tool_calls": 17,
+  "input_tokens": 60381,
+  "cache_read_tokens": 21323,
+  "output_tokens": 2183,
+  "cache_pct": 35,
+  "input_per_call": [
+    4563,
+    6849,
+    8058,
+    8342,
+    9934,
+    10024,
+    12611
+  ],
+  "cost_usd": 0.0391,
+  "cost_without_cache_usd": 0.0535
+}
