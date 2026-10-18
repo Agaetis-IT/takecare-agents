@@ -57,3 +57,4 @@ CLAUDE.local.md
 *.swp
 *~
 .DS_Store
+Claude outputs/
