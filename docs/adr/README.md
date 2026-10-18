@@ -13,5 +13,6 @@ One decision per file, numbered, never rewritten: a decision that changes gives 
 | [0007](0007-agent-engine-kagent.md) | The agent engine is kagent, subject to a spike | Accepted, subject to spike 001 |
 | [0008](0008-everything-is-an-mcp-connector.md) | Everything an agent touches is an MCP connector, behind the gateway | Accepted |
 | [0009](0009-agents-talk-over-a2a.md) | Agents talk over A2A; hand-offs are published findings | Accepted |
+| [0010](0010-kagent-1-0-line.md) | The agent engine targets the kagent 1.0 line, pinned at v1.0.0-alpha14 | Proposed |
 
 Format: Context, Decision, Consequences, Rejected alternatives. Statuses: Proposed, Accepted, Superseded.
