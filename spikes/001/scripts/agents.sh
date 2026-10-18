@@ -4,7 +4,7 @@
 # given as <agent>:<identity>:<runtime>.
 # Usage: scripts/agents.sh doc-service:doc-service:go doc-service-py:doc-service:python ...
 source "$(dirname "$0")/lib.sh"
-DIR="${SPIKE_DIR}/manifests/kagent"
+DIR="${SPIKE_DIR}/manifests/kagent-0.10.3"
 NS=takecare-system
 SERVERS=(kubernetes prometheus incidents runbooks deployments vendor support)
 GW=http://agentgateway-proxy.agentgateway-system.svc.cluster.local

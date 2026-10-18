@@ -103,7 +103,7 @@ install_kagent() {
     --set kmcp.enabled=false --wait
   helm upgrade -i kagent oci://ghcr.io/kagent-dev/kagent/helm/kagent \
     --version "$KAGENT_VERSION" -n "$KAGENT_NS" \
-    -f "${SPIKE_DIR}/values/kagent.yaml" --wait --timeout 10m
+    -f "${SPIKE_DIR}/values/kagent-0.10.3.yaml" --wait --timeout 10m
   kubectl -n "$KAGENT_NS" get pods
 }
 
