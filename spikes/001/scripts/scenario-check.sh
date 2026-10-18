@@ -67,14 +67,27 @@ while :; do
 done
 echo
 
-jq -n --arg scenario "$scenario" --arg label "$label" --arg alert "$alert" --arg app "$app" \
+# The decisive evidence must be readable by the agent, through the gateway,
+# with the same tools and identity: checked once the alert has fired.
+mcp_full() { MCP_FULL=1 "${SPIKE_DIR}/scripts/mcp.sh" doc-service/kubernetes call "$@" | jq -r '.content // .error.message'; }
+case "$scenario" in
+  proxy-timeout)
+    evidence="$(mcp_full resources_get '{"apiVersion":"rds.services.k8s.aws/v1alpha1","kind":"DBProxy","namespace":"ack-system","name":"billing-db-proxy"}' | grep -E '^\s+idleClientTimeout:' | tr -s ' ')" ;;
+  bad-config-rollout)
+    evidence="$(mcp_full resources_get '{"apiVersion":"v1","kind":"ConfigMap","namespace":"demo-apps","name":"orders-config"}' | grep -E 'DB_HOST' | tr -s ' ')" ;;
+  missing-secret-key)
+    evidence="$(mcp_full resources_get '{"apiVersion":"apps/v1","kind":"Deployment","namespace":"demo-apps","name":"notifications-worker"}' | grep -A1 -E 'secretKeyRef' | grep -E 'key:' | tr -s ' ')" ;;
+esac
+log "decisive evidence through the gateway: ${evidence:-NOT READABLE}"
+
+jq -n --arg evidence "$evidence" --arg scenario "$scenario" --arg label "$label" --arg alert "$alert" --arg app "$app" \
   --arg pending "$pending" --arg firing "$firing" --arg received "$received" \
   --argjson max_mem_pct "$max_mem_pct" --argjson max_heap_pct "$max_heap_pct" --argjson max_restarts "$max_restarts" \
   --argjson not_ready_seen "$not_ready_seen" --arg started "$(date -u -r "$t0" +%FT%TZ)" \
   --argjson samples "$samples" --argjson limit "$limit_s" \
   '{scenario:$scenario, trial:$label, started:$started, alert:$alert, app:$app,
     seconds:{pending:($pending|tonumber?), firing:($firing|tonumber?), received_by_alertmanager:($received|tonumber?)},
-    fired: ($received != ""), limit_seconds:$limit, samples:$samples,
+    fired: ($received != ""), decisive_evidence_readable: ($evidence != ""), decisive_evidence: $evidence, limit_seconds:$limit, samples:$samples,
     app_pod:{max_working_set_pct_of_limit:$max_mem_pct, max_app_heap_pct_of_limit:$max_heap_pct, max_restarts:$max_restarts, not_ready_seen:$not_ready_seen}}' \
   | tee "$out"
-[[ -n "$received" ]]
+[[ -n "$received" && -n "$evidence" ]]

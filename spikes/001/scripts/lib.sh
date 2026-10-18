@@ -35,6 +35,40 @@ ensure_ns() {
   kubectl create namespace "$1" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 }
 
+# Scenery CRDs (the ACK DBProxy). kubernetes-mcp-server builds its discovery
+# cache at startup and does not refresh it: a kind created after it started
+# answers "no matches for kind" (stage 4 bug: the Doc could not read the
+# DBProxy). So: apply the CRD before the server is deployed (up.sh), and if
+# applying it changed anything while the server runs, restart the server and
+# check, through the gateway, that the kind is now listable.
+apply_scenery_crds() {
+  local crd=dbproxies.rds.services.k8s.aws before after
+  before="$(kubectl get crd "$crd" -o jsonpath='{.metadata.resourceVersion}' 2>/dev/null || true)"
+  kubectl apply --server-side --force-conflicts --field-manager=takecare-spike-scenery \
+    -f "${SPIKE_DIR}/manifests/scenery/ack/rds.services.k8s.aws_dbproxies.yaml" >/dev/null
+  kubectl wait --for=condition=Established "crd/${crd}" --timeout=30s >/dev/null
+  after="$(kubectl get crd "$crd" -o jsonpath='{.metadata.resourceVersion}')"
+  [[ "$before" == "$after" ]] && return 0
+  kubectl -n "$MCP_NS" get deploy/kubernetes-mcp-server >/dev/null 2>&1 || return 0
+  log "CRD ${crd} changed: restarting kubernetes-mcp-server to refresh its discovery"
+  kubectl -n "$MCP_NS" rollout restart deploy/kubernetes-mcp-server >/dev/null
+  kubectl -n "$MCP_NS" rollout status deploy/kubernetes-mcp-server --timeout=120s >/dev/null
+  dbproxy_listable || die "DBProxy still not listable through the gateway after restart"
+}
+
+# True when the DBProxy kind is listable through the gateway (discovery OK,
+# RBAC OK), retrying while a restarted server takes over its Service.
+dbproxy_listable() {
+  local i r
+  for i in $(seq 30); do
+    r="$("${SPIKE_DIR}/scripts/mcp.sh" doc-trial/kubernetes call resources_list \
+      '{"apiVersion":"rds.services.k8s.aws/v1alpha1","kind":"DBProxy","namespace":"ack-system"}' 2>/dev/null)" \
+      && jq -e '(.error == null) and (.isError != true)' <<<"$r" >/dev/null && return 0
+    sleep 2
+  done
+  return 1
+}
+
 # Replace ${VAR} for the variables we name only (envsubst is not on macOS by
 # default), so that `{{ $labels }}` and other templates are left alone.
 render() {

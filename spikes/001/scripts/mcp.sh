@@ -30,7 +30,7 @@ case "$cmd" in
     tool="${3:?tool}"; args="${4:-{\}}"
     jq -nc --arg t "$tool" --argjson a "$args" '{jsonrpc:"2.0",id:3,method:"tools/call",params:{name:$t,arguments:$a}}' > "$tmp/req"
     curl -sS -m 60 -o "$tmp/b" "${HDRS[@]}" "$URL" -d @"$tmp/req"
-    body "$tmp/b" | jq -c 'if .error then {error: .error} else {isError: .result.isError, content: (.result.content[0].text // "" | .[0:300])} end'
+    body "$tmp/b" | jq -c 'if .error then {error: .error} else {isError: .result.isError, content: (.result.content[0].text // "" | if env.MCP_FULL == "1" then . else .[0:300] end)} end'
     ;;
   *) die "unknown command: $cmd" ;;
 esac

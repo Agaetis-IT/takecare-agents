@@ -79,6 +79,8 @@ install_monitoring() {
 install_tools() {
   log "MCP servers (namespace ${MCP_NS}), reachable only through the gateway"
   ensure_ns "$MCP_NS"; ensure_ns "$APP_NS"; ensure_ns "$PLATFORM_NS"
+  # Before kubernetes-mcp-server starts: it does not refresh its discovery.
+  apply_scenery_crds
   kubectl apply -f "${SPIKE_DIR}/manifests/mcp/network-policies.yaml" >/dev/null
   KMS_CONFIG_SHA="$(shasum -a 256 "${SPIKE_DIR}/manifests/mcp/kubernetes-mcp-server.yaml" | cut -c1-16)" \
     render "${SPIKE_DIR}/manifests/mcp/kubernetes-mcp-server.yaml" KUBERNETES_MCP_SERVER_IMAGE KMS_CONFIG_SHA \
@@ -88,6 +90,7 @@ install_tools() {
   kubectl -n "$MCP_NS" rollout status deploy/kubernetes-mcp-server --timeout=120s
   kubectl -n "$MCP_NS" rollout status deploy/mcp-prometheus --timeout=120s
   "${SPIKE_DIR}/scripts/routes.sh" --apply
+  dbproxy_listable || die "DBProxy kind not listable through the gateway"
 }
 
 install_kagent() {

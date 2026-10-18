@@ -17,9 +17,10 @@ ko() { printf '  \033[31mFAIL\033[0m %s\n' "$*"; fail=$((fail + 1)); }
 #   2. hidden tools, 2b. restored        3 + 1
 #   3. forged calls + positive control   3 + 1
 #   3b. RBAC                             3
+#   3c. scenery CRD discoverable         1
 #   4. identities discriminate           3
 #   5. bypass: 2 namespaces x 3 URLs     6
-EXPECTED=$(( ${#SERVERS[@]} + 3 + 1 + 3 + 1 + 3 + 3 + 6 ))
+EXPECTED=$(( ${#SERVERS[@]} + 3 + 1 + 3 + 1 + 3 + 1 + 3 + 6 ))
 
 # Section 2 deletes live policies. Whatever happens, put them back on exit.
 restore_policies() { kubectl apply -f "$ROUTES" >/dev/null 2>&1 || true; }
@@ -81,6 +82,13 @@ rbac() {  # $1 description, $2 tool, $3 args
 rbac "Secret in demo-apps" resources_get '{"apiVersion":"v1","kind":"Secret","namespace":"demo-apps","name":"notifications-smtp"}'
 rbac "Secrets list in demo-apps" resources_list '{"apiVersion":"v1","kind":"Secret","namespace":"demo-apps"}'
 rbac "pods outside the scenery (kube-system)" pods_list_in_namespace '{"namespace":"kube-system"}'
+
+log "3c. The scenery's custom kind is discoverable through the gateway"
+# kubernetes-mcp-server caches discovery at startup: a CRD applied after it
+# answers "no matches for kind", which silently hid the DBProxy from the Doc.
+r="$("$MCP" doc-trial/kubernetes call resources_list '{"apiVersion":"rds.services.k8s.aws/v1alpha1","kind":"DBProxy","namespace":"ack-system"}')"
+[[ "$(jq -r '(.error == null) and (.isError != true)' <<<"$r")" == true ]] \
+  && ok "DBProxy listable in ack-system: ${r:0:100}" || ko "DBProxy not listable: $r"
 
 log "4. The allow-list discriminates between identities (doc-narrow: throwaway, narrower list)"
 # doc-trial, doc-service and holmes share one `read` list in milestone 1, so

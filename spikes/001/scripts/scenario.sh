@@ -127,8 +127,7 @@ cmd_sources() {
 ensure_base() {
   ensure_ns "$APP_NS"
   ensure_ns "$PLATFORM_NS"
-  sapply < "${MANIFESTS}/ack/rds.services.k8s.aws_dbproxies.yaml"
-  kubectl wait --for=condition=Established crd/dbproxies.rds.services.k8s.aws --timeout=30s >/dev/null
+  apply_scenery_crds  # lib.sh: restarts kubernetes-mcp-server if the CRD changed
   kubectl create configmap demo-app-code -n "$APP_NS" \
     --from-file=app.py="${SCENERY_DIR}/app/exporter.py" --dry-run=client -o yaml \
     | kubectl label --local -f - app.kubernetes.io/part-of=takecare-spike-scenery -o yaml \
