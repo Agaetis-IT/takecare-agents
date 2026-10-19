@@ -67,7 +67,7 @@ Changing level means changing this resource: a reviewed PR, a traced change. `ku
 
 ## Milestone 1 architecture
 
-```
+```text
 Alertmanager ──webhook──▶ takecare-operator ──A2A task──▶ kagent agent "doc"
                                 │  ◀────── diagnosis ──────────┘    │
                                 │                                   │ only the tools its level allows
@@ -120,7 +120,22 @@ Prerequisites: Docker (at least 4 GB of memory), k3d, kubectl, helm, make.
 | [`docs/spikes/001-kagent-doc-engine.md`](docs/spikes/001-kagent-doc-engine.md) | Spike 001: can kagent run the Doc as well as HolmesGPT? |
 | [`docs/specs/90-agent-output-localization.md`](docs/specs/90-agent-output-localization.md) | Localized agent output (deferred) |
 | [`docs/adr/`](docs/adr/) | Architecture decisions |
+| [`docs/licensing.md`](docs/licensing.md) | License rules: SPDX headers, provenance of copied code, allowed dependency licenses |
 | [`CLAUDE.md`](CLAUDE.md) | How to work on this repository: ground rules, PR sequence, known pitfalls |
+
+## Development
+
+```bash
+make help        # every target
+make generate    # deepcopy, CRDs, RBAC manifests
+make lint        # golangci-lint, ruff, shellcheck, markdownlint, SPDX headers
+make test        # unit + golden + envtest
+make licenses    # dependency license check, regenerates NOTICE
+make gitleaks    # secret scan
+make docker-buildx   # operator image, amd64 + arm64
+```
+
+Prerequisites: Go (version in `go.mod`), Docker, make. Every pinned version lives in [`hack/versions.env`](hack/versions.env); the linters run from pinned images, the Go tools are installed into `./bin`.
 
 ## How we work
 
@@ -128,7 +143,7 @@ Specs and decisions are written and reviewed before the code. Every spec leads t
 
 ## License
 
-Private repository. The license will be chosen before any opening.
+Proprietary, copyright Agaetis, all rights reserved: see [`LICENSE`](LICENSE). Third-party components are listed in [`NOTICE`](NOTICE). The rules that keep the repository openable (SPDX headers, provenance of copied code, no strong copyleft) are in [`docs/licensing.md`](docs/licensing.md).
 
 ---
 
