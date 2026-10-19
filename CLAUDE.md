@@ -59,6 +59,7 @@ make demo-up | demo-incident | demo-verdict | demo-screens | demo-bench N=5 | de
 
 **Style and structure**
 
+- The module path is **`github.com/agaetis-it/takecare-agents`, all lower case** (Go convention, case-insensitive file systems, consistent with `ghcr.io/agaetis-it`). Never write the mixed-case form as a module or import path, in code, examples or docs: Go fails hard on a case mismatch (`module declares its path as X but was required as Y`).
 - `gofmt` and `goimports` on every file; `golangci-lint` must pass (config in `.golangci.yml`, created in PR 1; at least `govet`, `staticcheck`, `errcheck`, `ineffassign`, `revive`, `gosec`, `misspell`, `errorlint`, `contextcheck`).
 - Follow *Effective Go* and the Go Code Review Comments: short, clear names; no stutter (`connector.Connector` → `connector.Spec`); package names are short, lower case, singular; no `util` or `common` packages.
 - Keep packages small and focused (see the layout in spec 04). Anything not meant for reuse goes under `internal/`.
