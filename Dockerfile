@@ -20,9 +20,10 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags="-s -w" -o operator ./cmd/operator
 # Full license texts (and NOTICE files) of every third-party module in the
-# binary, shipped in the image (docs/licensing.md).
-RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go run github.com/google/go-licenses/v2@${GO_LICENSES_VERSION} save ./cmd/operator \
+# binary, shipped in the image (docs/licensing.md). go-licenses itself is built
+# for the build platform; only the analysis targets the image's platform.
+RUN go install github.com/google/go-licenses/v2@${GO_LICENSES_VERSION} && \
+    GOOS=${TARGETOS} GOARCH=${TARGETARCH} go-licenses save ./cmd/operator \
     --ignore github.com/agaetis-it/takecare-agents --save_path /workspace/licenses
 
 FROM ${RUNTIME_IMAGE}
