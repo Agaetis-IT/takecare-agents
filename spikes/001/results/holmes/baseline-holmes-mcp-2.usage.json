@@ -1,0 +1,21 @@
+{
+  "label": "baseline-holmes-mcp-2",
+  "agent": "holmes-mcp",
+  "latency_seconds": 33,
+  "model_calls": 6,
+  "tool_calls": 0,
+  "input_tokens": 94323,
+  "cache_read_tokens": 53356,
+  "output_tokens": 1040,
+  "cache_pct": 56,
+  "input_per_call": [
+    8748,
+    10840,
+    17042,
+    18266,
+    19101,
+    20326
+  ],
+  "cost_usd": 0.0386,
+  "cost_without_cache_usd": 0.0746
+}

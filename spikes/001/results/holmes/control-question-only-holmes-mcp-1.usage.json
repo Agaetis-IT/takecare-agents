@@ -1,0 +1,24 @@
+{
+  "label": "control-question-only-holmes-mcp-1",
+  "agent": "holmes-mcp",
+  "latency_seconds": 27,
+  "model_calls": 9,
+  "tool_calls": 0,
+  "input_tokens": 165973,
+  "cache_read_tokens": 109341,
+  "output_tokens": 1158,
+  "cache_pct": 65,
+  "input_per_call": [
+    8183,
+    10344,
+    14328,
+    15526,
+    16816,
+    18917,
+    26884,
+    27288,
+    27687
+  ],
+  "cost_usd": 0.055,
+  "cost_without_cache_usd": 0.1288
+}

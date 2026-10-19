@@ -1,0 +1,60 @@
+{
+  "agent": "holmes-native",
+  "artifact_text": "**Observations**\n- Pod `billing-api-5bb97fbdc4-4szcr` logs repeat `WARN db connection reset by peer, retrying (pool acquire 2.80s)`.\n- Deployment `billing-api` configures `DB_POOL_IDLE_TIMEOUT_SECONDS=900` in `spec.template.spec.containers[0].env`.\n- Resource `DBProxy/billing-db-proxy` in `ack-system` defines `spec.idleClientTimeout=600`.\n\n**Ruled-Out Leads**\n- Memory pressure (heap at 70%) was ruled out per runbook RB-014 because connection pool acquisition stalls cause heap accumulation, not vice versa.\n- Pod crash or restart was ruled out because `billing-api-5bb97fbdc4-4szcr` has 0 restarts and status `Running`.\n\n**Root Cause**\nThe database pool idle timeout (900s) exceeds the RDS Proxy client idle timeout (600s), causing silent connection drops on idle connections.\n\n**Recommended Action**\nThe billing team should lower `DB_POOL_IDLE_TIMEOUT_SECONDS` below 600s in the `billing-api` deployment configuration.",
+  "client": "holmes",
+  "conversation_id": "spike-baseline-holmes-native-2",
+  "label": "baseline-holmes-native-2",
+  "latency_seconds": 19,
+  "metadata": {
+    "costs": {
+      "cache_creation_tokens": null,
+      "cached_tokens": 42668,
+      "completion_tokens": 954,
+      "max_completion_tokens_per_call": 296,
+      "max_prompt_tokens_per_call": 19685,
+      "num_compactions": 0,
+      "prompt_tokens": 76787,
+      "reasoning_tokens": 157,
+      "total_cost": 0,
+      "total_tokens": 77741
+    },
+    "finish_reason": "stop",
+    "holmes_tool_calls": [
+      "deployments_recent",
+      "runbooks_search",
+      "incidents_recent",
+      "kubernetes_tabular_query",
+      "deployments_get",
+      "runbooks_get",
+      "fetch_pod_logs",
+      "runbooks_get",
+      "fetch_pod_logs",
+      "kubernetes_jq_query",
+      "kubernetes_jq_query",
+      "support_recent",
+      "vendor_recent"
+    ],
+    "max_output_tokens": 65536,
+    "max_tokens": 1048576,
+    "request_id": "530f884b-aadf-45e5-aac2-d6725f2a338a",
+    "tokens": {
+      "assistant_tokens": 638,
+      "other_tokens": 0,
+      "system_tokens": 4944,
+      "tools_to_call_tokens": 4045,
+      "tools_tokens": 7758,
+      "total_tokens": 17644,
+      "user_tokens": 316
+    },
+    "usage": {
+      "cached_tokens": 16766,
+      "completion_tokens": 275,
+      "prompt_tokens": 19685,
+      "total_tokens": 19960
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "",
+  "trace_id": "8737d528ca19e65f5e4dcaf494181c2e",
+  "valid": true
+}

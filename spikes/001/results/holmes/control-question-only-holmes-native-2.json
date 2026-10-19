@@ -1,0 +1,62 @@
+{
+  "agent": "holmes-native",
+  "artifact_text": "**Observations**\n* Pod `billing-api-5bb97fbdc4-4szcr` logs repeat `WARN db connection reset by peer, retrying (pool acquire 2.80s)`.\n* Pod startup logs show database pool recycling configured at `idle_timeout=900s` (`DB_POOL_IDLE_TIMEOUT_SECONDS=900` in deployment `billing-api`).\n* Deployment log `CI-2455` recorded load balancer and keep-alive idle timeouts set to 120s and 125s respectively.\n\n**Ruled-Out Leads**\n* High memory pressure logs were ruled out because connection wait times drive memory accumulation rather than memory causing errors (RB-014).\n* AWS gp3 degradation bulletin `AWS-2026-0903-01` was ruled out because errors stem from database connection resets rather than EBS latency.\n\n**Root Cause**\nThe database connection pool idle timeout (900s) exceeds the network path idle timeout, causing connections to drop before recycling (RB-014).\n\n**Recommended Action**\nThe billing team should lower `DB_POOL_IDLE_TIMEOUT_SECONDS` below the shortest network path idle timeout.",
+  "client": "holmes",
+  "conversation_id": "spike-control-question-only-holmes-native-2",
+  "label": "control-question-only-holmes-native-2",
+  "latency_seconds": 25,
+  "metadata": {
+    "costs": {
+      "cache_creation_tokens": null,
+      "cached_tokens": 96133,
+      "completion_tokens": 1036,
+      "max_completion_tokens_per_call": 270,
+      "max_prompt_tokens_per_call": 20671,
+      "num_compactions": 0,
+      "prompt_tokens": 131458,
+      "reasoning_tokens": 154,
+      "total_cost": 0,
+      "total_tokens": 132494
+    },
+    "finish_reason": "stop",
+    "holmes_tool_calls": [
+      "support_recent",
+      "vendor_recent",
+      "deployments_recent",
+      "kubernetes_tabular_query",
+      "incidents_recent",
+      "runbooks_search",
+      "fetch_pod_logs",
+      "vendor_get",
+      "deployments_get",
+      "runbooks_get",
+      "runbooks_get",
+      "kubernetes_jq_query",
+      "list_prometheus_rules",
+      "fetch_pod_logs",
+      "fetch_pod_logs"
+    ],
+    "max_output_tokens": 65536,
+    "max_tokens": 1048576,
+    "request_id": "fc93e2ff-ca46-4dc5-9458-214927f17b48",
+    "tokens": {
+      "assistant_tokens": 683,
+      "other_tokens": 0,
+      "system_tokens": 4393,
+      "tools_to_call_tokens": 4045,
+      "tools_tokens": 9046,
+      "total_tokens": 18411,
+      "user_tokens": 316
+    },
+    "usage": {
+      "cached_tokens": 18655,
+      "completion_tokens": 270,
+      "prompt_tokens": 20671,
+      "total_tokens": 20941
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "",
+  "trace_id": "a53202601133d31533d3a5579f8fabff",
+  "valid": true
+}

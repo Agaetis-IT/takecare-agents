@@ -1,0 +1,67 @@
+{
+  "agent": "holmes-native",
+  "artifact_text": "**Observations**\n* Pod `billing-api-5bb97fbdc4-4szcr` logs repeat `db connection reset by peer, retrying (pool acquire 2.80s)` alongside heap warnings (`pod logs: billing-api-5bb97fbdc4-4szcr`).\n* Deployment `billing-api` configures `DB_POOL_IDLE_TIMEOUT_SECONDS=900` (`deployment: demo-apps/billing-api`).\n* Deployment CI-2455 changed ALB and HTTP keep-alive idle timeouts to 120s/125s without modifying database pool parameters (`deployment record: CI-2455`).\n\n**Ruled-Out Leads**\n* Application memory leak: ruled out because memory pressure is a secondary symptom of leaked connection sockets without OOMKills (`incident record: INC-2024-0312`).\n* Cloud vendor EBS performance degradation: ruled out because volume latency in eu-west-3a does not cause peer connection resets (`bulletin: AWS-2026-0903-01`).\n\n**Root Cause**\nThe database connection pool idle timeout is misconfigured above the network path threshold, causing peer connection resets and pool exhaustion (`runbook: RB-014`).\n\n**Recommended Action**\nThe billing engineering team should lower `DB_POOL_IDLE_TIMEOUT_SECONDS` in the `billing-api` deployment below the upstream database proxy idle timeout (`runbook: RB-014`).",
+  "client": "holmes",
+  "conversation_id": "spike-control-question-only-holmes-native-1",
+  "label": "control-question-only-holmes-native-1",
+  "latency_seconds": 33,
+  "metadata": {
+    "costs": {
+      "cache_creation_tokens": null,
+      "cached_tokens": 114993,
+      "completion_tokens": 1391,
+      "max_completion_tokens_per_call": 440,
+      "max_prompt_tokens_per_call": 21781,
+      "num_compactions": 0,
+      "prompt_tokens": 158866,
+      "reasoning_tokens": 318,
+      "total_cost": 0,
+      "total_tokens": 160257
+    },
+    "finish_reason": "stop",
+    "holmes_tool_calls": [
+      "incidents_recent",
+      "deployments_recent",
+      "vendor_recent",
+      "support_recent",
+      "kubernetes_jq_query",
+      "deployments_get",
+      "fetch_pod_logs",
+      "vendor_get",
+      "runbooks_search",
+      "runbooks_get",
+      "fetch_pod_logs",
+      "runbooks_get",
+      "fetch_pod_logs",
+      "kubernetes_jq_query",
+      "incidents_get",
+      "incidents_get",
+      "incidents_search",
+      "incidents_get",
+      "incidents_get",
+      "kubernetes_tabular_query"
+    ],
+    "max_output_tokens": 65536,
+    "max_tokens": 1048576,
+    "request_id": "53e345bb-003f-459e-9377-e536ecd9bda6",
+    "tokens": {
+      "assistant_tokens": 818,
+      "other_tokens": 0,
+      "system_tokens": 4393,
+      "tools_to_call_tokens": 4045,
+      "tools_tokens": 9973,
+      "total_tokens": 19455,
+      "user_tokens": 316
+    },
+    "usage": {
+      "cached_tokens": 18668,
+      "completion_tokens": 331,
+      "prompt_tokens": 21781,
+      "total_tokens": 22112
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "",
+  "trace_id": "66fc3a76505e82ac6681fc88089467f1",
+  "valid": true
+}

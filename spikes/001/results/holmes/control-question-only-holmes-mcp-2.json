@@ -1,0 +1,62 @@
+{
+  "agent": "holmes-mcp",
+  "artifact_text": "**Observations**\n1. Logs of pod `billing-api-5bb97fbdc4-4szcr` show repeated `WARN db connection reset by peer, retrying (pool acquire 2.80s)` alongside growing heap usage.\n2. The pod environment configures `DB_POOL_IDLE_TIMEOUT_SECONDS=900`, higher than typical intermediate network timeouts (pod spec `billing-api-5bb97fbdc4-4szcr`).\n3. Pod status shows the container running healthy with 0 restarts, matching the off-peak connection drop pattern documented in runbook `RB-014`.\n\n**Root Cause**\nApplication connection pool idle timeout (900s) exceeds the upstream network idle timeout, causing requests to land on server-closed sockets (post-mortem `INC-2024-0312`).\n\n**Recommended Action**\nThe billing development team should lower `DB_POOL_IDLE_TIMEOUT_SECONDS` below the upstream proxy/network idle timeout in the deployment spec per runbook `RB-014`.\n\n**Ruled Out Leads**\n1. Application memory leak was ruled out because heap growth is a side-effect of failing requests holding connections, not an OOM condition (`INC-2024-0312`).\n2. Load balancer idle timeout was ruled out because deployment `CI-2455` raised ALB timeouts earlier and logs show connection resets rather than gateway timeouts.",
+  "client": "holmes",
+  "conversation_id": "spike-control-question-only-holmes-mcp-2",
+  "label": "control-question-only-holmes-mcp-2",
+  "latency_seconds": 17,
+  "metadata": {
+    "costs": {
+      "cache_creation_tokens": null,
+      "cached_tokens": 68744,
+      "completion_tokens": 841,
+      "max_completion_tokens_per_call": 317,
+      "max_prompt_tokens_per_call": 28156,
+      "num_compactions": 0,
+      "prompt_tokens": 102114,
+      "reasoning_tokens": 75,
+      "total_cost": 0,
+      "total_tokens": 102955
+    },
+    "finish_reason": "stop",
+    "holmes_tool_calls": [
+      "pods_list_in_namespace",
+      "incidents_search",
+      "deployments_search",
+      "events_list",
+      "incidents_get",
+      "deployments_get",
+      "pods_log",
+      "incidents_get",
+      "runbooks_get",
+      "runbooks_search",
+      "pods_log",
+      "pods_get",
+      "resources_get",
+      "vendor_search",
+      "support_search"
+    ],
+    "max_output_tokens": 65536,
+    "max_tokens": 1048576,
+    "request_id": "5c962fce-82e6-47d6-a6a4-e8f319a7b387",
+    "tokens": {
+      "assistant_tokens": 551,
+      "other_tokens": 0,
+      "system_tokens": 3410,
+      "tools_to_call_tokens": 3486,
+      "tools_tokens": 16821,
+      "total_tokens": 24518,
+      "user_tokens": 316
+    },
+    "usage": {
+      "cached_tokens": 26226,
+      "completion_tokens": 317,
+      "prompt_tokens": 28156,
+      "total_tokens": 28473
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "",
+  "trace_id": "50360d554a6d3ac2ed58e8ed775562fb",
+  "valid": true
+}

@@ -1,0 +1,63 @@
+{
+  "agent": "holmes-mcp",
+  "artifact_text": "**Observations**\n- In `billing-api-5bb97fbdc4-4szcr` pod logs, recurring warnings show `db connection reset by peer, retrying (pool acquire 2.80s)`.\n- Metric `db_connection_wait_seconds` on `billing-api` is high at 2.8s while `app_heap_bytes` reached 360MB (70% heap pressure).\n- Pod spec environment variable `DB_POOL_IDLE_TIMEOUT_SECONDS` is 900s, whereas `DBProxy` `billing-db-proxy` (`ack-system`) has `idleClientTimeout` set to 600s.\n\n**Ruled-out leads**\n- Memory leak ruled out per runbook RB-014 and incident INC-2024-0312, as heap growth is a secondary symptom of hung requests.\n- Pod crash or restart ruled out because container restart count is 0 and readiness probes remain passing.\n\n**Root cause**\nThe database pool idle timeout (900s) exceeds the RDS DBProxy client idle timeout (600s), causing dead connections and pool exhaustion (RB-014).\n\n**Recommended action**\nThe platform team should update `billing-db-proxy` `idleClientTimeout` to 1800s (or remove it), or the billing team should lower `DB_POOL_IDLE_TIMEOUT_SECONDS`.",
+  "client": "holmes",
+  "conversation_id": "spike-baseline-holmes-mcp-2",
+  "label": "baseline-holmes-mcp-2",
+  "latency_seconds": 33,
+  "metadata": {
+    "costs": {
+      "cache_creation_tokens": null,
+      "cached_tokens": 53356,
+      "completion_tokens": 1040,
+      "max_completion_tokens_per_call": 318,
+      "max_prompt_tokens_per_call": 20326,
+      "num_compactions": 0,
+      "prompt_tokens": 94323,
+      "reasoning_tokens": 129,
+      "total_cost": 0,
+      "total_tokens": 95363
+    },
+    "finish_reason": "stop",
+    "holmes_tool_calls": [
+      "runbooks_search",
+      "incidents_search",
+      "pods_list_in_namespace",
+      "deployments_recent",
+      "events_list",
+      "deployments_get",
+      "runbooks_get",
+      "pods_log",
+      "runbooks_get",
+      "pods_get",
+      "resources_list",
+      "incidents_get",
+      "resources_list",
+      "resources_get",
+      "execute_query",
+      "execute_query"
+    ],
+    "max_output_tokens": 65536,
+    "max_tokens": 1048576,
+    "request_id": "bb381d35-9208-433b-b703-5bc909fb794f",
+    "tokens": {
+      "assistant_tokens": 722,
+      "other_tokens": 0,
+      "system_tokens": 3961,
+      "tools_to_call_tokens": 3486,
+      "tools_tokens": 9580,
+      "total_tokens": 17996,
+      "user_tokens": 316
+    },
+    "usage": {
+      "cached_tokens": 18092,
+      "completion_tokens": 318,
+      "prompt_tokens": 20326,
+      "total_tokens": 20644
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "",
+  "trace_id": "36ea6808e349936c6f716226b05875a2",
+  "valid": true
+}

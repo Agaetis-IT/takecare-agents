@@ -1,0 +1,23 @@
+{
+  "label": "control-question-only-holmes-native-2",
+  "agent": "holmes-native",
+  "latency_seconds": 25,
+  "model_calls": 8,
+  "tool_calls": 0,
+  "input_tokens": 131458,
+  "cache_read_tokens": 96133,
+  "output_tokens": 1036,
+  "cache_pct": 73,
+  "input_per_call": [
+    9612,
+    11731,
+    15315,
+    17203,
+    18120,
+    18606,
+    20200,
+    20671
+  ],
+  "cost_usd": 0.0376,
+  "cost_without_cache_usd": 0.1025
+}

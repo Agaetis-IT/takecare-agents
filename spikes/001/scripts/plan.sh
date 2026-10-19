@@ -27,14 +27,28 @@
 #     of the engine's own behaviour is a failed run, never replayed;
 #   - a run is valid only if its task is COMPLETED with a non-empty answer
 #     (the trigger fails hard otherwise).
+#   - consequence of the replay rule: the robustness difference to a connector
+#     outage (kagent-python degrades and answers; the homemade engine and
+#     kagent-go fail, an adk-go behaviour) is a capability, recorded as such
+#     (stage 4, case c), and by construction does not show in the measures.
 #
 # Reading the results (decided before the first measured run):
 #   - the go/no-go is decided on correctness and latency;
-#   - cost is reported as a range (min, median, max) per engine and scenario,
-#     never as a tie-breaker: with an identical context, two runs differed by
-#     1.7x in input tokens (9 vs 5 model calls, stage 4 event check), so at
-#     n=5 close medians cannot be told apart. The variance comes from the
-#     number of model calls the model decides to make, not from the scenery.
+#   - cost is reported as a range (min, median, max) per engine and scenario.
+#     It does not separate close medians: with an identical context, two runs
+#     differed by 1.7x in input tokens (9 vs 5 model calls, stage 4 event
+#     check), and the variance comes from the number of model calls the model
+#     decides to make, not from the scenery. But a gap between engines clearly
+#     larger than the within-engine spread is a finding and is reported (the
+#     smoke runs already showed 171 k, 94 k and 60 k input tokens for
+#     holmes-native, holmes-mcp and the homemade engine);
+#   - kagent is NOT measured in its default configuration: 0.10.3 defaults to
+#     the go runtime, which fails criterion 5 (model calls leave the trace);
+#     the measured engine is kagent 0.10.3 with `runtime: python`, which
+#     nobody gets by installing kagent unchanged;
+#   - HolmesGPT gets the same instructions as the other engines (as
+#     additional_system_prompt): with them 4/4 smoke runs read the DBProxy,
+#     with the question alone (the POC's setup) 0/4 did (stage 5 control).
 #
 # Usage: scripts/plan.sh [runs-per-engine] [engines...]
 #   default: 5 runs, engines kagent holmes-native holmes-mcp doc-engine
