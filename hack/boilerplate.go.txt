@@ -1,0 +1,2 @@
+// SPDX-FileCopyrightText: YEAR Agaetis
+// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary

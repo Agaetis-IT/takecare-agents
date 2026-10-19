@@ -1,0 +1,8 @@
+# Ignore everything, then re-include only what the operator build needs.
+**
+!go.mod
+!go.sum
+!cmd/**/*.go
+!api/**/*.go
+!internal/**/*.go
+**/*_test.go
