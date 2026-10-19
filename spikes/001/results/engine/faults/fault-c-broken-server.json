@@ -1,0 +1,19 @@
+{
+  "agent": "doc-engine-fault-tool",
+  "artifact_text": "agent run failed: failed to extract tools from the tool set \"mcp_tool_set\": failed to list MCP tools: failed to init MCP session: calling \"initialize\": sending \"initialize\": Not Found",
+  "client": "a2a-go",
+  "conversation_id": "spike-fault-c-broken-server",
+  "error": "task 01a1533b-c034-7f38-b8d6-61297d9b44ab ended in state TASK_STATE_FAILED",
+  "label": "fault-c-broken-server",
+  "latency_seconds": 0,
+  "metadata": {
+    "adk_app_name": "doc",
+    "adk_session_id": "01a1533b-c035-7134-9a2f-277438237964",
+    "adk_user_id": "A2A_USER_01a1533b-c035-7134-9a2f-277438237964",
+    "https://google.github.io/adk-docs/a2a/a2a-extension/": true
+  },
+  "state": "TASK_STATE_FAILED",
+  "task_id": "01a1533b-c034-7f38-b8d6-61297d9b44ab",
+  "trace_id": "1e279c29bdecc3ec6acbe058fe17cd7a",
+  "valid": false
+}

@@ -1,0 +1,19 @@
+{
+  "agent": "doc-engine-fault-model",
+  "artifact_text": "agent run failed: openai: call failed: Post \"http://10.255.255.1/v1/chat/completions\": net/http: request canceled while waiting for connection (Client.Timeout exceeded while awaiting headers)",
+  "client": "a2a-go",
+  "conversation_id": "spike-fault-a-model-timeout",
+  "error": "task 01a1533a-b77c-7191-937b-a8c19cfa53e1 ended in state TASK_STATE_FAILED",
+  "label": "fault-a-model-timeout",
+  "latency_seconds": 31,
+  "metadata": {
+    "adk_app_name": "doc",
+    "adk_session_id": "01a1533a-b77c-73c1-b777-d32044ce2f74",
+    "adk_user_id": "A2A_USER_01a1533a-b77c-73c1-b777-d32044ce2f74",
+    "https://google.github.io/adk-docs/a2a/a2a-extension/": true
+  },
+  "state": "TASK_STATE_FAILED",
+  "task_id": "01a1533a-b77c-7191-937b-a8c19cfa53e1",
+  "trace_id": "7e13279d925a9d5feff95086ed72626c",
+  "valid": false
+}

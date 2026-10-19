@@ -1,0 +1,51 @@
+{
+  "kubernetes": [
+    "events_list",
+    "pods_list",
+    "pods_list_in_namespace",
+    "pods_get",
+    "pods_log",
+    "pods_top",
+    "resources_list",
+    "resources_get"
+  ],
+  "prometheus": [
+    "execute_query",
+    "execute_range_query",
+    "list_label_names",
+    "list_label_values",
+    "find_series",
+    "get_metric_metadata",
+    "get_alerts",
+    "get_rules",
+    "get_targets"
+  ],
+  "incidents": [
+    "incidents_search",
+    "incidents_get",
+    "incidents_recent"
+  ],
+  "runbooks": [
+    "runbooks_search",
+    "runbooks_get",
+    "runbooks_recent"
+  ],
+  "deployments": [
+    "deployments_search",
+    "deployments_get",
+    "deployments_recent"
+  ],
+  "vendor": [
+    "vendor_search",
+    "vendor_get",
+    "vendor_recent"
+  ],
+  "support": [
+    "support_search",
+    "support_get",
+    "support_recent"
+  ],
+  "broken": [
+    "broken_search"
+  ]
+}

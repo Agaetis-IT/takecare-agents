@@ -1,0 +1,27 @@
+{
+  "agent": "doc-engine",
+  "artifact_text": "### Observations\n- Event on pod `orders-api-5cb8fd6866-sczx9` shows readiness probe failing with HTTP status 503.\n- Pod logs for `orders-api-5cb8fd6866-sczx9` report `WARN database orders-db-primary.demo-apps.svc:5432 not reachable ([Errno -2] Name or service not known)`.\n- Deployment `CI-2459` changed `DB_HOST` in ConfigMap `orders-config` from `orders-db.demo-apps.svc:5432` to nonexistent `orders-db-primary.demo-apps.svc:5432`.\n\n### Ruled-out Leads\n- Pod container crash or OOM was ruled out because the container is running with zero restarts.\n- Node unschedulability was ruled out because the pod scheduled and started successfully on node `k3d-spike-001-agent-0`.\n\n### Root Cause\nDeployment `CI-2459` configured `orders-api` with `DB_HOST=orders-db-primary.demo-apps.svc:5432`, but only Service `orders-db` exists in namespace `demo-apps`.\n\n### Recommended Action\nThe orders team should roll back ConfigMap `orders-config` or revert deployment `CI-2459` to point `DB_HOST` back to `orders-db.demo-apps.svc:5432`.",
+  "client": "a2a-go",
+  "conversation_id": "spike-engine-bad-config-rollout",
+  "label": "engine-bad-config-rollout",
+  "latency_seconds": 12,
+  "metadata": {
+    "adk_app_name": "doc",
+    "adk_session_id": "01a1534c-947e-7a32-a97e-4cdabe129069",
+    "adk_user_id": "A2A_USER_01a1534c-947e-7a32-a97e-4cdabe129069",
+    "https://google.github.io/adk-docs/a2a/a2a-extension/": true,
+    "takecare.usage": {
+      "cachedInputTokens": 13625,
+      "inputTokens": 33121,
+      "modelCalls": 4,
+      "outputTokens": 808,
+      "thoughtsTokens": 252,
+      "toolUsePromptTokens": 0,
+      "totalTokens": 33929
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "01a1534c-947e-78af-b2a2-734f41ea40a6",
+  "trace_id": "e8921e118f3b7551cf3b14914957f02f",
+  "valid": true
+}

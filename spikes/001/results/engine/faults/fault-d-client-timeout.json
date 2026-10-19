@@ -1,0 +1,14 @@
+{
+  "agent": "doc-engine",
+  "artifact_text": "",
+  "client": "a2a-go",
+  "conversation_id": "spike-fault-d-client-timeout",
+  "error": "send message: failed to send HTTP request: Post \"http://localhost:18080/engine/doc-engine\": context deadline exceeded",
+  "label": "fault-d-client-timeout",
+  "latency_seconds": 15,
+  "metadata": null,
+  "state": "",
+  "task_id": "",
+  "trace_id": "ba010c8ad656eda48cbc52cf7bd7205d",
+  "valid": false
+}

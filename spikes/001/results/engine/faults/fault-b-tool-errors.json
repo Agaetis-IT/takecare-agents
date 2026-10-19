@@ -1,0 +1,27 @@
+{
+  "agent": "doc-engine",
+  "artifact_text": "### Tool check report\n- Reading DBProxy `billing-db-proxy-old` in namespace `ack-system` failed: resource not found.\n- Reading logs of pod `billing-api-does-not-exist` in namespace `demo-apps` failed: pod not found.\n\n### Observations\n1. Pod logs of `billing-api-7b57b9654f-d2bdp` show `db connection reset by peer, retrying (pool acquire ...)` alongside memory pressure warnings.\n2. In deployment `billing-api`, environment variable `DB_POOL_IDLE_TIMEOUT_SECONDS` is set to `900` seconds.\n3. In `ack-system`, DBProxy `billing-db-proxy` has `spec.idleClientTimeout` set to `600` seconds.\n\n### Ruled-out leads\n1. Pod crashes or probe failures: the pod has 0 restarts and status Running (Pod list).\n2. Primary memory leak: memory pressure is a secondary symptom caused by connection acquisition delays and retained objects (INC-2024-0312, RB-014).\n\n### Root cause\nThe RDS proxy idle timeout (600s) is shorter than the application connection pool timeout (900s), causing the proxy to close connections prematurely (RB-014).\n\n### Recommended action\nThe platform/infrastructure team must raise `spec.idleClientTimeout` on DBProxy `billing-db-proxy` above 900s, or the billing team must lower `DB_POOL_IDLE_TIMEOUT_SECONDS` below 600s.",
+  "client": "a2a-go",
+  "conversation_id": "spike-fault-b-tool-errors",
+  "label": "fault-b-tool-errors",
+  "latency_seconds": 16,
+  "metadata": {
+    "adk_app_name": "doc",
+    "adk_session_id": "01a1533b-5988-7f24-9d1d-7d30757e3771",
+    "adk_user_id": "A2A_USER_01a1533b-5988-7f24-9d1d-7d30757e3771",
+    "https://google.github.io/adk-docs/a2a/a2a-extension/": true,
+    "takecare.usage": {
+      "cachedInputTokens": 6236,
+      "inputTokens": 36063,
+      "modelCalls": 5,
+      "outputTokens": 1064,
+      "thoughtsTokens": 253,
+      "toolUsePromptTokens": 0,
+      "totalTokens": 37127
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "01a1533b-5988-7d28-b407-4fb1773079b1",
+  "trace_id": "f05bc67f378e59610600e28fe768d261",
+  "valid": true
+}
