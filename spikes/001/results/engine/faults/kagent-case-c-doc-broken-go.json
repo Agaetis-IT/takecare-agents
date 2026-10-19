@@ -1,0 +1,18 @@
+{
+  "agent": "doc-broken-go",
+  "artifact_text": "failed to extract tools from the tool set \"mcp_tool_set\": failed to list MCP tools: failed to init MCP session: calling \"initialize\": sending \"initialize\": failed to connect (session ID: ): session not found",
+  "client": "a2a-go",
+  "conversation_id": "spike-kagent-case-c-doc-broken-go",
+  "error": "task 01a15380-fb16-7c8d-9e85-eede94738d7a ended in state TASK_STATE_FAILED",
+  "label": "kagent-case-c-doc-broken-go",
+  "latency_seconds": 0,
+  "metadata": {
+    "adk_app_name": "takecare_system__NS__doc_broken_go",
+    "adk_session_id": "01a15380-fb16-7e4e-bdc4-c40a7bc093f0",
+    "adk_user_id": "admin@kagent.dev"
+  },
+  "state": "TASK_STATE_FAILED",
+  "task_id": "01a15380-fb16-7c8d-9e85-eede94738d7a",
+  "trace_id": "9ec07d4021c73498b7259fcfc6288922",
+  "valid": false
+}

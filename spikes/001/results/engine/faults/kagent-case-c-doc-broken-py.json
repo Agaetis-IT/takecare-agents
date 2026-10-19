@@ -1,0 +1,25 @@
+{
+  "agent": "doc-broken-py",
+  "artifact_text": "### Observations\n1. Pod `orders-api-55f48b5978-b226q` logs `database orders-db-primary.demo-apps.svc:5432 not reachable ([Errno -2] Name or service not known)`.\n2. Deployment `CI-2459` changed `DB_HOST` in ConfigMap `orders-config` from `orders-db.demo-apps.svc:5432` to `orders-db-primary.demo-apps.svc:5432`.\n3. Kubernetes Services in namespace `demo-apps` only include `orders-db`, with no Service named `orders-db-primary`.\n\n### Ruled-out leads\n1. Pod resource exhaustion is ruled out because CPU and memory usage remain low and no restarts occurred (`pods_top`).\n2. General database unreachability is ruled out because the database Service `orders-db` is active and healthy.\n\n### Root cause\nDeployment `CI-2459` switched `DB_HOST` to `orders-db-primary.demo-apps.svc:5432`, an unresolvable hostname with no corresponding Kubernetes Service.\n\n### Recommended action\nThe orders team should revert `DB_HOST` in ConfigMap `orders-config` back to `orders-db.demo-apps.svc:5432`.",
+  "client": "a2a-go",
+  "conversation_id": "spike-kagent-case-c-doc-broken-py",
+  "label": "kagent-case-c-doc-broken-py",
+  "latency_seconds": 14,
+  "metadata": {
+    "kagent_adk_partial": null,
+    "kagent_app_name": "takecare_system__NS__doc_broken_py",
+    "kagent_author": "doc_broken_py",
+    "kagent_invocation_id": "e-18d79621-a5ac-48b2-9260-beae53e2b703",
+    "kagent_session_id": "6d4ecd9c-b111-4c50-a62a-8de2e06a78c5",
+    "kagent_usage_metadata": {
+      "candidatesTokenCount": 302,
+      "promptTokenCount": 10423,
+      "totalTokenCount": 10725
+    },
+    "kagent_user_id": "admin@kagent.dev"
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "07c08dad-2685-455d-bb68-5699a3a990ca",
+  "trace_id": "f0081e726ac96f8f24adc8da76f25ca2",
+  "valid": true
+}

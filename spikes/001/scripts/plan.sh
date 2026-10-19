@@ -18,12 +18,30 @@
 #   - one measured investigation at a time, then one scrape interval of quiet
 #     before reading the gateway metrics (usage is not split per caller).
 #
+# Equal treatment (decided before the first measured run):
+#   - every engine is measured as it is; no engine is hardened during the
+#     measures (the homemade engine's connector-outage weakness stays);
+#   - a run that fails for an infrastructure reason (gateway or MCP server
+#     unavailable, model provider error, cluster fault) is replayed, for any
+#     engine, and recorded as replayed with its cause; a run that fails because
+#     of the engine's own behaviour is a failed run, never replayed;
+#   - a run is valid only if its task is COMPLETED with a non-empty answer
+#     (the trigger fails hard otherwise).
+#
+# Reading the results (decided before the first measured run):
+#   - the go/no-go is decided on correctness and latency;
+#   - cost is reported as a range (min, median, max) per engine and scenario,
+#     never as a tie-breaker: with an identical context, two runs differed by
+#     1.7x in input tokens (9 vs 5 model calls, stage 4 event check), so at
+#     n=5 close medians cannot be told apart. The variance comes from the
+#     number of model calls the model decides to make, not from the scenery.
+#
 # Usage: scripts/plan.sh [runs-per-engine] [engines...]
-#   default: 5 runs, engines kagent holmes-native holmes-mcp
+#   default: 5 runs, engines kagent holmes-native holmes-mcp doc-engine
 set -euo pipefail
 
 runs="${1:-5}"; shift || true
-engines=("$@"); ((${#engines[@]})) || engines=(kagent holmes-native holmes-mcp)
+engines=("$@"); ((${#engines[@]})) || engines=(kagent holmes-native holmes-mcp doc-engine)
 SCENARIOS=(missing-secret-key proxy-timeout bad-config-rollout)
 SCRAPE_INTERVAL_S=15
 
@@ -51,7 +69,9 @@ for s in "${SCENARIOS[@]}"; do
           start_incident:$first, reset_before:false,
           alert:{alertname:$alert, service:$service, namespace:"demo-apps",
                  labels:{bench_run:($i|tostring), takecare_silent:"true", severity:"critical"}},
-          concurrency:1, quiet_after_seconds:$quiet}'
+          concurrency:1, quiet_after_seconds:$quiet,
+          valid_if:"task COMPLETED with a non-empty answer",
+          replay_if:"infrastructure failure, any engine, recorded with its cause"}'
     done
   done
 done
