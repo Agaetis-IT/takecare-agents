@@ -7,12 +7,14 @@ description: Use before opening or updating a pull request on TakeCare Agents. R
 
 1. **Identify the scope.** Find the spec(s) and the PR row in `CLAUDE.md` ("Planned PR sequence") this branch implements. List the acceptance criteria this PR claims, and those it defers (with the PR that will close them).
 2. **Regenerate and check.**
+
    ```bash
    make generate
    git status --porcelain   # generated files must be committed
    make lint
    make test
    ```
+
    Fix every failure. Do not disable a linter rule or skip a test to get green; if a rule is wrong, say so in the PR.
 3. **Guardrails.** Confirm, with the relevant tests passing:
    - the read-only guard (no write verb, `secrets`, `pods/exec|attach|portforward`, `*`, and no `act` tool below `seasoned`);

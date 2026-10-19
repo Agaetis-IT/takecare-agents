@@ -58,6 +58,7 @@ make demo-up | demo-incident | demo-verdict | demo-screens | demo-bench N=5 | de
 ## Go conventions
 
 **Style and structure**
+
 - `gofmt` and `goimports` on every file; `golangci-lint` must pass (config in `.golangci.yml`, created in PR 1; at least `govet`, `staticcheck`, `errcheck`, `ineffassign`, `revive`, `gosec`, `misspell`, `errorlint`, `contextcheck`).
 - Follow *Effective Go* and the Go Code Review Comments: short, clear names; no stutter (`connector.Connector` → `connector.Spec`); package names are short, lower case, singular; no `util` or `common` packages.
 - Keep packages small and focused (see the layout in spec 04). Anything not meant for reuse goes under `internal/`.
@@ -65,20 +66,24 @@ make demo-up | demo-incident | demo-verdict | demo-screens | demo-bench N=5 | de
 - No global mutable state, no `init()` side effects beyond flag and scheme registration.
 
 **Errors**
+
 - Return errors, never panic in operator code. Wrap with context: `fmt.Errorf("render agent for %s: %w", key, err)`. Compare with `errors.Is` / `errors.As`.
 - Error strings are lower case, without trailing punctuation.
 - Do not log and return the same error: either handle it (log) or return it (wrap).
 
 **Context, concurrency, I/O**
+
 - Every function doing I/O takes a `context.Context` as its first parameter and respects cancellation; set explicit timeouts on HTTP, A2A and MCP calls.
 - One shared, configured `http.Client` per destination type (timeouts, proxy and CA bundle from the chart values); never `http.DefaultClient`.
 - Goroutines always have an owner and a way to stop (`errgroup`, context). No unbounded goroutine fan-out: the investigation queue is bounded (spec 02).
 
 **Logging**
+
 - Structured logging through `logr` (controller-runtime's logger, zap backend). Key-value pairs, stable keys in `lowerCamelCase` (`investigation`, `connector`, `level`).
 - Never log secrets, tokens, prompts or model answers (message content follows `captureContent`, ADR 0006). Log the investigation ID and the trace ID instead.
 
 **controller-runtime patterns**
+
 - Reconcilers are **idempotent** and **level-based**: compute the desired state from the spec, apply it, report it. Never assume what the previous reconcile did.
 - Apply generated objects with server-side apply (field owner `takecare-operator`) or `CreateOrUpdate`; set ownerReferences where Kubernetes allows it, otherwise owner labels and a finalizer (ADR 0001).
 - Status through the status subresource only; conditions with `meta.SetStatusCondition`; always set `observedGeneration`.
@@ -89,12 +94,14 @@ make demo-up | demo-incident | demo-verdict | demo-screens | demo-bench N=5 | de
 - Validation in CRDs first (OpenAPI and CEL markers), webhooks only when CEL cannot express the rule.
 
 **Tests**
+
 - Table-driven tests with `t.Run`; `testify` is not required, the standard library is enough (use `go-cmp` for diffs).
 - Golden files under `testdata/`, regenerated with `go test ./... -update`, reviewed like code.
 - envtest for controllers; no test talks to a real cluster, a real model or real Slack except the e2e and bench workflows.
 - Tests are deterministic: no sleeps to wait for state, use `Eventually` with a timeout; inject clocks where time matters (cooldown, TTL).
 
 **Dependencies**
+
 - Prefer the standard library and the Kubernetes ecosystem libraries already in use. Every new dependency is justified in the PR description (why, license, maintenance).
 - Pin Go tool versions in `go.mod` (`tool` directives) or `hack/versions.env`.
 
@@ -104,7 +111,7 @@ make demo-up | demo-incident | demo-verdict | demo-screens | demo-bench N=5 | de
 
 **Commits** follow [Conventional Commits](https://www.conventionalcommits.org/):
 
-```
+```text
 <type>(<scope>): <summary in the imperative, lower case, no final period>
 
 <body: what and why, wrapped at 72 columns>
@@ -128,6 +135,7 @@ Refs: docs/specs/02-doc.md
 Scopes: `api`, `platform`, `connector`, `doc`, `investigation`, `engine`, `report`, `telemetry`, `demo`, `chart`, `ci`, `deps`, `spike-001`. Breaking API changes add `!` after the scope and a `BREAKING CHANGE:` footer.
 
 **Pull requests**
+
 - Title in Conventional Commits form; the PR is squash-merged with that title.
 - The description follows `.github/pull_request_template.md`: spec and acceptance criteria covered (each with how it was checked), tests added, docs updated, **Open questions**.
 - Keep a PR under roughly 600 changed lines excluding generated files; split otherwise.

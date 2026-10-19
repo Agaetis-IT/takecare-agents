@@ -34,7 +34,7 @@ API group `takecare.agaetis.fr`, version `v1alpha1` (see ADR 0003).
 | `TakeCareInvestigation` | Namespace | One handled alert: record, deduplication state, diagnosis, usage, trace |
 | `TakeCareDemo` | Namespace | Scenery and replayable scenarios of the demo mode |
 
-```
+```text
 $ kubectl get takecare -A
 NAME                                        READY   AGE
 takecareplatform.takecare.agaetis.fr/main   True    2d

@@ -31,6 +31,7 @@ Accepted ADRs are never rewritten. A changed decision is a new ADR that supersed
    ## Rejected alternatives
    Each with the reason it lost.
    ```
+
 3. Status stays **Proposed**: only the product owner accepts an ADR. If it supersedes another, do not change the old file's status yourself; mention it in the PR so the reviewer does it on acceptance.
 4. Add a row to `docs/adr/README.md`.
 5. List the specs that would change under "Consequences"; do not edit them in the same PR unless asked.
