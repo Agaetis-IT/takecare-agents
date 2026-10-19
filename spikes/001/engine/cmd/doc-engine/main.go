@@ -14,6 +14,7 @@
 //	PUBLIC_URL                  the agent card's interface URL (through the gateway)
 //	PORT                        listen port (default 8080)
 //	CAPTURE_CONTENT             "true" keeps message content in spans (default: dropped)
+//	HTTP_TIMEOUT                timeout of one model or MCP HTTP call (default 2m)
 //	OTEL_EXPORTER_OTLP_ENDPOINT standard OTLP/gRPC exporter settings
 package main
 
@@ -80,7 +81,15 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	// One client for the model and the MCP servers: otelhttp injects the
 	// active span's traceparent into every outbound request.
-	httpClient := &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport), Timeout: 2 * time.Minute}
+	httpTimeout := 2 * time.Minute
+	if v := os.Getenv("HTTP_TIMEOUT"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("HTTP_TIMEOUT: %w", err)
+		}
+		httpTimeout = d
+	}
+	httpClient := &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport), Timeout: httpTimeout}
 
 	llm, err := openaimodel.NewModel(ctx, cfg.model, &openaimodel.ClientConfig{
 		APIKey:     "dummy", // the gateway holds the real key (ADR 0004)

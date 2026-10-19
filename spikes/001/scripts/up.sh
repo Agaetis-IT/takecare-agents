@@ -16,17 +16,18 @@ create_cluster() {
   if k3d cluster list "$CLUSTER_NAME" >/dev/null 2>&1; then
     log "cluster ${CLUSTER_NAME} already exists"
   else
-    log "creating k3d cluster ${CLUSTER_NAME} (${K3S_IMAGE})"
+    local image="$K3S_IMAGE"
+    if [[ "$KAGENT_LINE" == 1.0 ]]; then
+      # kagent 1.x documents Kubernetes 1.37 as its floor (pod certificates GA).
+      image="$K3S_IMAGE_KAGENT_1"
+    fi
+    log "creating k3d cluster ${CLUSTER_NAME} (${image}, kagent line ${KAGENT_LINE})"
     # traefik off: the gateway listener needs host port 80 on the load balancer.
     k3d cluster create "$CLUSTER_NAME" \
-      --image "$K3S_IMAGE" \
+      --image "$image" \
       --agents 1 \
       --k3s-arg "--disable=traefik@server:*" \
       --k3s-arg "--kube-apiserver-arg=event-ttl=${EVENT_TTL}@server:*" \
-      --k3s-arg "--kube-apiserver-arg=feature-gates=${K8S_FEATURE_GATES}@server:*" \
-      --k3s-arg "--kube-apiserver-arg=runtime-config=certificates.k8s.io/v1beta1=true@server:*" \
-      --k3s-arg "--kube-controller-manager-arg=feature-gates=${K8S_FEATURE_GATES}@server:*" \
-      --k3s-arg "--kubelet-arg=feature-gates=${K8S_FEATURE_GATES}@server:*;agent:*" \
       --port "${GATEWAY_HOST_PORT}:80@loadbalancer" \
       --kubeconfig-update-default=false \
       --kubeconfig-switch-context=false \
@@ -99,6 +100,27 @@ install_tools() {
 }
 
 install_kagent() {
+  case "$KAGENT_LINE" in
+    0.10.3) install_kagent_0103 ;;
+    1.0) install_kagent_1 ;;
+    *) die "unknown KAGENT_LINE: $KAGENT_LINE" ;;
+  esac
+}
+
+install_kagent_0103() {
+  log "kagent ${KAGENT_0103_VERSION} (CRDs, then controller)"
+  # CRDs applied by their own chart, installed separately from the controller
+  # so that an upgrade of the controller never relies on Helm's crds/ handling.
+  helm upgrade -i kagent-crds oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds \
+    --version "$KAGENT_0103_VERSION" -n "$KAGENT_NS" --create-namespace \
+    --set kmcp.enabled=false --wait
+  helm upgrade -i kagent oci://ghcr.io/kagent-dev/kagent/helm/kagent \
+    --version "$KAGENT_0103_VERSION" -n "$KAGENT_NS" \
+    -f "${SPIKE_DIR}/values/kagent-0.10.3.yaml" --wait --timeout 10m
+  kubectl -n "$KAGENT_NS" get pods
+}
+
+install_kagent_1() {
   # kagent 1.0 line (ADR 0010): installed by kagent's own CLI, pinned by
   # checksum, which also installs Substrate, its pod-certificate controller
   # and a bundled PostgreSQL. Chart versions are pinned in the CLI config.
@@ -136,8 +158,18 @@ EOF
 }
 
 install_agents() {
-  log "the Doc on kagent (Go runtime), identity doc-service"
-  "${SPIKE_DIR}/scripts/agents.sh" doc-service:doc-service
+  if [[ "$KAGENT_LINE" == 1.0 ]]; then
+    log "the Doc on kagent 1.0 (Go runtime only), identity doc-service"
+    "${SPIKE_DIR}/scripts/agents.sh" doc-service:doc-service
+  else
+    log "the Doc on kagent 0.10.3: python (measured) and go runtimes, identity doc-service"
+    "${SPIKE_DIR}/scripts/agents-0.10.3.sh" doc-service-py:doc-service:python doc-service:doc-service:go
+  fi
+}
+
+install_engine() {
+  log "the homemade engine (ADK Go), identity doc-service"
+  "${SPIKE_DIR}/scripts/engine.sh"
 }
 
 main() {
@@ -151,7 +183,8 @@ main() {
     tools) install_tools ;;
     kagent) install_kagent ;;
     agents) install_agents ;;
-    all) create_cluster; install_observability; install_gateway; install_monitoring; install_tools; install_kagent; install_agents ;;
+    engine) install_engine ;;
+    all) create_cluster; install_observability; install_gateway; install_monitoring; install_tools; install_kagent; install_agents; install_engine ;;
     *) die "unknown stage: $1" ;;
   esac
 }

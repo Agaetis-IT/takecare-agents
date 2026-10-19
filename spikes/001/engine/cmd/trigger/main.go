@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -118,6 +119,16 @@ func run(url, agentName, label, out string, alert engine.Alert, timeout time.Dur
 		"artifact_text":   res.Diagnosis,
 		"metadata":        res.Metadata,
 	}
+	// A task that is not COMPLETED, or COMPLETED without an answer, is a hard
+	// error: a run must never be counted, nor dropped quietly, on that basis
+	// (stage 4: engine-1 ended FAILED after producing a correct answer).
+	if err == nil && res.State != "TASK_STATE_COMPLETED" {
+		err = fmt.Errorf("task %s ended in state %s", res.TaskID, res.State)
+	}
+	if err == nil && strings.TrimSpace(res.Diagnosis) == "" {
+		err = fmt.Errorf("task %s completed with an empty answer", res.TaskID)
+	}
+	rec["valid"] = err == nil
 	if err != nil {
 		rec["error"] = err.Error()
 	}
