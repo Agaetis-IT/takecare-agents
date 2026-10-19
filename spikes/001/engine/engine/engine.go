@@ -1,15 +1,19 @@
 // Package engine is the spike's version of the operator-side engine
 // interface of ADR 0007: trigger one investigation for one alert and read the
-// diagnosis back. The only implementation talks A2A (ADR 0009) through the
-// gateway, so the same client drives kagent and the homemade engine.
+// diagnosis back. A2A (ADR 0009) drives kagent and the homemade engine through
+// the gateway; Holmes drives HolmesGPT's HTTP API, the baseline's only entry.
 //
 // Throwaway code for spike 001; not the product's package.
 package engine
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
@@ -99,4 +103,66 @@ Answer in three parts: what you observed and where, the root cause, the recommen
 
 Be brief: at most three observations and two ruled-out leads, one sentence each; the root cause in one sentence, the action in one sentence. State the root cause only once. Do not repeat what the alert already says, nor the name of a source you just cited. Do not name the tools you used: cite the source (pod log, ticket ID, runbook ID), not the tool that read it. One sentence = 25 words at most. No preamble, no conclusion. Absolute limit: 1,500 characters.`,
 		a.Name, a.Service, a.Namespace, a.Description)
+}
+
+// Holmes drives a HolmesGPT server (0.45.0) through its HTTP API: one
+// POST /api/chat per investigation. HolmesGPT has no A2A endpoint (ADR 0007).
+// Instructions are the same system instructions the other engines get, sent
+// as additional_system_prompt on top of HolmesGPT's own prompt.
+type Holmes struct {
+	URL          string // base URL, e.g. http://localhost:18080/holmes/holmes-native
+	HTTPClient   *http.Client
+	Instructions string
+}
+
+type holmesChatRequest struct {
+	Ask                    string `json:"ask"`
+	AdditionalSystemPrompt string `json:"additional_system_prompt,omitempty"`
+}
+
+type holmesChatResponse struct {
+	Analysis  string         `json:"analysis"`
+	Metadata  map[string]any `json:"metadata"`
+	ToolCalls []struct {
+		ToolName string `json:"tool_name"`
+	} `json:"tool_calls"`
+}
+
+// Investigate implements Engine.
+func (h *Holmes) Investigate(ctx context.Context, alert Alert) (Result, error) {
+	body, err := json.Marshal(holmesChatRequest{Ask: Prompt(alert), AdditionalSystemPrompt: h.Instructions})
+	if err != nil {
+		return Result{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(h.URL, "/")+"/api/chat", bytes.NewReader(body))
+	if err != nil {
+		return Result{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := h.HTTPClient.Do(req)
+	if err != nil {
+		return Result{}, fmt.Errorf("holmes chat: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return Result{}, fmt.Errorf("read holmes answer: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return Result{State: "HTTP_" + strconv.Itoa(resp.StatusCode)}, fmt.Errorf("holmes chat: HTTP %d: %.300s", resp.StatusCode, raw)
+	}
+	var out holmesChatResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return Result{}, fmt.Errorf("parse holmes answer: %w", err)
+	}
+	meta := out.Metadata
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	tools := make([]string, 0, len(out.ToolCalls))
+	for _, t := range out.ToolCalls {
+		tools = append(tools, t.ToolName)
+	}
+	meta["holmes_tool_calls"] = tools
+	return Result{State: "TASK_STATE_COMPLETED", Diagnosis: out.Analysis, Metadata: meta}, nil
 }

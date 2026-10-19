@@ -58,18 +58,20 @@ func main() {
 	namespace := flag.String("namespace", "demo-apps", "namespace")
 	description := flag.String("description", "More than 2 % of billing-api requests have answered 504 for 30 seconds.", "alert description")
 	timeout := flag.Duration("timeout", 5*time.Minute, "investigation timeout (spec 02: 300s)")
+	protocol := flag.String("protocol", "a2a", "a2a (kagent, homemade engine) or holmes (HolmesGPT /api/chat)")
+	instructions := flag.String("instructions", "", "system instructions file, sent to HolmesGPT as additional_system_prompt")
 	flag.Parse()
 	if *url == "" || *label == "" {
 		flag.Usage()
 		os.Exit(2)
 	}
-	if err := run(*url, *agentName, *label, *out, engine.Alert{Name: *alertName, Service: *service, Namespace: *namespace, Description: *description}, *timeout); err != nil {
+	if err := run(*url, *agentName, *label, *out, *protocol, *instructions, engine.Alert{Name: *alertName, Service: *service, Namespace: *namespace, Description: *description}, *timeout); err != nil {
 		fmt.Fprintln(os.Stderr, "trigger:", err)
 		os.Exit(1)
 	}
 }
 
-func run(url, agentName, label, out string, alert engine.Alert, timeout time.Duration) error {
+func run(url, agentName, label, out, protocol, instructionsFile string, alert engine.Alert, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -102,8 +104,25 @@ func run(url, agentName, label, out string, alert engine.Alert, timeout time.Dur
 		headers: map[string]string{"x-conversation-id": conversationID, "A2A-Version": "1.0"},
 	}, otelhttp.WithTracerProvider(tp))}
 
+	var eng engine.Engine
+	switch protocol {
+	case "a2a":
+		eng = &engine.A2A{URL: url, HTTPClient: client}
+	case "holmes":
+		instr := ""
+		if instructionsFile != "" {
+			b, err := os.ReadFile(instructionsFile)
+			if err != nil {
+				return fmt.Errorf("read instructions: %w", err)
+			}
+			instr = string(b)
+		}
+		eng = &engine.Holmes{URL: url, HTTPClient: client, Instructions: instr}
+	default:
+		return fmt.Errorf("unknown protocol %q", protocol)
+	}
 	start := time.Now()
-	res, err := (&engine.A2A{URL: url, HTTPClient: client}).Investigate(ctx, alert)
+	res, err := eng.Investigate(ctx, alert)
 	latency := time.Since(start)
 	span.End()
 
@@ -113,7 +132,7 @@ func run(url, agentName, label, out string, alert engine.Alert, timeout time.Dur
 		"trace_id":        span.SpanContext().TraceID().String(),
 		"conversation_id": conversationID,
 		"latency_seconds": int(latency.Round(time.Second).Seconds()),
-		"client":          "a2a-go",
+		"client":          protocol,
 		"state":           res.State,
 		"task_id":         res.TaskID,
 		"artifact_text":   res.Diagnosis,

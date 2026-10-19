@@ -1,0 +1,64 @@
+{
+  "agent": "holmes-mcp",
+  "artifact_text": "### Observations\n\n1. Pod `billing-api-5bb97fbdc4-4szcr` logs repeat `WARN db connection reset by peer, retrying (pool acquire ...)` alongside memory pressure warnings.\n2. In `ack-system`, `DBProxy/billing-db-proxy` sets `idleClientTimeout: 600` (applied in CI-2452), whereas `Deployment/billing-api` configures `DB_POOL_IDLE_TIMEOUT_SECONDS: \"900\"`.\n3. Prometheus metrics show `db_connection_wait_seconds{service=\"billing-api\"}` rising above 2.2 seconds concurrently with heap growth up to 360 MB.\n\n### Ruled-out leads\n\n1. Application memory leak was ruled out because heap growth is a side effect of stalled requests during pool exhaustion (RB-014, INC-2024-0312).\n2. Load balancer keep-alive mismatch was ruled out because CI-2455 already aligned the ALB and HTTP keep-alive timeouts to 120s and 125s.\n\n### Root cause\n\nThe RDS DBProxy `idleClientTimeout` (600s) is shorter than the `billing-api` connection pool recycling timeout (900s), causing silent connection drops and pool exhaustion.\n\n### Recommended action\n\nThe infrastructure team must remove or increase `idleClientTimeout` on `DBProxy/billing-db-proxy` in `ack-system` above 900s to restore AWS default recycling.",
+  "client": "holmes",
+  "conversation_id": "spike-baseline-holmes-mcp-1",
+  "label": "baseline-holmes-mcp-1",
+  "latency_seconds": 22,
+  "metadata": {
+    "costs": {
+      "cache_creation_tokens": null,
+      "cached_tokens": 57377,
+      "completion_tokens": 1095,
+      "max_completion_tokens_per_call": 338,
+      "max_prompt_tokens_per_call": 19884,
+      "num_compactions": 0,
+      "prompt_tokens": 93958,
+      "reasoning_tokens": 161,
+      "total_cost": 0,
+      "total_tokens": 95053
+    },
+    "finish_reason": "stop",
+    "holmes_tool_calls": [
+      "runbooks_search",
+      "incidents_search",
+      "deployments_recent",
+      "pods_list_in_namespace",
+      "events_list",
+      "incidents_get",
+      "deployments_get",
+      "runbooks_get",
+      "pods_log",
+      "runbooks_get",
+      "deployments_get",
+      "resources_list",
+      "deployments_get",
+      "resources_get",
+      "resources_get",
+      "execute_query",
+      "execute_query"
+    ],
+    "max_output_tokens": 65536,
+    "max_tokens": 1048576,
+    "request_id": "dd4be1e4-6ba0-442f-b7ca-176fd074d726",
+    "tokens": {
+      "assistant_tokens": 728,
+      "other_tokens": 0,
+      "system_tokens": 3961,
+      "tools_to_call_tokens": 3486,
+      "tools_tokens": 9293,
+      "total_tokens": 17712,
+      "user_tokens": 316
+    },
+    "usage": {
+      "cached_tokens": 18034,
+      "completion_tokens": 338,
+      "prompt_tokens": 19884,
+      "total_tokens": 20222
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "",
+  "trace_id": "3282c20371405cdee7859d8ab313b4d7",
+  "valid": true
+}

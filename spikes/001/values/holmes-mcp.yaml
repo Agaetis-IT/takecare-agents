@@ -1,0 +1,14 @@
+# Baseline 2: HolmesGPT on the same MCP servers as the other engines, native
+# toolsets off. Separates "the engine is weaker" from "our tools are weaker".
+toolsets:
+  kubernetes/core: { enabled: false }
+  kubernetes/logs: { enabled: false }
+  kubernetes/live-metrics: { enabled: false }
+  prometheus/metrics: { enabled: false }
+  helm/core: { enabled: false }
+  robusta: { enabled: false }
+  internet: { enabled: false }
+  skills: { enabled: false }
+  connectivity_check: { enabled: false }
+  bash: { enabled: false }
+  openshift/core: { enabled: false }

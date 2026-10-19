@@ -1,0 +1,20 @@
+# HolmesGPT's own ServiceAccount (one per variant namespace, ${NS}), with exactly the rights of
+# kubernetes-mcp-server (manifests/mcp/kubernetes-mcp-server.yaml): read in
+# the scenery namespaces only, no Secrets, no exec, no write, no wildcard.
+# Replaces the chart's broad ClusterRole so that the baselines see what the
+# other engines see.
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: holmes, namespace: ${NS} }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: { name: ${NS}-read, namespace: demo-apps }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: kubernetes-mcp-server-read }
+subjects: [{ kind: ServiceAccount, name: holmes, namespace: ${NS} }]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: { name: ${NS}-read, namespace: ack-system }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: kubernetes-mcp-server-read }
+subjects: [{ kind: ServiceAccount, name: holmes, namespace: ${NS} }]

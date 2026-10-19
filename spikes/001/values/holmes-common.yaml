@@ -1,0 +1,14 @@
+# HolmesGPT 0.45.0 baseline, common to both variants (keys from the 0.45.0
+# chart's values.yaml). Model through the gateway with a dummy key (ADR 0004).
+createServiceAccount: false
+customServiceAccountName: holmes
+enableAccountsCreate: false
+additionalEnvVars:
+  - { name: MODEL, value: gw }
+  - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4317" }
+  - { name: OTEL_SERVICE_NAME, value: "${RELEASE}" }
+modelList:
+  gw:
+    model: openai/${MODEL}
+    api_base: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1
+    api_key: dummy

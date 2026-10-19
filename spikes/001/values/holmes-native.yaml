@@ -1,0 +1,14 @@
+# Baseline 1: HolmesGPT's native Kubernetes and Prometheus toolsets (what the
+# POC measured), the corpus through MCP. bash and internet off.
+toolsets:
+  kubernetes/core: { enabled: true }
+  kubernetes/logs: { enabled: true }
+  prometheus/metrics:
+    enabled: true
+    config: { prometheus_url: "http://prometheus-server.monitoring.svc.cluster.local" }
+  robusta: { enabled: false }
+  internet: { enabled: false }
+  skills: { enabled: false }
+  connectivity_check: { enabled: false }
+  bash: { enabled: false }
+  openshift/core: { enabled: false }

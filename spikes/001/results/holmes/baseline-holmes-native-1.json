@@ -1,0 +1,65 @@
+{
+  "agent": "holmes-native",
+  "artifact_text": "**Observations:**\n1. Pod logs of `billing-api-5bb97fbdc4-4szcr` show repeated lines `WARN db connection reset by peer, retrying (pool acquire 1.87s)` alongside `idle_timeout=900s`.\n2. The DBProxy resource `billing-db-proxy` in `ack-system` defines `spec.idleClientTimeout: 600`.\n3. The pod `billing-api-5bb97fbdc4-4szcr` has 0 restarts and status `Running` with all probes passing.\n\n**Ruled-out leads:**\n1. Application memory leak and OOMKilled were ruled out because the pod has zero restarts and heap usage is capped below memory limits (INC-2024-0312, RB-014).\n2. Load balancer timeout mismatch was ruled out because errors stem from database pool resets rather than ALB keep-alive drops (CI-2455, RB-019).\n\n**Root cause:**\nThe RDS Proxy `idleClientTimeout` (600s) is shorter than the `billing-api` connection pool recycling timeout `DB_POOL_IDLE_TIMEOUT_SECONDS` (900s), causing the proxy to prematurely drop idle database connections (RB-014).\n\n**Recommended action:**\nThe platform infrastructure team should raise `spec.idleClientTimeout` on `billing-db-proxy` above 900s, or the billing team must lower `DB_POOL_IDLE_TIMEOUT_SECONDS` on `billing-api` below 600s.",
+  "client": "holmes",
+  "conversation_id": "spike-baseline-holmes-native-1",
+  "label": "baseline-holmes-native-1",
+  "latency_seconds": 29,
+  "metadata": {
+    "costs": {
+      "cache_creation_tokens": null,
+      "cached_tokens": 121105,
+      "completion_tokens": 1175,
+      "max_completion_tokens_per_call": 356,
+      "max_prompt_tokens_per_call": 28484,
+      "num_compactions": 0,
+      "prompt_tokens": 170705,
+      "reasoning_tokens": 132,
+      "total_cost": 0,
+      "total_tokens": 171880
+    },
+    "finish_reason": "stop",
+    "holmes_tool_calls": [
+      "deployments_recent",
+      "kubernetes_tabular_query",
+      "incidents_recent",
+      "runbooks_recent",
+      "vendor_recent",
+      "deployments_get",
+      "fetch_pod_logs",
+      "kubernetes_jq_query",
+      "kubernetes_jq_query",
+      "runbooks_search",
+      "incidents_search",
+      "kubernetes_jq_query",
+      "runbooks_get",
+      "incidents_get",
+      "incidents_get",
+      "runbooks_get",
+      "kubernetes_jq_query",
+      "list_prometheus_rules"
+    ],
+    "max_output_tokens": 65536,
+    "max_tokens": 1048576,
+    "request_id": "a81d5b89-d3de-4233-8646-d1d258da5ae8",
+    "tokens": {
+      "assistant_tokens": 836,
+      "other_tokens": 0,
+      "system_tokens": 4944,
+      "tools_to_call_tokens": 4045,
+      "tools_tokens": 15100,
+      "total_tokens": 25160,
+      "user_tokens": 316
+    },
+    "usage": {
+      "cached_tokens": 22900,
+      "completion_tokens": 356,
+      "prompt_tokens": 28484,
+      "total_tokens": 28840
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "",
+  "trace_id": "8ca4c08cf889d9769b5019bc8f3f3759",
+  "valid": true
+}

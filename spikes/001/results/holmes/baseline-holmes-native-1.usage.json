@@ -1,0 +1,23 @@
+{
+  "label": "baseline-holmes-native-1",
+  "agent": "holmes-native",
+  "latency_seconds": 29,
+  "model_calls": 8,
+  "tool_calls": 0,
+  "input_tokens": 170705,
+  "cache_read_tokens": 121105,
+  "output_tokens": 1175,
+  "cache_pct": 70,
+  "input_per_call": [
+    10177,
+    12642,
+    17629,
+    21878,
+    24807,
+    27092,
+    27996,
+    28484
+  ],
+  "cost_usd": 0.0507,
+  "cost_without_cache_usd": 0.1324
+}
