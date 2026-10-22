@@ -8,7 +8,7 @@
 
 ## Repository layout
 
-```
+```text
 api/v1alpha1/                 CRD Go types (RoleCommonSpec, TakeCarePlatform, TakeCareConnector, TakeCareDoc, TakeCareInvestigation, TakeCareDemo)
 cmd/operator/                 operator entrypoint (controllers + alert intake HTTP server)
 internal/controller/          platform, doc, demo reconcilers

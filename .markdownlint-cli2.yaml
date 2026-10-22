@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 Agaetis
+# SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+
+# markdownlint-cli2 (image pinned in hack/versions.env).
+globs:
+  - "**/*.md"
+ignores:
+  - "bin/**"
+  - "spikes/**"
+gitignore: true
+config:
+  # Paragraphs are written on one line; tables are aligned by hand or not.
+  MD013: false
+  MD060: false
+  # The README centers its logo with HTML; the PR template has no title.
+  MD033: false
+  MD041: false
+  # CLAUDE.md uses bold labels for short sub-sections.
+  MD036: false

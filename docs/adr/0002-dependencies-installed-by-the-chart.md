@@ -4,6 +4,7 @@
 |---|---|
 | Status | Accepted |
 | Date | 2026-10-16 |
+| Amended | 2026-10-19, by the product owner: the version table no longer carries numbers, it points to `hack/versions.env` (PR #2) |
 
 ## Context
 
@@ -16,17 +17,17 @@ TakeCare relies on young third-party building blocks whose versions move fast (a
 3. Two **values profiles**:
    - `values-prod.yaml`: TakeCare and its dependencies only. Prometheus, Alertmanager, the OpenTelemetry backend and Slack belong to the customer (prerequisites).
    - `values-demo.yaml`: adds the demo infrastructure: Prometheus (with the demo alerting rules), Alertmanager, an OpenTelemetry Collector, Jaeger, and the ACK `DBProxy` CRD. The scenery workloads themselves are deployed by the `TakeCareDemo` controller (spec 03).
-4. **Starting versions**: those of the POC, proven in practice. All pins live in `hack/versions.env` (spec 04).
+4. **Pinned versions.** Every building block below is pinned to an exact version, and **the versions live only in `hack/versions.env`** (spec 04), the single source of truth for the Makefile, the charts and the CI. This ADR lists the building blocks and the rule, never the numbers: a version table here would go stale by construction. Each pin in `hack/versions.env` says where it comes from (the POC, spike 001, a bump PR).
 
-   | Building block | Starting version |
+   | Building block | Notes |
    |---|---|
-   | agentgateway (+ agentgateway-crds) | 1.5.0; moving to 1.6 (current latest) is a milestone task, decided on 2026-10-13 |
-   | Gateway API (CRDs, standard channel) | v1.6.1 |
-   | kagent (+ kagent-crds) | 0.10.3 or the version validated by spike 001 (ADR 0007; the POC ran 0.9.12) |
+   | agentgateway (+ agentgateway-crds) | the move from the POC's 1.5 line to 1.6 was decided on 2026-10-13 |
+   | Gateway API (CRDs, standard channel) | upstream `kubernetes-sigs/gateway-api` |
+   | Agent engine (kagent + kagent-crds, per ADR 0007) | pinned once ADR 0007 is settled by spike 001 |
    | `containers/kubernetes-mcp-server` | release validated by spike 001 (ADR 0008) |
    | `giantswarm/mcp-prometheus` | release validated by spike 001 (ADR 0008) |
-   | Prometheus (chart `prometheus-community/prometheus`) | 29.27.0, demo profile only |
-   | k3s (demo) | image pinned in `hack/versions.env` |
+   | Prometheus (chart `prometheus-community/prometheus`) | demo profile only |
+   | k3s (demo) | image of the k3d cluster |
 
    Any version bump goes through a PR whose end-to-end CI is green.
 5. The **CRDs** (TakeCare and third-party) live in a separate `takecare-crds` chart, so that they are updated on every `upgrade` and not deleted by an `uninstall` of the main chart. The Gateway API CRDs are applied server-side by a Helm hook job running on `pre-install` and `pre-upgrade`.

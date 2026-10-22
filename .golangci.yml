@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 Agaetis
+# SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+
+# golangci-lint v2 (version pinned in hack/versions.env).
+# The minimum set is listed in CLAUDE.md; do not disable a rule to get green.
+version: "2"
+run:
+  allow-parallel-runners: true
+linters:
+  default: none
+  enable:
+    # Required by CLAUDE.md.
+    - contextcheck
+    - errcheck
+    - errorlint
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - revive
+    - staticcheck
+    # From the kubebuilder v4 scaffold.
+    - copyloopvar
+    - depguard
+    - ginkgolinter
+    - goconst
+    - gocyclo
+    - modernize
+    - nakedret
+    - prealloc
+    - unconvert
+    - unparam
+    - unused
+  settings:
+    depguard:
+      rules:
+        forbid-sort-pkg:
+          deny:
+            - pkg: sort
+              desc: use the slices package
+    misspell:
+      locale: US
+    revive:
+      rules:
+        - name: comment-spacings
+        - name: import-shadowing
+        - name: exported
+        - name: package-comments
+  exclusions:
+    generated: lax
+    presets:
+      - std-error-handling
+    paths:
+      # Throwaway spike code is not part of the product (spec 04).
+      - ^spikes/
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/agaetis-it/takecare-agents
+  exclusions:
+    generated: lax
+    paths:
+      - ^spikes/

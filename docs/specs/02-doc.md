@@ -88,7 +88,7 @@ Printer columns: `ALERT`, `PHASE`, `PUBLISHED`, `AGE`. Investigations older than
 
 ## Flow
 
-```
+```text
 Alertmanager ──POST /v1/alerts──▶ operator (alert intake)
                                     │ 1. authenticate, parse, keep firing alerts in scope
                                     │ 2. dedup: create TakeCareInvestigation (deterministic name), cooldown
@@ -136,7 +136,7 @@ The Doc controller generates and keeps up to date one kagent `Agent` per `TakeCa
 
 The operator sends **one A2A message per investigation** through the gateway, with W3C trace context, and follows the task until a terminal state or `timeout`. The message is rendered from this template:
 
-```
+```text
 An alert just fired on the cluster: {alertname} on {service} (namespace {namespace}).
 {description}
 
