@@ -37,3 +37,9 @@ otel:
         endpoint: http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4317
         protocol: grpc
         insecure: true
+
+# Restrict the controller's RBAC to our namespaces: Roles + RoleBindings in
+# each listed namespace instead of cluster-wide ClusterRoles (ADR 0007
+# install requirement). WATCH_NAMESPACES is derived from this list.
+rbac:
+  namespaces: [kagent, takecare-system]
