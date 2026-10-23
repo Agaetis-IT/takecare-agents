@@ -50,6 +50,17 @@
 #     additional_system_prompt): with them 4/4 smoke runs read the DBProxy,
 #     with the question alone (the POC's setup) 0/4 did (stage 5 control).
 #
+# Scoring (decided before the first measured run; scripts/bench_score.py, spec 04):
+#   - official score: the chain rule of the scenario, applied to the diagnosis;
+#   - second column, objective, not a score: was the decisive evidence read (a
+#     cluster-reading tool called with arguments matching it), from the tool
+#     calls recorded for the run. A run with no recorded tool call is an error.
+#   Nobody grades a diagnosis by hand.
+#
+# Controls (flagged control:true, outside the 60): after the proxy-timeout
+# block, 2 question-only runs per HolmesGPT variant (the POC's setup), scored
+# with both columns, to restate the stage 5 control with the two columns.
+#
 # Usage: scripts/plan.sh [runs-per-engine] [engines...]
 #   default: 5 runs, engines kagent holmes-native holmes-mcp doc-engine
 set -euo pipefail
@@ -87,5 +98,20 @@ for s in "${SCENARIOS[@]}"; do
           valid_if:"task COMPLETED with a non-empty answer",
           replay_if:"infrastructure failure, any engine, recorded with its cause"}'
     done
+  done
+done
+
+# Controls: question only (no instructions), proxy-timeout, 2 per Holmes variant.
+# They run on the same open proxy-timeout incident as its block, right after it,
+# so they are emitted before the next scenario block: see the runner, which
+# executes a control run when it reaches the end of the proxy-timeout block.
+for e in holmes-native holmes-mcp; do
+  for c in 1 2; do
+    i=$((i + 1))
+    jq -nc --argjson i "$i" --arg e "$e" --argjson c "$c" \
+      '{run:$i, scenario:"proxy-timeout", engine:$e, control:true, instructions:false,
+        label:("control-question-only-"+$e+"-"+($c|tostring)),
+        alert:{alertname:"HighErrorRate", service:"billing-api", namespace:"demo-apps"},
+        concurrency:1, valid_if:"task COMPLETED with a non-empty answer"}'
   done
 done

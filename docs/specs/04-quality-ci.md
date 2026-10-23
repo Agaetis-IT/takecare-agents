@@ -69,7 +69,15 @@ A small HTTP server implementing `chat.postMessage` and `auth.test`, recording m
 Taken from the POC's `mesures.py`:
 
 - runs N investigations on the ongoing `proxy-timeout` incident by posting N synthetic `HighErrorRate` alerts to `/v1/alerts`, each with a distinct `bench_run=<i>` label (hence a distinct fingerprint, so neither dedup nor cooldown applies) and the label `takecare_silent="true"` (no Slack, spec 02);
-- a diagnosis is **correct** when it names the proxy (`proxy`) **and** the idle timeout (`idle`, `idleClientTimeout`, `600 s`), case-insensitive;
+- a diagnosis is **correct** by the **chain rule** of its scenario: every part must be named, case-insensitive, and the alternatives inside a part are ORed. For `proxy-timeout`: the proxy (`proxy`) **and** the idle timeout (`idle`, `idleClientTimeout`, `600 s`). The scenarios of spike 001 have the same form, written before the first measured run:
+
+  | Scenario | Part 1 | Part 2 |
+  |---|---|---|
+  | `proxy-timeout` | `proxy` | `idle`, `idleClientTimeout`, `600 s` |
+  | `bad-config-rollout` | `configmap`, `orders-config` | `orders-db-primary` |
+  | `missing-secret-key` | `SMTP_PASSWORD` | `notifications-smtp`, `secret` |
+
+- a second column, **objective and not a score**: was the decisive evidence read, that is, did the run call a cluster-reading tool whose arguments match the scenario's evidence (the DBProxy resource for `proxy-timeout`; the ConfigMap `orders-config` or the logs of an `orders-api` pod for `bad-config-rollout`; the logs or spec of `notifications-worker` for `missing-secret-key`). Computed from the tool calls recorded for the run, with no human judgement; a run with no recorded tool call is an error, never a pass. It catches a right answer given without having looked: the chain rule alone accepts "the proxy idle timeout" whether or not the DBProxy was read. Both columns are reported; the chain rule stays the official score;
 - it also reports whether the memory lead is mentioned (measured, not scored), the length, the duration, the model calls, tokens and cost of each run;
 - output: a table and a JSON report (`test/bench/report-<date>.json`).
 

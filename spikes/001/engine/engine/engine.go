@@ -124,7 +124,11 @@ type holmesChatResponse struct {
 	Analysis  string         `json:"analysis"`
 	Metadata  map[string]any `json:"metadata"`
 	ToolCalls []struct {
-		ToolName string `json:"tool_name"`
+		ToolName    string `json:"tool_name"`
+		ToolsetName string `json:"toolset_name"`
+		Result      struct {
+			Params map[string]any `json:"params"`
+		} `json:"result"`
 	} `json:"tool_calls"`
 }
 
@@ -160,9 +164,13 @@ func (h *Holmes) Investigate(ctx context.Context, alert Alert) (Result, error) {
 		meta = map[string]any{}
 	}
 	tools := make([]string, 0, len(out.ToolCalls))
+	detail := make([]map[string]any, 0, len(out.ToolCalls))
 	for _, t := range out.ToolCalls {
 		tools = append(tools, t.ToolName)
+		detail = append(detail, map[string]any{"tool": t.ToolName, "toolset": t.ToolsetName, "params": t.Result.Params})
 	}
 	meta["holmes_tool_calls"] = tools
+	// Tool calls with their arguments, for the "decisive evidence read" column.
+	meta["holmes_tool_calls_detail"] = detail
 	return Result{State: "TASK_STATE_COMPLETED", Diagnosis: out.Analysis, Metadata: meta}, nil
 }
