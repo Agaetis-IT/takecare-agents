@@ -1,0 +1,186 @@
+{
+  "agent": "holmes-native",
+  "artifact_text": "**Observations**\n- Pod `orders-api-7b7dfdc66d-s2556` readiness probe reports `HTTP probe failed with statuscode: 503` in Kubernetes events.\n- Pod logs show `WARN database orders-db-primary.demo-apps.svc:5432 not reachable ([Errno -2] Name or service not known)`.\n- Deployment CI-2459 changed ConfigMap `orders-config` field `DB_HOST` to `orders-db-primary.demo-apps.svc:5432`, but only Service `orders-db` exists in namespace `demo-apps`.\n\n**Ruled-out leads**\n- Application process crash or container loop was ruled out because container restart count is 0 and liveness probe succeeds.\n- Resource starvation was ruled out because memory usage remains within the 256Mi limit with zero OOM events.\n\n**Root cause**\nDeployment CI-2459 set `DB_HOST` in ConfigMap `orders-config` to nonexistent service `orders-db-primary.demo-apps.svc:5432`, causing readiness probe TCP checks to fail with 503.\n\n**Recommended action**\nThe orders team should update ConfigMap `orders-config` field `DB_HOST` back to `orders-db.demo-apps.svc:5432` and restart the deployment per runbook RB-021.",
+  "client": "holmes",
+  "conversation_id": "spike-bench-45-holmes-native-bad-config-rollout",
+  "label": "bench-45-holmes-native-bad-config-rollout",
+  "latency_seconds": 20,
+  "metadata": {
+    "costs": {
+      "cache_creation_tokens": null,
+      "cached_tokens": 79147,
+      "completion_tokens": 1273,
+      "max_completion_tokens_per_call": 491,
+      "max_prompt_tokens_per_call": 24980,
+      "num_compactions": 0,
+      "prompt_tokens": 116524,
+      "reasoning_tokens": 279,
+      "total_cost": 0,
+      "total_tokens": 117797
+    },
+    "finish_reason": "stop",
+    "holmes_tool_calls": [
+      "deployments_recent",
+      "incidents_recent",
+      "kubernetes_tabular_query",
+      "kubernetes_jq_query",
+      "deployments_get",
+      "fetch_pod_logs",
+      "kubernetes_jq_query",
+      "kubernetes_jq_query",
+      "kubernetes_jq_query",
+      "kubernetes_jq_query",
+      "support_search",
+      "runbooks_search",
+      "runbooks_get"
+    ],
+    "holmes_tool_calls_detail": [
+      {
+        "params": {
+          "limit": 5
+        },
+        "tool": "deployments_recent",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "limit": 5
+        },
+        "tool": "incidents_recent",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "columns": "NAME:.metadata.name,STATUS:.status.phase,READY:.status.containerStatuses[0].ready,RESTARTS:.status.containerStatuses[0].restartCount",
+          "field_selector": null,
+          "filter_pattern": null,
+          "kind": "pods",
+          "label_selector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_tabular_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "field_selector": null,
+          "jq_expr": ".items[] | {name: .metadata.name, status: .status.phase, conditions: .status.conditions, containerStatuses: .status.containerStatuses, initContainerStatuses: .status.initContainerStatuses}",
+          "kind": "pods",
+          "label_selector": "app=orders-api",
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_jq_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "id": "CI-2459"
+        },
+        "tool": "deployments_get",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "end_time": null,
+          "exclude_filter": null,
+          "filter": null,
+          "limit": 100,
+          "namespace": "demo-apps",
+          "pod_name": "orders-api-7b7dfdc66d-s2556",
+          "start_time": null
+        },
+        "tool": "fetch_pod_logs",
+        "toolset": "kubernetes/logs"
+      },
+      {
+        "params": {
+          "field_selector": null,
+          "jq_expr": ".items[] | {name: .metadata.name, reason: .reason, message: .message, involvedObject: .involvedObject.name}",
+          "kind": "events",
+          "label_selector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_jq_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "field_selector": null,
+          "jq_expr": ".items[] | {name: .metadata.name, probe: .spec.containers[].readinessProbe, liveness: .spec.containers[].livenessProbe, env: .spec.containers[].env}",
+          "kind": "pods",
+          "label_selector": "app=orders-api",
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_jq_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "field_selector": null,
+          "jq_expr": ".items[] | {name: .metadata.name, spec: .spec}",
+          "kind": "services",
+          "label_selector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_jq_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "field_selector": null,
+          "jq_expr": ".items[] | {name: .metadata.name, data: .data}",
+          "kind": "configmaps",
+          "label_selector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_jq_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "orders-api"
+        },
+        "tool": "support_search",
+        "toolset": "support"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "orders-api DB_HOST rollback configmap"
+        },
+        "tool": "runbooks_search",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "id": "RB-021"
+        },
+        "tool": "runbooks_get",
+        "toolset": "runbooks"
+      }
+    ],
+    "max_output_tokens": 65536,
+    "max_tokens": 1048576,
+    "request_id": "7a5490c7-dec7-4606-a1d1-90df39709aac",
+    "tokens": {
+      "assistant_tokens": 816,
+      "other_tokens": 0,
+      "system_tokens": 4944,
+      "tools_to_call_tokens": 4045,
+      "tools_tokens": 12126,
+      "total_tokens": 22185,
+      "user_tokens": 314
+    },
+    "usage": {
+      "cached_tokens": 22762,
+      "completion_tokens": 316,
+      "prompt_tokens": 24980,
+      "total_tokens": 25296
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "",
+  "trace_id": "af31e9b11d08584f4af2805bd05d05ba",
+  "valid": true
+}

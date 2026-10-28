@@ -1,0 +1,25 @@
+{
+  "agent": "kagent",
+  "artifact_text": "**Observations**\n- Pod `orders-api-7b7dfdc66d-s2556` readiness probe fails with status 503 per pod event logs.\n- Pod logs show `orders-api` cannot connect to `orders-db-primary.demo-apps.svc:5432` with `[Errno -2] Name or service not known`.\n- Deployment log CI-2459 changed `DB_HOST` in ConfigMap `orders-config` to `orders-db-primary.demo-apps.svc:5432`, but only Service `orders-db` exists.\n\n**Ruled out**\n- Database outage was ruled out because Service `orders-db` and Pod `orders-db-59f5787b7-jb5ww` are running and healthy.\n- Resource starvation was ruled out because the pod has zero restarts and normal CPU/memory limits.\n\n**Root cause**\nConfigMap `orders-config` was updated to point `DB_HOST` to non-existent service `orders-db-primary.demo-apps.svc:5432` instead of `orders-db.demo-apps.svc:5432`.\n\n**Recommended action**\nThe orders team should revert `DB_HOST` in ConfigMap `orders-config` back to `orders-db.demo-apps.svc:5432` and rollout restart `orders-api`.",
+  "client": "a2a",
+  "conversation_id": "spike-bench-54-kagent-bad-config-rollout",
+  "label": "bench-54-kagent-bad-config-rollout",
+  "latency_seconds": 14,
+  "metadata": {
+    "kagent_adk_partial": null,
+    "kagent_app_name": "takecare_system__NS__doc_service_py",
+    "kagent_author": "doc_service_py",
+    "kagent_invocation_id": "e-abab1383-af69-41ac-b239-d277b5486530",
+    "kagent_session_id": "8a17bebc-08bd-45fe-87af-56c88bc70868",
+    "kagent_usage_metadata": {
+      "candidatesTokenCount": 317,
+      "promptTokenCount": 12201,
+      "totalTokenCount": 12518
+    },
+    "kagent_user_id": "admin@kagent.dev"
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "d0b6a6a7-374f-44d3-8f79-d8e65a9f19f7",
+  "trace_id": "924e16300a352a3bc751e06c25fff3e6",
+  "valid": true
+}

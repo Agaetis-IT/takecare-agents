@@ -1,0 +1,14 @@
+{
+  "agent": "holmes-mcp",
+  "artifact_text": "",
+  "client": "holmes",
+  "conversation_id": "spike-bench-26-holmes-mcp-proxy-timeout",
+  "error": "holmes chat: HTTP 500: {\"detail\":\"litellm.ServiceUnavailableError: ServiceUnavailableError: OpenAIException - backends required DNS resolution which failed\"}",
+  "label": "bench-26-holmes-mcp-proxy-timeout",
+  "latency_seconds": 40,
+  "metadata": null,
+  "state": "HTTP_500",
+  "task_id": "",
+  "trace_id": "937cb420b2921fc972e42c8241cf26d4",
+  "valid": false
+}

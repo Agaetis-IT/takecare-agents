@@ -1,0 +1,186 @@
+{
+  "agent": "holmes-native",
+  "artifact_text": "**Observations**\n1. Logs from pod `billing-api-665595bbf9-dk4wf` show repeated `WARN db connection reset by peer, retrying (pool acquire 2.80s)`.\n2. Deployment record `CI-2455` shows load balancer idle timeout was changed to 120s without adjusting database idle settings.\n3. Environment variable `DB_POOL_IDLE_TIMEOUT_SECONDS` on pod `billing-api-665595bbf9-dk4wf` is set to 900 seconds.\n\n**Root Cause**\nThe database connection pool idle timeout exceeds the network idle timeout threshold, causing connections closed by peers to exhaust the pool per runbook `RB-014`.\n\n**Recommended Action**\nThe backend billing team should lower `DB_POOL_IDLE_TIMEOUT_SECONDS` below the shortest network idle timeout along the path per runbook `RB-014`.\n\n**Ruled-Out Leads**\n1. An application memory leak or OOMKill was ruled out because pod conditions show continuous `Ready` status with no restarts.\n2. A deployment rollout failure was ruled out because deployment `CI-2455` completed successfully before the incident.",
+  "client": "holmes",
+  "conversation_id": "spike-control-question-only-holmes-native-1",
+  "label": "control-question-only-holmes-native-1",
+  "latency_seconds": 26,
+  "metadata": {
+    "costs": {
+      "cache_creation_tokens": null,
+      "cached_tokens": 62924,
+      "completion_tokens": 1068,
+      "max_completion_tokens_per_call": 416,
+      "max_prompt_tokens_per_call": 20049,
+      "num_compactions": 0,
+      "prompt_tokens": 97283,
+      "reasoning_tokens": 261,
+      "total_cost": 0,
+      "total_tokens": 98351
+    },
+    "finish_reason": "stop",
+    "holmes_tool_calls": [
+      "incidents_search",
+      "vendor_search",
+      "deployments_search",
+      "support_search",
+      "kubernetes_jq_query",
+      "fetch_pod_logs",
+      "incidents_get",
+      "runbooks_search",
+      "deployments_get",
+      "incidents_get",
+      "runbooks_get",
+      "incidents_get",
+      "fetch_pod_logs",
+      "kubernetes_jq_query"
+    ],
+    "holmes_tool_calls_detail": [
+      {
+        "params": {
+          "limit": 5,
+          "query": "billing"
+        },
+        "tool": "incidents_search",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "timeout"
+        },
+        "tool": "vendor_search",
+        "toolset": "vendor"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "billing-api"
+        },
+        "tool": "deployments_search",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "billing"
+        },
+        "tool": "support_search",
+        "toolset": "support"
+      },
+      {
+        "params": {
+          "field_selector": null,
+          "jq_expr": ".items[] | {name: .metadata.name, status: .status.phase, conditions: .status.conditions}",
+          "kind": "pods",
+          "label_selector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_jq_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "end_time": null,
+          "exclude_filter": null,
+          "filter": null,
+          "limit": 100,
+          "namespace": "demo-apps",
+          "pod_name": "billing-api-665595bbf9-dk4wf",
+          "start_time": "-3600"
+        },
+        "tool": "fetch_pod_logs",
+        "toolset": "kubernetes/logs"
+      },
+      {
+        "params": {
+          "id": "INC-2025-0611"
+        },
+        "tool": "incidents_get",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "billing"
+        },
+        "tool": "runbooks_search",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "id": "CI-2455"
+        },
+        "tool": "deployments_get",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "id": "INC-2024-0312"
+        },
+        "tool": "incidents_get",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "id": "RB-014"
+        },
+        "tool": "runbooks_get",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "id": "INC-2025-0918"
+        },
+        "tool": "incidents_get",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "end_time": null,
+          "exclude_filter": null,
+          "filter": null,
+          "limit": 30,
+          "namespace": "demo-apps",
+          "pod_name": "billing-api-665595bbf9-dk4wf",
+          "start_time": "-12000"
+        },
+        "tool": "fetch_pod_logs",
+        "toolset": "kubernetes/logs"
+      },
+      {
+        "params": {
+          "field_selector": "metadata.name=billing-api-665595bbf9-dk4wf",
+          "jq_expr": ".items[0].spec.containers[0].env",
+          "kind": "pods",
+          "label_selector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_jq_query",
+        "toolset": "kubernetes/core"
+      }
+    ],
+    "max_output_tokens": 65536,
+    "max_tokens": 1048576,
+    "request_id": "416c2a54-1170-43fe-b3e1-668611650c76",
+    "tokens": {
+      "assistant_tokens": 619,
+      "other_tokens": 0,
+      "system_tokens": 4393,
+      "tools_to_call_tokens": 4045,
+      "tools_tokens": 8568,
+      "total_tokens": 17878,
+      "user_tokens": 316
+    },
+    "usage": {
+      "cached_tokens": 14908,
+      "completion_tokens": 272,
+      "prompt_tokens": 20049,
+      "total_tokens": 20321
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "",
+  "trace_id": "9a57e1630dd3fe8f761d06de4ea677e2",
+  "valid": true
+}

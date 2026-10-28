@@ -1,0 +1,289 @@
+{
+  "agent": "holmes-native",
+  "artifact_text": "### Observations\n* Pod logs for `billing-api-665595bbf9-dk4wf` report `WARN db connection reset by peer, retrying (pool acquire ...)` alongside `idle_timeout=900s`.\n* Deployment `billing-api` sets `DB_POOL_IDLE_TIMEOUT_SECONDS=900` in `demo-apps`, while `DBProxy/billing-db-proxy` sets `spec.idleClientTimeout: 600` in `ack-system`.\n* Change CI-2452 configured `idleClientTimeout: 600` on `billing-db-proxy`, lowering the RDS Proxy timeout below the application pool recycling threshold.\n\n### Leads ruled out\n* Memory pressure and leak were ruled out because heap growth is a consequence of connection acquisition stalls during request retention, as documented in INC-2024-0312 and RB-014.\n* Load balancer keep-alive timeout mismatch was ruled out because errors originate from database connection resets by peer, not ingress timeout cuts.\n\n### Root cause\nThe RDS Proxy `idleClientTimeout` (600s) is shorter than `billing-api` connection pool recycling delay (900s), causing the proxy to drop idle connections prematurely.\n\n### Recommended action\nThe infrastructure team should update `DBProxy/billing-db-proxy` in namespace `ack-system` by removing `idleClientTimeout` (reverting to default 1800s) or setting it above 900s.",
+  "client": "holmes",
+  "conversation_id": "spike-bench-25-holmes-native-proxy-timeout",
+  "label": "bench-25-holmes-native-proxy-timeout",
+  "latency_seconds": 35,
+  "metadata": {
+    "costs": {
+      "cache_creation_tokens": null,
+      "cached_tokens": 168104,
+      "completion_tokens": 1435,
+      "max_completion_tokens_per_call": 332,
+      "max_prompt_tokens_per_call": 24890,
+      "num_compactions": 0,
+      "prompt_tokens": 219474,
+      "reasoning_tokens": 133,
+      "total_cost": 0,
+      "total_tokens": 220909
+    },
+    "finish_reason": "stop",
+    "holmes_tool_calls": [
+      "support_recent",
+      "incidents_recent",
+      "deployments_recent",
+      "kubernetes_tabular_query",
+      "runbooks_recent",
+      "vendor_recent",
+      "deployments_get",
+      "fetch_pod_logs",
+      "kubernetes_jq_query",
+      "list_prometheus_rules",
+      "kubernetes_jq_query",
+      "kubernetes_jq_query",
+      "execute_prometheus_instant_query",
+      "kubernetes_jq_query",
+      "runbooks_search",
+      "incidents_search",
+      "incidents_get",
+      "runbooks_get",
+      "runbooks_get",
+      "kubernetes_tabular_query",
+      "kubernetes_jq_query",
+      "deployments_search",
+      "deployments_search",
+      "deployments_get"
+    ],
+    "holmes_tool_calls_detail": [
+      {
+        "params": {
+          "limit": 5
+        },
+        "tool": "support_recent",
+        "toolset": "support"
+      },
+      {
+        "params": {
+          "limit": 5
+        },
+        "tool": "incidents_recent",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "limit": 5
+        },
+        "tool": "deployments_recent",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "columns": "NAME:.metadata.name,STATUS:.status.phase,RESTARTS:.status.containerStatuses[0].restartCount",
+          "field_selector": null,
+          "filter_pattern": null,
+          "kind": "pods",
+          "label_selector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_tabular_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "limit": 5
+        },
+        "tool": "runbooks_recent",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "limit": 5
+        },
+        "tool": "vendor_recent",
+        "toolset": "vendor"
+      },
+      {
+        "params": {
+          "id": "CI-2455"
+        },
+        "tool": "deployments_get",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "end_time": null,
+          "exclude_filter": null,
+          "filter": null,
+          "limit": 100,
+          "namespace": "demo-apps",
+          "pod_name": "billing-api-665595bbf9-dk4wf",
+          "start_time": null
+        },
+        "tool": "fetch_pod_logs",
+        "toolset": "kubernetes/logs"
+      },
+      {
+        "params": {
+          "field_selector": null,
+          "jq_expr": ".items[] | {name: .metadata.name, env: .spec.template.spec.containers[].env, image: .spec.template.spec.containers[].image}",
+          "kind": "deployments",
+          "label_selector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_jq_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "file": null,
+          "jq": ".groups[].rules[] | select(.name==\"HighErrorRate\" or .alert==\"HighErrorRate\")",
+          "match": null,
+          "max_depth": null,
+          "rule_group": null,
+          "rule_name": null,
+          "type": null
+        },
+        "tool": "list_prometheus_rules",
+        "toolset": "prometheus/metrics"
+      },
+      {
+        "params": {
+          "field_selector": null,
+          "jq_expr": ".items[]",
+          "kind": "services",
+          "label_selector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_jq_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "field_selector": null,
+          "jq_expr": ".items[] | {name: .metadata.name, events: .items}",
+          "kind": "events",
+          "label_selector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_jq_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "description": "Check rate of 504 and total requests for billing-api",
+          "query": "rate(http_requests_total{namespace=\"demo-apps\", service=\"billing-api\"}[1m])",
+          "timeout": 20
+        },
+        "tool": "execute_prometheus_instant_query",
+        "toolset": "prometheus/metrics"
+      },
+      {
+        "params": {
+          "field_selector": null,
+          "jq_expr": ".items[] | {reason: .reason, message: .message, involvedObject: .involvedObject.name, lastTimestamp: .lastTimestamp}",
+          "kind": "events",
+          "label_selector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_jq_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "504 billing-api leaky memory latency"
+        },
+        "tool": "runbooks_search",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "billing-api 504"
+        },
+        "tool": "incidents_search",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "id": "INC-2024-0312"
+        },
+        "tool": "incidents_get",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "id": "RB-014"
+        },
+        "tool": "runbooks_get",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "id": "RB-019"
+        },
+        "tool": "runbooks_get",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "columns": "NAME:.metadata.name,KIND:.kind",
+          "field_selector": null,
+          "filter_pattern": null,
+          "kind": "dbproxies",
+          "label_selector": null,
+          "namespace": "ack-system"
+        },
+        "tool": "kubernetes_tabular_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "field_selector": null,
+          "jq_expr": ".items[] | {name: .metadata.name, spec: .spec}",
+          "kind": "dbproxies",
+          "label_selector": null,
+          "namespace": "ack-system"
+        },
+        "tool": "kubernetes_jq_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "billing-db-proxy"
+        },
+        "tool": "deployments_search",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "idleClientTimeout"
+        },
+        "tool": "deployments_search",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "id": "CI-2452"
+        },
+        "tool": "deployments_get",
+        "toolset": "deployments"
+      }
+    ],
+    "max_output_tokens": 65536,
+    "max_tokens": 1048576,
+    "request_id": "74050b02-b94d-4e37-a669-30f8ffd3c806",
+    "tokens": {
+      "assistant_tokens": 991,
+      "other_tokens": 0,
+      "system_tokens": 4944,
+      "tools_to_call_tokens": 4045,
+      "tools_tokens": 11763,
+      "total_tokens": 21951,
+      "user_tokens": 316
+    },
+    "usage": {
+      "cached_tokens": 22551,
+      "completion_tokens": 332,
+      "prompt_tokens": 24890,
+      "total_tokens": 25222
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "",
+  "trace_id": "5d4ba9ef7fe1d051e0314fef44acf1e5",
+  "valid": true
+}

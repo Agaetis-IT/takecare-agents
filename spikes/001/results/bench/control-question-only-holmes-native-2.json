@@ -1,0 +1,186 @@
+{
+  "agent": "holmes-native",
+  "artifact_text": "### Observations\n1. Pod logs from `billing-api-665595bbf9-dk4wf` show recurring `WARN db connection reset by peer, retrying (pool acquire 2.80s)` errors (pod log `billing-api-665595bbf9-dk4wf`).\n2. Deployment log `CI-2452` shows `idleClientTimeout` on `billing-db-proxy` was lowered from 1800s to 600s.\n3. The `billing-api` deployment manifest configures `DB_POOL_IDLE_TIMEOUT_SECONDS` to 900s (`billing-api` deployment spec).\n\n### Ruled-Out Leads\n1. Pod memory pressure is a symptom of request retries holding memory rather than an application leak (`INC-2024-0312`, `RB-014`).\n2. Load balancer idle timeout changes from `CI-2455` matched the HTTP keep-alive settings and did not affect database connections (`CI-2455`).\n\n### Root Cause\nRDS Proxy drops idle connections after 600s before the application pool recycles them after 900s, causing connection pool exhaustion (`RB-014`, `CI-2452`).\n\n### Recommended Action\nThe infrastructure team must raise `idleClientTimeout` on `billing-db-proxy` above 900s or revert it to default (`RB-014`, `CI-2452`).",
+  "client": "holmes",
+  "conversation_id": "spike-control-question-only-holmes-native-2",
+  "label": "control-question-only-holmes-native-2",
+  "latency_seconds": 67,
+  "metadata": {
+    "costs": {
+      "cache_creation_tokens": null,
+      "cached_tokens": 47617,
+      "completion_tokens": 1097,
+      "max_completion_tokens_per_call": 440,
+      "max_prompt_tokens_per_call": 19268,
+      "num_compactions": 0,
+      "prompt_tokens": 108978,
+      "reasoning_tokens": 251,
+      "total_cost": 0,
+      "total_tokens": 110075
+    },
+    "finish_reason": "stop",
+    "holmes_tool_calls": [
+      "deployments_search",
+      "runbooks_search",
+      "vendor_search",
+      "kubernetes_tabular_query",
+      "incidents_search",
+      "support_search",
+      "fetch_pod_logs",
+      "incidents_get",
+      "deployments_get",
+      "runbooks_get",
+      "kubernetes_jq_query",
+      "kubernetes_jq_query",
+      "deployments_search",
+      "deployments_get"
+    ],
+    "holmes_tool_calls_detail": [
+      {
+        "params": {
+          "limit": 5,
+          "query": "billing-api"
+        },
+        "tool": "deployments_search",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "billing-api"
+        },
+        "tool": "runbooks_search",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": ""
+        },
+        "tool": "vendor_search",
+        "toolset": "vendor"
+      },
+      {
+        "params": {
+          "columns": "NAME:.metadata.name,STATUS:.status.phase,RESTARTS:.status.containerStatuses[0].restartCount,NODE:.spec.nodeName",
+          "field_selector": null,
+          "filter_pattern": null,
+          "kind": "pods",
+          "label_selector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_tabular_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "billing-api"
+        },
+        "tool": "incidents_search",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "billing"
+        },
+        "tool": "support_search",
+        "toolset": "support"
+      },
+      {
+        "params": {
+          "end_time": null,
+          "exclude_filter": null,
+          "filter": null,
+          "limit": 100,
+          "namespace": "demo-apps",
+          "pod_name": "billing-api-665595bbf9-dk4wf",
+          "start_time": "-3600"
+        },
+        "tool": "fetch_pod_logs",
+        "toolset": "kubernetes/logs"
+      },
+      {
+        "params": {
+          "id": "INC-2024-0312"
+        },
+        "tool": "incidents_get",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "id": "CI-2455"
+        },
+        "tool": "deployments_get",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "id": "RB-014"
+        },
+        "tool": "runbooks_get",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "field_selector": null,
+          "jq_expr": ".spec.template.spec.containers[].env",
+          "kind": "deployments",
+          "label_selector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_jq_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "field_selector": "metadata.name=billing-api",
+          "jq_expr": ".items[0].spec.template.spec.containers[0].env",
+          "kind": "deployments",
+          "label_selector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_jq_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "limit": 10,
+          "query": "RDS Proxy"
+        },
+        "tool": "deployments_search",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "id": "CI-2452"
+        },
+        "tool": "deployments_get",
+        "toolset": "deployments"
+      }
+    ],
+    "max_output_tokens": 65536,
+    "max_tokens": 1048576,
+    "request_id": "0637a47d-2f0a-4596-971c-5e2f7369e6c0",
+    "tokens": {
+      "assistant_tokens": 656,
+      "other_tokens": 0,
+      "system_tokens": 4393,
+      "tools_to_call_tokens": 4045,
+      "tools_tokens": 6805,
+      "total_tokens": 16149,
+      "user_tokens": 316
+    },
+    "usage": {
+      "cached_tokens": 14741,
+      "completion_tokens": 337,
+      "prompt_tokens": 17843,
+      "total_tokens": 18180
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "",
+  "trace_id": "05dfbc6c7900f253edc1ef45187e5898",
+  "valid": true
+}

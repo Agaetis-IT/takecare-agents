@@ -1,0 +1,206 @@
+{
+  "agent": "holmes-native",
+  "artifact_text": "**Observations**\n1. Logs of pod `billing-api-665595bbf9-dk4wf` show repeated `WARN db connection reset by peer, retrying (pool acquire 2.80s)`.\n2. Deployment `billing-api` configures `DB_POOL_IDLE_TIMEOUT_SECONDS` to `900` seconds in container `app` environment variables.\n3. DBProxy `billing-db-proxy` in namespace `ack-system` defines `spec.idleClientTimeout: 600` seconds.\n\n**Ruled-out leads**\n1. An application memory leak or OOM was ruled out because memory warnings are a symptom of held request objects during connection resets (INC-2024-0312, RB-014).\n2. The load balancer idle timeout change (CI-2455) was ruled out because errors stem from database pool resets rather than HTTP keep-alive timeouts.\n\n**Root cause**\nThe database pool idle timeout (900 s) exceeds the RDS Proxy client idle timeout (600 s), causing the proxy to close idle connections prematurely.\n\n**Recommended action**\nThe infrastructure team should raise `spec.idleClientTimeout` in `billing-db-proxy` above 900 s, or the billing team should lower `DB_POOL_IDLE_TIMEOUT_SECONDS` below 600 s.",
+  "client": "holmes",
+  "conversation_id": "spike-bench-35-holmes-native-proxy-timeout",
+  "label": "bench-35-holmes-native-proxy-timeout",
+  "latency_seconds": 20,
+  "metadata": {
+    "costs": {
+      "cache_creation_tokens": null,
+      "cached_tokens": 110167,
+      "completion_tokens": 1014,
+      "max_completion_tokens_per_call": 308,
+      "max_prompt_tokens_per_call": 29599,
+      "num_compactions": 0,
+      "prompt_tokens": 151374,
+      "reasoning_tokens": 133,
+      "total_cost": 0,
+      "total_tokens": 152388
+    },
+    "finish_reason": "stop",
+    "holmes_tool_calls": [
+      "deployments_recent",
+      "incidents_recent",
+      "runbooks_recent",
+      "vendor_recent",
+      "kubernetes_tabular_query",
+      "deployments_get",
+      "fetch_pod_logs",
+      "kubernetes_jq_query",
+      "kubernetes_jq_query",
+      "incidents_search",
+      "runbooks_search",
+      "kubernetes_jq_query",
+      "incidents_get",
+      "runbooks_get",
+      "runbooks_get",
+      "kubernetes_jq_query"
+    ],
+    "holmes_tool_calls_detail": [
+      {
+        "params": {
+          "limit": 5
+        },
+        "tool": "deployments_recent",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "limit": 5
+        },
+        "tool": "incidents_recent",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "limit": 5
+        },
+        "tool": "runbooks_recent",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "limit": 5
+        },
+        "tool": "vendor_recent",
+        "toolset": "vendor"
+      },
+      {
+        "params": {
+          "columns": "NAME:.metadata.name,STATUS:.status.phase,RESTARTS:.status.containerStatuses[0].restartCount,NODE:.spec.nodeName",
+          "field_selector": null,
+          "filter_pattern": null,
+          "kind": "pods",
+          "label_selector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_tabular_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "id": "CI-2455"
+        },
+        "tool": "deployments_get",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "end_time": null,
+          "exclude_filter": null,
+          "filter": null,
+          "limit": 100,
+          "namespace": "demo-apps",
+          "pod_name": "billing-api-665595bbf9-dk4wf",
+          "start_time": null
+        },
+        "tool": "fetch_pod_logs",
+        "toolset": "kubernetes/logs"
+      },
+      {
+        "params": {
+          "field_selector": null,
+          "jq_expr": ".items[] | {name: .metadata.name, spec: .spec}",
+          "kind": "deployments",
+          "label_selector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_jq_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "field_selector": null,
+          "jq_expr": ".items[] | {name: .metadata.name, data: .data}",
+          "kind": "configmaps",
+          "label_selector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_jq_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "database connection reset"
+        },
+        "tool": "incidents_search",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "database timeout pool"
+        },
+        "tool": "runbooks_search",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "field_selector": null,
+          "jq_expr": ".items[]",
+          "kind": "services",
+          "label_selector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "kubernetes_jq_query",
+        "toolset": "kubernetes/core"
+      },
+      {
+        "params": {
+          "id": "INC-2024-0312"
+        },
+        "tool": "incidents_get",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "id": "RB-014"
+        },
+        "tool": "runbooks_get",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "id": "RB-019"
+        },
+        "tool": "runbooks_get",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "field_selector": null,
+          "jq_expr": ".items[]",
+          "kind": "dbproxies",
+          "label_selector": null,
+          "namespace": "ack-system"
+        },
+        "tool": "kubernetes_jq_query",
+        "toolset": "kubernetes/core"
+      }
+    ],
+    "max_output_tokens": 65536,
+    "max_tokens": 1048576,
+    "request_id": "bed41283-63a9-4c63-b16c-c7b880bce091",
+    "tokens": {
+      "assistant_tokens": 699,
+      "other_tokens": 0,
+      "system_tokens": 4944,
+      "tools_to_call_tokens": 4045,
+      "tools_tokens": 16081,
+      "total_tokens": 26013,
+      "user_tokens": 316
+    },
+    "usage": {
+      "cached_tokens": 26833,
+      "completion_tokens": 308,
+      "prompt_tokens": 29599,
+      "total_tokens": 29907
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "",
+  "trace_id": "8701c6e7d7a5ef078ee4502294787924",
+  "valid": true
+}

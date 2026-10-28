@@ -1,0 +1,25 @@
+{
+  "agent": "kagent",
+  "artifact_text": "### Observations\n- In the `billing-api` pod logs, recurring warnings show `WARN db connection reset by peer, retrying (pool acquire 2.80s)`.\n- The `billing-api` container environment configures `DB_POOL_IDLE_TIMEOUT_SECONDS` to `900`.\n- The `billing-db-proxy` resource in namespace `ack-system` sets `spec.idleClientTimeout` to `600`.\n\n### Ruled-out leads\n- Application memory leak: heap pressure is a symptom of failing pooled requests holding memory, as documented in runbook RB-014.\n- AWS EBS degradation (AWS-2026-0903-01): EBS volume performance issues in eu-west-3a do not cause database connection reset errors.\n\n### Root cause\nThe RDS DBProxy `idleClientTimeout` (600s) is shorter than `billing-api`'s connection pool timeout (900s), causing the proxy to close idle sockets prematurely.\n\n### Recommended action\nThe platform team should update `billing-db-proxy` in `ack-system` to set `spec.idleClientTimeout` above 900 seconds or remove it to restore defaults.",
+  "client": "a2a",
+  "conversation_id": "spike-bench-28-kagent-proxy-timeout",
+  "label": "bench-28-kagent-proxy-timeout",
+  "latency_seconds": 18,
+  "metadata": {
+    "kagent_adk_partial": null,
+    "kagent_app_name": "takecare_system__NS__doc_service_py",
+    "kagent_author": "doc_service_py",
+    "kagent_invocation_id": "e-4e91b1e3-2f22-4eca-86d9-bb6fefe9292a",
+    "kagent_session_id": "151de9c7-8cc4-48fc-a06b-22a937288d37",
+    "kagent_usage_metadata": {
+      "candidatesTokenCount": 269,
+      "promptTokenCount": 13717,
+      "totalTokenCount": 13986
+    },
+    "kagent_user_id": "admin@kagent.dev"
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "bb39b546-c5c7-4325-a8f9-7ebea28b69f4",
+  "trace_id": "30f6c66ad9c342accfdba3b856f383da",
+  "valid": true
+}

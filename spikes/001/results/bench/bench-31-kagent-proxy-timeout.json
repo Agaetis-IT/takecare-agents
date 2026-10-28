@@ -1,0 +1,25 @@
+{
+  "agent": "kagent",
+  "artifact_text": "**Observations**\n- Pod `billing-api-665595bbf9-dk4wf` logs repeated `WARN db connection reset by peer, retrying (pool acquire 2.80s)`.\n- Metric `db_connection_wait_seconds{service=\"billing-api\"}` reached 2.8 seconds while pod memory plateaued at 380 MiB under its 512 MiB limit.\n- DBProxy `billing-db-proxy` sets `idleClientTimeout: 600` (change `CI-2452`), whereas pod `billing-api` sets `DB_POOL_IDLE_TIMEOUT_SECONDS=900`.\n\n**Ruled-out leads**\n- Memory exhaustion was ruled out because heap usage plateaued below limits and connection acquisition latency climbed concurrently (per runbook `RB-014`).\n- Load balancer idle timeout mismatch (`CI-2455`) was ruled out because resets originate from backend database connections, not ingress HTTP keep-alive.\n\n**Root cause**\nThe database proxy idle client timeout (600s) is shorter than the application connection pool idle recycling timeout (900s), causing dropped idle connections.\n\n**Recommended action**\nThe infrastructure team should raise `idleClientTimeout` to at least 1800s in `billing-db-proxy`, or the billing team should lower `DB_POOL_IDLE_TIMEOUT_SECONDS` below 600s.",
+  "client": "a2a",
+  "conversation_id": "spike-bench-31-kagent-proxy-timeout",
+  "label": "bench-31-kagent-proxy-timeout",
+  "latency_seconds": 53,
+  "metadata": {
+    "kagent_adk_partial": null,
+    "kagent_app_name": "takecare_system__NS__doc_service_py",
+    "kagent_author": "doc_service_py",
+    "kagent_invocation_id": "e-55428a18-6c71-4166-b903-326e213ad411",
+    "kagent_session_id": "d5ea065f-2d90-4fe4-9b76-d9e80a853de2",
+    "kagent_usage_metadata": {
+      "candidatesTokenCount": 320,
+      "promptTokenCount": 13807,
+      "totalTokenCount": 14127
+    },
+    "kagent_user_id": "admin@kagent.dev"
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "144b40b6-d177-43ba-bbaa-ac3edd85d863",
+  "trace_id": "12dddf308cfd78f36e2c1c0fc84ed391",
+  "valid": true
+}

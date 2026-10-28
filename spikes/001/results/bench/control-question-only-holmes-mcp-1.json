@@ -1,0 +1,236 @@
+{
+  "agent": "holmes-mcp",
+  "artifact_text": "### Observations\n- `billing-api` pod logs show repeated `WARN db connection reset by peer, retrying (pool acquire 2.80s)` (source: Pod logs `billing-api-665595bbf9-dk4wf`).\n- Memory pressure warnings and rising heap usage are reported concurrently in the application logs (source: Pod logs `billing-api-665595bbf9-dk4wf`).\n- Deployment spec sets `DB_POOL_IDLE_TIMEOUT_SECONDS` to 900 seconds (source: Deployment `demo-apps/billing-api`).\n\n### Leads Ruled Out\n- Application memory leak ruled out because memory growth is a byproduct of retained objects from failing connections (source: Runbook `RB-014`).\n- ALB idle timeout mismatch ruled out because resets originate from backend database connection pool acquisition (source: Deployment `CI-2455`, Runbook `RB-014`).\n\n### Root Cause\nDatabase connection pool idle timeout (900 s) exceeds the upstream proxy idle timeout, causing connection pool exhaustion from peer resets (source: Runbook `RB-014`, Incident `INC-2024-0312`).\n\n### Recommended Action\nThe billing team should lower `DB_POOL_IDLE_TIMEOUT_SECONDS` in `billing-api` Deployment below the upstream proxy idle timeout (source: Runbook `RB-014`).",
+  "client": "holmes",
+  "conversation_id": "spike-control-question-only-holmes-mcp-1",
+  "label": "control-question-only-holmes-mcp-1",
+  "latency_seconds": 29,
+  "metadata": {
+    "costs": {
+      "cache_creation_tokens": null,
+      "cached_tokens": 78170,
+      "completion_tokens": 1038,
+      "max_completion_tokens_per_call": 311,
+      "max_prompt_tokens_per_call": 29845,
+      "num_compactions": 0,
+      "prompt_tokens": 147902,
+      "reasoning_tokens": 78,
+      "total_cost": 0,
+      "total_tokens": 148940
+    },
+    "finish_reason": "stop",
+    "holmes_tool_calls": [
+      "TodoWrite",
+      "incidents_recent",
+      "deployments_recent",
+      "vendor_recent",
+      "pods_list_in_namespace",
+      "events_list",
+      "deployments_get",
+      "runbooks_search",
+      "pods_log",
+      "pods_log",
+      "support_search",
+      "runbooks_get",
+      "resources_get",
+      "runbooks_get",
+      "resources_get",
+      "incidents_get",
+      "TodoWrite"
+    ],
+    "holmes_tool_calls_detail": [
+      {
+        "params": {
+          "todos": [
+            {
+              "content": "Check pods and logs in demo-apps namespace for billing-api",
+              "id": "check-pods-logs",
+              "status": "in_progress"
+            },
+            {
+              "content": "Check events and deployment changes or external dependencies/incidents/runbooks",
+              "id": "check-context",
+              "status": "pending"
+            },
+            {
+              "content": "Analyze findings and form concise response matching constraints",
+              "id": "form-response",
+              "status": "pending"
+            }
+          ]
+        },
+        "tool": "TodoWrite",
+        "toolset": "core_investigation"
+      },
+      {
+        "params": {
+          "limit": 5
+        },
+        "tool": "incidents_recent",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "limit": 5
+        },
+        "tool": "deployments_recent",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "limit": 5
+        },
+        "tool": "vendor_recent",
+        "toolset": "vendor"
+      },
+      {
+        "params": {
+          "fieldSelector": null,
+          "labelSelector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "pods_list_in_namespace",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "fieldSelector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "events_list",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "id": "CI-2455"
+        },
+        "tool": "deployments_get",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "billing-api timeout 504"
+        },
+        "tool": "runbooks_search",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "container": null,
+          "name": "billing-api-665595bbf9-dk4wf",
+          "namespace": "demo-apps",
+          "previous": false,
+          "tail": 100
+        },
+        "tool": "pods_log",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "container": null,
+          "name": "orders-api-584f48d559-xgm99",
+          "namespace": "demo-apps",
+          "previous": false,
+          "tail": 100
+        },
+        "tool": "pods_log",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "billing-api"
+        },
+        "tool": "support_search",
+        "toolset": "support"
+      },
+      {
+        "params": {
+          "id": "RB-014"
+        },
+        "tool": "runbooks_get",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "apiVersion": "apps/v1",
+          "kind": "Deployment",
+          "name": "billing-api",
+          "namespace": "demo-apps"
+        },
+        "tool": "resources_get",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "id": "RB-019"
+        },
+        "tool": "runbooks_get",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "apiVersion": "v1",
+          "kind": "ConfigMap",
+          "name": "demo-app-code",
+          "namespace": "demo-apps"
+        },
+        "tool": "resources_get",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "id": "INC-2024-0312"
+        },
+        "tool": "incidents_get",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "todos": [
+            {
+              "content": "Check pods and logs in demo-apps namespace for billing-api",
+              "id": "check-pods-logs",
+              "status": "completed"
+            },
+            {
+              "content": "Check events and deployment changes or external dependencies/incidents/runbooks",
+              "id": "check-context",
+              "status": "completed"
+            },
+            {
+              "content": "Analyze findings and form concise response matching constraints",
+              "id": "form-response",
+              "status": "in_progress"
+            }
+          ]
+        },
+        "tool": "TodoWrite",
+        "toolset": "core_investigation"
+      }
+    ],
+    "max_output_tokens": 65536,
+    "max_tokens": 1048576,
+    "request_id": "1fb673a1-655b-4b15-ae0b-eaf911eeff21",
+    "tokens": {
+      "assistant_tokens": 762,
+      "other_tokens": 0,
+      "system_tokens": 3410,
+      "tools_to_call_tokens": 3486,
+      "tools_tokens": 18171,
+      "total_tokens": 26070,
+      "user_tokens": 316
+    },
+    "usage": {
+      "cached_tokens": 26269,
+      "completion_tokens": 311,
+      "prompt_tokens": 29845,
+      "total_tokens": 30156
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "",
+  "trace_id": "eb88a9b5d2b753b3bb0bbc43a607adf9",
+  "valid": true
+}

@@ -1,0 +1,25 @@
+{
+  "agent": "kagent",
+  "artifact_text": "### Observations\n- In the `orders-api-7b7dfdc66d-s2556` pod log, the application continuously reports `WARN database orders-db-primary.demo-apps.svc:5432 not reachable ([Errno -2] Name or service not known)`.\n- According to the pod's warning events, the readiness probe fails with HTTP status code 503 because it cannot reach the database.\n- Per deployment record `CI-2459`, ConfigMap `orders-config` was updated to point `DB_HOST` to `orders-db-primary.demo-apps.svc:5432`, but only `orders-db` exists in `v1/Service`.\n\n### Ruled-out leads\n- Resource exhaustion was ruled out because pod `orders-api-7b7dfdc66d-s2556` consumes only 14Mi memory out of its 256Mi limit.\n- Container crashes or restart loops were ruled out because the pod shows 0 restarts and the container remains in the Running state.\n\n### Root cause\nDeployment `CI-2459` changed `DB_HOST` in ConfigMap `orders-config` to `orders-db-primary.demo-apps.svc:5432`, a DNS hostname for which no Kubernetes Service exists.\n\n### Recommended action\nThe orders team should revert `DB_HOST` in ConfigMap `orders-config` to `orders-db.demo-apps.svc:5432` and restart the `orders-api` deployment.",
+  "client": "a2a",
+  "conversation_id": "spike-bench-48-kagent-bad-config-rollout",
+  "label": "bench-48-kagent-bad-config-rollout",
+  "latency_seconds": 37,
+  "metadata": {
+    "kagent_adk_partial": null,
+    "kagent_app_name": "takecare_system__NS__doc_service_py",
+    "kagent_author": "doc_service_py",
+    "kagent_invocation_id": "e-4bcca9bf-afc4-4afd-8a3b-e9bcf7675a44",
+    "kagent_session_id": "3d6bf7c9-f307-4f63-a35a-6ec2475aa37d",
+    "kagent_usage_metadata": {
+      "candidatesTokenCount": 346,
+      "promptTokenCount": 12703,
+      "totalTokenCount": 13049
+    },
+    "kagent_user_id": "admin@kagent.dev"
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "468be7bf-573c-4f64-bd2d-07c4db93fcc8",
+  "trace_id": "b2188dff1c8c926632a0c3e10fd31e75",
+  "valid": true
+}

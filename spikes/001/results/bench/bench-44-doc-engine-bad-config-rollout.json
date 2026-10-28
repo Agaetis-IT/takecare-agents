@@ -1,0 +1,27 @@
+{
+  "agent": "doc-engine",
+  "artifact_text": "### Observations\n1. Pod `orders-api-7b7dfdc66d-s2556` readiness probe fails with status 503 per pod events in `demo-apps`.\n2. Pod logs show repeated warnings: `database orders-db-primary.demo-apps.svc:5432 not reachable ([Errno -2] Name or service not known)`.\n3. Deployment change `CI-2459` updated ConfigMap `orders-config` field `DB_HOST` to non-existent hostname `orders-db-primary.demo-apps.svc:5432`.\n\n### Leads Ruled Out\n1. Resource exhaustion is ruled out because the pod consumes only 1m CPU and 14Mi memory well below limits per pod metrics.\n2. Container crash looping is ruled out because the container is running with zero restarts per pod status.\n\n### Root Cause\nDeployment `CI-2459` changed `DB_HOST` in ConfigMap `orders-config` to `orders-db-primary.demo-apps.svc:5432`, an unresolvable DNS host since only `orders-db` exists.\n\n### Recommended Action\nThe orders team should revert `DB_HOST` in ConfigMap `orders-config` back to `orders-db.demo-apps.svc:5432` and restart the deployment.",
+  "client": "a2a",
+  "conversation_id": "spike-bench-44-doc-engine-bad-config-rollout",
+  "label": "bench-44-doc-engine-bad-config-rollout",
+  "latency_seconds": 18,
+  "metadata": {
+    "adk_app_name": "doc",
+    "adk_session_id": "01a168d3-b8fd-74c4-ace2-73a8918772f3",
+    "adk_user_id": "A2A_USER_01a168d3-b8fd-74c4-ace2-73a8918772f3",
+    "https://google.github.io/adk-docs/a2a/a2a-extension/": true,
+    "takecare.usage": {
+      "cachedInputTokens": 20640,
+      "inputTokens": 53031,
+      "modelCalls": 6,
+      "outputTokens": 648,
+      "thoughtsTokens": 53,
+      "toolUsePromptTokens": 0,
+      "totalTokens": 53679
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "01a168d3-b8fd-733c-8649-05a81e5763c7",
+  "trace_id": "9f101bb92ceafdb7ffb50c8cd0838c11",
+  "valid": true
+}

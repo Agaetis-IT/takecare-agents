@@ -1,0 +1,27 @@
+{
+  "agent": "doc-engine",
+  "artifact_text": "**Observations**\n- Pod `orders-api-7b7dfdc66d-s2556` readiness probe reports `HTTP probe failed with statuscode: 503` in Kubernetes events.\n- Pod logs show repeated warnings: `database orders-db-primary.demo-apps.svc:5432 not reachable ([Errno -2] Name or service not known), retrying`.\n- Deployment `CI-2459` updated ConfigMap `orders-config` setting `DB_HOST` to non-existent service `orders-db-primary.demo-apps.svc:5432`.\n\n**Ruled-out leads**\n- Resource starvation is ruled out because pod metrics show 14Mi memory usage against a 256Mi limit.\n- Container crashing is ruled out because container restart count is 0 and status is Running.\n\n**Root cause**\n- Deployment `CI-2459` misconfigured `DB_HOST` to `orders-db-primary.demo-apps.svc:5432` instead of the active `orders-db` service, causing readiness check failures.\n\n**Recommended action**\n- The orders team should update ConfigMap `orders-config` to point `DB_HOST` back to `orders-db.demo-apps.svc:5432` and rollout restart `orders-api`.",
+  "client": "a2a",
+  "conversation_id": "spike-bench-53-doc-engine-bad-config-rollout",
+  "label": "bench-53-doc-engine-bad-config-rollout",
+  "latency_seconds": 29,
+  "metadata": {
+    "adk_app_name": "doc",
+    "adk_session_id": "01a168db-0efa-7260-8111-b372f233a79c",
+    "adk_user_id": "A2A_USER_01a168db-0efa-7260-8111-b372f233a79c",
+    "https://google.github.io/adk-docs/a2a/a2a-extension/": true,
+    "takecare.usage": {
+      "cachedInputTokens": 28048,
+      "inputTokens": 49187,
+      "modelCalls": 5,
+      "outputTokens": 825,
+      "thoughtsTokens": 244,
+      "toolUsePromptTokens": 0,
+      "totalTokens": 50012
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "01a168db-0ef9-7b06-922e-c8076e9a7322",
+  "trace_id": "31a879021bffa00768b775d0610aeaba",
+  "valid": true
+}

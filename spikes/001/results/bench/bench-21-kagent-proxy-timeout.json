@@ -1,0 +1,25 @@
+{
+  "agent": "kagent",
+  "artifact_text": "### Observations\n- In the `billing-api` pod logs, database connection resets occur during pool acquisition alongside growing heap memory pressure.\n- The `billing-api` database pool is configured with `idle_timeout=900s`, visible in its startup logs.\n- The `DBProxy` custom resource `billing-db-proxy` sets `spec.idleClientTimeout` to 600 seconds, applied via deployment `CI-2452`.\n\n### Leads Ruled Out\n- Application memory exhaustion: memory pressure and GC pauses are side effects of connection acquisition retries described in runbook `RB-014`.\n- Pod restarts or crashes: pod `billing-api-665595bbf9-dk4wf` has zero restarts and its status remains Running.\n\n### Root Cause\nThe RDS Proxy `idleClientTimeout` (600s) is shorter than the `billing-api` connection pool `idle_timeout` (900s), causing the proxy to drop idle connections before the application recycles them.\n\n### Recommended Action\nThe infrastructure team should update `billing-db-proxy` to set `idleClientTimeout` above 900 seconds, or the billing team should lower `DB_POOL_IDLE_TIMEOUT_SECONDS` below 600.",
+  "client": "a2a",
+  "conversation_id": "spike-bench-21-kagent-proxy-timeout",
+  "label": "bench-21-kagent-proxy-timeout",
+  "latency_seconds": 16,
+  "metadata": {
+    "kagent_adk_partial": null,
+    "kagent_app_name": "takecare_system__NS__doc_service_py",
+    "kagent_author": "doc_service_py",
+    "kagent_invocation_id": "e-c50fd573-22f8-4979-9a39-adaaccb5b4b4",
+    "kagent_session_id": "5b2d488e-957f-43ea-bdb2-b60397d77f26",
+    "kagent_usage_metadata": {
+      "candidatesTokenCount": 280,
+      "promptTokenCount": 9343,
+      "totalTokenCount": 9623
+    },
+    "kagent_user_id": "admin@kagent.dev"
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "2ad704de-0c2e-4b4e-b84d-65348e51d232",
+  "trace_id": "d8554e1ffacd9b8413b692214838ee15",
+  "valid": true
+}

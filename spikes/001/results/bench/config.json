@@ -1,0 +1,8 @@
+{
+  "started": "2026-10-23T08:24:39.284798+00:00",
+  "runs": 60,
+  "controls": 4,
+  "max_replays": 2,
+  "kagent": "0.10.3 runtime python (not the default go runtime)",
+  "note": "doc-engine measured with CAPTURE_CONTENT=true (tool arguments in spans)"
+}

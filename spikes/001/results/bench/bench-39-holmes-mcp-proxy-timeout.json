@@ -1,0 +1,230 @@
+{
+  "agent": "holmes-mcp",
+  "artifact_text": "### Observations\n1. Pod `billing-api-665595bbf9-dk4wf` logs repeat `WARN db connection reset by peer, retrying (pool acquire 2.80s)`.\n2. Deployment `billing-api` configures `DB_POOL_IDLE_TIMEOUT_SECONDS=900` (`demo-apps/billing-api`, spec.template.spec.containers[0].env).\n3. Change `CI-2452` set `idleClientTimeout: 600` on `DBProxy/billing-db-proxy` (`ack-system/billing-db-proxy`, spec.idleClientTimeout).\n\n### Ruled-out leads\n1. Memory pressure logs (`heap 360 MB / 512 MB limit`) are a symptom of stalled pooled connections, not OOM (`RB-014`).\n2. ALB idle timeout was raised to 120 s (`CI-2455`), so ALB keep-alive is not cutting backend database traffic.\n\n### Root cause\n`billing-api` pool idle timeout (900 s) exceeds AWS RDS Proxy `idleClientTimeout` (600 s), causing proxy drops and connection resets (`RB-014`).\n\n### Recommended action\nThe billing team should lower `DB_POOL_IDLE_TIMEOUT_SECONDS` below 600 s or the infrastructure team should raise `idleClientTimeout` (`RB-014`).",
+  "client": "holmes",
+  "conversation_id": "spike-bench-39-holmes-mcp-proxy-timeout",
+  "label": "bench-39-holmes-mcp-proxy-timeout",
+  "latency_seconds": 36,
+  "metadata": {
+    "costs": {
+      "cache_creation_tokens": null,
+      "cached_tokens": 90668,
+      "completion_tokens": 1160,
+      "max_completion_tokens_per_call": 421,
+      "max_prompt_tokens_per_call": 22558,
+      "num_compactions": 0,
+      "prompt_tokens": 127400,
+      "reasoning_tokens": 207,
+      "total_cost": 0,
+      "total_tokens": 128560
+    },
+    "finish_reason": "stop",
+    "holmes_tool_calls": [
+      "TodoWrite",
+      "incidents_recent",
+      "runbooks_search",
+      "pods_list_in_namespace",
+      "deployments_recent",
+      "events_list",
+      "runbooks_get",
+      "deployments_get",
+      "pods_log",
+      "runbooks_get",
+      "deployments_get",
+      "deployments_get",
+      "resources_get",
+      "resources_list",
+      "resources_get",
+      "pods_top",
+      "execute_query"
+    ],
+    "holmes_tool_calls_detail": [
+      {
+        "params": {
+          "todos": [
+            {
+              "content": "List pods and check logs for billing-api in demo-apps",
+              "id": "1",
+              "status": "in_progress"
+            },
+            {
+              "content": "Check events and resources in demo-apps and ack-system",
+              "id": "2",
+              "status": "pending"
+            },
+            {
+              "content": "Check recent deployments, incidents, and runbooks",
+              "id": "3",
+              "status": "pending"
+            }
+          ]
+        },
+        "tool": "TodoWrite",
+        "toolset": "core_investigation"
+      },
+      {
+        "params": {
+          "limit": 10
+        },
+        "tool": "incidents_recent",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "billing-api 504 timeout"
+        },
+        "tool": "runbooks_search",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "fieldSelector": null,
+          "labelSelector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "pods_list_in_namespace",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "limit": 10
+        },
+        "tool": "deployments_recent",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "fieldSelector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "events_list",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "id": "RB-019"
+        },
+        "tool": "runbooks_get",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "id": "CI-2455"
+        },
+        "tool": "deployments_get",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "container": null,
+          "name": "billing-api-665595bbf9-dk4wf",
+          "namespace": "demo-apps",
+          "previous": false,
+          "tail": 100
+        },
+        "tool": "pods_log",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "id": "RB-014"
+        },
+        "tool": "runbooks_get",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "id": "CI-2454"
+        },
+        "tool": "deployments_get",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "id": "CI-2452"
+        },
+        "tool": "deployments_get",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "apiVersion": "apps/v1",
+          "kind": "Deployment",
+          "name": "billing-api",
+          "namespace": "demo-apps"
+        },
+        "tool": "resources_get",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "apiVersion": "rds.services.k8s.aws/v1alpha1",
+          "fieldSelector": null,
+          "kind": "DBProxy",
+          "labelSelector": null,
+          "namespace": "ack-system"
+        },
+        "tool": "resources_list",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "apiVersion": "rds.services.k8s.aws/v1alpha1",
+          "kind": "DBProxy",
+          "name": "billing-db-proxy",
+          "namespace": "ack-system"
+        },
+        "tool": "resources_get",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "all_namespaces": false,
+          "label_selector": null,
+          "name": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "pods_top",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "limit": null,
+          "lookback_delta": null,
+          "org_id": null,
+          "prometheus_url": null,
+          "query": "rate(http_requests_total{status=~\"5.*\"}[5m])",
+          "stats": null,
+          "time": null,
+          "timeout": null,
+          "unlimited": null
+        },
+        "tool": "execute_query",
+        "toolset": "prometheus"
+      }
+    ],
+    "max_output_tokens": 65536,
+    "max_tokens": 1048576,
+    "request_id": "e4c11163-1848-4672-8587-a4d60134b8cb",
+    "tokens": {
+      "assistant_tokens": 732,
+      "other_tokens": 0,
+      "system_tokens": 3961,
+      "tools_to_call_tokens": 3486,
+      "tools_tokens": 11410,
+      "total_tokens": 19830,
+      "user_tokens": 316
+    },
+    "usage": {
+      "cached_tokens": 18276,
+      "completion_tokens": 320,
+      "prompt_tokens": 22558,
+      "total_tokens": 22878
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "",
+  "trace_id": "81267eafad4380d63cd37de4cd4aac1a",
+  "valid": true
+}

@@ -1,0 +1,79 @@
+{
+  "run": 26,
+  "scenario": "proxy-timeout",
+  "engine": "holmes-mcp",
+  "round": 2,
+  "control": false,
+  "instructions": true,
+  "bench_run_label": "26",
+  "label": "bench-26-holmes-mcp-proxy-timeout-a3",
+  "valid": true,
+  "attempts": [
+    {
+      "attempt": 1,
+      "label": "bench-26-holmes-mcp-proxy-timeout",
+      "cause": "infrastructure",
+      "error": "holmes chat: HTTP 500: {\"detail\":\"litellm.ServiceUnavailableError: ServiceUnavailableError: OpenAIException - backends required DNS resolution which failed\"}",
+      "state": "HTTP_500"
+    },
+    {
+      "attempt": 2,
+      "label": "bench-26-holmes-mcp-proxy-timeout-a2",
+      "cause": "infrastructure",
+      "error": "holmes chat: HTTP 500: {\"detail\":\"litellm.ServiceUnavailableError: ServiceUnavailableError: OpenAIException - upstream call failed: SendRequest: connection error: peer closed connection without sending TLS close_notify: https://docs.rs/rustls/latest/rustls/manual/_03_howto/index.html#unexpected-eof\"",
+      "state": "HTTP_500"
+    }
+  ],
+  "replayed": true,
+  "state": "TASK_STATE_COMPLETED",
+  "error": null,
+  "latency_seconds": 22,
+  "trace_id": "4294aa6403462a068b3b2f162474028c",
+  "answer_chars": 1291,
+  "diagnosis": "### Observations\n1. Pod log of `billing-api-665595bbf9-dk4wf` shows recurring `WARN db connection reset by peer, retrying (pool acquire 2.80s)` while pool idle timeout is 900s.\n2. In `ack-system`, `DBProxy/billing-db-proxy` sets `spec.idleClientTimeout: 600`, which is lower than `billing-api`'s `DB_POOL_IDLE_TIMEOUT_SECONDS: 900` configured in deployment `billing-api`.\n3. Pod status shows `billing-api-665595bbf9-dk4wf` is `Running` with 0 restarts and memory at 375Mi under the 512Mi limit.\n\n### Ruled-out Leads\n1. Pod OOMKills or container crashes are ruled out because restart count is 0 and memory is stable at 375Mi below the 512Mi limit.\n2. ALB idle timeout change in deployment `CI-2455` is ruled out because load balancer timeout was increased to 120s, which does not cause RDS connection resets.\n\n### Root Cause\nRDS Proxy (`billing-db-proxy`) closes idle connections after 600s before `billing-api`'s connection pool recycles them at 900s, causing pool exhaustion and failed requests as described in `RB-014`.\n\n### Recommended Action\nThe platform/infrastructure team must raise `spec.idleClientTimeout` on `DBProxy/billing-db-proxy` (or remove it to restore the 1800s default), or the billing team must lower `DB_POOL_IDLE_TIMEOUT_SECONDS` below 600s on deployment `billing-api`.",
+  "memory_mentioned": true,
+  "tool_call_count": 16,
+  "tools_called": [
+    "TodoWrite",
+    "deployments_recent",
+    "runbooks_search",
+    "incidents_search",
+    "pods_list_in_namespace",
+    "runbooks_get",
+    "deployments_get",
+    "incidents_get",
+    "pods_log",
+    "resources_list",
+    "resources_list",
+    "resources_get",
+    "resources_get",
+    "events_list",
+    "pods_top",
+    "TodoWrite"
+  ],
+  "usage": {
+    "label": "bench-26-holmes-mcp-proxy-timeout-a3",
+    "agent": "holmes-mcp",
+    "latency_seconds": 22,
+    "model_calls": 7,
+    "tool_calls": 0,
+    "input_tokens": 107556,
+    "cache_read_tokens": 67758,
+    "output_tokens": 1179,
+    "cache_pct": 62,
+    "input_per_call": [
+      8748,
+      10933,
+      14296,
+      15520,
+      18610,
+      19547,
+      19902
+    ],
+    "cost_usd": 0.0394,
+    "cost_without_cache_usd": 0.0851
+  },
+  "recorded_at": "2026-10-23T12:09:02.480601+00:00",
+  "chain_correct": true,
+  "evidence_read": true
+}

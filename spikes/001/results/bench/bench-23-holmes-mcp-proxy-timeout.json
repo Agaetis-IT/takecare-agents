@@ -1,0 +1,282 @@
+{
+  "agent": "holmes-mcp",
+  "artifact_text": "### Observations\n1. Pod logs of `billing-api-665595bbf9-dk4wf` report repeated `WARN db connection reset by peer, retrying (pool acquire ...s)`.\n2. Deployment `billing-api` configures `DB_POOL_IDLE_TIMEOUT_SECONDS=900` in `spec.template.spec.containers[0].env`.\n3. Resource `DBProxy/billing-db-proxy` in namespace `ack-system` defines `spec.idleClientTimeout: 600` following deployment `CI-2452`.\n\n### Leads Ruled Out\n1. Application memory leak (INC-2025-0918) was ruled out because memory is capped below limits and pod restarts/OOMKills are zero.\n2. Load balancer idle timeout issue (INC-2025-0611) was ruled out because deployment CI-2455 previously raised ALB timeout to 120s.\n\n### Root Cause\nThe DBProxy idle connection timeout (600s) is shorter than billing-api's pool idle timeout (900s), causing proxy drops (per RB-014).\n\n### Recommended Action\nThe infrastructure team should raise `spec.idleClientTimeout` on `DBProxy/billing-db-proxy` above 900s, or the billing team lower `DB_POOL_IDLE_TIMEOUT_SECONDS`.",
+  "client": "holmes",
+  "conversation_id": "spike-bench-23-holmes-mcp-proxy-timeout",
+  "label": "bench-23-holmes-mcp-proxy-timeout",
+  "latency_seconds": 30,
+  "metadata": {
+    "costs": {
+      "cache_creation_tokens": null,
+      "cached_tokens": 155709,
+      "completion_tokens": 1267,
+      "max_completion_tokens_per_call": 316,
+      "max_prompt_tokens_per_call": 29860,
+      "num_compactions": 0,
+      "prompt_tokens": 206070,
+      "reasoning_tokens": 89,
+      "total_cost": 0,
+      "total_tokens": 207337
+    },
+    "finish_reason": "stop",
+    "holmes_tool_calls": [
+      "TodoWrite",
+      "incidents_recent",
+      "deployments_recent",
+      "pods_list_in_namespace",
+      "events_list",
+      "deployments_get",
+      "incidents_get",
+      "pods_log",
+      "pods_get",
+      "deployments_get",
+      "incidents_get",
+      "resources_get",
+      "deployments_get",
+      "resources_list",
+      "resources_get",
+      "resources_get",
+      "runbooks_search",
+      "runbooks_get",
+      "execute_query",
+      "pods_top",
+      "TodoWrite"
+    ],
+    "holmes_tool_calls_detail": [
+      {
+        "params": {
+          "todos": [
+            {
+              "content": "Inspect billing-api pods, logs, and events in demo-apps",
+              "id": "check-billing-api",
+              "status": "in_progress"
+            },
+            {
+              "content": "Check recent deployments, incidents, and runbooks",
+              "id": "check-history",
+              "status": "pending"
+            },
+            {
+              "content": "Trace root cause through dependencies and configurations",
+              "id": "trace-cause",
+              "status": "pending"
+            }
+          ]
+        },
+        "tool": "TodoWrite",
+        "toolset": "core_investigation"
+      },
+      {
+        "params": {
+          "limit": 10
+        },
+        "tool": "incidents_recent",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "limit": 10
+        },
+        "tool": "deployments_recent",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "fieldSelector": null,
+          "labelSelector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "pods_list_in_namespace",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "fieldSelector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "events_list",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "id": "CI-2455"
+        },
+        "tool": "deployments_get",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "id": "INC-2025-0611"
+        },
+        "tool": "incidents_get",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "container": null,
+          "name": "billing-api-665595bbf9-dk4wf",
+          "namespace": "demo-apps",
+          "previous": null,
+          "tail": 100
+        },
+        "tool": "pods_log",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "name": "billing-api-665595bbf9-dk4wf",
+          "namespace": "demo-apps"
+        },
+        "tool": "pods_get",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "id": "CI-2452"
+        },
+        "tool": "deployments_get",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "id": "INC-2025-0918"
+        },
+        "tool": "incidents_get",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "apiVersion": "v1",
+          "kind": "ConfigMap",
+          "name": "demo-app-code",
+          "namespace": "demo-apps"
+        },
+        "tool": "resources_get",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "id": "CI-2451"
+        },
+        "tool": "deployments_get",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "apiVersion": "rds.services.k8s.aws/v1alpha1",
+          "fieldSelector": null,
+          "kind": "DBProxy",
+          "labelSelector": null,
+          "namespace": "ack-system"
+        },
+        "tool": "resources_list",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "apiVersion": "apps/v1",
+          "kind": "Deployment",
+          "name": "billing-api",
+          "namespace": "demo-apps"
+        },
+        "tool": "resources_get",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "apiVersion": "rds.services.k8s.aws/v1alpha1",
+          "kind": "DBProxy",
+          "name": "billing-db-proxy",
+          "namespace": "ack-system"
+        },
+        "tool": "resources_get",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "idleClientTimeout dbproxy pool"
+        },
+        "tool": "runbooks_search",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "id": "RB-014"
+        },
+        "tool": "runbooks_get",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "limit": null,
+          "lookback_delta": null,
+          "org_id": null,
+          "prometheus_url": null,
+          "query": "http_requests_total{service=\"billing-api\"}",
+          "stats": null,
+          "time": null,
+          "timeout": null,
+          "unlimited": null
+        },
+        "tool": "execute_query",
+        "toolset": "prometheus"
+      },
+      {
+        "params": {
+          "all_namespaces": false,
+          "label_selector": null,
+          "name": "billing-api-665595bbf9-dk4wf",
+          "namespace": "demo-apps"
+        },
+        "tool": "pods_top",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "todos": [
+            {
+              "content": "Inspect billing-api pods, logs, and events in demo-apps",
+              "id": "check-billing-api",
+              "status": "completed"
+            },
+            {
+              "content": "Check recent deployments, incidents, and runbooks",
+              "id": "check-history",
+              "status": "completed"
+            },
+            {
+              "content": "Trace root cause through dependencies and configurations",
+              "id": "trace-cause",
+              "status": "completed"
+            }
+          ]
+        },
+        "tool": "TodoWrite",
+        "toolset": "core_investigation"
+      }
+    ],
+    "max_output_tokens": 65536,
+    "max_tokens": 1048576,
+    "request_id": "11931284-27be-4cd0-987d-adb5984f6499",
+    "tokens": {
+      "assistant_tokens": 903,
+      "other_tokens": 0,
+      "system_tokens": 3961,
+      "tools_to_call_tokens": 3486,
+      "tools_tokens": 17609,
+      "total_tokens": 26182,
+      "user_tokens": 316
+    },
+    "usage": {
+      "cached_tokens": 26172,
+      "completion_tokens": 316,
+      "prompt_tokens": 29860,
+      "total_tokens": 30176
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "",
+  "trace_id": "7c6fd2e88ea7f26ffb6c7f8fe638764e",
+  "valid": true
+}

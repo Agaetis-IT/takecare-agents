@@ -1,0 +1,229 @@
+{
+  "integrity": {
+    "records": 64,
+    "main": 60,
+    "controls": 4,
+    "cells_not_5": [],
+    "invalid_runs": [],
+    "replayed": [
+      [
+        26,
+        [
+          "infrastructure",
+          "infrastructure"
+        ]
+      ]
+    ],
+    "instrumentation_errors": [],
+    "runs_without_usage": []
+  },
+  "cells": {
+    "kagent/missing-secret-key": {
+      "n": 5,
+      "valid": 5,
+      "chain_correct": 5,
+      "evidence_read": 5
+    },
+    "kagent/proxy-timeout": {
+      "n": 5,
+      "valid": 5,
+      "chain_correct": 5,
+      "evidence_read": 5
+    },
+    "kagent/bad-config-rollout": {
+      "n": 5,
+      "valid": 5,
+      "chain_correct": 5,
+      "evidence_read": 5
+    },
+    "holmes-native/missing-secret-key": {
+      "n": 5,
+      "valid": 5,
+      "chain_correct": 5,
+      "evidence_read": 5
+    },
+    "holmes-native/proxy-timeout": {
+      "n": 5,
+      "valid": 5,
+      "chain_correct": 5,
+      "evidence_read": 5
+    },
+    "holmes-native/bad-config-rollout": {
+      "n": 5,
+      "valid": 5,
+      "chain_correct": 5,
+      "evidence_read": 5
+    },
+    "holmes-mcp/missing-secret-key": {
+      "n": 5,
+      "valid": 5,
+      "chain_correct": 5,
+      "evidence_read": 5
+    },
+    "holmes-mcp/proxy-timeout": {
+      "n": 5,
+      "valid": 5,
+      "chain_correct": 5,
+      "evidence_read": 5
+    },
+    "holmes-mcp/bad-config-rollout": {
+      "n": 5,
+      "valid": 5,
+      "chain_correct": 5,
+      "evidence_read": 5
+    },
+    "doc-engine/missing-secret-key": {
+      "n": 5,
+      "valid": 5,
+      "chain_correct": 5,
+      "evidence_read": 5
+    },
+    "doc-engine/proxy-timeout": {
+      "n": 5,
+      "valid": 5,
+      "chain_correct": 5,
+      "evidence_read": 5
+    },
+    "doc-engine/bad-config-rollout": {
+      "n": 5,
+      "valid": 5,
+      "chain_correct": 5,
+      "evidence_read": 5
+    }
+  },
+  "engines": {
+    "kagent": {
+      "n": 15,
+      "chain_correct": 15,
+      "evidence_read": 15,
+      "latency_median": 37,
+      "cost_median": 0.0257
+    },
+    "holmes-native": {
+      "n": 15,
+      "chain_correct": 15,
+      "evidence_read": 15,
+      "latency_median": 30,
+      "cost_median": 0.0508
+    },
+    "holmes-mcp": {
+      "n": 15,
+      "chain_correct": 15,
+      "evidence_read": 15,
+      "latency_median": 34,
+      "cost_median": 0.0517
+    },
+    "doc-engine": {
+      "n": 15,
+      "chain_correct": 15,
+      "evidence_read": 15,
+      "latency_median": 20,
+      "cost_median": 0.0254
+    }
+  },
+  "controls": [
+    {
+      "run": 61,
+      "engine": "holmes-native",
+      "chain_correct": false,
+      "evidence_read": false
+    },
+    {
+      "run": 62,
+      "engine": "holmes-native",
+      "chain_correct": true,
+      "evidence_read": false
+    },
+    {
+      "run": 63,
+      "engine": "holmes-mcp",
+      "chain_correct": true,
+      "evidence_read": false
+    },
+    {
+      "run": 64,
+      "engine": "holmes-mcp",
+      "chain_correct": false,
+      "evidence_read": false
+    }
+  ],
+  "age": {
+    "missing-secret-key": {
+      "late_runs": [
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ],
+      "early_runs": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ]
+    },
+    "proxy-timeout": {
+      "late_runs": [
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40
+      ],
+      "early_runs": [
+        21,
+        22,
+        23,
+        24,
+        25
+      ]
+    },
+    "bad-config-rollout": {
+      "late_runs": [],
+      "early_runs": [
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60
+      ]
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "agent": "doc-engine",
+  "artifact_text": "**Observations**\n- Pod `billing-api-665595bbf9-dk4wf` logs repeat `WARN db connection reset by peer, retrying (pool acquire 2.80s)`.\n- Deployment `billing-api` defines `DB_POOL_IDLE_TIMEOUT_SECONDS=900`.\n- DBProxy `billing-db-proxy` in `ack-system` specifies `spec.idleClientTimeout: 600`.\n\n**Ruled-out leads**\n- An application memory leak or OOMKill is ruled out because heap usage is capped at 380 MiB below the 512 MiB limit.\n- An issue from deployment CI-2455 is ruled out because ALB timeouts (120 s) exceed client settings and do not touch database connections.\n\n**Root cause**\nDatabase connection pool exhaustion occurs because the DBProxy `idleClientTimeout` (600 s) is shorter than `DB_POOL_IDLE_TIMEOUT_SECONDS` (900 s), violating runbook RB-014.\n\n**Recommended action**\nThe platform team should update `billing-db-proxy` in `ack-system` to raise or remove `spec.idleClientTimeout` above 900 seconds.",
+  "client": "a2a",
+  "conversation_id": "spike-bench-30-doc-engine-proxy-timeout",
+  "label": "bench-30-doc-engine-proxy-timeout",
+  "latency_seconds": 43,
+  "metadata": {
+    "adk_app_name": "doc",
+    "adk_session_id": "01a168bd-f9ce-7666-8449-6ccdea4c357d",
+    "adk_user_id": "A2A_USER_01a168bd-f9ce-7666-8449-6ccdea4c357d",
+    "https://google.github.io/adk-docs/a2a/a2a-extension/": true,
+    "takecare.usage": {
+      "cachedInputTokens": 64355,
+      "inputTokens": 103814,
+      "modelCalls": 10,
+      "outputTokens": 743,
+      "thoughtsTokens": 24,
+      "toolUsePromptTokens": 0,
+      "totalTokens": 104557
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "01a168bd-f9ce-737e-a2b5-54e789bef6e4",
+  "trace_id": "4b800409d5e5d2300f28dba899e150cb",
+  "valid": true
+}

@@ -1,0 +1,166 @@
+{
+  "agent": "holmes-mcp",
+  "artifact_text": "### Observations\n1. Pod `orders-api-7b7dfdc66d-s2556` in namespace `demo-apps` logs `WARN database orders-db-primary.demo-apps.svc:5432 not reachable ([Errno -2] Name or service not known), retrying` (pod log).\n2. The pod fails its readiness check with `Readiness probe failed: HTTP probe failed with statuscode: 503` (Kubernetes event).\n3. ConfigMap `orders-config` sets `DB_HOST` to `orders-db-primary.demo-apps.svc:5432`, but only Service `orders-db` exists in namespace `demo-apps` (ConfigMap and Service definitions).\n\n### Ruled-out leads\n1. Resource exhaustion is ruled out because the pod consumes only 14Mi memory out of its 256Mi limit and 1m CPU (pod metrics).\n2. Node-level issues are ruled out because adjacent pods on node `k3d-spike-001-agent-0` remain healthy and ready (pod status).\n\n### Root cause\nDeployment change CI-2459 updated `orders-config` to use non-existent database host `orders-db-primary.demo-apps.svc:5432`, causing database connectivity checks to fail during readiness probing.\n\n### Recommended action\nThe orders team should revert `DB_HOST` in ConfigMap `orders-config` to `orders-db.demo-apps.svc:5432` and restart the deployment.",
+  "client": "holmes",
+  "conversation_id": "spike-bench-43-holmes-mcp-bad-config-rollout",
+  "label": "bench-43-holmes-mcp-bad-config-rollout",
+  "latency_seconds": 17,
+  "metadata": {
+    "costs": {
+      "cache_creation_tokens": null,
+      "cached_tokens": 46142,
+      "completion_tokens": 881,
+      "max_completion_tokens_per_call": 345,
+      "max_prompt_tokens_per_call": 17959,
+      "num_compactions": 0,
+      "prompt_tokens": 72341,
+      "reasoning_tokens": 161,
+      "total_cost": 0,
+      "total_tokens": 73222
+    },
+    "finish_reason": "stop",
+    "holmes_tool_calls": [
+      "pods_list_in_namespace",
+      "incidents_recent",
+      "deployments_recent",
+      "events_list",
+      "runbooks_search",
+      "deployments_get",
+      "pods_log",
+      "resources_get",
+      "runbooks_recent",
+      "resources_list",
+      "resources_get",
+      "pods_top"
+    ],
+    "holmes_tool_calls_detail": [
+      {
+        "params": {
+          "fieldSelector": null,
+          "labelSelector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "pods_list_in_namespace",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "limit": 5
+        },
+        "tool": "incidents_recent",
+        "toolset": "incidents"
+      },
+      {
+        "params": {
+          "limit": 5
+        },
+        "tool": "deployments_recent",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "fieldSelector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "events_list",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "limit": 5,
+          "query": "orders-api"
+        },
+        "tool": "runbooks_search",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "id": "CI-2459"
+        },
+        "tool": "deployments_get",
+        "toolset": "deployments"
+      },
+      {
+        "params": {
+          "container": null,
+          "name": "orders-api-7b7dfdc66d-s2556",
+          "namespace": "demo-apps",
+          "previous": null,
+          "tail": 100
+        },
+        "tool": "pods_log",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "apiVersion": "apps/v1",
+          "kind": "Deployment",
+          "name": "orders-api",
+          "namespace": "demo-apps"
+        },
+        "tool": "resources_get",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "limit": 5
+        },
+        "tool": "runbooks_recent",
+        "toolset": "runbooks"
+      },
+      {
+        "params": {
+          "apiVersion": "v1",
+          "fieldSelector": null,
+          "kind": "Service",
+          "labelSelector": null,
+          "namespace": "demo-apps"
+        },
+        "tool": "resources_list",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "apiVersion": "v1",
+          "kind": "ConfigMap",
+          "name": "orders-config",
+          "namespace": "demo-apps"
+        },
+        "tool": "resources_get",
+        "toolset": "kubernetes"
+      },
+      {
+        "params": {
+          "all_namespaces": false,
+          "label_selector": null,
+          "name": "orders-api-7b7dfdc66d-s2556",
+          "namespace": "demo-apps"
+        },
+        "tool": "pods_top",
+        "toolset": "kubernetes"
+      }
+    ],
+    "max_output_tokens": 65536,
+    "max_tokens": 1048576,
+    "request_id": "18c387fd-33cd-4506-939e-09d6c4ffbafb",
+    "tokens": {
+      "assistant_tokens": 593,
+      "other_tokens": 0,
+      "system_tokens": 3961,
+      "tools_to_call_tokens": 3486,
+      "tools_tokens": 7666,
+      "total_tokens": 15966,
+      "user_tokens": 314
+    },
+    "usage": {
+      "cached_tokens": 14331,
+      "completion_tokens": 345,
+      "prompt_tokens": 17959,
+      "total_tokens": 18304
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "",
+  "trace_id": "7dbc5ab57c709dae75a4a2bf95c6eac9",
+  "valid": true
+}

@@ -1,0 +1,25 @@
+{
+  "agent": "kagent",
+  "artifact_text": "### Observations\n- `billing-api` pod logs repeatedly show `WARN db connection reset by peer, retrying (pool acquire 2.80s)`.\n- The `billing-api` pod environment sets `DB_POOL_IDLE_TIMEOUT_SECONDS` to `900`.\n- The RDS proxy `billing-db-proxy` in `ack-system` defines `spec.idleClientTimeout: 600`.\n\n### Leads Ruled Out\n- Pod restart or crash was ruled out because `billing-api-665595bbf9-dk4wf` has zero restarts and status Running.\n- Memory leak leading to OOM was ruled out because heap stabilized at 360 MB without exceeding the 512 MB limit.\n\n### Root Cause\nThe database connection pool idle timeout (900s) exceeds RDS Proxy's `idleClientTimeout` (600s), causing dropped connections and pool acquisition latency.\n\n### Recommended Action\nThe billing team must lower `DB_POOL_IDLE_TIMEOUT_SECONDS` below 600s in the `billing-api` deployment per runbook `RB-014`.",
+  "client": "a2a",
+  "conversation_id": "spike-bench-37-kagent-proxy-timeout",
+  "label": "bench-37-kagent-proxy-timeout",
+  "latency_seconds": 48,
+  "metadata": {
+    "kagent_adk_partial": null,
+    "kagent_app_name": "takecare_system__NS__doc_service_py",
+    "kagent_author": "doc_service_py",
+    "kagent_invocation_id": "e-85101f6a-d246-4445-aa40-17284b18d0b9",
+    "kagent_session_id": "f9311ed7-9236-4257-8ed1-c27eb5e4a4ae",
+    "kagent_usage_metadata": {
+      "candidatesTokenCount": 253,
+      "promptTokenCount": 14311,
+      "totalTokenCount": 14564
+    },
+    "kagent_user_id": "admin@kagent.dev"
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "d9416ec2-df08-49b2-86c9-d1f6c8ef3fe1",
+  "trace_id": "d9a519b4751da34b4c91f7e4b32b3196",
+  "valid": true
+}

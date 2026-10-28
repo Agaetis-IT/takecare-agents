@@ -1,0 +1,27 @@
+{
+  "agent": "doc-engine",
+  "artifact_text": "**Observations**\n- Pod logs for `billing-api-665595bbf9-dk4wf` report repeated `WARN db connection reset by peer, retrying (pool acquire ...)` alongside increasing pool acquire latencies.\n- In Deployment `billing-api`, environment variable `DB_POOL_IDLE_TIMEOUT_SECONDS` configures the application connection pool idle timeout to 900 seconds.\n- In DBProxy `billing-db-proxy` (`ack-system`), `spec.idleClientTimeout` is set to 600 seconds, closing idle connections before the application pool recycles them.\n\n**Ruled-out leads**\n- Memory exhaustion: heap usage plateaued below limits and memory pressure is an artifact of stalled requests retaining objects (RB-014).\n- Application crash or container restarts: pod `billing-api-665595bbf9-dk4wf` shows zero restarts and passes both liveness and readiness probes.\n\n**Root cause**\nThe database proxy idle timeout (600s) is shorter than the application connection pool idle timeout (900s), causing dropped connections and pool saturation.\n\n**Recommended action**\nThe application team should lower `DB_POOL_IDLE_TIMEOUT_SECONDS` below 600s or the infrastructure team should increase `billing-db-proxy` `idleClientTimeout` above 900s (RB-014).",
+  "client": "a2a",
+  "conversation_id": "spike-bench-24-doc-engine-proxy-timeout",
+  "label": "bench-24-doc-engine-proxy-timeout",
+  "latency_seconds": 21,
+  "metadata": {
+    "adk_app_name": "doc",
+    "adk_session_id": "01a16830-5263-7cee-b01d-861d2c6e7749",
+    "adk_user_id": "A2A_USER_01a16830-5263-7cee-b01d-861d2c6e7749",
+    "https://google.github.io/adk-docs/a2a/a2a-extension/": true,
+    "takecare.usage": {
+      "cachedInputTokens": 32773,
+      "inputTokens": 59188,
+      "modelCalls": 7,
+      "outputTokens": 763,
+      "thoughtsTokens": 55,
+      "toolUsePromptTokens": 0,
+      "totalTokens": 59951
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "01a16830-5263-7b3f-a2c0-5aff393f36d1",
+  "trace_id": "d4fe0371df1d62b65f49687703721257",
+  "valid": true
+}

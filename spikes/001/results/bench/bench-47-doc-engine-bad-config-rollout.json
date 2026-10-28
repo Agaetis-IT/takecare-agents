@@ -1,0 +1,27 @@
+{
+  "agent": "doc-engine",
+  "artifact_text": "### Observations\n- In pod `orders-api-7b7dfdc66d-s2556` logs, readiness fails with `database orders-db-primary.demo-apps.svc:5432 not reachable ([Errno -2] Name or service not known)`.\n- Event history for `orders-api-7b7dfdc66d-s2556` shows `Readiness probe failed: HTTP probe failed with statuscode: 503`.\n- In `demo-apps`, Services list shows only `orders-db` exists, while `orders-db-primary` is absent.\n\n### Ruled-out leads\n- Database outage was ruled out because pod `orders-db-59f5787b7-jb5ww` and Service `orders-db` are running normally.\n- Container crashes or resource exhaustion were ruled out because the pod has zero restarts and normal CPU/memory consumption.\n\n### Root cause\nDeployment CI-2459 changed `DB_HOST` in ConfigMap `orders-config` to `orders-db-primary.demo-apps.svc:5432` before that Service was created.\n\n### Recommended action\nThe orders team should revert `DB_HOST` in ConfigMap `orders-config` to `orders-db.demo-apps.svc:5432` and restart the deployment.",
+  "client": "a2a",
+  "conversation_id": "spike-bench-47-doc-engine-bad-config-rollout",
+  "label": "bench-47-doc-engine-bad-config-rollout",
+  "latency_seconds": 14,
+  "metadata": {
+    "adk_app_name": "doc",
+    "adk_session_id": "01a168d6-f11e-70bb-9086-4e96e5081713",
+    "adk_user_id": "A2A_USER_01a168d6-f11e-70bb-9086-4e96e5081713",
+    "https://google.github.io/adk-docs/a2a/a2a-extension/": true,
+    "takecare.usage": {
+      "cachedInputTokens": 30806,
+      "inputTokens": 53461,
+      "modelCalls": 6,
+      "outputTokens": 608,
+      "thoughtsTokens": 36,
+      "toolUsePromptTokens": 0,
+      "totalTokens": 54069
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "01a168d6-f11d-7e09-b648-3cfde823d07b",
+  "trace_id": "23ba2004816871e5994ce9c50235ceee",
+  "valid": true
+}

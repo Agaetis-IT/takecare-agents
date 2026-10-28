@@ -1,0 +1,27 @@
+{
+  "agent": "doc-engine",
+  "artifact_text": "**Observations**\n- Pod `billing-api-665595bbf9-dk4wf` logs repeated `WARN db connection reset by peer, retrying (pool acquire 2.80s)`.\n- Deployment `billing-api` in `demo-apps` sets `DB_POOL_IDLE_TIMEOUT_SECONDS` to `900` in its container environment.\n- DBProxy `billing-db-proxy` in `ack-system` defines `spec.idleClientTimeout` as `600` seconds.\n\n**Root cause**\nThe application connection pool idle timeout (900 s) exceeds RDS Proxy `idleClientTimeout` (600 s), causing severed idle connections and pool exhaustion (RB-014, INC-2024-0312).\n\n**Recommended action**\nThe application team or platform team should set `DB_POOL_IDLE_TIMEOUT_SECONDS` below 600 s or increase `spec.idleClientTimeout` on `billing-db-proxy` above 900 s.\n\n**Ruled-out leads**\n- Memory leak was ruled out because heap growth is a secondary effect of retrying requests holding objects during pool contention (RB-014, INC-2024-0312).\n- ALB keep-alive mismatch was ruled out because CI-2455 raised ALB idle timeout to 120 s while `billing-api` keep-alive was raised to 125 s.",
+  "client": "a2a",
+  "conversation_id": "spike-bench-33-doc-engine-proxy-timeout",
+  "label": "bench-33-doc-engine-proxy-timeout",
+  "latency_seconds": 35,
+  "metadata": {
+    "adk_app_name": "doc",
+    "adk_session_id": "01a168c0-d7eb-7350-800f-aece60b4f16a",
+    "adk_user_id": "A2A_USER_01a168c0-d7eb-7350-800f-aece60b4f16a",
+    "https://google.github.io/adk-docs/a2a/a2a-extension/": true,
+    "takecare.usage": {
+      "cachedInputTokens": 38898,
+      "inputTokens": 65128,
+      "modelCalls": 8,
+      "outputTokens": 797,
+      "thoughtsTokens": 36,
+      "toolUsePromptTokens": 0,
+      "totalTokens": 65925
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "01a168c0-d7eb-71b3-a42c-36bd28c55a4e",
+  "trace_id": "2f1d7bbde30ed59e915dfa35ceb3ba05",
+  "valid": true
+}

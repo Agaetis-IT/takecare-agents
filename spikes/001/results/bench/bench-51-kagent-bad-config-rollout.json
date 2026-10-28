@@ -1,0 +1,25 @@
+{
+  "agent": "kagent",
+  "artifact_text": "**Observations**\n- Pod `orders-api-7b7dfdc66d-s2556` readiness probe fails with HTTP 503 (Kubernetes events in `demo-apps`).\n- Pod logs show `orders-api-7b7dfdc66d-s2556` repeatedly failing with `database orders-db-primary.demo-apps.svc:5432 not reachable ([Errno -2] Name or service not known)`.\n- Deployment change `CI-2459` updated `DB_HOST` to `orders-db-primary.demo-apps.svc:5432`, but only Service `orders-db` exists (`demo-apps` Services).\n\n**Ruled out**\n- Pod crash loops or container restart issues: the container is Running with 0 restarts (`demo-apps` Pods).\n- Database outage: the `orders-db` pod and its `orders-db` Service are Running and active (`demo-apps` Pods).\n\n**Root cause**\nDeployment `CI-2459` pointed `DB_HOST` to non-existent Service `orders-db-primary.demo-apps.svc:5432` before the endpoint was created.\n\n**Recommended action**\nThe orders team should roll back `orders-config` to use `orders-db.demo-apps.svc:5432`.",
+  "client": "a2a",
+  "conversation_id": "spike-bench-51-kagent-bad-config-rollout",
+  "label": "bench-51-kagent-bad-config-rollout",
+  "latency_seconds": 14,
+  "metadata": {
+    "kagent_adk_partial": null,
+    "kagent_app_name": "takecare_system__NS__doc_service_py",
+    "kagent_author": "doc_service_py",
+    "kagent_invocation_id": "e-e205e762-e933-44cb-b27b-3c273a00eb68",
+    "kagent_session_id": "1208f5fa-f442-4e79-8b6a-0a407501ce93",
+    "kagent_usage_metadata": {
+      "candidatesTokenCount": 308,
+      "promptTokenCount": 8808,
+      "totalTokenCount": 9116
+    },
+    "kagent_user_id": "admin@kagent.dev"
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "bdf03b5d-71e4-4a40-8797-02fab52fa5d4",
+  "trace_id": "b21300af962bbdcf38061ea80e18b616",
+  "valid": true
+}

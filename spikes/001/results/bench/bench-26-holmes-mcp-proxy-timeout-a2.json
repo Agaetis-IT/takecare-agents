@@ -1,0 +1,14 @@
+{
+  "agent": "holmes-mcp",
+  "artifact_text": "",
+  "client": "holmes",
+  "conversation_id": "spike-bench-26-holmes-mcp-proxy-timeout-a2",
+  "error": "holmes chat: HTTP 500: {\"detail\":\"litellm.ServiceUnavailableError: ServiceUnavailableError: OpenAIException - upstream call failed: SendRequest: connection error: peer closed connection without sending TLS close_notify: https://docs.rs/rustls/latest/rustls/manual/_03_howto/index.html#unexpected-eof\"}",
+  "label": "bench-26-holmes-mcp-proxy-timeout-a2",
+  "latency_seconds": 54,
+  "metadata": null,
+  "state": "HTTP_500",
+  "task_id": "",
+  "trace_id": "799cb430ba0f788913315966ad949fb5",
+  "valid": false
+}
