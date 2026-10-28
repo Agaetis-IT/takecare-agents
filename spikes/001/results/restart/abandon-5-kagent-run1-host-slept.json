@@ -1,0 +1,14 @@
+{
+  "agent": "kagent",
+  "artifact_text": "",
+  "client": "a2a",
+  "conversation_id": "spike-abandon-5-kagent",
+  "error": "send message: failed to send HTTP request: Post \"http://localhost:18080/api/a2a/takecare-system/doc-service-py/\": context deadline exceeded",
+  "label": "abandon-5-kagent",
+  "latency_seconds": 15,
+  "metadata": null,
+  "state": "",
+  "task_id": "",
+  "trace_id": "69edf8bf0875d702d35d59542c09d389",
+  "valid": false
+}

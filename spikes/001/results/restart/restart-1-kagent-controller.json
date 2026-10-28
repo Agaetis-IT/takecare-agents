@@ -1,0 +1,14 @@
+{
+  "agent": "kagent",
+  "artifact_text": "",
+  "client": "a2a",
+  "conversation_id": "spike-restart-1-kagent-controller",
+  "error": "send message: All connection attempts failed",
+  "label": "restart-1-kagent-controller",
+  "latency_seconds": 26,
+  "metadata": null,
+  "state": "",
+  "task_id": "",
+  "trace_id": "6bf867a2fda1db7ffca4ba6abc599df9",
+  "valid": false
+}

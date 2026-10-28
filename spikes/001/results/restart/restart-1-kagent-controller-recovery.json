@@ -1,0 +1,25 @@
+{
+  "agent": "kagent",
+  "artifact_text": "### Observations\n1. Pod logs for `orders-api-7b7dfdc66d-s2556` show repeated `WARN database orders-db-primary.demo-apps.svc:5432 not reachable ([Errno -2] Name or service not known), retrying`.\n2. Deployment `CI-2459` updated ConfigMap `orders-config` to `DB_HOST: orders-db-primary.demo-apps.svc:5432` prior to the database team creating that endpoint.\n3. The `demo-apps` namespace contains Service `orders-db` rather than `orders-db-primary`.\n\n### Leads Ruled Out\n1. Memory exhaustion or OOM killing was ruled out because `billing-api-6fc796457d-bqndn` memory usage is 13Mi out of its 512Mi limit.\n2. Container crash loops were ruled out because all pods in `demo-apps` report zero restarts.\n\n### Root Cause\nDeployment `CI-2459` pointed `orders-config`'s `DB_HOST` to non-existent Service `orders-db-primary.demo-apps.svc:5432`, failing readiness probes on `orders-api`.\n\n### Recommended Action\nThe orders team must revert `DB_HOST` in ConfigMap `orders-config` to `orders-db.demo-apps.svc:5432` and restart `orders-api`.",
+  "client": "a2a",
+  "conversation_id": "spike-restart-1-kagent-controller-recovery",
+  "label": "restart-1-kagent-controller-recovery",
+  "latency_seconds": 93,
+  "metadata": {
+    "kagent_adk_partial": null,
+    "kagent_app_name": "takecare_system__NS__doc_service_py",
+    "kagent_author": "doc_service_py",
+    "kagent_invocation_id": "e-0d4ac24e-e919-4be6-9bdd-b2783783dcc1",
+    "kagent_session_id": "143c1171-d9d7-49ae-8cff-48ba684d6ca4",
+    "kagent_usage_metadata": {
+      "candidatesTokenCount": 327,
+      "promptTokenCount": 21322,
+      "totalTokenCount": 21649
+    },
+    "kagent_user_id": "admin@kagent.dev"
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "4536d90b-e3e6-4d3a-b057-b8bdd223289f",
+  "trace_id": "3a49c2d0f86c5c427c4ac3a374427648",
+  "valid": true
+}

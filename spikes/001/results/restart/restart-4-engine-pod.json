@@ -1,0 +1,14 @@
+{
+  "agent": "engine",
+  "artifact_text": "",
+  "client": "a2a",
+  "conversation_id": "spike-restart-4-engine-pod",
+  "error": "send message: unexpected HTTP status: 503 Service Unavailable",
+  "label": "restart-4-engine-pod",
+  "latency_seconds": 18,
+  "metadata": null,
+  "state": "",
+  "task_id": "",
+  "trace_id": "e2599060fad4b99e9400fac4f70f1f20",
+  "valid": false
+}

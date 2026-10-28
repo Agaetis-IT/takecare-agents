@@ -1,0 +1,14 @@
+{
+  "agent": "kagent",
+  "artifact_text": "",
+  "client": "a2a",
+  "conversation_id": "spike-restart-3-kagent-postgres",
+  "error": "send message: Server error '500 Internal Server Error' for url 'http://kagent-controller.kagent:8083/api/tasks'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+  "label": "restart-3-kagent-postgres",
+  "latency_seconds": 12,
+  "metadata": null,
+  "state": "",
+  "task_id": "",
+  "trace_id": "0589d830ada790d5b85c21a926b13f51",
+  "valid": false
+}

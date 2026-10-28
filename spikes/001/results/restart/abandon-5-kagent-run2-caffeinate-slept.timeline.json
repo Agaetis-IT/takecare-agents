@@ -1,0 +1,6 @@
+{
+  "trace_id": "9b283c8ef8047a6c353bc8e2200399c6",
+  "client_deadline_s": 15,
+  "spans_after_deadline": 68,
+  "last_model_or_tool_span_s": 4280
+}

@@ -1,0 +1,27 @@
+{
+  "agent": "engine",
+  "artifact_text": "### Observations\n1. Pod `orders-api-7b7dfdc66d-s2556` has been in `Running` (0/1 Ready) status for 17 hours due to failing readiness probes (`HTTP 503`), as shown in `events_list`.\n2. Pod `orders-api-7b7dfdc66d-s2556` logs repeatedly display `WARN database orders-db-primary.demo-apps.svc:5432 not reachable ([Errno -2] Name or service not known), retrying`.\n3. In `demo-apps`, the database service is named `orders-db` rather than `orders-db-primary`, as recorded in `Service/orders-db`.\n\n### Ruled-out leads\n1. Pod crash-looping or container restart issues were ruled out because the pod has 0 restarts and remains running.\n2. Out-of-memory or node-level capacity failures were ruled out because liveness probes succeed and resource limits were not exceeded.\n\n### Root cause\nDeployment `CI-2459` updated `ConfigMap/orders-config` setting `DB_HOST` to non-existent hostname `orders-db-primary.demo-apps.svc:5432`, preventing `orders-api` from passing its database readiness probe.\n\n### Recommended action\nThe orders team should update `ConfigMap/orders-config` to restore `DB_HOST` to `orders-db.demo-apps.svc:5432` and trigger a rollout restart.",
+  "client": "a2a",
+  "conversation_id": "spike-restart-4-engine-pod-recovery",
+  "label": "restart-4-engine-pod-recovery",
+  "latency_seconds": 106,
+  "metadata": {
+    "adk_app_name": "doc",
+    "adk_session_id": "01a16c8b-60dc-7d2b-bd75-0060cbc1aaaf",
+    "adk_user_id": "A2A_USER_01a16c8b-60dc-7d2b-bd75-0060cbc1aaaf",
+    "https://google.github.io/adk-docs/a2a/a2a-extension/": true,
+    "takecare.usage": {
+      "cachedInputTokens": 237497,
+      "inputTokens": 356007,
+      "modelCalls": 21,
+      "outputTokens": 1292,
+      "thoughtsTokens": 114,
+      "toolUsePromptTokens": 0,
+      "totalTokens": 357299
+    }
+  },
+  "state": "TASK_STATE_COMPLETED",
+  "task_id": "01a16c8b-60dc-7b32-952a-4e2b76587741",
+  "trace_id": "034ab1a313c0561423680278bfd7adf1",
+  "valid": true
+}

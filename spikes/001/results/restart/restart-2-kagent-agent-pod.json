@@ -1,0 +1,14 @@
+{
+  "agent": "kagent",
+  "artifact_text": "",
+  "client": "a2a",
+  "conversation_id": "spike-restart-2-kagent-agent-pod",
+  "error": "send message: failed to send HTTP request: Post \"http://doc-service-py.takecare-system:8080\": EOF",
+  "label": "restart-2-kagent-agent-pod",
+  "latency_seconds": 40,
+  "metadata": null,
+  "state": "",
+  "task_id": "",
+  "trace_id": "79981e106105f0eb117a17babc94be47",
+  "valid": false
+}
