@@ -39,7 +39,9 @@ platform:
     namespace: kagent
   observability:
     metrics:
-      prometheusURL: ""    # REQUIRED for usage and cost: a Prometheus that scrapes the gateway
+      prometheusURL: ""    # REQUIRED for usage and cost: a Prometheus that scrapes the gateway's proxy pods with the
+                           # labels namespace and gateway_networking_k8s_io_gateway_name (agentgateway.monitoring.enabled
+                           # renders a PodMonitor that does); the platform reports gateway-metrics-not-scraped otherwise
     otlp:
       endpoint: ""         # recommended: your OTLP endpoint, e.g. http://otel-collector.observability.svc:4317
       protocol: grpc

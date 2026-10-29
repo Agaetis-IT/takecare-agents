@@ -20,7 +20,10 @@ set +a
 
 CLUSTER="${CLUSTER:-takecare-smoke}"
 NS=takecare-system
-IMAGE_TAG="${IMAGE_TAG:-smoke}"
+# A tag per run by default, so that a rebuilt image changes the Deployment
+# and rolls the operator; a fixed tag with pullPolicy IfNotPresent would keep
+# the previous binary running after `k3d image import`.
+IMAGE_TAG="${IMAGE_TAG:-smoke-$(date +%s)}"
 IMAGE="${IMAGE_REGISTRY}/takecare-operator:${IMAGE_TAG}"
 HELM="${HELM:-bin/helm-${HELM_VERSION}}"
 export KUBECONFIG="${PWD}/bin/${CLUSTER}.kubeconfig"
@@ -134,6 +137,10 @@ verify() {
     bash -c "{ kubectl -n ${NS} get agentgatewaymodels,agentgatewaypolicies -o yaml; kubectl -n kagent get modelconfigs -o yaml; } | grep -q smoke-placeholder"
   check "status.models[0].route is the gateway's Service" \
     test "$(kubectl get takecareplatform main -o jsonpath='{.status.models[0].route}')" = "http://agentgateway-proxy.${NS}.svc/v1"
+  # The demo profile's stable production gaps (spec 01, AC 6); the gateway
+  # scrape gap is transient there and NetworkPolicies are on.
+  check "ProductionReady=False in the demo, listing content-capture-on and single-replica" \
+    bash -c "g=\$(kubectl get takecareplatform main -o jsonpath='{.status.productionGaps[*].id}'); [[ \"\$(kubectl get takecareplatform main -o jsonpath='{.status.conditions[?(@.type==\"ProductionReady\")].status}')\" == False && \"\$g\" == *content-capture-on* && \"\$g\" == *single-replica* && \"\$g\" != *no-network-policies* ]]"
 
   log "network: the controller is reachable through the gateway only"
   # A temporary route through the gateway to the controller's API, as the
@@ -185,10 +192,10 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=17 install ;;
-  upgrade) CHECKS_EXPECTED=17 upgrade ;;
+  install) CHECKS_EXPECTED=18 install ;;
+  upgrade) CHECKS_EXPECTED=18 upgrade ;;
   status) status ;;
   down) down ;;
-  all) up; CHECKS_EXPECTED=17 install; CHECKS_EXPECTED=17 upgrade ;;
+  all) up; CHECKS_EXPECTED=18 install; CHECKS_EXPECTED=18 upgrade ;;
   *) echo "usage: $0 [up|install|upgrade|status|down|all]"; exit 2 ;;
 esac
