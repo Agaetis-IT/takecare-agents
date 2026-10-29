@@ -42,8 +42,8 @@ up() {
   make chart-deps >/dev/null
 }
 
-# Every check prints PASS or FAIL and the total is asserted at the end, so
-# that a check that did not run cannot pass silently.
+# Every check prints PASS or FAIL and each phase asserts its total, so that a
+# check that did not run cannot pass silently.
 checks=0 failed=0
 check() { # NAME COMMAND...: PASS when the command succeeds
   local name="$1"; shift
@@ -64,6 +64,7 @@ assert_checks() { # EXPECTED
 }
 
 install() {
+  checks=0 failed=0
   log "takecare-crds (hook job installs the Gateway API CRDs)"
   "$HELM" upgrade --install takecare-crds charts/takecare-crds -n "$NS" --create-namespace \
     --set image.tag="$IMAGE_TAG" --set image.pullPolicy=IfNotPresent --set demo.enabled=true --wait --timeout 5m
@@ -80,6 +81,7 @@ install() {
 }
 
 upgrade() {
+  checks=0 failed=0
   log "upgrade with a changed value (server-side apply under Helm 4)"
   "$HELM" upgrade takecare-crds charts/takecare-crds -n "$NS" \
     --set image.tag="$IMAGE_TAG" --set demo.enabled=true --wait --timeout 5m
