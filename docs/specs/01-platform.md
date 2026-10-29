@@ -35,8 +35,7 @@ spec:
     gatewayRef: { name: agentgateway-proxy, namespace: takecare-system }
 
   engine:
-    kagent:
-      namespace: kagent         # where kagent runs and where the operator writes Agents, ModelConfigs, RemoteMCPServers
+    namespace: kagent           # where the engine (kagent today) runs and where the operator writes Agents, ModelConfigs, RemoteMCPServers
 
   observability:
     metrics:
@@ -54,7 +53,7 @@ spec:
 |---|---|---|
 | Model | **Required**: their provider or their vLLM, and its key | OpenRouter, key from an environment variable |
 | Gateway | **Required**: the chart's agentgateway, or theirs | The chart's |
-| Engine | **Required**: the chart's kagent, or theirs (`engine.kagent.namespace`) | The chart's |
+| Engine | **Required**: the chart's kagent, or theirs (`engine.namespace`) | The chart's |
 | Prometheus scraping the gateway | **Required for usage and cost**: theirs | The demo Prometheus |
 | Telemetry (OTLP) | Recommended: their backend | OpenTelemetry Collector and Jaeger |
 | Message content capture | Off | On (fake data; prompts visible in Jaeger) |
