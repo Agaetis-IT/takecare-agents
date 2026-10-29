@@ -65,6 +65,8 @@ Evidence: `docs/spikes/001-kagent-doc-engine-report.md` and `spikes/001/notes.md
 
 Requirements, not recommendations:
 
+_Topology: [ADR 0011](0011-separate-administration-cluster.md) (Proposed) proposes that these requirements apply on a dedicated administration cluster rather than inside the supervised cluster._
+
 1. **The kagent controller is reachable only through the gateway**: a NetworkPolicy admits only the gateway's pods to it. This depends on the customer's CNI enforcing NetworkPolicies, which the installation checks and states.
 2. **`rbac.namespaces` restricts the controller's RBAC to TakeCare's namespaces.** Measured: with the default chart the controller's ServiceAccount reads Secrets and writes core, apps and batch resources cluster-wide, `pods/exec` and service account tokens included (a ceiling equivalent to cluster-admin); with the value set, every cluster-wide and customer-namespace right disappears, write remains only inside TakeCare's own namespaces, agents still reconcile, tool discovery and the tool checks are unchanged.
 3. **`AUTH_MODE=trusted-proxy`, with the gateway as the only way in.** `ProxyAuthenticator` decodes the JWT without verifying its signature or expiry: everything rests on the gateway being the only path.

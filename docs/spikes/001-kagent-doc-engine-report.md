@@ -290,7 +290,7 @@ Drafts in `spikes/001/upstream/`, for the product owner to validate text by text
 
 ## 12. Open questions
 
-- The ADR 0007 installation requirements assume the controller can be made reachable only through the gateway. The installation topology the product owner has in mind (a separate administration cluster) was not described to the spike; its effect on these requirements is to be settled.
+- The installation topology (a separate administration cluster) is now proposed in [ADR 0011](../adr/0011-separate-administration-cluster.md); its inbound network path and connector registration remain open there.
 - Should the `cluster` connector read ConfigMaps by default (§10)?
 - A decision is needed on how the product groups several alerts of one incident (§10).
 - Does an A2A `CancelTask` stop a kagent run? Do kagent's sessions survive a PostgreSQL restart? Not tested.
