@@ -5,7 +5,9 @@ package telemetry
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -13,9 +15,13 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
+	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/httpclient"
+	"github.com/agaetis-it/takecare-agents/internal/httpclient/certtest"
 )
 
 // collector counts the OTLP/HTTP trace exports it receives.
@@ -153,3 +159,70 @@ func TestRatio(t *testing.T) {
 }
 
 //go:fix inline
+
+// grpcCollector is an OTLP/gRPC trace service behind TLS from a private CA.
+type grpcCollector struct {
+	coltracepb.UnimplementedTraceServiceServer
+	exports atomic.Int32
+}
+
+func (c *grpcCollector) Export(context.Context, *coltracepb.ExportTraceServiceRequest) (*coltracepb.ExportTraceServiceResponse, error) {
+	c.exports.Add(1)
+	return &coltracepb.ExportTraceServiceResponse{}, nil
+}
+
+// The default protocol is grpc: a collector with TLS signed by a customer's
+// internal CA (the pilot's typical case) is reached only with the bundle.
+func TestGRPCExporterTrustsTheCABundle(t *testing.T) {
+	caFile, cert := certtest.PrivateCA(t)
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	col := &grpcCollector{}
+	srv := grpc.NewServer(grpc.Creds(credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})))
+	coltracepb.RegisterTraceServiceServer(srv, col)
+	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(srv.Stop)
+	endpoint := "https://" + lis.Addr().String()
+	grpcSpec := func() v1alpha1.ObservabilitySpec {
+		perMille := int32(1000)
+		return v1alpha1.ObservabilitySpec{SamplingPerMille: &perMille, OTLP: &v1alpha1.OTLPSpec{Endpoint: endpoint, Protocol: "grpc"}}
+	}
+	ctx := context.Background()
+
+	t.Run("with the bundle, spans arrive", func(t *testing.T) {
+		p := New(httpclient.Config{CAFile: caFile, Timeout: 5 * time.Second})
+		if err := p.Apply(ctx, grpcSpec()); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = p.Shutdown(ctx) })
+		_, span := p.Tracer("test").Start(ctx, "grpc")
+		span.End()
+		flushCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if err := p.sdk.ForceFlush(flushCtx); err != nil {
+			t.Fatalf("flush: %v", err)
+		}
+		waitExports(t, &col.exports, 1)
+	})
+
+	t.Run("without the bundle, the private CA is refused and nothing arrives", func(t *testing.T) {
+		before := col.exports.Load()
+		p := New(httpclient.Config{Timeout: 5 * time.Second})
+		if err := p.Apply(ctx, grpcSpec()); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = p.Shutdown(ctx) })
+		_, span := p.Tracer("test").Start(ctx, "grpc-untrusted")
+		span.End()
+		flushCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		if err := p.sdk.ForceFlush(flushCtx); err == nil {
+			t.Error("the flush must fail against an unknown CA")
+		}
+		if col.exports.Load() != before {
+			t.Error("spans reached the collector without the CA bundle")
+		}
+	})
+}
