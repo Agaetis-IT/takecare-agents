@@ -100,6 +100,9 @@ type KubernetesSpec struct {
 }
 
 // ResourceRef names a resource of an API group (the core group is empty).
+// Secrets and the pod subresources the read-only guard forbids (spec 04)
+// cannot be declared: a connector reads, and never reads credentials.
+// +kubebuilder:validation:XValidation:rule="!(self.resource in ['secrets', 'pods/exec', 'pods/attach', 'pods/portforward'])",message="secrets, pods/exec, pods/attach and pods/portforward cannot be read by a connector (read-only guard)"
 type ResourceRef struct {
 	// +optional
 	Group string `json:"group,omitempty"`

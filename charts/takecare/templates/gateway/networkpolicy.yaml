@@ -1,0 +1,44 @@
+{{- if and .Values.networkPolicies.enabled .Values.gateway.create }}
+# Who may reach the gateway (ADR 0008, ADR 0009): the operator (A2A and
+# model calls), the engine's pods (model and tool calls), and the metrics
+# scrapers on the metrics port. Nothing else: a route through the gateway
+# exposes whatever its path allows, so the gateway is the engine's only
+# protection.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: takecare-gateway-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      gateway.networking.k8s.io/gateway-name: {{ .Values.gateway.name }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "takecare.operator.selectorLabels" . | nindent 14 }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.platform.engine.namespace }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.gateway.port }}
+    {{- with .Values.networkPolicies.metricsScrapers }}
+    - from:
+        {{- range . }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .podSelector | nindent 14 }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.networkPolicies.gatewayMetricsPort }}
+    {{- end }}
+{{- end }}

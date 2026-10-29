@@ -94,10 +94,66 @@ gateway:
 
 # Restrict traffic between the operator, the gateway, kagent and the MCP
 # servers. ADR 0007 requires the kagent controller to be reachable only
-# through the gateway; this needs a CNI that enforces NetworkPolicies, which
-# the platform status will report (spec 01, PR 3').
+# through the gateway; the MCP servers admit the gateway and the operator
+# only (ADR 0008); the gateway admits the operator, the engine namespace and
+# the metrics scrapers below. This needs a CNI that enforces NetworkPolicies:
+# the platform reports their presence, not their enforcement.
 networkPolicies:
   enabled: true
+  # Who may scrape the gateway's metrics port (usage and cost): the
+  # customer's Prometheus. Each entry selects pods by namespace and labels.
+  metricsScrapers: []
+  #  - namespace: monitoring
+  #    podSelector:
+  #      app.kubernetes.io/name: prometheus
+  # The gateway's metrics port (agentgateway's proxy).
+  gatewayMetricsPort: 15020
+
+# ---------------------------------------------------------------------------
+# Add-ons: MCP servers packaged with TakeCare (spec 05, ADR 0008). Enabling
+# one deploys the server, its read-only RBAC and its TakeCareConnector.
+# ---------------------------------------------------------------------------
+addons:
+  # containers/kubernetes-mcp-server, read-only, core toolset.
+  kubernetes:
+    enabled: false
+    image: quay.io/containers/kubernetes_mcp_server:v0.0.67@sha256:e47f6ccc5347e1ea6be495d8d9ab55ac8a995fe87800fb984fa770cebe14ad44 # pin: KUBERNETES_MCP_SERVER_IMAGE
+    # The namespaces the server may read (get, list, watch): workloads,
+    # events, logs. The connector's scope; a role's scope must be inside it.
+    namespaces: []
+    # Resources beyond the defaults, for example custom resources. ConfigMaps
+    # are read only when listed here: customers keep credentials in them.
+    # Secrets and pod exec/attach/portforward are refused by the API.
+    extraResources: []
+    #  - group: rds.services.k8s.aws
+    #    resource: dbproxies
+    #  - resource: configmaps
+    # Tool class overrides (spec 05), recorded in the connector's status.
+    tools: []
+    resources:
+      requests: { cpu: 20m, memory: 64Mi }
+      limits: { memory: 256Mi }
+  # giantswarm/mcp-prometheus, read-only by design.
+  prometheus:
+    enabled: false
+    image: gsoci.azurecr.io/giantswarm/mcp-prometheus:0.11.11@sha256:66ad2ff739eefed93ce0b90ed06d9c0fd4ef9ad38a417f57843b683c4c5df18e # pin: MCP_PROMETHEUS_IMAGE
+    # The Prometheus the server queries.
+    url: ""
+    # Its egress, limited to that Prometheus (every tool accepts a caller's
+    # prometheus_url: the limit keeps a model from reaching anything else).
+    egress:
+      namespace: ""
+      podSelector: {}
+      port: 9090
+      # The collector the server sends its own spans to, when OTLP is set.
+      otlp: null
+      #  namespace: ""
+      #  podSelector: { app.kubernetes.io/name: opentelemetry-collector }
+      #  port: 4317
+    tools: []
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits: { memory: 128Mi }
 
 # ---------------------------------------------------------------------------
 # Subcharts. Keys below are the upstream charts' own values.
@@ -203,6 +259,9 @@ kagent:
 # deployed by the TakeCareDemo controller (spec 03).
 demo:
   enabled: false
+  # The scenery's namespaces, created by the chart (the add-ons' Roles are
+  # rendered into them).
+  namespaces: [demo-apps, ack-system]
   jaeger:
     image: jaegertracing/jaeger:2.22.0 # pin: JAEGER_IMAGE
     resources:

@@ -37,6 +37,10 @@ const (
 	engineNamespace  = "kagent"
 	releaseName      = "takecare"
 	kindSA           = "ServiceAccount"
+	kindClusterRole  = "ClusterRole"
+	kindRole         = "Role"
+	flagSet          = "--set"
+	verbGet          = "get"
 )
 
 var repoRoot = filepath.Join("..", "..")
@@ -103,6 +107,16 @@ func profileArgs(profile string) []string {
 
 var profiles = []string{"prod", "demo"}
 
+const dbSet = "kagent.database.postgres.url=postgres://u:p@h/db"
+
+// prodSets fills the REQUIRED values of the prod profile for a render.
+var prodSets = []string{
+	flagSet, "platform.models[0].baseURL=https://x/v1", flagSet, "platform.models[0].model=m",
+	flagSet, dbSet,
+	flagSet, "addons.kubernetes.namespaces={apps}", flagSet, "addons.prometheus.url=http://prometheus.monitoring.svc",
+	flagSet, "addons.prometheus.egress.namespace=monitoring", flagSet, "addons.prometheus.egress.podSelector.app=prometheus",
+}
+
 // The TakeCarePlatform each profile renders must pass the CRD's validation,
 // CEL rules included: values-prod.yaml with its REQUIRED values left empty
 // is expected to fail, which is the point of marking them.
@@ -138,10 +152,11 @@ func TestRenderedPlatformAgainstTheCRD(t *testing.T) {
 	}{
 		{"demo profile is complete", profileArgs("demo"), ""},
 		{"prod profile with its REQUIRED values set", append(profileArgs("prod"),
-			"--set", "platform.models[0].baseURL=https://vllm.example.internal/v1",
-			"--set", "platform.models[0].model=mistral-small",
-			"--set", "platform.observability.metrics.prometheusURL=http://prometheus.monitoring.svc",
-			"--set", "kagent.database.postgres.url=postgres://kagent:x@db:5432/kagent"), ""},
+			flagSet, "platform.models[0].baseURL=https://vllm.example.internal/v1",
+			flagSet, "platform.models[0].model=mistral-small",
+			flagSet, "platform.observability.metrics.prometheusURL=http://prometheus.monitoring.svc",
+			flagSet, "kagent.database.postgres.url=postgres://kagent:x@db:5432/kagent",
+			flagSet, "addons.kubernetes.namespaces={apps}", flagSet, "addons.prometheus.url=http://prometheus.monitoring.svc", flagSet, "addons.prometheus.egress.namespace=monitoring", flagSet, "addons.prometheus.egress.podSelector.app=prometheus"), ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -175,7 +190,8 @@ func TestProdProfileRefusesToRenderAsShipped(t *testing.T) {
 		want string
 	}{
 		{"as shipped", nil, "database.postgres.url"},
-		{"database set, model not", []string{"--set", "kagent.database.postgres.url=postgres://u:p@h/db"}, "platform.models[0].baseURL is REQUIRED"},
+		{"database set, model not", []string{flagSet, dbSet}, "platform.models[0].baseURL is REQUIRED"},
+		{"model set, add-ons not", []string{flagSet, dbSet, flagSet, "platform.models[0].baseURL=https://x/v1", flagSet, "platform.models[0].model=m"}, "addons.kubernetes.namespaces is REQUIRED"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -222,7 +238,7 @@ func TestOperatorRBAC(t *testing.T) {
 	objs := render(t, releaseName, profileArgs("demo")...)
 	const sa = "takecare-operator"
 	roles := map[string][]rbacv1.PolicyRule{} // "kind/namespace/name"
-	for _, kind := range []string{"ClusterRole", "Role"} {
+	for _, kind := range []string{kindClusterRole, kindRole} {
 		for _, o := range ofKind(objs, kind) {
 			var rules []rbacv1.PolicyRule
 			raw, _, _ := unstructured.NestedSlice(o.Object, "rules")
@@ -247,7 +263,7 @@ func TestOperatorRBAC(t *testing.T) {
 					refKind, _, _ := unstructured.NestedString(o.Object, "roleRef", "kind")
 					refName, _, _ := unstructured.NestedString(o.Object, "roleRef", "name")
 					ns := ""
-					if refKind == "Role" {
+					if refKind == kindRole {
 						ns = o.GetNamespace()
 					}
 					bound[refKind+"/"+ns+"/"+refName] = true
@@ -280,7 +296,7 @@ func TestOperatorRBAC(t *testing.T) {
 			switch key {
 			case "Role/" + releaseNamespace + "/" + sa:
 				for _, v := range r.Verbs {
-					if v != "get" && v != "list" && v != "watch" {
+					if v != verbGet && v != "list" && v != "watch" {
 						t.Errorf("%s may %s Secrets of its namespace: read only", key, v)
 					}
 				}
@@ -291,6 +307,143 @@ func TestOperatorRBAC(t *testing.T) {
 			default:
 				t.Errorf("%s grants Secrets outside the operator's two namespaces", key)
 			}
+		}
+	}
+}
+
+// The add-ons' ServiceAccounts hold get, list and watch only, in the
+// declared namespaces, never Secrets, pod exec/attach/portforward, a write
+// verb or a wildcard (read-only guard, spec 04): the chart renders this
+// RBAC, so the render is where the proof lives.
+// rulesByRole collects the rules of every Role and ClusterRole of a render,
+// keyed "Kind/name".
+func rulesByRole(t *testing.T, objs []*unstructured.Unstructured) map[string][]rbacv1.PolicyRule {
+	t.Helper()
+	rules := map[string][]rbacv1.PolicyRule{}
+	for _, kind := range []string{kindRole, kindClusterRole} {
+		for _, o := range ofKind(objs, kind) {
+			var rs []rbacv1.PolicyRule
+			raw, _, _ := unstructured.NestedSlice(o.Object, "rules")
+			for _, r := range raw {
+				var rule rbacv1.PolicyRule
+				if err := runtime.DefaultUnstructuredConverter.FromUnstructured(r.(map[string]any), &rule); err != nil {
+					t.Fatal(err)
+				}
+				rs = append(rs, rule)
+			}
+			rules[kind+"/"+o.GetName()] = rs
+		}
+	}
+	return rules
+}
+
+// checkAddonRule reports anything in a rule bound to an add-on that the
+// read-only guard forbids.
+func checkAddonRule(t *testing.T, refKind, refName, sa string, r rbacv1.PolicyRule) {
+	t.Helper()
+	if msg := forbidden(r); msg != "" {
+		t.Errorf("%s %s bound to %s %s", refKind, refName, sa, msg)
+	}
+	for _, v := range r.Verbs {
+		if v != verbGet && v != "list" && v != "watch" {
+			t.Errorf("%s %s bound to %s allows %s", refKind, refName, sa, v)
+		}
+	}
+	if refKind == kindClusterRole {
+		for _, res := range r.Resources {
+			if res != "namespaces" {
+				t.Errorf("ClusterRole %s bound to %s grants %s cluster-wide; only the namespace list is", refName, sa, res)
+			}
+		}
+	}
+}
+
+func TestAddonRBACIsReadOnly(t *testing.T) {
+	objs := render(t, releaseName, profileArgs("demo")...)
+	addonSAs := map[string]bool{}
+	for _, o := range ofKind(objs, kindSA) {
+		if strings.HasPrefix(o.GetName(), "takecare-addon-") {
+			addonSAs[o.GetName()] = true
+		}
+	}
+	if len(addonSAs) < 2 {
+		t.Fatalf("add-on ServiceAccounts = %v, want kubernetes and prometheus", addonSAs)
+	}
+	rules := rulesByRole(t, objs)
+	bound := 0
+	for _, kind := range []string{"RoleBinding", "ClusterRoleBinding"} {
+		for _, o := range ofKind(objs, kind) {
+			subjects, _, _ := unstructured.NestedSlice(o.Object, "subjects")
+			for _, s := range subjects {
+				sub := s.(map[string]any)
+				name, _ := sub["name"].(string)
+				if sub["kind"] != kindSA || !addonSAs[name] {
+					continue
+				}
+				bound++
+				refKind, _, _ := unstructured.NestedString(o.Object, "roleRef", "kind")
+				refName, _, _ := unstructured.NestedString(o.Object, "roleRef", "name")
+				for _, r := range rules[refKind+"/"+refName] {
+					checkAddonRule(t, refKind, refName, name, r)
+				}
+			}
+		}
+	}
+	if bound == 0 {
+		t.Error("no binding found for the add-on ServiceAccounts")
+	}
+	checkConfigMapsAreExplicit(t, objs)
+}
+
+// The demo declares ConfigMaps explicitly; the shipped defaults do not.
+func checkConfigMapsAreExplicit(t *testing.T, objs []*unstructured.Unstructured) {
+	t.Helper()
+	for _, o := range ofKind(objs, "TakeCareConnector") {
+		if o.GetName() == "kubernetes" {
+			extras, _, _ := unstructured.NestedSlice(o.Object, "spec", "kubernetes", "extraResources")
+			found := false
+			for _, e := range extras {
+				if e.(map[string]any)["resource"] == "configmaps" {
+					found = true
+				}
+			}
+			if !found {
+				t.Error("the demo profile must declare configmaps as an explicit extra resource")
+			}
+		}
+	}
+	defaults := render(t, releaseName, flagSet, "platform.models[0].baseURL=https://x/v1", flagSet, "platform.models[0].model=m",
+		flagSet, "kagent.database.postgres.url=postgres://u:p@h/db", flagSet, "addons.kubernetes.enabled=true", flagSet, "addons.kubernetes.namespaces={apps}")
+	for _, o := range ofKind(defaults, kindRole) {
+		if strings.HasPrefix(o.GetName(), "takecare-addon-kubernetes") {
+			raw, _, _ := unstructured.NestedSlice(o.Object, "rules")
+			for _, r := range raw {
+				for _, res := range r.(map[string]any)["resources"].([]any) {
+					if res == "configmaps" {
+						t.Error("configmaps are readable by default; they must be an explicit choice")
+					}
+				}
+			}
+		}
+	}
+}
+
+// Every MCP server admits the gateway and the operator only; the gateway
+// admits the operator, the engine namespace and the declared scrapers.
+func TestNetworkPoliciesCloseTheServersAndTheGateway(t *testing.T) {
+	objs := render(t, releaseName, profileArgs("demo")...)
+	names := map[string]bool{}
+	for _, o := range ofKind(objs, "NetworkPolicy") {
+		names[o.GetNamespace()+"/"+o.GetName()] = true
+	}
+	for _, want := range []string{
+		releaseNamespace + "/takecare-addon-kubernetes-ingress",
+		releaseNamespace + "/takecare-addon-prometheus-ingress",
+		releaseNamespace + "/takecare-addon-prometheus-egress",
+		releaseNamespace + "/takecare-gateway-ingress",
+	} {
+		if !names[want] {
+			t.Errorf("NetworkPolicy %s missing (got %v)", want, names)
 		}
 	}
 }
@@ -308,12 +461,29 @@ func TestChartRefusesAnotherNamespace(t *testing.T) {
 	}
 }
 
+// A Deployment whose selector does not match its template is refused by the
+// API server, which neither helm lint nor kubeconform sees.
+func TestDeploymentSelectorsMatchTheirTemplates(t *testing.T) {
+	for _, profile := range profiles {
+		objs := render(t, releaseName, append(profileArgs(profile), prodSets...)...)
+		for _, o := range ofKind(objs, "Deployment") {
+			selector, _, _ := unstructured.NestedStringMap(o.Object, "spec", "selector", "matchLabels")
+			labels, _, _ := unstructured.NestedStringMap(o.Object, "spec", "template", "metadata", "labels")
+			for k, v := range selector {
+				if labels[k] != v {
+					t.Errorf("%s: Deployment %s selects %s=%s, its template carries %q", profile, o.GetName(), k, v, labels[k])
+				}
+			}
+		}
+	}
+}
+
 // Every image is pinned: a tag or a digest, never latest or nothing.
 func TestEveryImageIsPinned(t *testing.T) {
 	for _, profile := range profiles {
 		for _, o := range render(t, releaseName, append(profileArgs(profile),
-			"--set", "platform.models[0].baseURL=https://x/v1", "--set", "platform.models[0].model=m",
-			"--set", "kagent.database.postgres.url=postgres://u:p@h/db")...) {
+			flagSet, "platform.models[0].baseURL=https://x/v1", flagSet, "platform.models[0].model=m",
+			flagSet, "kagent.database.postgres.url=postgres://u:p@h/db", flagSet, "addons.kubernetes.namespaces={apps}", flagSet, "addons.prometheus.url=http://prometheus.monitoring.svc", flagSet, "addons.prometheus.egress.namespace=monitoring", flagSet, "addons.prometheus.egress.podSelector.app=prometheus")...) {
 			for _, img := range images(o) {
 				if !strings.Contains(img, "@sha256:") && (!strings.Contains(img, ":") || strings.HasSuffix(img, ":latest")) {
 					t.Errorf("%s: %s %s/%s uses an unpinned image %q", profile, o.GetKind(), o.GetNamespace(), o.GetName(), img)
@@ -353,8 +523,8 @@ func TestEngineInstallationRequirements(t *testing.T) {
 	for _, profile := range profiles {
 		t.Run(profile, func(t *testing.T) {
 			objs := render(t, releaseName, append(profileArgs(profile),
-				"--set", "platform.models[0].baseURL=https://x/v1", "--set", "platform.models[0].model=m",
-				"--set", "kagent.database.postgres.url=postgres://u:p@h/db")...)
+				flagSet, "platform.models[0].baseURL=https://x/v1", flagSet, "platform.models[0].model=m",
+				flagSet, "kagent.database.postgres.url=postgres://u:p@h/db", flagSet, "addons.kubernetes.namespaces={apps}", flagSet, "addons.prometheus.url=http://prometheus.monitoring.svc", flagSet, "addons.prometheus.egress.namespace=monitoring", flagSet, "addons.prometheus.egress.podSelector.app=prometheus")...)
 
 			policies := ofKind(objs, "NetworkPolicy")
 			var names []string
@@ -370,7 +540,7 @@ func TestEngineInstallationRequirements(t *testing.T) {
 			}
 
 			roles := map[string][]rbacv1.PolicyRule{}
-			for _, o := range ofKind(objs, "ClusterRole") {
+			for _, o := range ofKind(objs, kindClusterRole) {
 				var cr rbacv1.ClusterRole
 				if err := runtime.DefaultUnstructuredConverter.FromUnstructured(o.Object, &cr); err != nil {
 					t.Fatal(err)
@@ -473,7 +643,7 @@ func TestCRDChart(t *testing.T) {
 	if len(ofKind(objs, "Job")) != 1 {
 		t.Errorf("want one hook Job, got %d", len(ofKind(objs, "Job")))
 	}
-	for _, o := range ofKind(objs, "ClusterRole") {
+	for _, o := range ofKind(objs, kindClusterRole) {
 		if strings.HasSuffix(o.GetName(), "gateway-api-crds") {
 			var cr rbacv1.ClusterRole
 			if err := runtime.DefaultUnstructuredConverter.FromUnstructured(o.Object, &cr); err != nil {
@@ -487,7 +657,7 @@ func TestCRDChart(t *testing.T) {
 		}
 	}
 
-	demo := render(t, "takecare-crds", "--set", "demo.enabled=true", "--set", "gatewayAPI.install=never")
+	demo := render(t, "takecare-crds", flagSet, "demo.enabled=true", flagSet, "gatewayAPI.install=never")
 	demoCRDs := ofKind(demo, "CustomResourceDefinition")
 	names := make([]string, 0, len(demoCRDs))
 	for _, c := range demoCRDs {

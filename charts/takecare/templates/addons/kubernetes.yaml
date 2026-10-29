@@ -1,0 +1,222 @@
+{{- if .Values.addons.kubernetes.enabled }}
+{{- $a := .Values.addons.kubernetes }}
+{{- $ctx := dict "root" . "name" "kubernetes" "port" 8080 }}
+# Add-on kubernetes: containers/kubernetes-mcp-server, read-only, core
+# toolset, OTel on (spec 05). Its ServiceAccount may get, list and watch in
+# the declared namespaces only; never Secrets, pods/exec, pods/attach,
+# pods/portforward, a write verb or a wildcard (read-only guard, spec 04).
+# ConfigMaps are read only when listed in extraResources: customers keep
+# credentials in them (spec 05).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: takecare-addon-kubernetes
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+automountServiceAccountToken: true
+{{- range $ns := $a.namespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: takecare-addon-kubernetes
+  namespace: {{ $ns }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [pods, pods/log, pods/status, events, services, endpoints, persistentvolumeclaims, serviceaccounts, replicationcontrollers, limitranges, resourcequotas]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, replicasets, statefulsets, daemonsets]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch]
+  - apiGroups: [events.k8s.io]
+    resources: [events]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses, networkpolicies]
+    verbs: [get, list, watch]
+  - apiGroups: [metrics.k8s.io]
+    resources: [pods]
+    verbs: [get, list]
+  {{- range $r := $a.extraResources }}
+  - apiGroups: [{{ $r.group | default "" | quote }}]
+    resources: [{{ $r.resource }}]
+    verbs: [get, list, watch]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: takecare-addon-kubernetes
+  namespace: {{ $ns }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: takecare-addon-kubernetes
+subjects:
+  - kind: ServiceAccount
+    name: takecare-addon-kubernetes
+    namespace: {{ $.Release.Namespace }}
+{{- end }}
+---
+# Namespaces are listed by the server at startup; a cluster-scoped read of
+# the namespace list only (no namespaced data).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: takecare-addon-kubernetes-namespaces
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: takecare-addon-kubernetes-namespaces
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: takecare-addon-kubernetes-namespaces
+subjects:
+  - kind: ServiceAccount
+    name: takecare-addon-kubernetes
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: takecare-addon-kubernetes
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+data:
+  config.toml: |
+    port = "8080"
+    stateless = true
+    read_only = true
+    disable_destructive = true
+    toolsets = ["core"]
+    {{- if .Values.platform.observability.otlp.endpoint }}
+
+    [telemetry]
+    enabled = true
+    endpoint = {{ .Values.platform.observability.otlp.endpoint | quote }}
+    protocol = {{ .Values.platform.observability.otlp.protocol | quote }}
+    {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: takecare-addon-kubernetes
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "takecare.addon.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "takecare.addon.labels" $ctx | nindent 8 }}
+      annotations:
+        # A changed configuration restarts the server (it caches its API
+        # discovery at startup, spec 05).
+        checksum/config: {{ printf "%s|%s|%s" (toYaml $a) .Values.platform.observability.otlp.endpoint .Values.platform.observability.otlp.protocol | sha256sum | trunc 16 }}
+    spec:
+      serviceAccountName: takecare-addon-kubernetes
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: {{ include "takecare.addon.image" (dict "image" $a.image "root" .) | quote }}
+          args: ["--config", "/etc/kubernetes-mcp-server/config.toml"]
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            {{- toYaml $a.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/kubernetes-mcp-server
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: takecare-addon-kubernetes
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: takecare-addon-kubernetes
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    {{- include "takecare.addon.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+{{- if .Values.networkPolicies.enabled }}
+---
+{{ include "takecare.addon.ingressPolicy" $ctx }}
+{{- end }}
+---
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareConnector
+metadata:
+  name: kubernetes
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+spec:
+  types: [cluster, logs]
+  description: Kubernetes state, events and pod logs (read-only)
+  mcp:
+    addon: kubernetes
+  kubernetes:
+    namespaces:
+      {{- toYaml $a.namespaces | nindent 6 }}
+    {{- with $a.extraResources }}
+    extraResources:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  {{- with $a.tools }}
+  tools:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

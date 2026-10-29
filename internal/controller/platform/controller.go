@@ -67,6 +67,7 @@ const (
 	GapSingleReplica            = "single-replica"
 	GapGatewayMetricsNotScraped = "gateway-metrics-not-scraped"
 	GapNoNetworkPolicies        = "no-network-policies"
+	GapConnectorNotReady        = "connector-not-ready"
 
 	ReasonNoGaps    = "NoGaps"
 	ReasonGapsFound = "GapsFound"
@@ -138,6 +139,7 @@ func OperatorNamespaceKinds() []schema.GroupVersionKind {
 // +kubebuilder:rbac:groups="",resources=secrets,resourceNames=takecare-engine-dummy-key,verbs=get,namespace=kagent
 // +kubebuilder:rbac:groups=apps,resources=deployments,resourceNames=takecare-operator,verbs=get,namespace=takecare-system
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch,namespace=kagent
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareconnectors,verbs=get;list;watch,namespace=takecare-system
 
 // Reconciler reconciles the TakeCarePlatform.
 type Reconciler struct {
@@ -613,6 +615,23 @@ func (r *Reconciler) productionGaps(ctx context.Context, p *v1alpha1.TakeCarePla
 		add(GapNoNetworkPolicies, fmt.Sprintf("no NetworkPolicy of TakeCare's in the engine namespace %s (networkPolicies.enabled is false); whether the CNI enforces them is not checked", r.EngineNamespace))
 	}
 
+	// connector-not-ready (spec 05): any connector of the operator namespace
+	// that is not Ready. role-without-report joins with the Doc (PR 4).
+	var connectors v1alpha1.TakeCareConnectorList
+	if err := r.List(ctx, &connectors, client.InNamespace(r.OperatorNamespace)); err != nil {
+		return fmt.Errorf("list TakeCareConnectors in %s: %w", r.OperatorNamespace, err)
+	}
+	var notReady []string
+	for _, c := range connectors.Items {
+		if !meta.IsStatusConditionTrue(c.Status.Conditions, v1alpha1.ConditionReady) {
+			notReady = append(notReady, c.Name)
+		}
+	}
+	if len(notReady) > 0 {
+		slices.Sort(notReady)
+		add(GapConnectorNotReady, fmt.Sprintf("connector(s) not Ready: %s", strings.Join(notReady, ", ")))
+	}
+
 	st.gaps = gaps
 	if len(gaps) == 0 {
 		st.set(v1alpha1.ConditionProductionReady, true, ReasonNoGaps, "no production gap found")
@@ -720,6 +739,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	b = b.Watches(gw, toMain, builder.WithPredicates(inOperatorNS))
 	inEngineNS := predicate.NewPredicateFuncs(func(o client.Object) bool { return o.GetNamespace() == r.EngineNamespace })
 	b = b.Watches(&networkingv1.NetworkPolicy{}, toMain, builder.WithPredicates(inEngineNS))
+	b = b.Watches(&v1alpha1.TakeCareConnector{}, toMain, builder.WithPredicates(inOperatorNS))
 	if r.Probe != nil {
 		b = b.WatchesRawSource(source.TypedChannel(r.Probe.Events(), handler.TypedEnqueueRequestsFromMapFunc(
 			func(_ context.Context, req reconcile.Request) []reconcile.Request { return []reconcile.Request{req} })))

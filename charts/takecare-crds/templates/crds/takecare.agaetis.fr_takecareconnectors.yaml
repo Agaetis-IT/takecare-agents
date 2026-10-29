@@ -69,8 +69,10 @@ spec:
                     description: Resources beyond the defaults, for example custom
                       resources.
                     items:
-                      description: ResourceRef names a resource of an API group (the
-                        core group is empty).
+                      description: |-
+                        ResourceRef names a resource of an API group (the core group is empty).
+                        Secrets and the pod subresources the read-only guard forbids (spec 04)
+                        cannot be declared: a connector reads, and never reads credentials.
                       properties:
                         group:
                           type: string
@@ -80,6 +82,11 @@ spec:
                       required:
                       - resource
                       type: object
+                      x-kubernetes-validations:
+                      - message: secrets, pods/exec, pods/attach and pods/portforward
+                          cannot be read by a connector (read-only guard)
+                        rule: '!(self.resource in [''secrets'', ''pods/exec'', ''pods/attach'',
+                          ''pods/portforward''])'
                     type: array
                   namespaces:
                     items:

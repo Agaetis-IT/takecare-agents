@@ -96,6 +96,15 @@ func TestConnectorValidation(t *testing.T) {
 		{"headersFrom with an add-on", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
 			c.Spec.MCP.HeadersFrom = []v1alpha1.HeaderFrom{{Name: "X", SecretKeyRef: v1alpha1.SecretKeyRef{Name: "s", Key: "k"}}}
 		}, "only valid with url"},
+		{"configmaps as an explicit extra resource", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
+			c.Spec.Kubernetes.ExtraResources = []v1alpha1.ResourceRef{{Resource: "configmaps"}}
+		}, ""},
+		{"secrets as an extra resource", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
+			c.Spec.Kubernetes.ExtraResources = []v1alpha1.ResourceRef{{Resource: "secrets"}}
+		}, "read-only guard"},
+		{"pods/exec as an extra resource", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
+			c.Spec.Kubernetes.ExtraResources = []v1alpha1.ResourceRef{{Resource: "pods/exec"}}
+		}, "read-only guard"},
 		{"unknown tool class", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
 			c.Spec.Tools = []v1alpha1.ToolOverride{{Name: "pods_log", Class: "write"}}
 		}, "class"},

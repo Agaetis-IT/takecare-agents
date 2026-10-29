@@ -500,6 +500,18 @@ func TestProductionGaps(t *testing.T) {
 		}
 	})
 
+	t.Run("a connector that is not Ready is a gap", func(t *testing.T) {
+		c := &v1alpha1.TakeCareConnector{
+			Name: "tickets", Namespace: operatorNS,
+			Spec: v1alpha1.TakeCareConnectorSpec{Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorTickets}, MCP: v1alpha1.MCPSpec{URL: "https://x/mcp"}},
+		}
+		h.must(h.c.Create(h.ctx, c))
+		h.waitGaps(GapConnectorNotReady)
+		meta.SetStatusCondition(&c.Status.Conditions, metav1.Condition{Type: v1alpha1.ConditionReady, Status: metav1.ConditionTrue, Reason: "Ready", Message: "ok"})
+		h.must(h.c.Status().Update(h.ctx, c))
+		h.waitGaps()
+	})
+
 	t.Run("a Prometheus that stops answering is a gap with the cause, never Ready=False", func(t *testing.T) {
 		h.promMode.Store("error")
 		h.waitGaps(GapGatewayMetricsNotScraped)

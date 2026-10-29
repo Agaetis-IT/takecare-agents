@@ -1,0 +1,15 @@
+{{- if .Values.demo.enabled }}
+# The demo scenery's namespaces (spec 03): the add-ons' Roles are rendered
+# into them, so they must exist at install time. The TakeCareDemo controller
+# (PR 5) deploys the scenery into them.
+{{- range .Values.demo.namespaces }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ . }}
+  labels:
+    {{- include "takecare.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: demo-scenery
+{{- end }}
+{{- end }}
