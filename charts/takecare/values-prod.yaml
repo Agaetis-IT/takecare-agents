@@ -50,12 +50,16 @@ networkPolicies:
   enabled: true            # keep on; requires a CNI that enforces NetworkPolicies
 
 agentgateway:
-  enabled: true            # false to use your own agentgateway (then set platform.gateway.gatewayRef)
+  enabled: true            # false to use your own agentgateway: its Gateway must then live in takecare-system
+                           # (platform.gateway.gatewayRef), next to the provider key Secret; the operator never
+                           # copies that Secret to another namespace
   monitoring:
     enabled: false         # true when Prometheus Operator is installed: a PodMonitor scrapes the gateway
 
 kagent:
-  enabled: true
+  enabled: true            # false to use your own kagent: it must then run in platform.engine.namespace and
+                           # hold the Secret takecare-engine-dummy-key (key apiKey, value "dummy") the chart
+                           # renders there when enabled; the operator only references it
   rbac:
     namespaces: [kagent]   # the engine's namespace only, never the release namespace where the provider key lives
   controller:

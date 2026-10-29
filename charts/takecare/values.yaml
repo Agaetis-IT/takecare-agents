@@ -59,13 +59,18 @@ platform:
   models: []
   gateway:
     # The Gateway served by agentgateway. Empty name: the one this chart
-    # creates (gateway.name) in the release namespace.
+    # creates (gateway.name) in the release namespace. A Gateway elsewhere
+    # is refused by the operator (Ready=False, GatewayOutsideOperatorNamespace):
+    # the models it generates must sit next to the provider key Secret, which
+    # it never copies to another namespace.
     gatewayRef:
       name: ""
       namespace: ""
   engine:
     # Where the engine runs and where the operator writes what it generates
-    # for it. Matches kagent.namespaceOverride below.
+    # for it. Must equal kagent.namespaceOverride below: the operator's Roles
+    # are rendered for that namespace, and the chart refuses to render if
+    # they differ.
     namespace: kagent
   observability:
     metrics:

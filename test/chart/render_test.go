@@ -36,6 +36,7 @@ const (
 	releaseNamespace = "takecare-system"
 	engineNamespace  = "kagent"
 	releaseName      = "takecare"
+	kindSA           = "ServiceAccount"
 )
 
 var repoRoot = filepath.Join("..", "..")
@@ -212,6 +213,88 @@ func TestDemoPlatformURLsNameRenderedServices(t *testing.T) {
 	}
 }
 
+// The operator's own rights (spec 02 section 3, spec 04): generated from the
+// controllers' markers and copied into the chart, they are Roles in the two
+// namespaces the operator works in plus one ClusterRole for the
+// cluster-scoped platform. Nothing cluster-wide on Secrets, pods/exec or
+// wildcards; in the engine namespace, Secrets are readable by one name only.
+func TestOperatorRBAC(t *testing.T) {
+	objs := render(t, releaseName, profileArgs("demo")...)
+	const sa = "takecare-operator"
+	roles := map[string][]rbacv1.PolicyRule{} // "kind/namespace/name"
+	for _, kind := range []string{"ClusterRole", "Role"} {
+		for _, o := range ofKind(objs, kind) {
+			var rules []rbacv1.PolicyRule
+			raw, _, _ := unstructured.NestedSlice(o.Object, "rules")
+			for _, r := range raw {
+				var rule rbacv1.PolicyRule
+				if err := runtime.DefaultUnstructuredConverter.FromUnstructured(r.(map[string]any), &rule); err != nil {
+					t.Fatal(err)
+				}
+				rules = append(rules, rule)
+			}
+			roles[kind+"/"+o.GetNamespace()+"/"+o.GetName()] = rules
+		}
+	}
+	bound := map[string]bool{}
+	for _, kind := range []string{"ClusterRoleBinding", "RoleBinding"} {
+		for _, o := range ofKind(objs, kind) {
+			var subjects []any
+			subjects, _, _ = unstructured.NestedSlice(o.Object, "subjects")
+			for _, s := range subjects {
+				sub := s.(map[string]any)
+				if sub["kind"] == kindSA && sub["name"] == sa && sub["namespace"] == releaseNamespace {
+					refKind, _, _ := unstructured.NestedString(o.Object, "roleRef", "kind")
+					refName, _, _ := unstructured.NestedString(o.Object, "roleRef", "name")
+					ns := ""
+					if refKind == "Role" {
+						ns = o.GetNamespace()
+					}
+					bound[refKind+"/"+ns+"/"+refName] = true
+				}
+			}
+		}
+	}
+	if len(bound) == 0 {
+		t.Fatal("no binding found for the operator's ServiceAccount")
+	}
+	for key := range bound {
+		rules, ok := roles[key]
+		if !ok {
+			t.Errorf("%s is bound to the operator but not rendered", key)
+			continue
+		}
+		for _, r := range rules {
+			if strings.HasPrefix(key, "ClusterRole/") {
+				if msg := forbidden(r); msg != "" {
+					t.Errorf("ClusterRole %s %s: the operator holds no such right cluster-wide", key, msg)
+				}
+				continue
+			}
+			if !slices.Contains(r.Resources, "secrets") {
+				if msg := forbidden(r); msg != "" {
+					t.Errorf("%s %s", key, msg)
+				}
+				continue
+			}
+			switch key {
+			case "Role/" + releaseNamespace + "/" + sa:
+				for _, v := range r.Verbs {
+					if v != "get" && v != "list" && v != "watch" {
+						t.Errorf("%s may %s Secrets of its namespace: read only", key, v)
+					}
+				}
+			case "Role/" + engineNamespace + "/" + sa:
+				if len(r.ResourceNames) == 0 || !slices.Equal(r.Verbs, []string{"get"}) {
+					t.Errorf("%s on Secrets of the engine namespace must be get by name only, got verbs %v names %v", key, r.Verbs, r.ResourceNames)
+				}
+			default:
+				t.Errorf("%s grants Secrets outside the operator's two namespaces", key)
+			}
+		}
+	}
+}
+
 // The chart refuses any namespace but takecare-system: the kagent values and
 // the gateway URL they carry name it, and subchart values cannot follow the
 // release namespace.
@@ -300,7 +383,7 @@ func TestEngineInstallationRequirements(t *testing.T) {
 					t.Fatal(err)
 				}
 				for _, s := range crb.Subjects {
-					if s.Kind != "ServiceAccount" || s.Namespace != engineNamespace {
+					if s.Kind != kindSA || s.Namespace != engineNamespace {
 						continue
 					}
 					for _, r := range roles[crb.RoleRef.Name] {
@@ -321,7 +404,7 @@ func TestEngineInstallationRequirements(t *testing.T) {
 					t.Fatal(err)
 				}
 				for _, s := range rb.Subjects {
-					if s.Kind == "ServiceAccount" && s.Namespace == engineNamespace && rb.Namespace != engineNamespace {
+					if s.Kind == kindSA && s.Namespace == engineNamespace && rb.Namespace != engineNamespace {
 						t.Errorf("RoleBinding %s/%s grants %s/%s a right outside the engine namespace", rb.Namespace, rb.Name, s.Namespace, s.Name)
 					}
 				}

@@ -48,6 +48,11 @@ for f in "$crd_dir"/*.yaml; do
   fi
 done
 
+# The operator's rights, generated from the controllers' RBAC markers
+# (config/rbac/role.yaml: Roles per namespace and one ClusterRole for the
+# cluster-scoped kinds), copied verbatim; the chart adds the bindings.
+sync_file config/rbac/role.yaml charts/takecare/templates/operator/roles.yaml
+
 # A pinned line looks like `    version: v1.6.0 # pin: AGENTGATEWAY_VERSION`.
 # The value is replaced by the variable of the same name from versions.env.
 tmp="$(mktemp)"
