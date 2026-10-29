@@ -129,6 +129,7 @@ type Usage struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:metadata:annotations="helm.sh/resource-policy=keep"
 // +kubebuilder:resource:scope=Namespaced,shortName=tcinvestigation,categories=takecare
 // +kubebuilder:printcolumn:name="Alert",type=string,JSONPath=`.spec.alert.name`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`

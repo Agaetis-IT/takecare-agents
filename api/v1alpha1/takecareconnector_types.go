@@ -179,6 +179,7 @@ type ToolClassChange struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:metadata:annotations="helm.sh/resource-policy=keep"
 // +kubebuilder:resource:scope=Namespaced,shortName=tcconnector,categories=takecare
 // +kubebuilder:printcolumn:name="Types",type=string,JSONPath=`.spec.types`
 // +kubebuilder:printcolumn:name="Tools",type=integer,JSONPath=`.status.toolCount`
