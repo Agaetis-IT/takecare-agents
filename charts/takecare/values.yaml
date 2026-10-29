@@ -154,6 +154,51 @@ addons:
     resources:
       requests: { cpu: 10m, memory: 32Mi }
       limits: { memory: 128Mi }
+  # Our report server, takecare-agents-mcp-report-slack: one tool,
+  # post_message, that the operator alone calls to publish (spec 05). One of
+  # reportSlack and reportLog at most.
+  report:
+    image:
+      registry: ghcr.io/agaetis-it
+      repository: takecare-agents-mcp-report-slack
+      # Empty: the chart's appVersion.
+      tag: ""
+      pullPolicy: IfNotPresent
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits: { memory: 128Mi }
+  # Slack adapter: chat.postMessage with a bot token mounted from a Secret,
+  # checked by auth.test at startup and every authInterval. A revoked token
+  # makes the pod not ready and the connector Reachable=False.
+  reportSlack:
+    enabled: false
+    apiURL: https://slack.com/api
+    tokenSecret:
+      name: takecare-slack
+      key: token
+    authInterval: 30m
+    # Destinations the connector and the server agree on. Prefer channel IDs
+    # (C0123...) to names: a renamed channel breaks a target by name.
+    destinations: []
+    #  - { name: on-call, target: C0123456789 }
+    #  - { name: review, target: C0987654321 }
+    # Egress of the server. A NetworkPolicy cannot name a host such as
+    # slack.com: by default, DNS plus TCP 443 to any address outside the
+    # cluster (the private ranges below excluded); with a proxy, the proxy
+    # pods only.
+    egress:
+      excludedCIDRs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      proxy: null
+      #  namespace: egress
+      #  podSelector: { app: squid }
+      #  port: 3128
+  # Log adapter, DEMO ONLY: the diagnosis of a real incident would go to the
+  # customer's log aggregation. The platform reports it as a production gap.
+  reportLog:
+    enabled: false
+    destinations:
+      - { name: on-call, target: log }
+      - { name: review, target: log }
 
 # ---------------------------------------------------------------------------
 # Subcharts. Keys below are the upstream charts' own values.

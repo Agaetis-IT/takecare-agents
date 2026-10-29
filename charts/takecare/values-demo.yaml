@@ -55,6 +55,10 @@ addons:
       - group: rds.services.k8s.aws
         resource: dbproxies
       - resource: configmaps
+  # Without a Slack token the demo publishes to the report server's log;
+  # make demo-up switches to reportSlack when a token is given (PR 5).
+  reportLog:
+    enabled: true
   prometheus:
     enabled: true
     url: http://prometheus-server.takecare-system.svc
