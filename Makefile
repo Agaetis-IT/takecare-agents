@@ -150,7 +150,7 @@ gitleaks: ## Scan the working tree for secrets (GITLEAKS_MODE=git scans the hist
 	@# safe.directory: the mounted repository belongs to another uid inside the
 	@# container, and git then returns nothing. An empty scan is a failure.
 	@out=$$($(DOCKER_RUN) -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
-		$(GITLEAKS_IMAGE) $(or $(GITLEAKS_MODE),dir) --redact --no-banner /src 2>&1) || { echo "$$out"; exit 1; }; \
+		$(GITLEAKS_IMAGE) $(or $(GITLEAKS_MODE),dir) --config /src/.gitleaks.toml --redact --no-banner -v /src 2>&1) || { echo "$$out"; exit 1; }; \
 	echo "$$out"; \
 	if echo "$$out" | grep -q 'scanned ~0 bytes'; then echo "gitleaks scanned nothing: failing"; exit 1; fi
 
