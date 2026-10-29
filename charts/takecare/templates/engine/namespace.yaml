@@ -1,0 +1,11 @@
+{{- if and .Values.kagent.enabled (ne .Values.kagent.namespaceOverride .Release.Namespace) }}
+# The engine's namespace (platform.engine.namespace, kagent.namespaceOverride).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.kagent.namespaceOverride }}
+  labels:
+    {{- include "takecare.labels" . | nindent 4 }}
+    # pod-security: the engine's pods run as non-root with a restricted profile.
+    pod-security.kubernetes.io/enforce: baseline
+{{- end }}

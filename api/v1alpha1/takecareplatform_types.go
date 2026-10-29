@@ -172,6 +172,7 @@ type ModelStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:metadata:annotations="helm.sh/resource-policy=keep"
 // +kubebuilder:resource:scope=Cluster,shortName=tcplatform,categories=takecare
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Production",type=string,JSONPath=`.status.conditions[?(@.type=="ProductionReady")].status`

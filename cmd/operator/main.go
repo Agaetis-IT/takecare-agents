@@ -3,6 +3,9 @@
 
 // Command operator runs the TakeCare operator: a controller-runtime manager
 // that reconciles TakeCare resources. Controllers are registered from PR 2 on.
+//
+// The subcommand `gateway-api-crds` is what the takecare-crds chart's hook job
+// runs: it installs the Gateway API CRDs embedded in this binary.
 package main
 
 import (
@@ -12,15 +15,19 @@ import (
 	"fmt"
 	"os"
 
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	takecarev1alpha1 "github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/gatewayapi"
 )
 
 // leaderElectionID names the Lease shared by the operator's replicas.
@@ -43,6 +50,9 @@ func main() {
 }
 
 func run(args []string) error {
+	if len(args) > 0 && args[0] == "gateway-api-crds" {
+		return runGatewayAPICRDs(args[1:])
+	}
 	fs := flag.NewFlagSet("operator", flag.ContinueOnError)
 	var cfg config
 	fs.StringVar(&cfg.metricsAddr, "metrics-bind-address", ":8443",
@@ -124,4 +134,39 @@ func managerOptions(cfg config, scheme *runtime.Scheme) ctrl.Options {
 		LeaderElection:         cfg.leaderElection,
 		LeaderElectionID:       leaderElectionID,
 	}
+}
+
+// runGatewayAPICRDs installs the embedded Gateway API CRDs and exits. It runs
+// in a Helm hook job, before the charts that need them.
+func runGatewayAPICRDs(args []string) error {
+	fs := flag.NewFlagSet("gateway-api-crds", flag.ContinueOnError)
+	mode := fs.String("mode", string(gatewayapi.ModeAuto),
+		"What to do when Gateway API CRDs already exist: auto (install missing, keep newer, fail on older), always (take over), never.")
+	zapOpts := zap.Options{}
+	zapOpts.BindFlags(fs)
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return fmt.Errorf("parse flags: %w", err)
+	}
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zapOpts)))
+	m, err := gatewayapi.ParseMode(*mode)
+	if err != nil {
+		return err
+	}
+	scheme := runtime.NewScheme()
+	if err := apiextensionsv1.AddToScheme(scheme); err != nil {
+		return fmt.Errorf("register apiextensions types: %w", err)
+	}
+	restConfig, err := ctrl.GetConfig()
+	if err != nil {
+		return fmt.Errorf("load kubeconfig: %w", err)
+	}
+	c, err := client.New(restConfig, client.Options{Scheme: scheme})
+	if err != nil {
+		return fmt.Errorf("create client: %w", err)
+	}
+	ctx := ctrl.SetupSignalHandler()
+	return gatewayapi.Install(log.IntoContext(ctx, ctrl.Log.WithName("gateway-api-crds")), c, m)
 }

@@ -1,0 +1,31 @@
+apiVersion: v2
+name: takecare
+description: TakeCare Agents, an AIOps staff delivered as a Kubernetes operator, with the third-party building blocks it configures (ADR 0001, 0002). Requires the takecare-crds chart.
+type: application
+version: 0.1.0
+appVersion: 0.1.0
+kubeVersion: ">=1.33.0-0"
+home: https://github.com/Agaetis-IT/takecare-agents
+maintainers:
+  - name: Agaetis
+dependencies:
+  # Dependency versions are rewritten from hack/versions.env by `make chart-sync`
+  # (the marker after each version names the key); CI fails on drift.
+  - name: agentgateway
+    repository: oci://cr.agentgateway.dev/charts
+    version: v1.6.0 # pin: AGENTGATEWAY_VERSION
+    condition: agentgateway.enabled
+  - name: kagent
+    repository: oci://ghcr.io/kagent-dev/kagent/helm
+    version: 0.10.3 # pin: KAGENT_VERSION
+    condition: kagent.enabled
+  # Demo profile only (values-demo.yaml). In production they are the
+  # customer's (spec 01).
+  - name: prometheus
+    repository: https://prometheus-community.github.io/helm-charts
+    version: 29.37.0 # pin: PROMETHEUS_CHART_VERSION
+    condition: demo.enabled
+  - name: opentelemetry-collector
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+    version: 0.176.0 # pin: OTEL_COLLECTOR_CHART_VERSION
+    condition: demo.enabled

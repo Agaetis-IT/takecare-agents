@@ -108,6 +108,7 @@ type TakeCareDocStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:metadata:annotations="helm.sh/resource-policy=keep"
 // +kubebuilder:resource:scope=Namespaced,shortName=tcdoc,categories=takecare
 // +kubebuilder:printcolumn:name="Level",type=string,JSONPath=`.status.level`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`

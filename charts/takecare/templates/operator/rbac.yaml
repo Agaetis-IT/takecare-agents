@@ -1,0 +1,103 @@
+# The operator's own rights, kept minimal (spec 02 section 3, spec 04). From
+# the platform controller on, these rules are generated from the controllers'
+# RBAC markers (config/rbac) and snapshot by a golden test; until then they
+# cover what every controller needs: TakeCare resources and their status,
+# events, leader election.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: takecare-operator
+  labels:
+    {{- include "takecare.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [takecare.agaetis.fr]
+    resources: [takecareplatforms, takecareconnectors, takecaredocs, takecaredemos]
+    verbs: [get, list, watch, update, patch]
+  - apiGroups: [takecare.agaetis.fr]
+    resources: [takecareinvestigations]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [takecare.agaetis.fr]
+    resources: [takecareplatforms/status, takecareconnectors/status, takecaredocs/status, takecareinvestigations/status, takecaredemos/status]
+    verbs: [get, update, patch]
+  - apiGroups: [takecare.agaetis.fr]
+    resources: [takecareplatforms/finalizers, takecareconnectors/finalizers, takecaredocs/finalizers, takecaredemos/finalizers]
+    verbs: [update]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: takecare-operator
+  labels:
+    {{- include "takecare.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: takecare-operator
+subjects:
+  - kind: ServiceAccount
+    name: takecare-operator
+    namespace: {{ .Release.Namespace }}
+---
+# Leader election and the metrics endpoint's own authentication.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: takecare-operator-leader-election
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: takecare-operator-leader-election
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: takecare-operator-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: takecare-operator
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: takecare-operator-metrics-auth
+  labels:
+    {{- include "takecare.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [authentication.k8s.io]
+    resources: [tokenreviews]
+    verbs: [create]
+  - apiGroups: [authorization.k8s.io]
+    resources: [subjectaccessreviews]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: takecare-operator-metrics-auth
+  labels:
+    {{- include "takecare.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: takecare-operator-metrics-auth
+subjects:
+  - kind: ServiceAccount
+    name: takecare-operator
+    namespace: {{ .Release.Namespace }}

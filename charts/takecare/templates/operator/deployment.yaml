@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: takecare-operator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.labels" . | nindent 4 }}
+    app.kubernetes.io/component: operator
+spec:
+  replicas: {{ .Values.operator.replicas }}
+  selector:
+    matchLabels:
+      {{- include "takecare.operator.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "takecare.labels" . | nindent 8 }}
+        app.kubernetes.io/component: operator
+    spec:
+      serviceAccountName: takecare-operator
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: operator
+          image: {{ include "takecare.operatorImage" . | quote }}
+          imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
+          args:
+            - --leader-elect
+            - --health-probe-bind-address=:8081
+            - --metrics-bind-address=:{{ .Values.operator.metrics.port }}
+            - --metrics-secure={{ .Values.operator.metrics.secure }}
+            {{- range .Values.operator.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            - name: OPERATOR_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            {{- with .Values.global.egressProxy }}
+            {{- if .httpsProxy }}
+            - name: HTTPS_PROXY
+              value: {{ .httpsProxy | quote }}
+            {{- end }}
+            {{- if .httpProxy }}
+            - name: HTTP_PROXY
+              value: {{ .httpProxy | quote }}
+            {{- end }}
+            {{- if .noProxy }}
+            - name: NO_PROXY
+              value: {{ .noProxy | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if or .Values.global.caBundle.configMapName .Values.global.caBundle.secretName }}
+            - name: SSL_CERT_FILE
+              value: /etc/takecare/ca/{{ .Values.global.caBundle.key }}
+            {{- end }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.operator.metrics.port }}
+            - name: probes
+              containerPort: 8081
+          livenessProbe:
+            httpGet: { path: /healthz, port: probes }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: { path: /readyz, port: probes }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            {{- toYaml .Values.operator.resources | nindent 12 }}
+          {{- if or .Values.global.caBundle.configMapName .Values.global.caBundle.secretName }}
+          volumeMounts:
+            - name: ca-bundle
+              mountPath: /etc/takecare/ca
+              readOnly: true
+          {{- end }}
+      {{- if or .Values.global.caBundle.configMapName .Values.global.caBundle.secretName }}
+      volumes:
+        - name: ca-bundle
+          {{- if .Values.global.caBundle.secretName }}
+          secret:
+            secretName: {{ .Values.global.caBundle.secretName }}
+          {{- else }}
+          configMap:
+            name: {{ .Values.global.caBundle.configMapName }}
+          {{- end }}
+      {{- end }}
+      {{- with .Values.operator.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

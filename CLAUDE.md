@@ -37,7 +37,8 @@ Specs and ADRs are written and reviewed in a separate design loop with the produ
 | 0 | Spike 001: kagent vs HolmesGPT for the Doc, throwaway code in `spikes/001/` | spike 001 | the report `docs/spikes/001-kagent-doc-engine-report.md` is written; the product owner decides on ADR 0007 before PR 3 |
 | 1 | Scaffold: kubebuilder layout, Makefile, `hack/versions.env`, CI skeleton (lint + unit), `.gitignore`, `CHANGELOG.md` | 04 | `make lint test` green locally and in CI on an almost empty project |
 | 2 | API types and CRDs (`RoleCommonSpec`, `TakeCarePlatform`, `TakeCareConnector`, `TakeCareDoc`, `TakeCareInvestigation`, `TakeCareDemo`), CEL validation, printer columns, category `takecare` | ADR 0003, 01, 02, 03, 05 | envtest validation tests pass; `kubectl get takecare` works on a test cluster |
-| 3 | Platform controller (agentgateway models, kagent ModelConfigs, telemetry), charts (`takecare-crds`, `takecare`, both profiles) | 01, ADR 0002, 0006 | spec 01 acceptance criteria 1, 3, 4, 5, 7 (2 needs the fake provider, PR 6; 6 needs connectors and the Doc, PR 4) |
+| 3 | Charts (`takecare-crds` with the Gateway API hook job, `takecare` with both profiles), kagent pinned, chart CI | ADR 0002, 0007, 01 | both profiles lint, render and validate; a real install and upgrade under Helm 4 on k3d |
+| 3' | Platform controller (agentgateway models, kagent ModelConfigs, telemetry) | 01, ADR 0006 | spec 01 acceptance criteria 1, 3, 4, 5, 7 (2 needs the fake provider, PR 6; 6 needs connectors and the Doc, PR 4) |
 | 3b | Connectors: controller, tool discovery and classification, add-ons `kubernetes`, `prometheus`, `report-slack` (and its log mode), cluster connector RBAC | 05 | spec 05 acceptance criteria 1 to 4 and 6 (5 needs the fake Slack, PR 6) |
 | 4 | Doc: alert intake, `TakeCareInvestigation`, kagent `Agent` rendering and A2A trigger, tool allow-lists (agent and gateway), publishing, usage, trace | 02 | spec 02 acceptance criteria 2 to 8 (1 and 10 need the demo and the bench, 9 needs the fake LLM: all three closed in PR 6) |
 | 5 | Demo: scenery images, English corpus, `demo-corpus` add-on, `TakeCareDemo` controller, `make demo-*` | 03, 05 | spec 03 acceptance criteria |
@@ -49,8 +50,11 @@ One PR at a time, small enough to review in one sitting.
 
 ```bash
 make generate        # deepcopy, CRDs, RBAC manifests
+make chart-sync      # copy the CRDs and the pinned versions into the charts
 make lint            # golangci-lint, ruff, shellcheck, markdownlint
-make test            # unit + golden + envtest
+make chart-lint      # chart drift check + helm lint, both charts, both profiles
+make chart-template  # render both profiles, validate with kubeconform
+make test            # unit + golden + envtest + chart tests
 make e2e             # end-to-end on k3d (fake LLM, fake Slack)
 make demo-up | demo-incident | demo-verdict | demo-screens | demo-bench N=5 | demo-reset | demo-down
 ```

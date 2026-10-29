@@ -20,10 +20,10 @@ venv/
 .ruff_cache/
 .pytest_cache/
 
-# --- Helm ---
+# --- Helm (Chart.lock is committed: it pins the dependency digests) ---
 charts/*/charts/
-charts/*/Chart.lock
 *.tgz
+/.chart-out/
 
 # --- Secrets and local config (never commit) ---
 .env

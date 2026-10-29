@@ -1,0 +1,44 @@
+{{- if ne .Values.gatewayAPI.install "never" }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-gateway-api-crds
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare-crds.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.gatewayAPI.job.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.gatewayAPI.job.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "takecare-crds.labels" . | nindent 8 }}
+        app.kubernetes.io/component: gateway-api-crds
+    spec:
+      serviceAccountName: {{ .Release.Name }}-gateway-api-crds
+      restartPolicy: Never
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: gateway-api-crds
+          image: {{ include "takecare-crds.operatorImage" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["gateway-api-crds", "--mode={{ .Values.gatewayAPI.install }}"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            {{- toYaml .Values.gatewayAPI.job.resources | nindent 12 }}
+{{- end }}

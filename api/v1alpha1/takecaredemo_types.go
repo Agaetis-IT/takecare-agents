@@ -80,6 +80,7 @@ type LastHandled struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:metadata:annotations="helm.sh/resource-policy=keep"
 // +kubebuilder:resource:scope=Namespaced,shortName=tcdemo,categories=takecare,path=takecaredemos
 // +kubebuilder:printcolumn:name="Scenario",type=string,JSONPath=`.spec.scenario`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`

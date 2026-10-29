@@ -6,3 +6,4 @@
 !api/**/*.go
 !internal/**/*.go
 **/*_test.go
+!internal/gatewayapi/standard-install.yaml

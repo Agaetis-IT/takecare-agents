@@ -46,6 +46,18 @@ jobs:
           fi
       - run: make test
 
+  chart:
+    name: chart (sync, helm lint, template, kubeconform)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # Helm 4 and kubeconform are downloaded by the Makefile at the versions
+      # and checksums pinned in hack/versions.env.
+      - run: make chart-lint chart-template
+
   licenses:
     name: licenses (NOTICE up to date, no copyleft)
     runs-on: ubuntu-24.04
