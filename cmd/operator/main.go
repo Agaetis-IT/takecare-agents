@@ -19,6 +19,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+
+	takecarev1alpha1 "github.com/agaetis-it/takecare-agents/api/v1alpha1"
 )
 
 // leaderElectionID names the Lease shared by the operator's replicas.
@@ -94,6 +96,9 @@ func newScheme() (*runtime.Scheme, error) {
 	scheme := runtime.NewScheme()
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("register client-go types: %w", err)
+	}
+	if err := takecarev1alpha1.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("register takecare types: %w", err)
 	}
 	return scheme, nil
 }

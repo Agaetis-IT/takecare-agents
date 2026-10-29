@@ -1,0 +1,364 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: takecareconnectors.takecare.agaetis.fr
+spec:
+  group: takecare.agaetis.fr
+  names:
+    categories:
+    - takecare
+    kind: TakeCareConnector
+    listKind: TakeCareConnectorList
+    plural: takecareconnectors
+    shortNames:
+    - tcconnector
+    singular: takecareconnector
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.types
+      name: Types
+      type: string
+    - jsonPath: .status.toolCount
+      name: Tools
+      type: integer
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: TakeCareConnector is one MCP server typed by what it gives access
+          to.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: TakeCareConnectorSpec declares one MCP server reachable through
+              the gateway (spec 05).
+            properties:
+              description:
+                type: string
+              kubernetes:
+                description: What the server's ServiceAccount may read. Type cluster
+                  only.
+                properties:
+                  extraResources:
+                    description: Resources beyond the defaults, for example custom
+                      resources.
+                    items:
+                      description: ResourceRef names a resource of an API group (the
+                        core group is empty).
+                      properties:
+                        group:
+                          type: string
+                        resource:
+                          minLength: 1
+                          type: string
+                      required:
+                      - resource
+                      type: object
+                    type: array
+                  namespaces:
+                    items:
+                      description: Namespace is a Kubernetes namespace name.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                      type: string
+                    minItems: 1
+                    type: array
+                    x-kubernetes-list-type: set
+                required:
+                - namespaces
+                type: object
+              mcp:
+                description: 'MCPSpec locates the MCP server: an add-on of the chart,
+                  or an external URL.'
+                properties:
+                  addon:
+                    minLength: 1
+                    type: string
+                  headersFrom:
+                    description: Headers taken from Secrets, for example an Authorization
+                      token.
+                    items:
+                      description: HeaderFrom sets an HTTP header from a Secret key.
+                      properties:
+                        name:
+                          minLength: 1
+                          type: string
+                        secretKeyRef:
+                          description: SecretKeyRef points at a key of a Secret.
+                          properties:
+                            key:
+                              minLength: 1
+                              type: string
+                            name:
+                              minLength: 1
+                              type: string
+                          required:
+                          - key
+                          - name
+                          type: object
+                      required:
+                      - name
+                      - secretKeyRef
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                  url:
+                    pattern: ^https?://[^\s]+$
+                    type: string
+                type: object
+                x-kubernetes-validations:
+                - message: set exactly one of addon and url
+                  rule: has(self.addon) != has(self.url)
+                - message: headersFrom is only valid with url
+                  rule: '!has(self.headersFrom) || has(self.url)'
+              report:
+                description: Adapter and destinations. Type report only.
+                properties:
+                  adapter:
+                    enum:
+                    - slack
+                    - log
+                    type: string
+                  destinations:
+                    items:
+                      description: Destination is a named place to publish to.
+                      properties:
+                        name:
+                          minLength: 1
+                          type: string
+                        target:
+                          minLength: 1
+                          type: string
+                      required:
+                      - name
+                      - target
+                      type: object
+                    minItems: 1
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                required:
+                - adapter
+                - destinations
+                type: object
+              tools:
+                description: Overrides of the default tool classification.
+                items:
+                  description: ToolOverride sets the class of a tool by name.
+                  properties:
+                    class:
+                      description: ToolClass classifies an MCP tool.
+                      enum:
+                      - read
+                      - propose
+                      - act
+                      type: string
+                    name:
+                      minLength: 1
+                      type: string
+                  required:
+                  - class
+                  - name
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+              types:
+                items:
+                  description: ConnectorType says what a connector gives access to
+                    (ADR 0008).
+                  enum:
+                  - cluster
+                  - metrics
+                  - logs
+                  - knowledge
+                  - changes
+                  - tickets
+                  - report
+                  type: string
+                minItems: 1
+                type: array
+                x-kubernetes-list-type: set
+            required:
+            - mcp
+            - types
+            type: object
+            x-kubernetes-validations:
+            - message: 'a report connector has no other type: its tools are never
+                given to agents'
+              rule: '!(''report'' in self.types) || self.types.size() == 1'
+            - message: a connector of type report must declare spec.report
+              rule: '!(''report'' in self.types) || has(self.report)'
+            - message: spec.report is only valid for a connector of type report
+              rule: '!has(self.report) || ''report'' in self.types'
+            - message: a connector of type cluster must declare spec.kubernetes
+              rule: '!(''cluster'' in self.types) || has(self.kubernetes)'
+            - message: spec.kubernetes is only valid for a connector of type cluster
+              rule: '!has(self.kubernetes) || ''cluster'' in self.types'
+          status:
+            description: TakeCareConnectorStatus is the observed state of a connector.
+            properties:
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              lastDiscovery:
+                format: date-time
+                type: string
+              observedGeneration:
+                format: int64
+                type: integer
+              overrides:
+                description: Overrides that relax a class, kept visible for review.
+                items:
+                  description: ToolClassChange records an override.
+                  properties:
+                    from:
+                      description: ToolClass classifies an MCP tool.
+                      enum:
+                      - read
+                      - propose
+                      - act
+                      type: string
+                    name:
+                      type: string
+                    to:
+                      description: ToolClass classifies an MCP tool.
+                      enum:
+                      - read
+                      - propose
+                      - act
+                      type: string
+                  required:
+                  - from
+                  - name
+                  - to
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+              toolCount:
+                description: Number of discovered tools, for the TOOLS printer column.
+                format: int32
+                type: integer
+              tools:
+                items:
+                  description: ToolStatus is a discovered tool and its class.
+                  properties:
+                    class:
+                      description: ToolClass classifies an MCP tool.
+                      enum:
+                      - read
+                      - propose
+                      - act
+                      type: string
+                    name:
+                      type: string
+                    source:
+                      enum:
+                      - annotation
+                      - override
+                      type: string
+                  required:
+                  - class
+                  - name
+                  - source
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
