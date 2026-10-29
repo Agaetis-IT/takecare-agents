@@ -5,38 +5,51 @@
   </picture>
 </p>
 
-<p align="center"><b>The AIOps staff that takes care of your production.</b><br>
+<p align="center"><b>The AI that helps you take care of your production.</b><br>
 <i>Always there, never in your place.</i></p>
 
 ---
 
-TakeCare Agents is a staff of AI agents, exercises and guardrails that prepare, heal and protect a Kubernetes production. It installs at the customer's site as a **Kubernetes operator**, on an open source stack (agentgateway, kagent, MCP), with the model of their choice. A built-in **demo mode** runs the same product on a local cluster, with a scenery and replayable incidents.
+TakeCare Agents is a collection of specialised roles (AI agents, experiences and guardrails) that prepare, heal and protect a Kubernetes production. It installs at the customer's site as a **Kubernetes operator**, on an open source stack (agentgateway, kagent, MCP), with the model of their choice. A built-in **demo mode** runs the same product on a local cluster, with a scenery and replayable incidents.
 
 > **Status: under construction.** Milestone 1 (platform, Doc, demo mode) is specified in [`docs/`](docs/); the code arrives PR by PR. Nothing is installable yet.
 
 ## The staff
 
-Eleven roles, grouped in three pillars. Each role has a nickname you remember and a job name that says what it does in operations. Every role starts with a trial, touching nothing.
+Thirteen roles, each with its own job, grouped in three pillars. Each role has a nickname you remember and a job name that says what it does in operations. In each pillar, the experiences come first. Every role starts with a trial, touching nothing.
 
 <p align="center">
-  <img src="docs/assets/takecare-staff.jpg" alt="The TakeCare staff: eleven role cards grouped by pillar (prepare, heal, protect) and the three intervention levels" width="100%">
+  <img src="docs/assets/takecare-staff.jpg" alt="The TakeCare staff: thirteen role cards grouped by pillar (prepare, heal, protect)" width="100%">
 </p>
 
 | Pillar | Role | Job name | The question it answers |
 |---|---|---|---|
-| **Prepare**<br><sub>Incident anticipation</sub> | **Coach** | Peak readiness | A peak of activity ahead? |
+| **Prepare**<br><sub>Incident anticipation</sub> | **Check-up** | Operations clean-up | Scattered docs, tools nobody knows anymore? |
+| | **Stress Test** | Load testing | Too many resources, or not enough for the next peak? |
+| | **Coach** | Peak readiness | A peak of activity ahead? |
 | | **Nutri** | FinOps | A cloud bill that climbs without warning? |
 | | **Guide** | Team upskilling | Your team needs to level up? |
-| | **Bootcamp** | Disaster recovery testing | Your plan B has never been used? |
-| **Heal**<br><sub>Assisted operations</sub> | **Doc** | Incident diagnosis | An incident in the middle of the night? |
+| **Heal**<br><sub>Assisted operations</sub> | **Bootcamp** | Disaster recovery testing | Your plan B has never been used? |
+| | **Doc** | Incident diagnosis | An incident in the middle of the night? |
 | | **Kiné** | Problem management | A pain that comes back with every incident? |
 | | **Mécano** | Lifecycle management | A version upgrade everyone keeps postponing? |
-| **Protect**<br><sub>AI agent oversight</sub> | **Ranger** | AI agent governance | Your agents tempted to go off-piste? |
-| | **Checkpoint** | AI agent inventory | Agents and tools coming from everywhere? |
+| **Protect**<br><sub>AI agent oversight</sub> | **Sparring** | AI agent red teaming | Would your agents hold up against an attack? |
+| | **Ranger** | AI agent governance | Your agents tempted to go off-piste? |
+| | **Kit** | AI agent inventory | Agents and tools coming from everywhere? |
 | | **Psy** | AI agent evaluation | Agents that make up paths or go round in circles? |
-| | **Sparring** | AI agent red teaming | Would your agents hold up against an attack? |
 
-Agents: Coach, Nutri, Guide, Doc, Kiné, Mécano. Exercises run by Agaetis: Bootcamp, Sparring. Guardrails: Ranger, Checkpoint, Psy.
+Agents: Coach, Nutri, Guide, Doc, Kiné, Mécano. Experiences run by Agaetis with your teams: Check-up, Stress Test, Bootcamp, Sparring. Guardrails: Ranger, Kit, Psy.
+
+### Starter packs
+
+Each challenge, its starter pack: an entry experience run with your teams, then the cards that answer it. The Guardrails foundation is included in every pack.
+
+| Starter pack | The challenge | Entry experience | Then the cards |
+|---|---|---|---|
+| **TakeCare Crew** | Grow your teams on their own infra | Check-up | Guide, Mécano |
+| **TakeCare Resilience** | Master production incidents | Bootcamp | Doc, Kiné, Mécano |
+| **TakeCare Efficiency** | Find the right level: not too much, not too little | Stress Test | Nutri, Coach |
+| **TakeCare Guardrails** | The foundation: included everywhere, also on its own | Sparring | Ranger, Kit, Psy |
 
 Milestone 1 delivers the **Doc** (incident diagnosis): on every alert, it investigates read-only and posts a sourced diagnosis to Slack (the root cause, the ruled-out leads, who should act). You decide on the treatment.
 
