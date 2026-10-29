@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- API types and CRDs, group `takecare.agaetis.fr/v1alpha1` (ADR 0003): `TakeCarePlatform` (cluster-scoped singleton `main`), `TakeCareConnector`, `TakeCareDoc`, `TakeCareInvestigation` and `TakeCareDemo`, with the shared `RoleCommonSpec`, CEL validation, printer columns and the `takecare` category. Generated CRDs are in `config/crd`; no controller yet.
 - Operator skeleton (`cmd/operator`): controller-runtime manager with health probes and authenticated metrics, no controller yet.
 - `Makefile` targets `generate`, `lint`, `test`, `licenses`, `gitleaks`, `build`, `docker-build` and `docker-buildx` (amd64 and arm64).
 - `hack/versions.env`, the single place for pinned third-party versions; the agent engine is left out until ADR 0007 and ADR 0010 are settled.
