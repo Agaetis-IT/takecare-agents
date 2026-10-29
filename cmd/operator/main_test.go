@@ -9,6 +9,8 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
+
+	takecarev1alpha1 "github.com/agaetis-it/takecare-agents/api/v1alpha1"
 )
 
 func TestNewSchemeRegistersCoreTypes(t *testing.T) {
@@ -18,6 +20,11 @@ func TestNewSchemeRegistersCoreTypes(t *testing.T) {
 	}
 	if !scheme.Recognizes(corev1.SchemeGroupVersion.WithKind("Pod")) {
 		t.Error("scheme does not recognize core/v1 Pod")
+	}
+	for _, kind := range []string{"TakeCarePlatform", "TakeCareConnector", "TakeCareDoc", "TakeCareInvestigation", "TakeCareDemo"} {
+		if !scheme.Recognizes(takecarev1alpha1.GroupVersion.WithKind(kind)) {
+			t.Errorf("scheme does not recognize %s", kind)
+		}
 	}
 }
 
