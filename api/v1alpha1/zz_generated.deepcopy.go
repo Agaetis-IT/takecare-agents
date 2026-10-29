@@ -407,9 +407,9 @@ func (in *ObservabilitySpec) DeepCopyInto(out *ObservabilitySpec) {
 		*out = new(OTLPSpec)
 		**out = **in
 	}
-	if in.Sampling != nil {
-		in, out := &in.Sampling, &out.Sampling
-		*out = new(float64)
+	if in.SamplingPerMille != nil {
+		in, out := &in.SamplingPerMille, &out.SamplingPerMille
+		*out = new(int32)
 		**out = **in
 	}
 }

@@ -127,21 +127,29 @@ spec:
                       pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                       type: string
                     pricing:
-                      description: Pricing prices the usage reported by the gateway,
-                        per million tokens.
+                      description: |-
+                        Pricing prices the usage reported by the gateway, per million tokens.
+                        Prices are decimal strings, parsed by the controller: floats do not
+                        round-trip in a CRD and 0.075 is not exactly representable.
                       properties:
                         cachedInputPerMTok:
-                          minimum: 0
-                          type: number
+                          description: Decimal is a non-negative decimal number written
+                            as a string, for example "0.075".
+                          pattern: ^[0-9]+(\.[0-9]+)?$
+                          type: string
                         currency:
                           minLength: 1
                           type: string
                         inputPerMTok:
-                          minimum: 0
-                          type: number
+                          description: Decimal is a non-negative decimal number written
+                            as a string, for example "0.075".
+                          pattern: ^[0-9]+(\.[0-9]+)?$
+                          type: string
                         outputPerMTok:
-                          minimum: 0
-                          type: number
+                          description: Decimal is a non-negative decimal number written
+                            as a string, for example "0.075".
+                          pattern: ^[0-9]+(\.[0-9]+)?$
+                          type: string
                       required:
                       - currency
                       - inputPerMTok
@@ -197,12 +205,15 @@ spec:
                     required:
                     - endpoint
                     type: object
-                  sampling:
-                    default: 1
-                    description: Trace sampling ratio.
-                    maximum: 1
+                  samplingPerMille:
+                    default: 1000
+                    description: |-
+                      Trace sampling in parts per thousand: 0 samples nothing, 1000 samples
+                      every trace. An integer keeps the bounds exact.
+                    format: int32
+                    maximum: 1000
                     minimum: 0
-                    type: number
+                    type: integer
                 type: object
             required:
             - models

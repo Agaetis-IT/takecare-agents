@@ -105,6 +105,8 @@ func TestDemoValidation(t *testing.T) {
 		want   string
 	}{
 		{"complete demo", func(*v1alpha1.TakeCareDemo) {}, ""},
+		{"bad-config-rollout scenario", func(d *v1alpha1.TakeCareDemo) { d.Spec.Scenario = "bad-config-rollout" }, ""},
+		{"missing-secret-key scenario", func(d *v1alpha1.TakeCareDemo) { d.Spec.Scenario = "missing-secret-key" }, ""},
 		{"unknown scenario", func(d *v1alpha1.TakeCareDemo) { d.Spec.Scenario = "disk-full" }, "scenario"},
 		{"negative ramp", func(d *v1alpha1.TakeCareDemo) { d.Spec.RampMinutes = -1 }, "rampMinutes"},
 		{badNamespace, func(d *v1alpha1.TakeCareDemo) { d.Spec.AppNamespace = "Demo Apps" }, "appNamespace"},

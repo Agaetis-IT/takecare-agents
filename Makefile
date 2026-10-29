@@ -42,7 +42,7 @@ help: ## Show this help.
 .PHONY: generate
 generate: controller-gen ## Generate deepcopy code, CRDs and RBAC manifests.
 	"$(CONTROLLER_GEN)" object:headerFile=hack/boilerplate.go.txt paths="./..."
-	"$(CONTROLLER_GEN)" rbac:roleName=takecare-operator crd:allowDangerousTypes=true paths="./..." \
+	"$(CONTROLLER_GEN)" rbac:roleName=takecare-operator crd paths="./..." \
 		output:crd:artifacts:config=config/crd output:rbac:artifacts:config=config/rbac
 
 .PHONY: fmt

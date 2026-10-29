@@ -49,10 +49,13 @@ func TestPlatformValidation(t *testing.T) {
 		{"unknown provider", func(p *v1alpha1.TakeCarePlatform) { p.Spec.Models[0].Provider = "bedrock" }, "provider"},
 		{"missing secret key name", func(p *v1alpha1.TakeCarePlatform) { p.Spec.Models[0].APIKeySecretRef.Key = "" }, "key"},
 		{"negative price", func(p *v1alpha1.TakeCarePlatform) {
-			p.Spec.Models[0].Pricing = &v1alpha1.Pricing{InputPerMTok: -1, Currency: "USD"}
+			p.Spec.Models[0].Pricing = &v1alpha1.Pricing{InputPerMTok: "-1", OutputPerMTok: "1", Currency: "USD"}
+		}, "inputPerMTok"},
+		{"price written as a float expression", func(p *v1alpha1.TakeCarePlatform) {
+			p.Spec.Models[0].Pricing = &v1alpha1.Pricing{InputPerMTok: "1e3", OutputPerMTok: "1", Currency: "USD"}
 		}, "inputPerMTok"},
 		{"priced model", func(p *v1alpha1.TakeCarePlatform) {
-			p.Spec.Models[0].Pricing = &v1alpha1.Pricing{InputPerMTok: 0.3, CachedInputPerMTok: 0.03, OutputPerMTok: 2.5, Currency: "USD"}
+			p.Spec.Models[0].Pricing = &v1alpha1.Pricing{InputPerMTok: "0.30", CachedInputPerMTok: "0.075", OutputPerMTok: "2.50", Currency: "USD"}
 		}, ""},
 		{"OTLP endpoint without scheme", func(p *v1alpha1.TakeCarePlatform) {
 			p.Spec.Observability.OTLP = &v1alpha1.OTLPSpec{Endpoint: "otel-collector:4317"}
@@ -63,8 +66,9 @@ func TestPlatformValidation(t *testing.T) {
 		{"Prometheus URL without scheme", func(p *v1alpha1.TakeCarePlatform) {
 			p.Spec.Observability.Metrics = &v1alpha1.MetricsSpec{PrometheusURL: "prometheus:9090"}
 		}, "prometheusURL"},
-		{"sampling above one", func(p *v1alpha1.TakeCarePlatform) { p.Spec.Observability.Sampling = new(1.5) }, "sampling"},
-		{"sampling zero", func(p *v1alpha1.TakeCarePlatform) { p.Spec.Observability.Sampling = new(0.0) }, ""},
+		{"sampling above 1000", func(p *v1alpha1.TakeCarePlatform) { p.Spec.Observability.SamplingPerMille = new(int32(1001)) }, "samplingPerMille"},
+		{"negative sampling", func(p *v1alpha1.TakeCarePlatform) { p.Spec.Observability.SamplingPerMille = new(int32(-1)) }, "samplingPerMille"},
+		{"sampling zero", func(p *v1alpha1.TakeCarePlatform) { p.Spec.Observability.SamplingPerMille = new(int32(0)) }, ""},
 		{"engine namespace not a DNS label", func(p *v1alpha1.TakeCarePlatform) { p.Spec.Engine.Namespace = "Kagent" }, "namespace"},
 	}
 	for _, tt := range tests {
@@ -107,8 +111,8 @@ func TestPlatformDefaults(t *testing.T) {
 	if got.Spec.Observability.CaptureContent {
 		t.Error("captureContent defaults to true, want false (ADR 0006)")
 	}
-	if s := got.Spec.Observability.Sampling; s == nil || *s != 1 {
-		t.Errorf("sampling = %v, want 1", s)
+	if s := got.Spec.Observability.SamplingPerMille; s == nil || *s != 1000 {
+		t.Errorf("samplingPerMille = %v, want 1000", s)
 	}
 }
 

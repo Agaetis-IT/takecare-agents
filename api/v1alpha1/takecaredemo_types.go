@@ -20,7 +20,7 @@ const (
 // TakeCareDemoSpec sets up a scenery and a replayable incident (spec 03).
 // Actions are triggered with the annotations AnnotationIncident and AnnotationReset.
 type TakeCareDemoSpec struct {
-	// +kubebuilder:validation:Enum=proxy-timeout
+	// +kubebuilder:validation:Enum=proxy-timeout;bad-config-rollout;missing-secret-key
 	// +kubebuilder:default=proxy-timeout
 	// +optional
 	Scenario string `json:"scenario,omitempty"`

@@ -28,7 +28,7 @@ spec:
       baseURL: https://openrouter.ai/api/v1
       model: google/gemini-3.7-flash
       apiKeySecretRef: { name: takecare-model, key: apiKey }
-      pricing: { inputPerMTok: 0.30, cachedInputPerMTok: 0.03, outputPerMTok: 2.50, currency: USD }   # illustrative values
+      pricing: { inputPerMTok: "0.30", cachedInputPerMTok: "0.03", outputPerMTok: "2.50", currency: USD }   # decimal strings, illustrative values
 
   gateway:
     # Gateway API Gateway served by agentgateway; the chart creates it unless an existing one is referenced.
@@ -44,7 +44,7 @@ spec:
       endpoint: http://otel-collector.takecare-system.svc:4317
       protocol: grpc            # grpc | http
     captureContent: false       # ADR 0006: off by default
-    sampling: 1.0
+    samplingPerMille: 1000      # 0 to 1000 (1000 = every trace)
 ```
 
 ## What is required, in production and in the demo
@@ -79,7 +79,7 @@ Deployment concerns are **chart values**, not API fields, because they are about
 | `AgentgatewayModel` (`agentgateway.dev/v1alpha1`), one per model | `spec.models[]` | Attached to the gateway's HTTP listener; provider key from a Secret copied into the gateway namespace |
 | kagent `ModelConfig`, one per model | `spec.models[]` | OpenAI provider, `baseUrl` = the gateway route, dummy key: kagent never sees the provider key (ADR 0004, 0007) |
 | `AgentgatewayPolicy` for tracing | `spec.observability` | Targets the gateway, `spec.frontend.tracing` to the OTLP endpoint |
-| Telemetry settings for kagent and the operator | `spec.observability` | OTLP endpoint, sampling, content capture flag |
+| Telemetry settings for kagent and the operator | `spec.observability` | OTLP endpoint, sampling (`samplingPerMille`), content capture flag |
 
 The gateway's Service is the one agentgateway creates for the Gateway; the controller reads it from the Gateway's status addresses rather than assuming a name. The chart names its Gateway `agentgateway-proxy`.
 

@@ -82,6 +82,8 @@ spec:
                 default: proxy-timeout
                 enum:
                 - proxy-timeout
+                - bad-config-rollout
+                - missing-secret-key
                 type: string
             type: object
           status:

@@ -56,17 +56,20 @@ type ModelSpec struct {
 }
 
 // Pricing prices the usage reported by the gateway, per million tokens.
+// Prices are decimal strings, parsed by the controller: floats do not
+// round-trip in a CRD and 0.075 is not exactly representable.
 type Pricing struct {
-	// +kubebuilder:validation:Minimum=0
-	InputPerMTok float64 `json:"inputPerMTok"`
-	// +kubebuilder:validation:Minimum=0
+	InputPerMTok Decimal `json:"inputPerMTok"`
 	// +optional
-	CachedInputPerMTok float64 `json:"cachedInputPerMTok,omitempty"`
-	// +kubebuilder:validation:Minimum=0
-	OutputPerMTok float64 `json:"outputPerMTok"`
+	CachedInputPerMTok Decimal `json:"cachedInputPerMTok,omitempty"`
+	OutputPerMTok      Decimal `json:"outputPerMTok"`
 	// +kubebuilder:validation:MinLength=1
 	Currency string `json:"currency"`
 }
+
+// Decimal is a non-negative decimal number written as a string, for example "0.075".
+// +kubebuilder:validation:Pattern=`^[0-9]+(\.[0-9]+)?$`
+type Decimal string
 
 // GatewaySpec locates the Gateway API Gateway served by agentgateway.
 type GatewaySpec struct {
@@ -108,12 +111,13 @@ type ObservabilitySpec struct {
 	// +optional
 	CaptureContent bool `json:"captureContent,omitempty"`
 
-	// Trace sampling ratio.
+	// Trace sampling in parts per thousand: 0 samples nothing, 1000 samples
+	// every trace. An integer keeps the bounds exact.
 	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:validation:Maximum=1
-	// +kubebuilder:default=1
+	// +kubebuilder:validation:Maximum=1000
+	// +kubebuilder:default=1000
 	// +optional
-	Sampling *float64 `json:"sampling,omitempty"`
+	SamplingPerMille *int32 `json:"samplingPerMille,omitempty"`
 }
 
 // MetricsSpec points at a Prometheus that scrapes the gateway (usage and cost).
