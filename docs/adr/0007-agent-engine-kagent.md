@@ -52,7 +52,7 @@ Options assessed: keep Holmes behind workarounds (one instance per role, A2A fa√
 
 Evidence: `docs/spikes/001-kagent-doc-engine-report.md` and `spikes/001/notes.md`. The original decision above stands; this section pins what was confirmed and what it requires.
 
-### Decision
+### Decision after the spike
 
 1. The engine is **kagent 0.10.3, `runtime: python`**, pinned by digest (`hack/versions.env`), behind `engine.Engine` (decision 3 above). The 0.x line is followed for its fixes.
 2. The `go` runtime, the 0.10.3 default, is not used: its model calls leave the investigation's trace (go/no-go criterion 5; fixed on kagent's `main` by #2809, not backported to `release/v0.10.x`). Nobody gets this configuration by installing kagent unchanged: the Agent templates set the runtime.

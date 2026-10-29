@@ -447,7 +447,7 @@ spec:
 
 ### Pins for `hack/versions.env`
 
-```
+```text
 KAGENT_VERSION=0.10.3                 # charts oci://ghcr.io/kagent-dev/kagent/helm/{kagent,kagent-crds}
 KAGENT_CHART_DIGEST=sha256:2f355400c760116e830cd7e86e7046477d480fb7dc309131832c51d65dfe9063
 KAGENT_CRDS_CHART_DIGEST=sha256:76582530f0b58b48575d19936e19d790ca2cea8e0421775be65bd4c99b2d8da0
@@ -465,7 +465,7 @@ Field names of `kagent.dev/v1alpha2` used: `Agent.spec.declarative.{runtime, mod
 
 ## 14. Reproducing
 
-```
+```bash
 cd spikes/001
 make up                       # cluster, gateway, monitoring, MCP servers, kagent 0.10.3, the agents, the engine (about 3 min with images cached)
 scripts/holmes.sh             # the two HolmesGPT baselines
