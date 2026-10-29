@@ -13,6 +13,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -135,9 +136,30 @@ func (h *harness) must(err error) {
 	}
 }
 
+// endpoints plays the endpoint controller, absent from envtest: one
+// endpoint of the add-on's Service, ready or not.
+func (h *harness) endpoints(service string, ready bool) {
+	h.t.Helper()
+	slice := &discoveryv1.EndpointSlice{
+		Name: service + "-abc", Namespace: operatorNS, Labels: map[string]string{discoveryv1.LabelServiceName: service},
+		AddressType: discoveryv1.AddressTypeIPv4,
+		Endpoints:   []discoveryv1.Endpoint{{Addresses: []string{"10.0.0.9"}, Conditions: discoveryv1.EndpointConditions{Ready: &ready}}},
+		Ports:       []discoveryv1.EndpointPort{{Name: new("http"), Port: new(int32(8080))}},
+	}
+	var existing discoveryv1.EndpointSlice
+	if err := h.c.Get(h.ctx, client.ObjectKeyFromObject(slice), &existing); err == nil {
+		existing.Endpoints = slice.Endpoints
+		h.must(h.c.Update(h.ctx, &existing))
+		return
+	}
+	h.must(h.c.Create(h.ctx, slice))
+}
+
 // addon creates what the chart renders for the kubernetes add-on: the
-// Deployment, the ServiceAccount and a read-only Role in the app namespace.
+// Deployment, the ServiceAccount, a ready endpoint and a read-only Role in
+// the app namespace.
 func (h *harness) addon() {
+	h.endpoints(addonSA, true)
 	labels := map[string]string{"app": addonSA}
 	h.must(h.c.Create(h.ctx, &appsv1.Deployment{
 		Name: addonSA, Namespace: operatorNS,
@@ -288,6 +310,17 @@ func TestClusterConnectorBecomesReady(t *testing.T) {
 		h.waitCondition("kubernetes", v1alpha1.ConditionReady, metav1.ConditionTrue, ReasonReady)
 	})
 
+	t.Run("a pod gone not ready (a revoked token on a report server) is seen at once", func(t *testing.T) {
+		h.endpoints(addonSA, false)
+		cond := h.waitCondition("kubernetes", v1alpha1.ConditionReachable, metav1.ConditionFalse, ReasonNoReadyEndpoint)
+		if !strings.Contains(cond.Message, "check the pod's readiness") {
+			t.Errorf("message = %s", cond.Message)
+		}
+		h.waitCondition("kubernetes", v1alpha1.ConditionReady, metav1.ConditionFalse, ReasonNotReady)
+		h.endpoints(addonSA, true)
+		h.waitCondition("kubernetes", v1alpha1.ConditionReady, metav1.ConditionTrue, ReasonReady)
+	})
+
 	t.Run("a wildcard is caught cluster-wide", func(t *testing.T) {
 		cr := &rbacv1.ClusterRole{Name: driftStar, Rules: []rbacv1.PolicyRule{{APIGroups: []string{"*"}, Resources: []string{"*"}, Verbs: []string{"*"}}}}
 		h.must(h.c.Create(h.ctx, cr))
@@ -420,4 +453,20 @@ func TestConnectorsThatCannotWork(t *testing.T) {
 		h.waitCondition("tickets", v1alpha1.ConditionReachable, metav1.ConditionFalse, ReasonUnreachable)
 		h.waitCondition("tickets", v1alpha1.ConditionReady, metav1.ConditionFalse, ReasonNotReady)
 	})
+}
+
+func TestResolveDestination(t *testing.T) {
+	c := &v1alpha1.TakeCareConnector{Name: "report", Spec: v1alpha1.TakeCareConnectorSpec{
+		Types:  []v1alpha1.ConnectorType{v1alpha1.ConnectorReport},
+		Report: &v1alpha1.ReportSpec{Adapter: "slack", Destinations: []v1alpha1.Destination{{Name: "on-call", Target: "C0123"}}},
+	}}
+	if got, err := ResolveDestination(c, "on-call"); err != nil || got != "C0123" {
+		t.Errorf("on-call = %q, %v", got, err)
+	}
+	if _, err := ResolveDestination(c, "everyone"); err == nil {
+		t.Error("an undeclared destination must be refused on the operator's side")
+	}
+	if _, err := ResolveDestination(&v1alpha1.TakeCareConnector{}, "on-call"); err == nil {
+		t.Error("a connector without a report block has no destination")
+	}
 }

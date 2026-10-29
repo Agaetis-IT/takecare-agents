@@ -21,6 +21,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -66,6 +67,7 @@ const (
 	ReasonNotApplicable         = "NotApplicable"
 	ReasonBackendPending        = "BackendPending"
 	ReasonAddonMissing          = "AddonMissing"
+	ReasonNoReadyEndpoint       = "NoReadyEndpoint"
 	ReasonSecretMissing         = "SecretMissing"
 	ReasonReadOnlyGuardViolated = "ReadOnlyGuardViolated"
 	ReasonRBACMissing           = "RBACMissing"
@@ -101,6 +103,7 @@ type Lister interface {
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareconnectors,verbs=get;list;watch,namespace=takecare-system
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareconnectors/status,verbs=get;update;patch,namespace=takecare-system
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;patch,namespace=takecare-system
+// +kubebuilder:rbac:groups=discovery.k8s.io,resources=endpointslices,verbs=get;list;watch,namespace=takecare-system
 // +kubebuilder:rbac:groups=authorization.k8s.io,resources=subjectaccessreviews,verbs=create
 // +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
 
@@ -189,6 +192,18 @@ func (r *Reconciler) endpoint(ctx context.Context, c *v1alpha1.TakeCareConnector
 			}
 			return nil, fmt.Errorf("get Deployment %s: %w", name, err)
 		}
+		// The pod's readiness carries what the server knows and the
+		// operator cannot see: for the report server, whether Slack still
+		// accepts its token. No ready endpoint is said as such, instead of
+		// the connection refused the call would give.
+		ready, err := r.readyEndpoints(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		if !ready {
+			st.set(v1alpha1.ConditionReachable, false, ReasonNoReadyEndpoint, fmt.Sprintf("no ready endpoint for Service %s/%s: check the pod's readiness (for a report server, the Slack token: auth.test failed or the Secret is missing)", r.OperatorNamespace, name))
+			return nil, nil
+		}
 		ep.URL = fmt.Sprintf("http://%s.%s.svc:%d%s", name, r.OperatorNamespace, addonPort, addonPath)
 	default:
 		ep.URL = c.Spec.MCP.URL
@@ -213,6 +228,22 @@ func (r *Reconciler) endpoint(ctx context.Context, c *v1alpha1.TakeCareConnector
 		}
 	}
 	return ep, nil
+}
+
+// readyEndpoints says whether a Service has at least one ready endpoint.
+func (r *Reconciler) readyEndpoints(ctx context.Context, service string) (bool, error) {
+	var endpointSlices discoveryv1.EndpointSliceList
+	if err := r.List(ctx, &endpointSlices, client.InNamespace(r.OperatorNamespace), client.MatchingLabels{discoveryv1.LabelServiceName: service}); err != nil {
+		return false, fmt.Errorf("list EndpointSlices of %s: %w", service, err)
+	}
+	for _, s := range endpointSlices.Items {
+		for _, e := range s.Endpoints {
+			if e.Conditions.Ready != nil && *e.Conditions.Ready {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 // applyBackend renders the gateway's MCP backend for the connector: the
@@ -647,6 +678,10 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 			return slices.ContainsFunc(c.Spec.MCP.HeadersFrom, func(h v1alpha1.HeaderFrom) bool { return h.SecretKeyRef.Name == o.GetName() })
 		})
 	})
+	toConnectorsOfService := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
+		addon := strings.TrimPrefix(o.GetLabels()[discoveryv1.LabelServiceName], addonNamePrefix)
+		return r.connectorsMatching(ctx, func(c v1alpha1.TakeCareConnector) bool { return c.Spec.MCP.Addon == addon })
+	})
 	toClusterConnectors := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, _ client.Object) []reconcile.Request {
 		return r.connectorsMatching(ctx, func(c v1alpha1.TakeCareConnector) bool {
 			return c.Spec.Kubernetes != nil && len(c.Spec.Kubernetes.ExtraResources) > 0
@@ -660,6 +695,11 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 			return strings.HasPrefix(o.GetName(), addonNamePrefix)
 		}))).
 		Watches(&corev1.Secret{}, toConnectorsWithSecret, builder.WithPredicates(inOperatorNS)).
+		// Endpoint readiness changes at once when a server's readiness does
+		// (a revoked Slack token): seen now, not at the next discovery.
+		Watches(&discoveryv1.EndpointSlice{}, toConnectorsOfService, builder.WithPredicates(inOperatorNS, predicate.NewPredicateFuncs(func(o client.Object) bool {
+			return strings.HasPrefix(o.GetLabels()[discoveryv1.LabelServiceName], addonNamePrefix)
+		}))).
 		WatchesMetadata(&apiextensionsv1.CustomResourceDefinition{}, toClusterConnectors).
 		Complete(r)
 }
@@ -677,4 +717,19 @@ func (r *Reconciler) connectorsMatching(ctx context.Context, match func(v1alpha1
 	}
 	slices.SortFunc(out, func(a, b reconcile.Request) int { return strings.Compare(a.Name, b.Name) })
 	return out
+}
+
+// ResolveDestination returns the target of a destination declared on a
+// report connector: the operator checks the destination on its side before
+// calling the server, which checks it again (spec 05).
+func ResolveDestination(c *v1alpha1.TakeCareConnector, name string) (string, error) {
+	if c.Spec.Report == nil {
+		return "", fmt.Errorf("connector %s is not a report connector", c.Name)
+	}
+	for _, d := range c.Spec.Report.Destinations {
+		if d.Name == name {
+			return d.Target, nil
+		}
+	}
+	return "", fmt.Errorf("connector %s declares no destination %q", c.Name, name)
 }

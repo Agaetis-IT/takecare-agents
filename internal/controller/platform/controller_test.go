@@ -512,6 +512,22 @@ func TestProductionGaps(t *testing.T) {
 		h.waitGaps()
 	})
 
+	t.Run("a report connector with the log adapter is a gap", func(t *testing.T) {
+		c := &v1alpha1.TakeCareConnector{
+			Name: "report", Namespace: operatorNS,
+			Spec: v1alpha1.TakeCareConnectorSpec{
+				Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorReport}, MCP: v1alpha1.MCPSpec{Addon: "report-log"},
+				Report: &v1alpha1.ReportSpec{Adapter: "log", Destinations: []v1alpha1.Destination{{Name: "on-call", Target: "log"}}},
+			},
+		}
+		h.must(h.c.Create(h.ctx, c))
+		meta.SetStatusCondition(&c.Status.Conditions, metav1.Condition{Type: v1alpha1.ConditionReady, Status: metav1.ConditionTrue, Reason: "Ready", Message: "ok"})
+		h.must(h.c.Status().Update(h.ctx, c))
+		h.waitGaps(GapReportLogEnabled)
+		h.must(h.c.Delete(h.ctx, c))
+		h.waitGaps()
+	})
+
 	t.Run("a Prometheus that stops answering is a gap with the cause, never Ready=False", func(t *testing.T) {
 		h.promMode.Store("error")
 		h.waitGaps(GapGatewayMetricsNotScraped)
