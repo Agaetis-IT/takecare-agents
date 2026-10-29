@@ -1,0 +1,81 @@
+# values-prod.yaml: the production template of TakeCare Agents (ADR 0002).
+#
+# Copy it, set every value marked REQUIRED, and install in takecare-system:
+#   helm install takecare-crds oci://ghcr.io/agaetis-it/charts/takecare-crds -n takecare-system --create-namespace
+#   helm install takecare      oci://ghcr.io/agaetis-it/charts/takecare      -n takecare-system -f my-values.yaml
+# Prerequisites that are yours (spec 01): the model provider and its key, a
+# Prometheus that scrapes the gateway (usage and cost), an OTLP backend for
+# traces, and the Secrets named below, created in takecare-system before
+# the install. Everything else is installed by the charts.
+
+global:
+  imageRegistry: ""        # your mirror, when images are not pulled from ghcr.io
+  imagePullSecrets: []
+  egressProxy:
+    httpsProxy: ""
+    noProxy: ""
+  caBundle:
+    configMapName: ""      # your internal CA, when the provider or MCP servers use it
+    key: ca.crt
+
+operator:
+  replicas: 2
+
+platform:
+  models:
+    - name: default
+      provider: openai-compatible
+      baseURL: ""          # REQUIRED: your provider's OpenAI-compatible API, e.g. https://vllm.example.internal/v1
+      model: ""            # REQUIRED: the model identifier the provider expects
+      apiKeySecretRef:
+        name: takecare-model   # REQUIRED: a Secret in takecare-system holding the provider key; the key never leaves the gateway
+        key: apiKey
+      pricing:             # decimal strings per million tokens, for the estimated cost
+        inputPerMTok: "0"
+        cachedInputPerMTok: "0"
+        outputPerMTok: "0"
+        currency: USD
+  engine:
+    namespace: kagent
+  observability:
+    metrics:
+      prometheusURL: ""    # REQUIRED for usage and cost: a Prometheus that scrapes the gateway
+    otlp:
+      endpoint: ""         # recommended: your OTLP endpoint, e.g. http://otel-collector.observability.svc:4317
+      protocol: grpc
+    captureContent: false  # keep off: prompts and answers may hold customer data (ADR 0006)
+    samplingPerMille: 1000
+
+networkPolicies:
+  enabled: true            # keep on; requires a CNI that enforces NetworkPolicies
+
+agentgateway:
+  enabled: true            # false to use your own agentgateway (then set platform.gateway.gatewayRef)
+  monitoring:
+    enabled: false         # true when Prometheus Operator is installed: a PodMonitor scrapes the gateway
+
+kagent:
+  enabled: true
+  rbac:
+    namespaces: [kagent, takecare-system]
+  controller:
+    auth:
+      mode: unsecure       # see values.yaml before switching to trusted-proxy
+    env: []
+  database:
+    postgres:
+      # kagent's bundled PostgreSQL is documented as dev and evaluation only.
+      bundled:
+        enabled: false
+      url: ""              # REQUIRED: postgres://user:password@host:5432/kagent?sslmode=require (or urlFile, mounted from a Secret)
+  otel:
+    tracing:
+      enabled: true
+      exporter:
+        otlp:
+          endpoint: ""     # REQUIRED when platform.observability.otlp.endpoint is set: the same endpoint, for the engine's spans
+          protocol: grpc
+          insecure: true
+
+demo:
+  enabled: false

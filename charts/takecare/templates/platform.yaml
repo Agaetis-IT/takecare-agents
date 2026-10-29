@@ -1,0 +1,43 @@
+{{- if .Values.platform.create }}
+{{- if not .Values.platform.models }}
+{{- fail "platform.models must declare at least one model (values-prod.yaml marks it REQUIRED), or set platform.create=false and create the TakeCarePlatform yourself" }}
+{{- end }}
+{{- range $i, $m := .Values.platform.models }}
+{{- if not $m.baseURL }}
+{{- fail (printf "platform.models[%d].baseURL is REQUIRED: the provider's OpenAI-compatible API" $i) }}
+{{- end }}
+{{- if not $m.model }}
+{{- fail (printf "platform.models[%d].model is REQUIRED: the model identifier the provider expects" $i) }}
+{{- end }}
+{{- end }}
+# The core (spec 01): one cluster-scoped TakeCarePlatform named main. The
+# operator only writes its status, a subresource, so a later `helm upgrade`
+# never conflicts with it under server-side apply.
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCarePlatform
+metadata:
+  name: main
+  labels:
+    {{- include "takecare.labels" . | nindent 4 }}
+spec:
+  models:
+    {{- toYaml .Values.platform.models | nindent 4 }}
+  gateway:
+    gatewayRef:
+      name: {{ include "takecare.gatewayName" . }}
+      namespace: {{ include "takecare.gatewayNamespace" . }}
+  engine:
+    namespace: {{ .Values.platform.engine.namespace }}
+  observability:
+    {{- with .Values.platform.observability.metrics.prometheusURL }}
+    metrics:
+      prometheusURL: {{ . | quote }}
+    {{- end }}
+    {{- with .Values.platform.observability.otlp.endpoint }}
+    otlp:
+      endpoint: {{ . | quote }}
+      protocol: {{ $.Values.platform.observability.otlp.protocol }}
+    {{- end }}
+    captureContent: {{ .Values.platform.observability.captureContent }}
+    samplingPerMille: {{ .Values.platform.observability.samplingPerMille }}
+{{- end }}

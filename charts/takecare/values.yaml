@@ -1,0 +1,201 @@
+# takecare: the operator and the third-party building blocks it configures.
+# Defaults are production defaults; values-prod.yaml is the commented template
+# a customer fills, values-demo.yaml is complete (ADR 0002, spec 01).
+#
+# Install in the namespace takecare-system: the kagent RBAC restriction below
+# names it (rbac.namespaces), as ADR 0007 requires.
+
+global:
+  # Registry prefix for every image of this chart and of the hook job of
+  # takecare-crds, for customer-internal registries (ADR 0002). Empty: each
+  # image's own registry. Third-party subcharts take their own registry
+  # values (agentgateway.image.registry, kagent.registry).
+  imageRegistry: ""
+  imagePullSecrets: []
+  # Corporate egress proxy, for the model provider and external MCP servers.
+  # Applied to the operator; the gateway and kagent take theirs through their
+  # own values (agentgateway.controller.extraEnv, kagent.controller.env).
+  egressProxy:
+    httpsProxy: ""
+    httpProxy: ""
+    noProxy: ""
+  # Internal CA to trust for TLS to the provider, MCP servers and Slack: a
+  # ConfigMap or a Secret in the release namespace holding a PEM bundle.
+  caBundle:
+    configMapName: ""
+    secretName: ""
+    key: ca.crt
+
+operator:
+  image:
+    registry: ghcr.io/agaetis-it
+    repository: takecare-operator
+    # Empty: the chart's appVersion.
+    tag: ""
+    pullPolicy: IfNotPresent
+  # Two replicas with leader election in production; the demo runs one and
+  # the platform reports it as a production gap (spec 01).
+  replicas: 2
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 512Mi }
+  # Extra arguments for the operator binary, for example ["--zap-log-level=debug"].
+  extraArgs: []
+  metrics:
+    # Serve /metrics over HTTPS behind Kubernetes authentication.
+    secure: true
+    port: 8443
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# The TakeCarePlatform, cluster-scoped singleton named main, rendered from
+# this block (spec 01). Secrets it references live in the release namespace.
+platform:
+  create: true
+  # At least one model, reached through the gateway with the key of the named
+  # Secret; the first one is the default (ADR 0004). Prices are decimal
+  # strings per million tokens, for the estimated cost only.
+  models: []
+  gateway:
+    # The Gateway served by agentgateway. Empty name: the one this chart
+    # creates (gateway.name) in the release namespace.
+    gatewayRef:
+      name: ""
+      namespace: ""
+  engine:
+    # Where the engine runs and where the operator writes what it generates
+    # for it. Matches kagent.namespaceOverride below.
+    namespace: kagent
+  observability:
+    metrics:
+      # A Prometheus that scrapes the gateway: usage and cost (spec 01).
+      prometheusURL: ""
+    otlp:
+      # OTLP endpoint for traces; empty: no export (a production gap).
+      endpoint: ""
+      protocol: grpc
+    # Prompts, tool arguments and answers in traces: off by default (ADR 0006).
+    captureContent: false
+    samplingPerMille: 1000
+
+# The Gateway API Gateway served by agentgateway, in the release namespace.
+# Every model, MCP and A2A call goes through it (ADR 0004, 0008, 0009).
+gateway:
+  create: true
+  name: agentgateway-proxy
+  className: agentgateway
+  port: 80
+
+# Restrict traffic between the operator, the gateway, kagent and the MCP
+# servers. ADR 0007 requires the kagent controller to be reachable only
+# through the gateway; this needs a CNI that enforces NetworkPolicies, which
+# the platform status will report (spec 01, PR 3').
+networkPolicies:
+  enabled: true
+
+# ---------------------------------------------------------------------------
+# Subcharts. Keys below are the upstream charts' own values.
+# ---------------------------------------------------------------------------
+
+# agentgateway v1.6.0 (ADR 0002). The chart installs the controller; the
+# proxy pods are created from the Gateway above.
+agentgateway:
+  enabled: true
+  # Gateway-attached models (AgentgatewayModel) are an opt-in.
+  agentgatewayModels:
+    enabled: true
+  istio:
+    enabled: false
+  # PodMonitor and ServiceMonitor for Prometheus Operator; set when it is
+  # installed (gateway metrics are what usage and cost come from).
+  monitoring:
+    enabled: false
+
+# kagent 0.10.3, the agent engine (ADR 0007). Installed in its own namespace,
+# created by this chart, with the installation requirements of ADR 0007.
+kagent:
+  enabled: true
+  namespaceOverride: kagent
+  fullnameOverride: kagent
+  # ADR 0007 requirement: Roles in these namespaces instead of cluster-wide
+  # ClusterRoles. Without it the controller's ServiceAccount reads every
+  # Secret and writes core, apps and batch resources cluster-wide, pods/exec
+  # and service account tokens included: a ceiling equivalent to
+  # cluster-admin. Keep it.
+  rbac:
+    namespaces: [kagent, takecare-system]
+  controller:
+    auth:
+      # Who may call the controller's API, which the operator reaches through
+      # the gateway (A2A). `unsecure` relies on the NetworkPolicy above and on
+      # rbac.namespaces: the controller authorizes nothing in any mode (ADR
+      # 0007). `trusted-proxy` makes the controller answer 401 to any call
+      # without a bearer JWT, decoded without signature check; measured on
+      # 0.10.3: the operator's own ServiceAccount token is accepted. It stays
+      # off until the agent pods' callbacks are verified under it (PR 4): a
+      # default that breaks investigations is worse than a written gap.
+      mode: unsecure
+    # The engine's model and tool calls carry the caller's trace context
+    # (ADR 0006); the controller copies OTEL_* into the agent pods.
+    env: []
+  # The chart deploys a UI and a PostgreSQL. The UI has no place in TakeCare
+  # (nothing reaches the controller but the gateway): zero replicas.
+  ui:
+    replicas: 0
+  # The bundled PostgreSQL is documented by kagent as dev and evaluation only:
+  # production points database.postgres.url at the customer's database
+  # (values-prod.yaml).
+  database:
+    postgres:
+      bundled:
+        enabled: true
+  # The chart always renders a default ModelConfig: point it at the gateway
+  # with a dummy key too, so that nothing in kagent can reach a provider
+  # directly (ADR 0004). TakeCare's roles use the ModelConfigs the operator
+  # generates per model.
+  providers:
+    default: openAI
+    openAI:
+      provider: OpenAI
+      model: unused
+      apiKeySecretRef: kagent-gateway-dummy
+      apiKeySecretKey: OPENAI_API_KEY
+      apiKey: dummy
+      config:
+        baseUrl: http://agentgateway-proxy.takecare-system.svc.cluster.local/v1
+  otel:
+    tracing:
+      enabled: false
+      exporter:
+        otlp:
+          endpoint: ""
+          protocol: grpc
+          insecure: true
+  # Nothing bundled: TakeCare's agents and tools are its own (ADR 0008).
+  k8s-agent: { enabled: false }
+  kgateway-agent: { enabled: false }
+  istio-agent: { enabled: false }
+  promql-agent: { enabled: false }
+  observability-agent: { enabled: false }
+  argo-rollouts-agent: { enabled: false }
+  helm-agent: { enabled: false }
+  cilium-policy-agent: { enabled: false }
+  cilium-manager-agent: { enabled: false }
+  cilium-debug-agent: { enabled: false }
+  kagent-tools: { enabled: false }
+  grafana-mcp: { enabled: false }
+  kmcp: { enabled: false }
+  substrate: { enabled: false }
+  oauth2-proxy: { enabled: false }
+
+# Demo profile (values-demo.yaml): Prometheus with the demo alerting rules,
+# Alertmanager, an OpenTelemetry Collector and Jaeger. The scenery itself is
+# deployed by the TakeCareDemo controller (spec 03).
+demo:
+  enabled: false
+  jaeger:
+    image: jaegertracing/jaeger:2.22.0 # pin: JAEGER_IMAGE
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { memory: 512Mi }

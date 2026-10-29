@@ -1,0 +1,55 @@
+{{- if ne .Values.gatewayAPI.install "never" }}
+# The hook's identity and rights exist only while the job runs: every object
+# here is created before the job and deleted once it has succeeded.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-gateway-api-crds
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare-crds.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-20"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-gateway-api-crds
+  labels:
+    {{- include "takecare-crds.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-20"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+rules:
+  # create cannot be limited by resourceNames (the object does not exist yet).
+  - apiGroups: [apiextensions.k8s.io]
+    resources: [customresourcedefinitions]
+    verbs: [create]
+  - apiGroups: [apiextensions.k8s.io]
+    resources: [customresourcedefinitions]
+    resourceNames:
+      {{- include "takecare-crds.gatewayAPICRDNames" . | nindent 6 }}
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-gateway-api-crds
+  labels:
+    {{- include "takecare-crds.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-20"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Name }}-gateway-api-crds
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-gateway-api-crds
+    namespace: {{ .Release.Namespace }}
+{{- end }}

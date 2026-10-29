@@ -1,0 +1,21 @@
+apiVersion: v2
+name: takecare-crds
+description: CRDs of TakeCare Agents and of the third-party building blocks it configures (ADR 0002). Install and upgrade it before the takecare chart; never uninstall it while TakeCare resources exist.
+type: application
+version: 0.1.0
+appVersion: 0.1.0
+kubeVersion: ">=1.33.0-0"
+home: https://github.com/Agaetis-IT/takecare-agents
+maintainers:
+  - name: Agaetis
+dependencies:
+  # Dependency versions are rewritten from hack/versions.env by `make chart-sync`
+  # (the marker after each version names the key); CI fails on drift.
+  - name: agentgateway-crds
+    repository: oci://cr.agentgateway.dev/charts
+    version: v1.6.0 # pin: AGENTGATEWAY_VERSION
+    condition: agentgateway.enabled
+  - name: kagent-crds
+    repository: oci://ghcr.io/kagent-dev/kagent/helm
+    version: 0.10.3 # pin: KAGENT_VERSION
+    condition: kagent.enabled

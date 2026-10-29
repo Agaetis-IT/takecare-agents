@@ -15,6 +15,19 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 SETUP_ENVTEST ?= $(LOCALBIN)/setup-envtest-$(SETUP_ENVTEST_VERSION)
 GO_LICENSES ?= $(LOCALBIN)/go-licenses-$(GO_LICENSES_VERSION)
+HELM ?= $(LOCALBIN)/helm-$(HELM_VERSION)
+KUBECONFORM ?= $(LOCALBIN)/kubeconform-$(KUBECONFORM_VERSION)
+# Host platform, for the binaries downloaded from GitHub releases.
+HOST_OS := $(shell go env GOOS)
+HOST_ARCH := $(shell go env GOARCH)
+HOST_KEY := $(shell echo $(HOST_OS)_$(HOST_ARCH) | tr a-z A-Z)
+CHART_OUT ?= $(CURDIR)/.chart-out
+# Helm runs with its own repository config and cache under ./bin: the
+# developer's repositories are never read or touched, and dependency
+# resolution by URL is not confused by the same URL registered under several
+# names (seen with Helm 4.3 on a workstation).
+HELM_ENV := HELM_REPOSITORY_CONFIG="$(LOCALBIN)/helm/repositories.yaml" HELM_REPOSITORY_CACHE="$(LOCALBIN)/helm/cache"
+HELM_RUN := $(HELM_ENV) "$(HELM)"
 
 # Containerized linters see the repository at /src, as the calling user.
 DOCKER_RUN := docker run --rm --user $(shell id -u):$(shell id -g) -v "$(CURDIR)":/src -w /src
@@ -54,9 +67,56 @@ vet: ## Run go vet.
 	go vet ./...
 
 .PHONY: test
-test: setup-envtest ## Run unit, golden and envtest tests.
+test: setup-envtest chart-deps ## Run unit, golden, envtest and chart tests.
 	KUBEBUILDER_ASSETS="$$("$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
-		go test ./... -coverprofile cover.out
+	HELM="$(HELM)" $(HELM_ENV) go test ./... -coverprofile cover.out
+
+##@ Charts
+
+.PHONY: chart-sync
+chart-sync: generate ## Copy the CRDs into takecare-crds and the pinned versions into the charts.
+	hack/chart-sync.sh
+
+.PHONY: chart-check
+chart-check: ## Fail if the charts drifted from config/crd or hack/versions.env.
+	hack/chart-sync.sh --check
+
+.PHONY: chart-deps
+chart-deps: helm ## Download the charts' dependencies (Chart.lock is committed).
+	# Classic (https) repositories must be registered before `dependency build`
+	# resolves them; OCI dependencies need nothing. Registered in ./bin only.
+	$(HELM_RUN) repo add --force-update prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null
+	$(HELM_RUN) repo add --force-update open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts >/dev/null
+	$(HELM_RUN) dependency build charts/takecare-crds
+	$(HELM_RUN) dependency build charts/takecare
+
+.PHONY: chart-lint
+chart-lint: chart-check chart-deps ## helm lint, both charts, both profiles.
+	$(HELM_RUN) lint charts/takecare-crds
+	$(HELM_RUN) lint charts/takecare-crds --set demo.enabled=true
+	$(HELM_RUN) lint charts/takecare -f charts/takecare/values-prod.yaml
+	$(HELM_RUN) lint charts/takecare -f charts/takecare/values-demo.yaml
+
+.PHONY: chart-smoke
+chart-smoke: helm ## Install and upgrade both charts for real on a k3d cluster (hack/chart-smoke.sh).
+	hack/chart-smoke.sh all
+
+.PHONY: chart-template
+chart-template: chart-deps kubeconform ## Render both profiles and validate them with kubeconform.
+	rm -rf "$(CHART_OUT)" && mkdir -p "$(CHART_OUT)"
+	$(HELM_RUN) template takecare-crds charts/takecare-crds -n takecare-system --set demo.enabled=true > "$(CHART_OUT)/takecare-crds.yaml"
+	# values-prod.yaml refuses to render until its REQUIRED values are set.
+	$(HELM_RUN) template takecare charts/takecare -n takecare-system -f charts/takecare/values-prod.yaml \
+		--set platform.models[0].baseURL=https://vllm.example.internal/v1 --set platform.models[0].model=example \
+		--set platform.observability.metrics.prometheusURL=http://prometheus.monitoring.svc \
+		--set kagent.database.postgres.url=postgres://kagent:example@db.example.internal:5432/kagent \
+		> "$(CHART_OUT)/takecare-prod.yaml"
+	$(HELM_RUN) template takecare charts/takecare -n takecare-system -f charts/takecare/values-demo.yaml > "$(CHART_OUT)/takecare-demo.yaml"
+	# CRD-defined kinds (TakeCare, Gateway API, agentgateway, kagent) have no
+	# schema here: their rendered instances are checked by test/chart against
+	# the CRDs on an API server.
+	"$(KUBECONFORM)" -strict -summary -ignore-missing-schemas \
+		-kubernetes-version $(ENVTEST_K8S_VERSION) "$(CHART_OUT)"/*.yaml
 
 ##@ Lint
 
@@ -142,6 +202,8 @@ controller-gen: $(CONTROLLER_GEN)
 golangci-lint: $(GOLANGCI_LINT)
 setup-envtest: $(SETUP_ENVTEST)
 go-licenses: $(GO_LICENSES)
+helm: $(HELM)
+kubeconform: $(KUBECONFORM)
 
 $(CONTROLLER_GEN):
 	$(call go-install-tool,$@,sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_TOOLS_VERSION))
@@ -160,3 +222,15 @@ define go-install-tool
 @echo "Installing $(2)@$(3)"
 @tmp=$$(mktemp -d) && GOBIN="$$tmp" go install "$(2)@$(3)" && mv "$$tmp"/* "$(1)" && rm -rf "$$tmp"
 endef
+
+# Release binaries, downloaded once and checked against the sha256 pinned in
+# hack/versions.env for the host platform.
+$(HELM):
+	hack/fetch-tool.sh helm $(HELM_VERSION) \
+		"https://get.helm.sh/helm-$(HELM_VERSION)-$(HOST_OS)-$(HOST_ARCH).tar.gz" \
+		"$(HELM_SHA256_$(HOST_KEY))" "$(HOST_OS)-$(HOST_ARCH)/helm" "$@"
+
+$(KUBECONFORM):
+	hack/fetch-tool.sh kubeconform $(KUBECONFORM_VERSION) \
+		"https://github.com/yannh/kubeconform/releases/download/$(KUBECONFORM_VERSION)/kubeconform-$(HOST_OS)-$(HOST_ARCH).tar.gz" \
+		"$(KUBECONFORM_SHA256_$(HOST_KEY))" "kubeconform" "$@"

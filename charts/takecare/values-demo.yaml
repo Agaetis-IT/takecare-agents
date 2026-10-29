@@ -1,0 +1,199 @@
+# values-demo.yaml: the complete demo profile (ADR 0002, spec 01, spec 03).
+# `make demo-up` installs it on a k3d cluster, creates the Secrets from
+# environment variables, then applies the TakeCareDoc and the TakeCareDemo.
+# The product is the same as in production; only these values differ, and
+# the platform reports every production gap they open (spec 01).
+
+operator:
+  replicas: 1
+
+platform:
+  models:
+    - name: default
+      provider: openai-compatible
+      baseURL: https://openrouter.ai/api/v1
+      model: google/gemini-3.7-flash
+      apiKeySecretRef:
+        name: takecare-model  # created by make demo-up from TAKECARE_MODEL_API_KEY
+        key: apiKey
+      pricing:
+        inputPerMTok: "0.75"
+        cachedInputPerMTok: "0.075"
+        outputPerMTok: "3.75"
+        currency: USD
+  engine:
+    namespace: kagent
+  observability:
+    metrics:
+      prometheusURL: http://prometheus-server.takecare-system.svc
+    otlp:
+      endpoint: http://otel-collector.takecare-system.svc:4317
+      protocol: grpc
+    # On in the demo: the prompts are visible in Jaeger, the data is fake.
+    captureContent: true
+    samplingPerMille: 1000
+
+# ADR 0007: the kagent controller is reachable only through the gateway, in
+# the demo too (k3s enforces NetworkPolicies).
+networkPolicies:
+  enabled: true
+
+agentgateway:
+  enabled: true
+
+kagent:
+  enabled: true
+  controller:
+    auth:
+      mode: unsecure
+  database:
+    postgres:
+      bundled:
+        enabled: true
+  otel:
+    tracing:
+      enabled: true
+      exporter:
+        otlp:
+          endpoint: http://otel-collector.takecare-system.svc.cluster.local:4317
+          protocol: grpc
+          insecure: true
+
+demo:
+  enabled: true
+
+# ---------------------------------------------------------------------------
+# Demo infrastructure: in production these are the customer's.
+# ---------------------------------------------------------------------------
+
+# prometheus-community/prometheus: Prometheus, kube-state-metrics and
+# Alertmanager, without node-exporter or pushgateway. Rules and cadence are the
+# POC's (scrape and evaluation every 15 s; HighErrorRate over [1m], for: 30s):
+# changing the window or `for` without the app's ramp breaks the demo timing.
+prometheus:
+  prometheus-node-exporter:
+    enabled: false
+  prometheus-pushgateway:
+    enabled: false
+  kube-state-metrics:
+    fullnameOverride: kube-state-metrics
+  server:
+    # The Service name the platform's prometheusURL relies on; test/chart
+    # checks that they match.
+    fullnameOverride: prometheus-server
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    retention: 12h
+    persistentVolume:
+      size: 2Gi
+    resources:
+      requests: { cpu: 100m, memory: 512Mi }
+      limits: { memory: 1Gi }
+  # The receiver that posts to the operator's /v1/alerts (spec 02) is wired
+  # with the alert intake, PR 4: until then alerts are visible, not delivered.
+  alertmanager:
+    enabled: true
+    fullnameOverride: alertmanager
+    persistence:
+      enabled: false
+    config:
+      route:
+        receiver: "null"
+        group_by: ["alertname"]
+        group_wait: 1s
+        group_interval: 1s
+        repeat_interval: 4h
+      inhibit_rules:
+        - source_matchers: ['alertname="HighErrorRate"']
+          target_matchers: ['alertname="HighLatencyP99"']
+          equal: ["service"]
+      receivers:
+        - name: "null"
+  # agentgateway proxy metrics (tokens, model calls): the source of usage and
+  # cost. The proxy pod is created by the controller from the Gateway, so it
+  # is discovered by its gateway-name label.
+  extraScrapeConfigs: |
+    - job_name: agentgateway
+      kubernetes_sd_configs:
+        - role: pod
+          namespaces:
+            names: [takecare-system]
+      relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_label_gateway_networking_k8s_io_gateway_name]
+          regex: agentgateway-proxy
+          action: keep
+        - source_labels: [__meta_kubernetes_pod_ip]
+          target_label: __address__
+          replacement: $1:15020
+  serverFiles:
+    alerting_rules.yml:
+      groups:
+        - name: takecare-demo
+          rules:
+            - alert: HighLatencyP99
+              expr: http_request_duration_seconds{quantile="0.99"} > 2
+              for: 5m
+              labels:
+                severity: warning
+              annotations:
+                summary: "P99 latency above 2s on {{ $labels.service }}"
+                description: "P99 latency of {{ $labels.service }} has been {{ $value | printf \"%.2f\" }}s for 5 minutes."
+            - alert: HighErrorRate
+              expr: |
+                sum by (service, namespace) (rate(http_requests_total{status="504"}[1m]))
+                  / sum by (service, namespace) (rate(http_requests_total[1m])) > 0.02
+              for: 30s
+              labels:
+                severity: critical
+              annotations:
+                summary: "High error rate on {{ $labels.service }}"
+                description: "{{ $value | humanizePercentage }} of {{ $labels.service }} requests have answered 504 for 30 seconds."
+            - alert: PodNotReady
+              expr: kube_pod_status_ready{condition="true", namespace="demo-apps"} == 0
+              for: 5m
+              labels:
+                severity: warning
+              annotations:
+                summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} not ready"
+                description: "The pod has not reached the Ready state for 5 minutes."
+            - alert: PodCrashLooping
+              expr: increase(kube_pod_container_status_restarts_total{namespace="demo-apps"}[15m]) > 3
+              for: 5m
+              labels:
+                severity: critical
+              annotations:
+                summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} restarting repeatedly"
+                description: "More than 3 restarts in 15 minutes."
+
+# OpenTelemetry Collector: one OTLP entry point for every component, traces
+# forwarded to Jaeger. The debug exporter stays at basic verbosity so that no
+# message content ends up in logs.
+opentelemetry-collector:
+  fullnameOverride: otel-collector
+  mode: deployment
+  image:
+    repository: otel/opentelemetry-collector-contrib
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 512Mi }
+  config:
+    receivers:
+      otlp:
+        protocols:
+          grpc: { endpoint: "0.0.0.0:4317" }
+          http: { endpoint: "0.0.0.0:4318" }
+    exporters:
+      otlp_grpc/jaeger:
+        endpoint: jaeger.takecare-system.svc.cluster.local:4317
+        tls: { insecure: true }
+      debug:
+        verbosity: basic
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlp_grpc/jaeger, debug]
+        metrics: null
+        logs: null
