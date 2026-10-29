@@ -119,21 +119,10 @@ func run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("create manager: %w", err)
 	}
-	// Outbound HTTP follows the customer's network: CA bundle and egress
-	// proxy from the chart's global values, through the environment.
-	network := httpclient.FromEnv(5 * time.Second)
-	promClient, err := network.New()
+	traces, err := setupControllers(mgr, cfg)
 	if err != nil {
-		return fmt.Errorf("outbound HTTP client: %w", err)
+		return err
 	}
-	probe := &platform.PromProbe{Client: promClient}
-	if err := mgr.Add(probe); err != nil {
-		return fmt.Errorf("add the Prometheus probe: %w", err)
-	}
-	// One stable tracer provider for the whole process, reconfigured by the
-	// platform controller as the TakeCarePlatform changes (ADR 0006).
-	traces := telemetry.New(network)
-	otel.SetTracerProvider(traces)
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -141,33 +130,6 @@ func run(args []string) error {
 			ctrl.Log.Error(err, "trace exporter shutdown")
 		}
 	}()
-	platformReconciler := &platform.Reconciler{
-		Client:             mgr.GetClient(),
-		APIReader:          mgr.GetAPIReader(),
-		Recorder:           mgr.GetEventRecorder("takecare-operator"),
-		OperatorNamespace:  cfg.operatorNamespace,
-		EngineNamespace:    cfg.engineNamespace,
-		Engine:             &kagent0103.Models{Client: mgr.GetClient()},
-		OperatorDeployment: cfg.operatorDeployment,
-		Probe:              probe,
-		Telemetry:          traces,
-	}
-	if err := platformReconciler.SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("set up the platform controller: %w", err)
-	}
-	mcpClient, err := httpclient.FromEnv(30 * time.Second).New()
-	if err != nil {
-		return fmt.Errorf("MCP HTTP client: %w", err)
-	}
-	connectorReconciler := &connector.Reconciler{
-		Client:            mgr.GetClient(),
-		Recorder:          mgr.GetEventRecorder("takecare-operator"),
-		OperatorNamespace: cfg.operatorNamespace,
-		MCP:               &mcp.Client{HTTP: mcpClient},
-	}
-	if err := connectorReconciler.SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("set up the connector controller: %w", err)
-	}
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		return fmt.Errorf("add health check: %w", err)
 	}
@@ -180,6 +142,55 @@ func run(args []string) error {
 		return fmt.Errorf("run manager: %w", err)
 	}
 	return nil
+}
+
+// setupControllers wires every controller and runnable on the manager, in
+// production and in the startup test alike: a type a controller watches
+// that the scheme does not know fails here, not on the cluster.
+func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error) {
+	// Outbound HTTP follows the customer's network: CA bundle and egress
+	// proxy from the chart's global values, through the environment.
+	network := httpclient.FromEnv(5 * time.Second)
+	promClient, err := network.New()
+	if err != nil {
+		return nil, fmt.Errorf("outbound HTTP client: %w", err)
+	}
+	probe := &platform.PromProbe{Client: promClient}
+	if err := mgr.Add(probe); err != nil {
+		return nil, fmt.Errorf("add the Prometheus probe: %w", err)
+	}
+	// One stable tracer provider for the whole process, reconfigured by the
+	// platform controller as the TakeCarePlatform changes (ADR 0006).
+	traces := telemetry.New(network)
+	otel.SetTracerProvider(traces)
+	platformReconciler := &platform.Reconciler{
+		Client:             mgr.GetClient(),
+		APIReader:          mgr.GetAPIReader(),
+		Recorder:           mgr.GetEventRecorder("takecare-operator"),
+		OperatorNamespace:  cfg.operatorNamespace,
+		EngineNamespace:    cfg.engineNamespace,
+		Engine:             &kagent0103.Models{Client: mgr.GetClient()},
+		OperatorDeployment: cfg.operatorDeployment,
+		Probe:              probe,
+		Telemetry:          traces,
+	}
+	if err := platformReconciler.SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("set up the platform controller: %w", err)
+	}
+	mcpClient, err := httpclient.FromEnv(30 * time.Second).New()
+	if err != nil {
+		return nil, fmt.Errorf("MCP HTTP client: %w", err)
+	}
+	connectorReconciler := &connector.Reconciler{
+		Client:            mgr.GetClient(),
+		Recorder:          mgr.GetEventRecorder("takecare-operator"),
+		OperatorNamespace: cfg.operatorNamespace,
+		MCP:               &mcp.Client{HTTP: mcpClient},
+	}
+	if err := connectorReconciler.SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("set up the connector controller: %w", err)
+	}
+	return traces, nil
 }
 
 // newScheme registers every API group the operator reads or writes.
