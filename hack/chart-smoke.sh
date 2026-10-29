@@ -87,6 +87,23 @@ install() {
   verify
 }
 
+# connector_ready NAME waits for a connector's Ready condition.
+connector_ready() {
+  wait_condition takecareconnector "$1" Ready True
+}
+
+# wait_condition KIND NAME TYPE STATUS waits up to two minutes for a
+# condition, printing the conditions when it does not come.
+wait_condition() {
+  local kind="$1" name="$2" ctype="$3" want="$4"
+  for _ in $(seq 60); do
+    [[ "$(kubectl -n "$NS" get "$kind" "$name" -o jsonpath="{.status.conditions[?(@.type==\"$ctype\")].status}" 2>/dev/null)" == "$want" ]] && return 0
+    sleep 2
+  done
+  kubectl -n "$NS" get "$kind" "$name" -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}: {.message}{"\n"}{end}' >&2
+  return 1
+}
+
 # platform_ready waits for the platform's Ready condition, printing the
 # conditions when it does not come.
 platform_ready() {
@@ -142,6 +159,35 @@ verify() {
   check "ProductionReady=False in the demo, listing content-capture-on and single-replica" \
     bash -c "g=\$(kubectl get takecareplatform main -o jsonpath='{.status.productionGaps[*].id}'); [[ \"\$(kubectl get takecareplatform main -o jsonpath='{.status.conditions[?(@.type==\"ProductionReady\")].status}')\" == False && \"\$g\" == *content-capture-on* && \"\$g\" == *single-replica* && \"\$g\" != *no-network-policies* ]]"
 
+  log "the connectors (spec 05)"
+  check "connector kubernetes reaches Ready=True with its tools classified" \
+    connector_ready kubernetes
+  check "connector prometheus reaches Ready=True" \
+    connector_ready prometheus
+  # In read-only mode the server advertises read tools only: every tool is
+  # classed read and no destructive tool is offered at all.
+  check "kubernetes tools are all classified read, resources_delete is not even offered" \
+    bash -c "t=\$(kubectl -n ${NS} get takecareconnector kubernetes -o jsonpath='{range .status.tools[*]}{.name}={.class} {end}'); [[ \"\$t\" == *'pods_list=read'* && \"\$t\" != *'=act'* && \"\$t\" != *resources_delete* && \$(kubectl -n ${NS} get takecareconnector kubernetes -o jsonpath='{.status.toolCount}') -ge 10 ]]"
+  check "the kubernetes add-on sees the demo's extra resources (DBProxy, ConfigMaps)" \
+    test "$(kubectl -n "$NS" get takecareconnector kubernetes -o jsonpath='{.status.conditions[?(@.type=="ResourcesListable")].status}')" = "True"
+  check "the read-only guard finds nothing forbidden on the add-on's ServiceAccount" \
+    test "$(kubectl -n "$NS" get takecareconnector kubernetes -o jsonpath='{.status.conditions[?(@.type=="ReadOnlyGuard")].status}')" = "True"
+  check_not "the add-on's ServiceAccount cannot read Secrets in the app namespace" \
+    kubectl auth can-i get secrets -n demo-apps --as=system:serviceaccount:${NS}:takecare-addon-kubernetes
+  log "a forbidden right on the add-on is caught, then cleared"
+  kubectl -n demo-apps delete rolebinding/smoke-drift role/smoke-drift --ignore-not-found >/dev/null
+  kubectl -n demo-apps create role smoke-drift --verb=get --resource=secrets --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  kubectl -n demo-apps create rolebinding smoke-drift --role=smoke-drift --serviceaccount=${NS}:takecare-addon-kubernetes --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  # An annotation asks the controller for a discovery now; the spec is the
+  # chart's and must stay untouched (server-side apply ownership).
+  kubectl -n "$NS" annotate takecareconnector kubernetes takecare.agaetis.fr/discover="$(date +%s)" --overwrite >/dev/null
+  check "ReadOnlyGuardViolated is reported" \
+    wait_condition takecareconnector kubernetes ReadOnlyGuard False
+  kubectl -n demo-apps delete rolebinding/smoke-drift role/smoke-drift >/dev/null
+  kubectl -n "$NS" annotate takecareconnector kubernetes takecare.agaetis.fr/discover="$(date +%s)-cleared" --overwrite >/dev/null
+  check "the guard clears once the right is removed" \
+    wait_condition takecareconnector kubernetes ReadOnlyGuard True
+
   log "network: the controller is reachable through the gateway only"
   # A temporary route through the gateway to the controller's API, as the
   # operator will render for A2A (ADR 0009): the positive case that tells a
@@ -164,15 +210,42 @@ spec:
     - matches: [{ path: { type: PathPrefix, value: /api/ } }]
       backendRefs: [{ group: agentgateway.dev, kind: AgentgatewayBackend, name: smoke-kagent }]
 EOF
-  kubectl -n "$NS" delete pod smoke-curl --ignore-not-found >/dev/null
-  kubectl -n "$NS" run smoke-curl --image="$SMOKE_CURL_IMAGE" --restart=Never --command -- sleep 300 >/dev/null
-  kubectl -n "$NS" wait pod/smoke-curl --for=condition=Ready --timeout=120s >/dev/null
-  local curl=(kubectl -n "$NS" exec smoke-curl -- curl -s -o /dev/null -m 5 -w '%{http_code}')
+  # The gateway admits the engine namespace (where agents run): the
+  # positive case runs from there, and tells a working NetworkPolicy from a
+  # broken network.
+  kubectl -n kagent delete pod smoke-curl --ignore-not-found >/dev/null
+  kubectl -n kagent run smoke-curl --image="$SMOKE_CURL_IMAGE" --restart=Never --command -- sleep 300 >/dev/null
+  kubectl -n kagent wait pod/smoke-curl --for=condition=Ready --timeout=120s >/dev/null
+  local curl=(kubectl -n kagent exec smoke-curl -- curl -s -o /dev/null -m 5 -w '%{http_code}')
   check "through the gateway, the controller answers (route works)" \
     test "$("${curl[@]}" "http://agentgateway-proxy.${NS}.svc/api/agents")" = "200"
   check_not "directly, a pod outside the gateway cannot reach the controller" \
     "${curl[@]}" "http://kagent-controller.kagent.svc.cluster.local:8083/api/agents"
+  # The MCP servers admit the gateway and the operator only (spec 05, AC 1
+  # and 4): a pod in the engine namespace, where agents run, is refused.
+  local ecurl=(kubectl -n kagent exec smoke-curl -- curl -s -o /dev/null -m 5 -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"pods_list","arguments":{}}}')
+  check_not "from the engine namespace, tools/call on an MCP server directly is refused" \
+    "${ecurl[@]}" "http://takecare-addon-kubernetes.${NS}.svc:8080/mcp"
+  check_not "from the engine namespace, the prometheus server is unreachable too" \
+    "${ecurl[@]}" "http://takecare-addon-prometheus.${NS}.svc:8080/mcp"
+  kubectl -n kagent delete pod smoke-curl --now >/dev/null
+  # The gateway admits the operator and the engine namespace; the release
+  # namespace itself and a third namespace are refused, and the demo
+  # Prometheus still scrapes it.
+  kubectl -n "$NS" delete pod smoke-curl --ignore-not-found >/dev/null
+  kubectl -n "$NS" run smoke-curl --image="$SMOKE_CURL_IMAGE" --restart=Never --command -- sleep 300 >/dev/null
+  kubectl -n "$NS" wait pod/smoke-curl --for=condition=Ready --timeout=120s >/dev/null
+  check_not "from a pod of the release namespace that is not the operator, the gateway is unreachable" \
+    kubectl -n "$NS" exec smoke-curl -- curl -s -o /dev/null -m 5 "http://agentgateway-proxy.${NS}.svc/api/agents"
   kubectl -n "$NS" delete pod smoke-curl --now >/dev/null
+  kubectl create namespace smoke-third --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  kubectl -n smoke-third run smoke-curl --image="$SMOKE_CURL_IMAGE" --restart=Never --command -- sleep 300 >/dev/null
+  kubectl -n smoke-third wait pod/smoke-curl --for=condition=Ready --timeout=120s >/dev/null
+  check_not "from a third namespace, the gateway is unreachable" \
+    kubectl -n smoke-third exec smoke-curl -- curl -s -o /dev/null -m 5 "http://agentgateway-proxy.${NS}.svc/api/agents"
+  kubectl delete namespace smoke-third --wait=false >/dev/null
+  check "the demo platform keeps no gateway-metrics-not-scraped gap (Prometheus admitted to the metrics port)" \
+    bash -c "sleep 45; g=\$(kubectl get takecareplatform main -o jsonpath='{.status.productionGaps[*].id}'); [[ \"\$g\" != *gateway-metrics-not-scraped* ]]"
   kubectl -n "$NS" delete httproute/smoke-kagent agentgatewaybackend/smoke-kagent >/dev/null
   assert_checks "$CHECKS_EXPECTED"
 }
@@ -192,10 +265,10 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=18 install ;;
-  upgrade) CHECKS_EXPECTED=18 upgrade ;;
+  install) CHECKS_EXPECTED=31 install ;;
+  upgrade) CHECKS_EXPECTED=31 upgrade ;;
   status) status ;;
   down) down ;;
-  all) up; CHECKS_EXPECTED=18 install; CHECKS_EXPECTED=18 upgrade ;;
+  all) up; CHECKS_EXPECTED=31 install; CHECKS_EXPECTED=31 upgrade ;;
   *) echo "usage: $0 [up|install|upgrade|status|down|all]"; exit 2 ;;
 esac
