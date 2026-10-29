@@ -7,6 +7,9 @@ include hack/versions.env
 MODULE := github.com/agaetis-it/takecare-agents
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 OPERATOR_IMG ?= $(IMAGE_REGISTRY)/takecare-operator:$(VERSION)
+# New images follow takecare-agents-<component> (issue #22); the operator's
+# rename to takecare-agents-operator is its own PR.
+REPORT_SLACK_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-mcp-report-slack:$(VERSION)
 # docker-buildx pushes only when PUSH=true (the release workflow, from PR 6).
 PUSH ?= false
 
@@ -112,6 +115,7 @@ chart-template: chart-deps kubeconform ## Render both profiles and validate them
 		--set kagent.database.postgres.url=postgres://kagent:example@db.example.internal:5432/kagent \
 		--set 'addons.kubernetes.namespaces={apps}' --set addons.prometheus.url=http://prometheus.monitoring.svc \
 		--set addons.prometheus.egress.namespace=monitoring --set addons.prometheus.egress.podSelector.app=prometheus \
+		--set 'addons.reportSlack.destinations[0].name=on-call' --set 'addons.reportSlack.destinations[0].target=C0123456789' \
 		> "$(CHART_OUT)/takecare-prod.yaml"
 	$(HELM_RUN) template takecare charts/takecare -n takecare-system -f charts/takecare/values-demo.yaml > "$(CHART_OUT)/takecare-demo.yaml"
 	# CRD-defined kinds (TakeCare, Gateway API, agentgateway, kagent) have no
@@ -181,12 +185,15 @@ DOCKER_BUILD_ARGS := --build-arg GO_BUILD_IMAGE=$(GO_BUILD_IMAGE) --build-arg RU
 	--build-arg GO_LICENSES_VERSION=$(GO_LICENSES_VERSION)
 
 .PHONY: docker-build
-docker-build: ## Build the operator image for the local platform.
-	docker build $(DOCKER_BUILD_ARGS) -t $(OPERATOR_IMG) .
+docker-build: ## Build the operator and report server images for the local platform.
+	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=operator -t $(OPERATOR_IMG) .
+	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-report-slack -t $(REPORT_SLACK_IMG) .
 
 .PHONY: docker-buildx
-docker-buildx: ## Build the operator image for amd64 and arm64 (pushed only with PUSH=true).
-	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) -t $(OPERATOR_IMG) \
+docker-buildx: ## Build both images for amd64 and arm64 (pushed only with PUSH=true).
+	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=operator -t $(OPERATOR_IMG) \
+		$(if $(filter true,$(PUSH)),--push,) .
+	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-report-slack -t $(REPORT_SLACK_IMG) \
 		$(if $(filter true,$(PUSH)),--push,) .
 
 ##@ Not yet implemented
