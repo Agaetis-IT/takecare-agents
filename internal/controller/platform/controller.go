@@ -19,7 +19,9 @@ import (
 	"strings"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,10 +35,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/recorder"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/apply"
 	"github.com/agaetis-it/takecare-agents/internal/engine"
+	"github.com/agaetis-it/takecare-agents/internal/telemetry/semconv"
 )
 
 // Names fixed by the charts: the platform singleton (ADR 0003) and the
@@ -49,8 +53,23 @@ const (
 
 	tracingObjectName = "takecare-tracing"
 	gatewayNameLabel  = "gateway.networking.k8s.io/gateway-name"
-	conversationIDKey = "gen_ai.conversation.id"
+	partOfLabel       = "app.kubernetes.io/part-of"
+	partOfValue       = "takecare"
 	requeueNotReady   = 30 * time.Second
+)
+
+// Production gaps (spec 01): what is missing for a real production, reported
+// and never blocking. Two more join the list with the roles and the
+// connectors: role-without-report (PR 4) and connector-not-ready (PR 3b).
+const (
+	GapNoTelemetryExport        = "no-telemetry-export"
+	GapContentCaptureOn         = "content-capture-on"
+	GapSingleReplica            = "single-replica"
+	GapGatewayMetricsNotScraped = "gateway-metrics-not-scraped"
+	GapNoNetworkPolicies        = "no-network-policies"
+
+	ReasonNoGaps    = "NoGaps"
+	ReasonGapsFound = "GapsFound"
 )
 
 // Condition reasons.
@@ -117,6 +136,8 @@ func OperatorNamespaceKinds() []schema.GroupVersionKind {
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways,verbs=get;list;watch,namespace=takecare-system
 // +kubebuilder:rbac:groups=agentgateway.dev,resources=agentgatewaymodels;agentgatewaypolicies;agentgatewaybackends,verbs=get;list;watch;create;update;patch;delete,namespace=takecare-system
 // +kubebuilder:rbac:groups="",resources=secrets,resourceNames=takecare-engine-dummy-key,verbs=get,namespace=kagent
+// +kubebuilder:rbac:groups=apps,resources=deployments,resourceNames=takecare-operator,verbs=get,namespace=takecare-system
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch,namespace=kagent
 
 // Reconciler reconciles the TakeCarePlatform.
 type Reconciler struct {
@@ -130,6 +151,19 @@ type Reconciler struct {
 	// EngineNamespace is the one namespace the operator writes engine objects in.
 	EngineNamespace string
 	Engine          engine.Models
+	// OperatorDeployment names the operator's own Deployment, for the
+	// single-replica gap.
+	OperatorDeployment string
+	// Probe asks Prometheus, outside the reconciliation, whether it scrapes
+	// the gateway.
+	Probe *PromProbe
+	// Telemetry follows spec.observability: the operator's own trace export.
+	Telemetry TelemetryApplier
+}
+
+// TelemetryApplier is what the controller needs from internal/telemetry.
+type TelemetryApplier interface {
+	Apply(ctx context.Context, spec v1alpha1.ObservabilitySpec) error
 }
 
 // Reconcile computes the desired state from the platform's spec, applies it
@@ -167,6 +201,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 	if _, found := st.get(v1alpha1.ConditionObservability); !found {
 		st.set(v1alpha1.ConditionObservability, false, ReasonNotReady, "not evaluated while the gateway is not usable")
+	}
+	if r.Telemetry != nil {
+		if err := r.Telemetry.Apply(ctx, platform.Spec.Observability); err != nil {
+			// The operator's own export failing never blocks the platform:
+			// the condition carries it.
+			st.set(v1alpha1.ConditionObservability, false, ReasonTracingInvalidEndpoint, fmt.Sprintf("operator trace export: %v", err))
+		}
+	}
+	if err := r.productionGaps(ctx, &platform, st, gatewayNS, gatewayName); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	ready := st.allTrue(v1alpha1.ConditionGatewayReady, v1alpha1.ConditionModelsReady, v1alpha1.ConditionObservability)
@@ -446,13 +490,18 @@ func (r *Reconciler) reconcileTracing(ctx context.Context, p *v1alpha1.TakeCareP
 	policy.Object["spec"] = map[string]any{
 		"targetRefs": []any{gatewayRefMap(gatewayName, nil)},
 		"frontend": map[string]any{"tracing": map[string]any{
-			"backendRef":     map[string]any{"group": agentgatewayGroup, "kind": "AgentgatewayBackend", fieldName: tracingObjectName, "port": port},
-			"protocol":       protocol,
-			"randomSampling": "true",
+			"backendRef": map[string]any{"group": agentgatewayGroup, "kind": "AgentgatewayBackend", fieldName: tracingObjectName, "port": port},
+			"protocol":   protocol,
+			// Only the traces the gateway starts are sampled at the platform's
+			// ratio: a request that arrives with a traceparent keeps its
+			// parent's decision (clientSampling defaults to 100 %,
+			// parentNotSampled to honoring the client), so a trace the
+			// operator kept never loses its gateway spans (ADR 0006).
+			"randomSampling": strconv.FormatFloat(samplingRatio(p.Spec.Observability.SamplingPerMille), 'f', -1, 64),
 			// The fallback correlation of ADR 0006: the caller's investigation
 			// id, passed in a request header, lands on the gateway's spans.
 			"attributes": map[string]any{"add": []any{map[string]any{
-				fieldName: conversationIDKey, "expression": `request.headers["x-conversation-id"]`,
+				fieldName: semconv.GenAIConversationID, "expression": `request.headers["x-conversation-id"]`,
 			}}},
 		}},
 	}
@@ -494,12 +543,86 @@ func (r *Reconciler) labels(p *v1alpha1.TakeCarePlatform) map[string]string {
 func (r *Reconciler) writeStatus(ctx context.Context, p *v1alpha1.TakeCarePlatform, st *status) error {
 	p.Status.ObservedGeneration = p.Generation
 	p.Status.Models = st.models
+	p.Status.ProductionGaps = st.gaps
 	for _, c := range st.conditions {
 		meta.SetStatusCondition(&p.Status.Conditions, c)
 	}
 	if err := r.Status().Update(ctx, p); err != nil {
 		return fmt.Errorf("update status of %s: %w", p.Name, err)
 	}
+	return nil
+}
+
+// samplingRatio converts samplingPerMille into a 0..1 ratio (nil: everything).
+func samplingRatio(perMille *int32) float64 {
+	if perMille == nil {
+		return 1
+	}
+	return min(max(float64(*perMille)/1000, 0), 1)
+}
+
+// productionGaps evaluates the checks that depend on the platform alone and
+// sets ProductionReady (spec 01): advisory, never part of Ready.
+func (r *Reconciler) productionGaps(ctx context.Context, p *v1alpha1.TakeCarePlatform, st *status, gatewayNS, gatewayName string) error {
+	var gaps []v1alpha1.ProductionGap
+	add := func(id, detail string) { gaps = append(gaps, v1alpha1.ProductionGap{ID: id, Detail: detail}) }
+	obs := p.Spec.Observability
+
+	if obs.OTLP == nil || obs.OTLP.Endpoint == "" {
+		add(GapNoTelemetryExport, "observability.otlp.endpoint is not set: no trace leaves the cluster")
+	}
+	if obs.CaptureContent {
+		add(GapContentCaptureOn, "observability.captureContent is true: prompts, tool arguments and answers are recorded in traces")
+	}
+
+	if r.OperatorDeployment != "" {
+		var dep appsv1.Deployment
+		err := r.APIReader.Get(ctx, client.ObjectKey{Namespace: r.OperatorNamespace, Name: r.OperatorDeployment}, &dep)
+		switch {
+		case err == nil:
+			if dep.Spec.Replicas != nil && *dep.Spec.Replicas < 2 {
+				add(GapSingleReplica, fmt.Sprintf("the operator Deployment %s runs %d replica", r.OperatorDeployment, *dep.Spec.Replicas))
+			}
+		case apierrors.IsNotFound(err) || apierrors.IsForbidden(err):
+			add(GapSingleReplica, fmt.Sprintf("the operator Deployment %s/%s cannot be read: %v", r.OperatorNamespace, r.OperatorDeployment, err))
+		default:
+			return fmt.Errorf("get Deployment %s/%s: %w", r.OperatorNamespace, r.OperatorDeployment, err)
+		}
+	}
+
+	if obs.Metrics == nil || obs.Metrics.PrometheusURL == "" {
+		add(GapGatewayMetricsNotScraped, "observability.metrics.prometheusURL is not set: usage and cost will be unknown")
+	} else if r.Probe != nil {
+		r.Probe.SetTarget(ProbeTarget{PrometheusURL: obs.Metrics.PrometheusURL, GatewayNamespace: gatewayNS, GatewayName: gatewayName})
+		res := r.Probe.Result()
+		switch {
+		case !res.Known && res.Detail != "":
+			add(GapGatewayMetricsNotScraped, res.Detail)
+		case !res.Known:
+			add(GapGatewayMetricsNotScraped, "Prometheus has not answered yet")
+		case !res.Scraped:
+			add(GapGatewayMetricsNotScraped, res.Detail)
+		}
+	}
+
+	var policies networkingv1.NetworkPolicyList
+	if err := r.List(ctx, &policies, client.InNamespace(r.EngineNamespace), client.MatchingLabels{partOfLabel: partOfValue}); err != nil {
+		return fmt.Errorf("list NetworkPolicies in %s: %w", r.EngineNamespace, err)
+	}
+	if len(policies.Items) == 0 {
+		add(GapNoNetworkPolicies, fmt.Sprintf("no NetworkPolicy of TakeCare's in the engine namespace %s (networkPolicies.enabled is false); whether the CNI enforces them is not checked", r.EngineNamespace))
+	}
+
+	st.gaps = gaps
+	if len(gaps) == 0 {
+		st.set(v1alpha1.ConditionProductionReady, true, ReasonNoGaps, "no production gap found")
+		return nil
+	}
+	details := make([]string, 0, len(gaps))
+	for _, g := range gaps {
+		details = append(details, g.ID)
+	}
+	st.set(v1alpha1.ConditionProductionReady, false, ReasonGapsFound, fmt.Sprintf("%d gap(s): %s", len(gaps), strings.Join(details, "; ")))
 	return nil
 }
 
@@ -538,6 +661,7 @@ func conditionMessage(obj map[string]any, condType string) string {
 type status struct {
 	conditions []metav1.Condition
 	models     []v1alpha1.ModelStatus
+	gaps       []v1alpha1.ProductionGap
 	generation int64
 }
 
@@ -594,6 +718,12 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	gw := &unstructured.Unstructured{}
 	gw.SetGroupVersionKind(gatewayGVK)
 	b = b.Watches(gw, toMain, builder.WithPredicates(inOperatorNS))
+	inEngineNS := predicate.NewPredicateFuncs(func(o client.Object) bool { return o.GetNamespace() == r.EngineNamespace })
+	b = b.Watches(&networkingv1.NetworkPolicy{}, toMain, builder.WithPredicates(inEngineNS))
+	if r.Probe != nil {
+		b = b.WatchesRawSource(source.TypedChannel(r.Probe.Events(), handler.TypedEnqueueRequestsFromMapFunc(
+			func(_ context.Context, req reconcile.Request) []reconcile.Request { return []reconcile.Request{req} })))
+	}
 	for _, gvk := range append([]schema.GroupVersionKind{modelGVK, policyGVK, backendGVK}, r.Engine.OwnedTypes()...) {
 		obj := &unstructured.Unstructured{}
 		obj.SetGroupVersionKind(gvk)
