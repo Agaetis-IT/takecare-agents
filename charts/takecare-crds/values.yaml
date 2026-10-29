@@ -28,7 +28,10 @@ image:
 # (Istio, Cilium, Envoy Gateway), so the job compares bundle versions:
 #   auto   : install the missing CRDs, keep the ones at the bundle's version
 #            or newer, fail when some are older or of unknown origin
-#   always : apply the bundle and take ownership of the CRDs, whatever is there
+#   always : apply the bundle and take ownership of the CRDs, whatever is
+#            there; on CRDs from the experimental channel this installs the
+#            standard channel over them and removes the fields that channel
+#            adds, which a gateway implementation on the cluster may rely on
 #   never  : do nothing (the CRDs are managed outside TakeCare)
 gatewayAPI:
   install: auto

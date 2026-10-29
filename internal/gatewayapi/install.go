@@ -187,7 +187,7 @@ func Decide(mode Mode, b *Bundle, existing []Existing) (Plan, error) {
 		if len(unknown) > 0 {
 			msg = append(msg, fmt.Sprintf("not from an upstream bundle: %s", strings.Join(unknown, ", ")))
 		}
-		return p, fmt.Errorf("gateway API CRDs already on the cluster are %s; upgrade them yourself, or set gatewayAPI.install=always to let the hook take them over, or gatewayAPI.install=never to keep them", strings.Join(msg, "; "))
+		return p, fmt.Errorf("gateway API CRDs already on the cluster are %s; upgrade them yourself, or set gatewayAPI.install=never to keep them, or gatewayAPI.install=always to let the hook take them over (on experimental-channel CRDs this installs the standard channel over them and removes the fields that channel adds, which a gateway implementation may rely on)", strings.Join(msg, "; "))
 	}
 	return p, nil
 }
