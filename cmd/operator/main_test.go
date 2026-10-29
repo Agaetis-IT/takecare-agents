@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 
 	takecarev1alpha1 "github.com/agaetis-it/takecare-agents/api/v1alpha1"
 )
@@ -25,6 +26,11 @@ func TestNewSchemeRegistersCoreTypes(t *testing.T) {
 		if !scheme.Recognizes(takecarev1alpha1.GroupVersion.WithKind(kind)) {
 			t.Errorf("scheme does not recognize %s", kind)
 		}
+	}
+	// The connector controller watches CRDs by metadata; a scheme without
+	// the kind made the operator exit at startup (found by the smoke run).
+	if !scheme.Recognizes(apiextensionsv1.SchemeGroupVersion.WithKind("CustomResourceDefinition")) {
+		t.Error("scheme does not recognize CustomResourceDefinition")
 	}
 }
 

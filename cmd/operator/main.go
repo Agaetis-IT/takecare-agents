@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -34,10 +35,12 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	takecarev1alpha1 "github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/controller/connector"
 	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
 	"github.com/agaetis-it/takecare-agents/internal/engine/kagent0103"
 	"github.com/agaetis-it/takecare-agents/internal/gatewayapi"
 	"github.com/agaetis-it/takecare-agents/internal/httpclient"
+	"github.com/agaetis-it/takecare-agents/internal/mcp"
 	"github.com/agaetis-it/takecare-agents/internal/telemetry"
 )
 
@@ -152,6 +155,19 @@ func run(args []string) error {
 	if err := platformReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("set up the platform controller: %w", err)
 	}
+	mcpClient, err := httpclient.FromEnv(30 * time.Second).New()
+	if err != nil {
+		return fmt.Errorf("MCP HTTP client: %w", err)
+	}
+	connectorReconciler := &connector.Reconciler{
+		Client:            mgr.GetClient(),
+		Recorder:          mgr.GetEventRecorder("takecare-operator"),
+		OperatorNamespace: cfg.operatorNamespace,
+		MCP:               &mcp.Client{HTTP: mcpClient},
+	}
+	if err := connectorReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("set up the connector controller: %w", err)
+	}
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		return fmt.Errorf("add health check: %w", err)
 	}
@@ -174,6 +190,11 @@ func newScheme() (*runtime.Scheme, error) {
 	}
 	if err := takecarev1alpha1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("register takecare types: %w", err)
+	}
+	// CRD metadata, watched by the connector controller (the kubernetes
+	// add-on caches its API discovery: a new CRD must be probed).
+	if err := apiextensionsv1.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("register apiextensions types: %w", err)
 	}
 	return scheme, nil
 }
@@ -199,9 +220,11 @@ func managerOptions(cfg config, scheme *runtime.Scheme) ctrl.Options {
 	operatorNS := map[string]cache.Config{cfg.operatorNamespace: {}}
 	engineNS := map[string]cache.Config{cfg.engineNamespace: {}}
 	byObject := map[client.Object]cache.ByObject{
-		&corev1.Secret{}:              {Namespaces: operatorNS},
-		&corev1.Service{}:             {Namespaces: operatorNS},
-		&networkingv1.NetworkPolicy{}: {Namespaces: engineNS},
+		&corev1.Secret{}:                      {Namespaces: operatorNS},
+		&corev1.Service{}:                     {Namespaces: operatorNS},
+		&networkingv1.NetworkPolicy{}:         {Namespaces: engineNS},
+		&appsv1.Deployment{}:                  {Namespaces: operatorNS},
+		&takecarev1alpha1.TakeCareConnector{}: {Namespaces: operatorNS},
 	}
 	for _, gvk := range platform.OperatorNamespaceKinds() {
 		u := &unstructured.Unstructured{}
