@@ -43,6 +43,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            # The one namespace the operator may write engine objects in; its
+            # Roles are rendered for it (platform.engine.namespace must match).
+            - name: ENGINE_NAMESPACE
+              value: {{ .Values.platform.engine.namespace | quote }}
+            - name: OPERATOR_DEPLOYMENT
+              value: takecare-operator
             {{- with .Values.global.egressProxy }}
             {{- if .httpsProxy }}
             - name: HTTPS_PROXY

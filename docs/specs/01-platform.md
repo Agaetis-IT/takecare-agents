@@ -81,7 +81,9 @@ Deployment concerns are **chart values**, not API fields, because they are about
 | `AgentgatewayPolicy` for tracing | `spec.observability` | Targets the gateway, `spec.frontend.tracing` to the OTLP endpoint |
 | Telemetry settings for kagent and the operator | `spec.observability` | OTLP endpoint, sampling (`samplingPerMille`), content capture flag |
 
-The gateway's Service is the one agentgateway creates for the Gateway; the controller reads it from the Gateway's status addresses rather than assuming a name. The chart names its Gateway `agentgateway-proxy`.
+The gateway's Service is the one agentgateway creates for the Gateway; the controller finds it by the `gateway.networking.k8s.io/gateway-name` label agentgateway sets rather than assuming a name, and falls back to the Gateway's status addresses. The chart names its Gateway `agentgateway-proxy`.
+
+> **Limitation (PR 3')**: the Gateway must live in the operator namespace, `takecare-system`. The `AgentgatewayModel`s the operator generates sit in the Gateway's namespace and reference the provider key Secret from the same namespace; the operator never copies that Secret elsewhere (it has no right to write Secrets outside its namespace). A `gatewayRef` in another namespace gives `Ready=False`, reason `GatewayOutsideOperatorNamespace`. The engine namespace is likewise fixed at install time (`platform.engine.namespace` must equal the chart's `kagent.namespaceOverride`); another value gives `ModelsReady=False`, reason `EngineNamespaceForbidden`.
 
 ## Validation
 

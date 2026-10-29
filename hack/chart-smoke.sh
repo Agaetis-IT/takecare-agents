@@ -73,11 +73,26 @@ install() {
   check "hook objects deleted after success" \
     test -z "$(kubectl get job,sa -n "$NS" -o name | grep gateway-api-crds)$(kubectl get clusterrole,clusterrolebinding -o name | grep gateway-api-crds)"
   log "takecare, demo profile"
+  # The provider key Secret the demo platform names; a placeholder here, the
+  # gateway never gets a request in this run.
+  kubectl -n "$NS" create secret generic takecare-model --from-literal=apiKey=smoke-placeholder \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   "$HELM" upgrade --install takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
     --set operator.image.tag="$IMAGE_TAG" --wait --timeout 10m
   kubectl -n kagent rollout status deploy/kagent-controller --timeout=180s >/dev/null
   verify
+}
+
+# platform_ready waits for the platform's Ready condition, printing the
+# conditions when it does not come.
+platform_ready() {
+  for _ in $(seq 60); do
+    [[ "$(kubectl get takecareplatform main -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)" == "True" ]] && return 0
+    sleep 2
+  done
+  kubectl get takecareplatform main -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}: {.message}{"\n"}{end}' >&2
+  return 1
 }
 
 upgrade() {
@@ -106,6 +121,19 @@ verify() {
   check_not "controller cannot create pods in ${NS}" kubectl auth can-i create pods -n "$NS" --as="$sa"
   check "controller still reconciles in kagent (creates Deployments)" kubectl auth can-i create deployments -n kagent --as="$sa"
   check "kagent UI runs zero replicas" test "$(kubectl -n kagent get deploy kagent-ui -o jsonpath='{.spec.replicas}')" = "0"
+
+  log "the platform controller (spec 01)"
+  check "TakeCarePlatform main reaches Ready=True" platform_ready
+  check "one AgentgatewayModel per model, in ${NS}" \
+    test "$(kubectl -n "$NS" get agentgatewaymodels -o name | wc -l | tr -d ' ')" = "1"
+  check "one engine ModelConfig per model, in kagent, pointing at the gateway" \
+    test "$(kubectl -n kagent get modelconfigs default -o jsonpath='{.spec.openAI.baseUrl}')" = "http://agentgateway-proxy.${NS}.svc/v1"
+  check "the tracing policy targets the Gateway" \
+    test "$(kubectl -n "$NS" get agentgatewaypolicies takecare-tracing -o jsonpath='{.spec.targetRefs[0].name}')" = "agentgateway-proxy"
+  check_not "no generated object carries the provider key" \
+    bash -c "{ kubectl -n ${NS} get agentgatewaymodels,agentgatewaypolicies -o yaml; kubectl -n kagent get modelconfigs -o yaml; } | grep -q smoke-placeholder"
+  check "status.models[0].route is the gateway's Service" \
+    test "$(kubectl get takecareplatform main -o jsonpath='{.status.models[0].route}')" = "http://agentgateway-proxy.${NS}.svc/v1"
 
   log "network: the controller is reachable through the gateway only"
   # A temporary route through the gateway to the controller's API, as the
@@ -157,10 +185,10 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=11 install ;;
-  upgrade) CHECKS_EXPECTED=11 upgrade ;;
+  install) CHECKS_EXPECTED=17 install ;;
+  upgrade) CHECKS_EXPECTED=17 upgrade ;;
   status) status ;;
   down) down ;;
-  all) up; CHECKS_EXPECTED=11 install; CHECKS_EXPECTED=11 upgrade ;;
+  all) up; CHECKS_EXPECTED=17 install; CHECKS_EXPECTED=17 upgrade ;;
   *) echo "usage: $0 [up|install|upgrade|status|down|all]"; exit 2 ;;
 esac
