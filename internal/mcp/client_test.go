@@ -57,6 +57,12 @@ func TestCallIsLockedToReportAndProbe(t *testing.T) {
 	c := &Client{HTTP: &http.Client{Timeout: 5 * time.Second}}
 	ctx := context.Background()
 	ep := func(types ...v1alpha1.ConnectorType) Endpoint { return Endpoint{URL: srv.URL, Types: types} }
+	addon := func(readProbe bool, types ...v1alpha1.ConnectorType) Endpoint {
+		e := ep(types...)
+		e.Addon = true
+		e.ReadTools = map[string]bool{ProbeTool: readProbe}
+		return e
+	}
 	tests := []struct {
 		name      string
 		ep        Endpoint
@@ -64,10 +70,12 @@ func TestCallIsLockedToReportAndProbe(t *testing.T) {
 		forbidden bool
 	}{
 		{"report: any tool", ep(v1alpha1.ConnectorReport), toolPost, false},
-		{"cluster: the probe", ep(v1alpha1.ConnectorCluster, v1alpha1.ConnectorLogs), ProbeTool, false},
-		{"cluster: a write", ep(v1alpha1.ConnectorCluster), toolDelete, true},
+		{"cluster add-on, probe classed read: the probe", addon(true, v1alpha1.ConnectorCluster, v1alpha1.ConnectorLogs), ProbeTool, false},
+		{"cluster add-on, probe not classed read: refused", addon(false, v1alpha1.ConnectorCluster), ProbeTool, true},
+		{"cluster add-on: a write", addon(true, v1alpha1.ConnectorCluster), toolDelete, true},
+		{"cluster by url (a customer's server): not even the probe", ep(v1alpha1.ConnectorCluster), ProbeTool, true},
 		{"tickets (a customer's url connector): nothing", ep(v1alpha1.ConnectorTickets), toolPost, true},
-		{"metrics: not even the probe", ep(v1alpha1.ConnectorMetrics), ProbeTool, true},
+		{"metrics add-on: not the probe either", addon(true, v1alpha1.ConnectorMetrics), ProbeTool, true},
 		{"no type: nothing", ep(), ProbeTool, true},
 	}
 	for _, tt := range tests {

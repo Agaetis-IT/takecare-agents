@@ -177,7 +177,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 // endpoint resolves where the operator reaches the server: the add-on's
 // Service in the operator namespace, or the declared URL with its headers.
 func (r *Reconciler) endpoint(ctx context.Context, c *v1alpha1.TakeCareConnector, st *status) (*mcp.Endpoint, error) {
-	ep := &mcp.Endpoint{Types: c.Spec.Types}
+	ep := &mcp.Endpoint{Types: c.Spec.Types, Addon: c.Spec.MCP.Addon != ""}
 	switch {
 	case c.Spec.MCP.Addon != "":
 		name := addonNamePrefix + c.Spec.MCP.Addon
@@ -320,6 +320,17 @@ func (r *Reconciler) discover(ctx context.Context, c *v1alpha1.TakeCareConnector
 	st.set(v1alpha1.ConditionToolsDiscovered, true, ReasonDiscovered, fmt.Sprintf("%d tool(s) classified", len(statuses)))
 }
 
+// readTools lists the tools discovery classed read, for the client's lock.
+func (s *status) readTools() map[string]bool {
+	out := map[string]bool{}
+	for _, t := range s.tools {
+		if t.Class == v1alpha1.ToolRead {
+			out[t.Name] = true
+		}
+	}
+	return out
+}
+
 func rank(c v1alpha1.ToolClass) int {
 	switch c {
 	case v1alpha1.ToolRead:
@@ -436,10 +447,15 @@ func (r *Reconciler) can(ctx context.Context, user, namespace, group, resource, 
 // one that exists but the server does not see restarts the server, at most
 // once per RestartCooldown.
 func (r *Reconciler) resourcesListable(ctx context.Context, c *v1alpha1.TakeCareConnector, st *status, ep mcp.Endpoint) error {
-	if c.Spec.Kubernetes == nil || len(c.Spec.Kubernetes.ExtraResources) == 0 || c.Spec.MCP.Addon == "" {
+	if c.Spec.MCP.Addon == "" {
+		st.set(ConditionResourcesListable, true, ReasonNotApplicable, "a customer's server is not probed (its tools are unknown and it would not be restarted)")
+		return nil
+	}
+	if c.Spec.Kubernetes == nil || len(c.Spec.Kubernetes.ExtraResources) == 0 {
 		st.set(ConditionResourcesListable, true, ReasonNotApplicable, "no extra resource declared")
 		return nil
 	}
+	ep.ReadTools = st.readTools()
 	var notInstalled, notSeen []string
 	for _, res := range c.Spec.Kubernetes.ExtraResources {
 		// The real kind and version come from the API server's discovery

@@ -29,8 +29,11 @@ import (
 // ErrCallForbidden is returned by Call for a tool the operator must never run.
 var ErrCallForbidden = errors.New("the operator does not call this tool")
 
-// ProbeTool is the one read tool the operator calls on a cluster connector:
-// it lists a resource kind to check that the server's API discovery knows it.
+// ProbeTool is the one read tool the operator calls on a cluster add-on of
+// its own: it lists a resource kind to check that the server's API discovery
+// knows it, which decides whether the add-on is restarted. A customer's
+// server is never probed: a tool of that name there is unknown, and its
+// server would not be restarted anyway.
 const ProbeTool = "resources_list"
 
 // Endpoint is a connector's server as the operator reaches it.
@@ -42,6 +45,12 @@ type Endpoint struct {
 	Headers http.Header
 	// Types of the connector, which decide what the operator may call.
 	Types []v1alpha1.ConnectorType
+	// Addon is true for a server TakeCare ships (spec.mcp.addon), never for
+	// a customer's url.
+	Addon bool
+	// ReadTools are the tools discovery classed read on this endpoint: the
+	// probe is called only when it is one of them.
+	ReadTools map[string]bool
 }
 
 // Tool is a discovered tool and what its annotations say.
@@ -93,12 +102,13 @@ func (c *Client) ListTools(ctx context.Context, ep Endpoint) ([]Tool, error) {
 
 // Allowed says whether the operator may call a tool on this endpoint: any
 // tool of a report connector (the operator publishes, the model never does),
-// the probe tool of a cluster connector, nothing else.
+// or the probe tool of a cluster add-on of TakeCare's when discovery classed
+// it read; nothing else, whatever the caller asks.
 func (ep Endpoint) Allowed(tool string) bool {
 	if slices.Contains(ep.Types, v1alpha1.ConnectorReport) {
 		return true
 	}
-	return slices.Contains(ep.Types, v1alpha1.ConnectorCluster) && tool == ProbeTool
+	return ep.Addon && slices.Contains(ep.Types, v1alpha1.ConnectorCluster) && tool == ProbeTool && ep.ReadTools[tool]
 }
 
 // Result is a tool call's outcome.

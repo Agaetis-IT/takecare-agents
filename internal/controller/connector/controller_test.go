@@ -385,6 +385,19 @@ func TestConnectorsThatCannotWork(t *testing.T) {
 			t.Errorf("the server received %q", got)
 		}
 	})
+	t.Run("a cluster connector by url is never probed", func(t *testing.T) {
+		h.connector("customer-cluster", v1alpha1.TakeCareConnectorSpec{
+			Types:      []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster},
+			MCP:        v1alpha1.MCPSpec{URL: "https://mcp.example.com/mcp"},
+			Kubernetes: &v1alpha1.KubernetesSpec{Namespaces: []v1alpha1.Namespace{appNS}, ExtraResources: []v1alpha1.ResourceRef{{Group: groupRDS, Resource: resDBProxies}}},
+		})
+		before := h.lister.probeCalls
+		cond := h.waitCondition("customer-cluster", ConditionResourcesListable, metav1.ConditionTrue, ReasonNotApplicable)
+		if !strings.Contains(cond.Message, "not probed") || h.lister.probeCalls != before {
+			t.Errorf("a customer's server was probed: %s, calls %d", cond.Message, h.lister.probeCalls-before)
+		}
+	})
+
 	t.Run("a report connector: no backend, tools not classified", func(t *testing.T) {
 		h.connector("report", v1alpha1.TakeCareConnectorSpec{
 			Types:  []v1alpha1.ConnectorType{v1alpha1.ConnectorReport},
