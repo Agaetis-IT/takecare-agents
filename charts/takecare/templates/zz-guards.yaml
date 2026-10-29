@@ -1,0 +1,36 @@
+{{- /*
+Every value a customer must set (REQUIRED in values-prod.yaml) and every
+assumption the chart makes are checked here, so that the failure names the
+value instead of a template deep in a subchart. Helm renders templates in
+reverse path order, so this file, last by name, is evaluated first.
+*/ -}}
+{{- if ne .Release.Namespace "takecare-system" }}
+{{- fail (printf "the takecare chart must be installed in the namespace takecare-system (got %q): the kagent values and the gateway URL it carries name that namespace" .Release.Namespace) }}
+{{- end }}
+{{- if and .Values.kagent.enabled (ne .Values.platform.engine.namespace .Values.kagent.namespaceOverride) }}
+{{- fail (printf "platform.engine.namespace (%q) must equal kagent.namespaceOverride (%q): the operator writes the engine's objects where the platform says, and its Roles are rendered where kagent runs" .Values.platform.engine.namespace .Values.kagent.namespaceOverride) }}
+{{- end }}
+{{- if .Values.platform.create }}
+{{- if not .Values.platform.models }}
+{{- fail "platform.models must declare at least one model (values-prod.yaml marks it REQUIRED), or set platform.create=false and create the TakeCarePlatform yourself" }}
+{{- end }}
+{{- range $i, $m := .Values.platform.models }}
+{{- if not $m.baseURL }}
+{{- fail (printf "platform.models[%d].baseURL is REQUIRED: the provider's OpenAI-compatible API" $i) }}
+{{- end }}
+{{- if not $m.model }}
+{{- fail (printf "platform.models[%d].model is REQUIRED: the model identifier the provider expects" $i) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if and .Values.addons.kubernetes.enabled (not .Values.addons.kubernetes.namespaces) }}
+{{- fail "addons.kubernetes.namespaces is REQUIRED: the namespaces the connector may read" }}
+{{- end }}
+{{- if .Values.addons.prometheus.enabled }}
+{{- if not .Values.addons.prometheus.url }}
+{{- fail "addons.prometheus.url is REQUIRED: the Prometheus the connector queries" }}
+{{- end }}
+{{- if and .Values.networkPolicies.enabled (not .Values.addons.prometheus.egress.podSelector) }}
+{{- fail "addons.prometheus.egress.podSelector is REQUIRED with NetworkPolicies: the pods of that Prometheus, the only egress the connector gets" }}
+{{- end }}
+{{- end }}

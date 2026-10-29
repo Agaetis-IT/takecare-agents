@@ -50,6 +50,20 @@ platform:
 
 networkPolicies:
   enabled: true            # keep on; requires a CNI that enforces NetworkPolicies
+  metricsScrapers: []      # REQUIRED for usage and cost: your Prometheus pods, e.g. {namespace: monitoring, podSelector: {app.kubernetes.io/name: prometheus}}
+
+addons:
+  kubernetes:
+    enabled: true
+    namespaces: []         # REQUIRED: the namespaces the Doc may read (workloads, events, logs)
+    extraResources: []     # custom resources the Doc must see; add {resource: configmaps} only if none holds credentials
+  prometheus:
+    enabled: true
+    url: ""                # REQUIRED: your Prometheus, e.g. http://prometheus-server.monitoring.svc
+    egress:
+      namespace: ""        # REQUIRED: where it runs, and the labels of its pods
+      podSelector: {}
+      port: 9090
 
 agentgateway:
   enabled: true            # false to use your own agentgateway: its Gateway must then live in takecare-system

@@ -34,9 +34,41 @@ platform:
     samplingPerMille: 1000
 
 # ADR 0007: the kagent controller is reachable only through the gateway, in
-# the demo too (k3s enforces NetworkPolicies).
+# the demo too (k3s enforces NetworkPolicies). The demo Prometheus scrapes
+# the gateway's metrics.
 networkPolicies:
   enabled: true
+  metricsScrapers:
+    - namespace: takecare-system
+      podSelector:
+        app.kubernetes.io/name: prometheus
+        app.kubernetes.io/component: server
+
+# The demo's connectors (spec 03, spec 05): the scenery namespaces, the ACK
+# DBProxy the Doc must read, and ConfigMaps as an explicit choice (the demo
+# app's pool timeout lives in one; nothing secret is there).
+addons:
+  kubernetes:
+    enabled: true
+    namespaces: [demo-apps, ack-system]
+    extraResources:
+      - group: rds.services.k8s.aws
+        resource: dbproxies
+      - resource: configmaps
+  prometheus:
+    enabled: true
+    url: http://prometheus-server.takecare-system.svc
+    egress:
+      namespace: takecare-system
+      podSelector:
+        app.kubernetes.io/name: prometheus
+        app.kubernetes.io/component: server
+      port: 9090   # the pod's port: a NetworkPolicy matches it, not the Service's
+      otlp:
+        namespace: takecare-system
+        podSelector:
+          app.kubernetes.io/name: opentelemetry-collector
+        port: 4318
 
 agentgateway:
   enabled: true

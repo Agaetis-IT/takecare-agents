@@ -110,6 +110,8 @@ chart-template: chart-deps kubeconform ## Render both profiles and validate them
 		--set platform.models[0].baseURL=https://vllm.example.internal/v1 --set platform.models[0].model=example \
 		--set platform.observability.metrics.prometheusURL=http://prometheus.monitoring.svc \
 		--set kagent.database.postgres.url=postgres://kagent:example@db.example.internal:5432/kagent \
+		--set 'addons.kubernetes.namespaces={apps}' --set addons.prometheus.url=http://prometheus.monitoring.svc \
+		--set addons.prometheus.egress.namespace=monitoring --set addons.prometheus.egress.podSelector.app=prometheus \
 		> "$(CHART_OUT)/takecare-prod.yaml"
 	$(HELM_RUN) template takecare charts/takecare -n takecare-system -f charts/takecare/values-demo.yaml > "$(CHART_OUT)/takecare-demo.yaml"
 	# CRD-defined kinds (TakeCare, Gateway API, agentgateway, kagent) have no
