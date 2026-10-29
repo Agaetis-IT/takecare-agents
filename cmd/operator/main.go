@@ -15,10 +15,13 @@ import (
 	"fmt"
 	"os"
 
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -27,6 +30,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	takecarev1alpha1 "github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
+	"github.com/agaetis-it/takecare-agents/internal/engine/kagent0103"
 	"github.com/agaetis-it/takecare-agents/internal/gatewayapi"
 )
 
@@ -40,6 +45,12 @@ type config struct {
 	secureMetrics  bool
 	enableHTTP2    bool
 	leaderElection bool
+	// operatorNamespace holds the platform's Secrets and the Gateway;
+	// engineNamespace is the one namespace engine objects are written in.
+	// Both come from the chart (Deployment env), so that the operator's
+	// Roles and its behavior name the same namespaces.
+	operatorNamespace string
+	engineNamespace   string
 }
 
 func main() {
@@ -65,6 +76,10 @@ func run(args []string) error {
 		"Enable HTTP/2 on the metrics server (off by default, see CVE-2023-44487).")
 	fs.BoolVar(&cfg.leaderElection, "leader-elect", false,
 		"Enable leader election, so that only one replica is active.")
+	fs.StringVar(&cfg.operatorNamespace, "operator-namespace", os.Getenv("OPERATOR_NAMESPACE"),
+		"Namespace of the operator, where the platform's Secrets and the Gateway live (default: OPERATOR_NAMESPACE).")
+	fs.StringVar(&cfg.engineNamespace, "engine-namespace", os.Getenv("ENGINE_NAMESPACE"),
+		"The one namespace engine objects are written in (default: ENGINE_NAMESPACE).")
 	zapOpts := zap.Options{}
 	zapOpts.BindFlags(fs)
 	if err := fs.Parse(args); err != nil {
@@ -83,9 +98,23 @@ func run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("load kubeconfig: %w", err)
 	}
+	if cfg.operatorNamespace == "" || cfg.engineNamespace == "" {
+		return errors.New("operator-namespace and engine-namespace are required (the chart sets OPERATOR_NAMESPACE and ENGINE_NAMESPACE)")
+	}
 	mgr, err := ctrl.NewManager(restConfig, managerOptions(cfg, scheme))
 	if err != nil {
 		return fmt.Errorf("create manager: %w", err)
+	}
+	platformReconciler := &platform.Reconciler{
+		Client:            mgr.GetClient(),
+		APIReader:         mgr.GetAPIReader(),
+		Recorder:          mgr.GetEventRecorder("takecare-operator"),
+		OperatorNamespace: cfg.operatorNamespace,
+		EngineNamespace:   cfg.engineNamespace,
+		Engine:            &kagent0103.Models{Client: mgr.GetClient()},
+	}
+	if err := platformReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("set up the platform controller: %w", err)
 	}
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		return fmt.Errorf("add health check: %w", err)
@@ -114,6 +143,10 @@ func newScheme() (*runtime.Scheme, error) {
 }
 
 // managerOptions translates the command-line configuration into manager options.
+//
+// The cache is scoped per kind to the namespaces the operator's Roles cover
+// (spec 02 §3): nothing namespaced is listed or watched cluster-wide, and
+// Secrets are cached in the operator namespace only.
 func managerOptions(cfg config, scheme *runtime.Scheme) ctrl.Options {
 	var tlsOpts []func(*tls.Config)
 	if !cfg.enableHTTP2 {
@@ -127,8 +160,25 @@ func managerOptions(cfg config, scheme *runtime.Scheme) ctrl.Options {
 	if cfg.secureMetrics {
 		metrics.FilterProvider = filters.WithAuthenticationAndAuthorization
 	}
+	operatorNS := map[string]cache.Config{cfg.operatorNamespace: {}}
+	engineNS := map[string]cache.Config{cfg.engineNamespace: {}}
+	byObject := map[client.Object]cache.ByObject{
+		&corev1.Secret{}:  {Namespaces: operatorNS},
+		&corev1.Service{}: {Namespaces: operatorNS},
+	}
+	for _, gvk := range platform.OperatorNamespaceKinds() {
+		u := &unstructured.Unstructured{}
+		u.SetGroupVersionKind(gvk)
+		byObject[u] = cache.ByObject{Namespaces: operatorNS}
+	}
+	for _, gvk := range (&kagent0103.Models{}).OwnedTypes() {
+		u := &unstructured.Unstructured{}
+		u.SetGroupVersionKind(gvk)
+		byObject[u] = cache.ByObject{Namespaces: engineNS}
+	}
 	return ctrl.Options{
 		Scheme:                 scheme,
+		Cache:                  cache.Options{ByObject: byObject},
 		Metrics:                metrics,
 		HealthProbeBindAddress: cfg.probeAddr,
 		LeaderElection:         cfg.leaderElection,
