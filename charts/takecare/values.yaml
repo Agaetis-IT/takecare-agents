@@ -118,13 +118,15 @@ kagent:
   enabled: true
   namespaceOverride: kagent
   fullnameOverride: kagent
-  # ADR 0007 requirement: Roles in these namespaces instead of cluster-wide
+  # ADR 0007 requirement: Roles in this namespace instead of cluster-wide
   # ClusterRoles. Without it the controller's ServiceAccount reads every
   # Secret and writes core, apps and batch resources cluster-wide, pods/exec
   # and service account tokens included: a ceiling equivalent to
-  # cluster-admin. Keep it.
+  # cluster-admin. The engine's namespace only: the controller authorizes
+  # nothing, so a right in the release namespace would let whoever reaches
+  # it run an agent next to the provider key Secret (ADR 0004).
   rbac:
-    namespaces: [kagent, takecare-system]
+    namespaces: [kagent]
   controller:
     auth:
       # Who may call the controller's API, which the operator reaches through
@@ -143,13 +145,15 @@ kagent:
   # (nothing reaches the controller but the gateway): zero replicas.
   ui:
     replicas: 0
-  # The bundled PostgreSQL is documented by kagent as dev and evaluation only:
-  # production points database.postgres.url at the customer's database
-  # (values-prod.yaml).
+  # The bundled PostgreSQL is documented by kagent as dev and evaluation only,
+  # so it is off here: production sets database.postgres.url (or urlFile) to
+  # the customer's database and the chart refuses to render without one; the
+  # demo profile turns the bundled one on.
   database:
     postgres:
       bundled:
-        enabled: true
+        enabled: false
+      url: ""
   # The chart always renders a default ModelConfig: point it at the gateway
   # with a dummy key too, so that nothing in kagent can reach a provider
   # directly (ADR 0004). TakeCare's roles use the ModelConfigs the operator

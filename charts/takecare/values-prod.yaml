@@ -57,7 +57,7 @@ agentgateway:
 kagent:
   enabled: true
   rbac:
-    namespaces: [kagent, takecare-system]
+    namespaces: [kagent]   # the engine's namespace only, never the release namespace where the provider key lives
   controller:
     auth:
       mode: unsecure       # see values.yaml before switching to trusted-proxy

@@ -32,7 +32,11 @@ import (
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 )
 
-const releaseNamespace = "takecare-system"
+const (
+	releaseNamespace = "takecare-system"
+	engineNamespace  = "kagent"
+	releaseName      = "takecare"
+)
 
 var repoRoot = filepath.Join("..", "..")
 
@@ -47,10 +51,16 @@ func helmBinary(t *testing.T) string {
 	return h
 }
 
+// helmTemplate builds a `helm template` command for a chart of the repository.
+func helmTemplate(t *testing.T, chart, namespace string, args ...string) *exec.Cmd {
+	t.Helper()
+	return exec.Command(helmBinary(t), append([]string{"template", releaseName, filepath.Join(repoRoot, "charts", chart), "-n", namespace}, args...)...) //nolint:gosec // the test's own binary and arguments
+}
+
 // render runs helm template and returns the documents, as unstructured objects.
 func render(t *testing.T, chart string, args ...string) []*unstructured.Unstructured {
 	t.Helper()
-	cmd := exec.Command(helmBinary(t), append([]string{"template", "takecare", filepath.Join(repoRoot, "charts", chart), "-n", releaseNamespace}, args...)...) //nolint:gosec // the test's own binary and arguments
+	cmd := helmTemplate(t, chart, releaseNamespace, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -87,7 +97,7 @@ func ofKind(objs []*unstructured.Unstructured, kind string) []*unstructured.Unst
 }
 
 func profileArgs(profile string) []string {
-	return []string{"-f", filepath.Join(repoRoot, "charts", "takecare", "values-"+profile+".yaml")}
+	return []string{"-f", filepath.Join(repoRoot, "charts", releaseName, "values-"+profile+".yaml")}
 }
 
 var profiles = []string{"prod", "demo"}
@@ -134,7 +144,7 @@ func TestRenderedPlatformAgainstTheCRD(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			platforms := ofKind(render(t, "takecare", tt.args...), "TakeCarePlatform")
+			platforms := ofKind(render(t, releaseName, tt.args...), "TakeCarePlatform")
 			if len(platforms) != 1 || platforms[0].GetName() != "main" {
 				t.Fatalf("want exactly one TakeCarePlatform named main, got %d", len(platforms))
 			}
@@ -168,8 +178,7 @@ func TestProdProfileRefusesToRenderAsShipped(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			args := append([]string{"template", "takecare", filepath.Join(repoRoot, "charts", "takecare"), "-n", releaseNamespace, "-f", filepath.Join(repoRoot, "charts", "takecare", "values-prod.yaml")}, tt.args...)
-			out, err := exec.Command(helmBinary(t), args...).CombinedOutput() //nolint:gosec // the test's own binary and arguments
+			out, err := helmTemplate(t, releaseName, releaseNamespace, append(profileArgs("prod"), tt.args...)...).CombinedOutput()
 			if err == nil {
 				t.Fatal("values-prod.yaml rendered with a REQUIRED value empty")
 			}
@@ -183,7 +192,7 @@ func TestProdProfileRefusesToRenderAsShipped(t *testing.T) {
 // The demo profile's platform points at Services the same render creates:
 // a renamed subchart Service would leave the platform pointing at nothing.
 func TestDemoPlatformURLsNameRenderedServices(t *testing.T) {
-	objs := render(t, "takecare", profileArgs("demo")...)
+	objs := render(t, releaseName, profileArgs("demo")...)
 	services := map[string]bool{}
 	for _, o := range ofKind(objs, "Service") {
 		services[o.GetName()+"."+o.GetNamespace()] = true
@@ -203,10 +212,23 @@ func TestDemoPlatformURLsNameRenderedServices(t *testing.T) {
 	}
 }
 
+// The chart refuses any namespace but takecare-system: the kagent values and
+// the gateway URL they carry name it, and subchart values cannot follow the
+// release namespace.
+func TestChartRefusesAnotherNamespace(t *testing.T) {
+	out, err := helmTemplate(t, releaseName, "elsewhere", profileArgs("demo")...).CombinedOutput()
+	if err == nil {
+		t.Fatal("the chart rendered in namespace elsewhere")
+	}
+	if !strings.Contains(string(out), "must be installed in the namespace takecare-system") {
+		t.Errorf("the failure does not say why:\n%s", out)
+	}
+}
+
 // Every image is pinned: a tag or a digest, never latest or nothing.
 func TestEveryImageIsPinned(t *testing.T) {
 	for _, profile := range profiles {
-		for _, o := range render(t, "takecare", append(profileArgs(profile),
+		for _, o := range render(t, releaseName, append(profileArgs(profile),
 			"--set", "platform.models[0].baseURL=https://x/v1", "--set", "platform.models[0].model=m",
 			"--set", "kagent.database.postgres.url=postgres://u:p@h/db")...) {
 			for _, img := range images(o) {
@@ -247,14 +269,14 @@ func images(o *unstructured.Unstructured) []string {
 func TestEngineInstallationRequirements(t *testing.T) {
 	for _, profile := range profiles {
 		t.Run(profile, func(t *testing.T) {
-			objs := render(t, "takecare", append(profileArgs(profile),
+			objs := render(t, releaseName, append(profileArgs(profile),
 				"--set", "platform.models[0].baseURL=https://x/v1", "--set", "platform.models[0].model=m",
 				"--set", "kagent.database.postgres.url=postgres://u:p@h/db")...)
 
 			policies := ofKind(objs, "NetworkPolicy")
 			var names []string
 			for _, p := range policies {
-				if p.GetNamespace() == "kagent" {
+				if p.GetNamespace() == engineNamespace {
 					names = append(names, p.GetName())
 				}
 			}
@@ -278,13 +300,29 @@ func TestEngineInstallationRequirements(t *testing.T) {
 					t.Fatal(err)
 				}
 				for _, s := range crb.Subjects {
-					if s.Kind != "ServiceAccount" || s.Namespace != "kagent" {
+					if s.Kind != "ServiceAccount" || s.Namespace != engineNamespace {
 						continue
 					}
 					for _, r := range roles[crb.RoleRef.Name] {
 						if msg := forbidden(r); msg != "" {
 							t.Errorf("ClusterRole %s, bound cluster-wide to %s/%s, %s (rbac.namespaces must hold)", crb.RoleRef.Name, s.Namespace, s.Name, msg)
 						}
+					}
+				}
+			}
+
+			// The engine's ServiceAccounts hold no right in the release
+			// namespace, where the provider key Secret lives (ADR 0004): the
+			// controller authorizes nothing, so any right there is a path
+			// from whoever reaches it to the key.
+			for _, o := range ofKind(objs, "RoleBinding") {
+				var rb rbacv1.RoleBinding
+				if err := runtime.DefaultUnstructuredConverter.FromUnstructured(o.Object, &rb); err != nil {
+					t.Fatal(err)
+				}
+				for _, s := range rb.Subjects {
+					if s.Kind == "ServiceAccount" && s.Namespace == engineNamespace && rb.Namespace != engineNamespace {
+						t.Errorf("RoleBinding %s/%s grants %s/%s a right outside the engine namespace", rb.Namespace, rb.Name, s.Namespace, s.Name)
 					}
 				}
 			}
