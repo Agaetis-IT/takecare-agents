@@ -33,6 +33,7 @@ const (
 	critical      = "critical"
 	colAge        = "Age"
 	colReady      = "Ready"
+	currencyUSD   = "USD"
 	wantNamespace = "namespaces"
 	badNamespace  = "namespace not a DNS label"
 )

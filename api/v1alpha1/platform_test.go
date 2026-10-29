@@ -49,13 +49,13 @@ func TestPlatformValidation(t *testing.T) {
 		{"unknown provider", func(p *v1alpha1.TakeCarePlatform) { p.Spec.Models[0].Provider = "bedrock" }, "provider"},
 		{"missing secret key name", func(p *v1alpha1.TakeCarePlatform) { p.Spec.Models[0].APIKeySecretRef.Key = "" }, "key"},
 		{"negative price", func(p *v1alpha1.TakeCarePlatform) {
-			p.Spec.Models[0].Pricing = &v1alpha1.Pricing{InputPerMTok: "-1", OutputPerMTok: "1", Currency: "USD"}
+			p.Spec.Models[0].Pricing = &v1alpha1.Pricing{InputPerMTok: "-1", OutputPerMTok: "1", Currency: currencyUSD}
 		}, "inputPerMTok"},
 		{"price written as a float expression", func(p *v1alpha1.TakeCarePlatform) {
-			p.Spec.Models[0].Pricing = &v1alpha1.Pricing{InputPerMTok: "1e3", OutputPerMTok: "1", Currency: "USD"}
+			p.Spec.Models[0].Pricing = &v1alpha1.Pricing{InputPerMTok: "1e3", OutputPerMTok: "1", Currency: currencyUSD}
 		}, "inputPerMTok"},
 		{"priced model", func(p *v1alpha1.TakeCarePlatform) {
-			p.Spec.Models[0].Pricing = &v1alpha1.Pricing{InputPerMTok: "0.30", CachedInputPerMTok: "0.075", OutputPerMTok: "2.50", Currency: "USD"}
+			p.Spec.Models[0].Pricing = &v1alpha1.Pricing{InputPerMTok: "0.30", CachedInputPerMTok: "0.075", OutputPerMTok: "2.50", Currency: currencyUSD}
 		}, ""},
 		{"OTLP endpoint without scheme", func(p *v1alpha1.TakeCarePlatform) {
 			p.Spec.Observability.OTLP = &v1alpha1.OTLPSpec{Endpoint: "otel-collector:4317"}
