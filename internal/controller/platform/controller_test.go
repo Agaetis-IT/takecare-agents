@@ -6,11 +6,15 @@ package platform
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -33,6 +37,7 @@ const (
 	engineNS     = "kagent"
 	gatewayNm    = "agentgateway-proxy"
 	defaultModel = "default"
+	operatorName = "takecare-operator"
 	condAccepted = "Accepted"
 	statusTrue   = "True"
 	keyConds     = "conditions"
@@ -47,6 +52,8 @@ type harness struct {
 	c      client.Client
 	ctx    context.Context
 	cancel context.CancelFunc
+	// promMode drives the fake Prometheus of the probe.
+	promMode *atomic.Value
 }
 
 func start(t *testing.T) *harness {
@@ -73,14 +80,22 @@ func start(t *testing.T) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
+	prom, promMode, _ := fakePrometheus(t)
+	probe := &PromProbe{Client: &http.Client{Timeout: 500 * time.Millisecond}, Interval: 300 * time.Millisecond}
+	if err := mgr.Add(probe); err != nil {
+		t.Fatal(err)
+	}
 	r := &Reconciler{
 		Client: mgr.GetClient(), APIReader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("test"),
 		OperatorNamespace: operatorNS, EngineNamespace: engineNS,
-		Engine: &kagent0103.Models{Client: mgr.GetClient()},
+		Engine:             &kagent0103.Models{Client: mgr.GetClient()},
+		OperatorDeployment: operatorName,
+		Probe:              probe,
 	}
 	if err := r.SetupWithManager(mgr); err != nil {
 		t.Fatal(err)
 	}
+	promURL = prom.URL
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		if err := mgr.Start(ctx); err != nil {
@@ -92,7 +107,7 @@ func start(t *testing.T) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &harness{t: t, c: c, ctx: ctx, cancel: cancel}
+	h := &harness{t: t, c: c, ctx: ctx, cancel: cancel, promMode: promMode}
 	for _, ns := range []string{operatorNS, engineNS} {
 		h.must(c.Create(ctx, &corev1.Namespace{Name: ns}))
 	}
@@ -210,6 +225,9 @@ func (h *harness) waitCondition(condType string, status metav1.ConditionStatus, 
 	})
 	return got
 }
+
+// promURL is the fake Prometheus of the current harness.
+var promURL string
 
 var (
 	modelGVKTest  = schema.GroupVersionKind{Group: "agentgateway.dev", Version: "v1alpha1", Kind: "AgentgatewayModel"}
@@ -373,4 +391,125 @@ func TestEngineDummySecretMissingIsNamed(t *testing.T) {
 	h.accept(modelGVKTest, operatorNS, defaultModel, true)
 	h.accept(mcGVKTest, engineNS, defaultModel, false)
 	h.waitCondition(v1alpha1.ConditionReady, metav1.ConditionTrue, ReasonReady)
+}
+
+// operatorDeployment creates the operator's own Deployment with n replicas.
+func (h *harness) operatorDeployment(replicas int32) {
+	labels := map[string]string{"app": operatorName}
+	h.must(h.c.Create(h.ctx, &appsv1.Deployment{
+		Name: operatorName, Namespace: operatorNS,
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: labels},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: labels},
+				Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "operator", Image: "takecare-operator:test"}}},
+			},
+		},
+	}))
+}
+
+func (h *harness) gaps() ([]string, *metav1.Condition) {
+	var p v1alpha1.TakeCarePlatform
+	if err := h.c.Get(h.ctx, client.ObjectKey{Name: PlatformName}, &p); err != nil {
+		return nil, nil
+	}
+	ids := make([]string, 0, len(p.Status.ProductionGaps))
+	for _, g := range p.Status.ProductionGaps {
+		ids = append(ids, g.ID)
+	}
+	return ids, meta.FindStatusCondition(p.Status.Conditions, v1alpha1.ConditionProductionReady)
+}
+
+// waitGaps waits until the gap ids are exactly want (order kept).
+func (h *harness) waitGaps(want ...string) {
+	h.t.Helper()
+	var got []string
+	h.eventually(fmt.Sprintf("production gaps %v", want), func() bool {
+		got, _ = h.gaps()
+		return strings.Join(got, ",") == strings.Join(want, ",")
+	})
+}
+
+// ProductionReady (spec 01, AC 6 and 7): the demo-like platform lists its
+// stable gaps; fixing each one, in the cluster or in the spec, clears it
+// until the condition turns True; it never touches Ready.
+func TestProductionGaps(t *testing.T) {
+	h := start(t)
+	h.gateway()
+	h.secret(engineNS, DummyKeySecretName, DummyKeyField, "dummy")
+	h.secret(operatorNS, "takecare-model", "apiKey", "k")
+	h.operatorDeployment(1)
+	h.promMode.Store("empty")
+	one := int32(1000)
+	p := &v1alpha1.TakeCarePlatform{
+		Name: PlatformName,
+		Spec: v1alpha1.TakeCarePlatformSpec{
+			Models:  []v1alpha1.ModelSpec{model(defaultModel, "takecare-model")},
+			Gateway: v1alpha1.GatewaySpec{GatewayRef: &v1alpha1.ObjectRef{Name: gatewayNm, Namespace: operatorNS}},
+			Engine:  v1alpha1.EngineSpec{Namespace: engineNS},
+			Observability: v1alpha1.ObservabilitySpec{
+				Metrics:          &v1alpha1.MetricsSpec{PrometheusURL: promURL},
+				CaptureContent:   true,
+				SamplingPerMille: &one,
+			},
+		},
+	}
+	h.must(h.c.Create(h.ctx, p))
+	h.accept(modelGVKTest, operatorNS, defaultModel, true)
+	h.accept(mcGVKTest, engineNS, defaultModel, false)
+	h.waitCondition(v1alpha1.ConditionReady, metav1.ConditionTrue, ReasonReady)
+
+	h.waitGaps(GapNoTelemetryExport, GapContentCaptureOn, GapSingleReplica, GapGatewayMetricsNotScraped, GapNoNetworkPolicies)
+	_, cond := h.gaps()
+	if cond.Status != metav1.ConditionFalse || cond.Reason != ReasonGapsFound || !strings.HasPrefix(cond.Message, "5 gap(s): ") {
+		t.Errorf("ProductionReady = %+v", cond)
+	}
+	if c := h.condition(v1alpha1.ConditionReady); c.Status != metav1.ConditionTrue {
+		t.Error("production gaps must not affect Ready")
+	}
+
+	t.Run("a NetworkPolicy of TakeCare's in the engine namespace clears no-network-policies", func(t *testing.T) {
+		h.must(h.c.Create(h.ctx, &networkingv1.NetworkPolicy{
+			Name: "takecare-engine-default-deny", Namespace: engineNS, Labels: map[string]string{partOfLabel: partOfValue},
+			Spec: networkingv1.NetworkPolicySpec{PodSelector: metav1.LabelSelector{}, PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress}},
+		}))
+		h.waitGaps(GapNoTelemetryExport, GapContentCaptureOn, GapSingleReplica, GapGatewayMetricsNotScraped)
+	})
+
+	t.Run("Prometheus scraping the gateway clears gateway-metrics-not-scraped, through the probe", func(t *testing.T) {
+		h.promMode.Store("scraped")
+		h.waitGaps(GapNoTelemetryExport, GapContentCaptureOn, GapSingleReplica)
+	})
+
+	t.Run("two replicas, content capture off and an OTLP endpoint leave no gap", func(t *testing.T) {
+		var dep appsv1.Deployment
+		h.must(h.c.Get(h.ctx, client.ObjectKey{Namespace: operatorNS, Name: operatorName}, &dep))
+		two := int32(2)
+		dep.Spec.Replicas = &two
+		h.must(h.c.Update(h.ctx, &dep))
+		var cur v1alpha1.TakeCarePlatform
+		h.must(h.c.Get(h.ctx, client.ObjectKey{Name: PlatformName}, &cur))
+		cur.Spec.Observability.CaptureContent = false
+		cur.Spec.Observability.OTLP = &v1alpha1.OTLPSpec{Endpoint: "http://otel-collector.takecare-system.svc:4317", Protocol: "grpc"}
+		h.must(h.c.Update(h.ctx, &cur))
+		h.waitGaps()
+		_, cond := h.gaps()
+		if cond.Status != metav1.ConditionTrue || cond.Reason != ReasonNoGaps {
+			t.Errorf("ProductionReady = %+v", cond)
+		}
+	})
+
+	t.Run("a Prometheus that stops answering is a gap with the cause, never Ready=False", func(t *testing.T) {
+		h.promMode.Store("error")
+		h.waitGaps(GapGatewayMetricsNotScraped)
+		var cur v1alpha1.TakeCarePlatform
+		h.must(h.c.Get(h.ctx, client.ObjectKey{Name: PlatformName}, &cur))
+		if d := cur.Status.ProductionGaps[0].Detail; !strings.Contains(d, "HTTP 500") {
+			t.Errorf("detail = %q", d)
+		}
+		if c := h.condition(v1alpha1.ConditionReady); c.Status != metav1.ConditionTrue {
+			t.Error("a probe error must not affect Ready")
+		}
+	})
 }

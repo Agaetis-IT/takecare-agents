@@ -66,7 +66,7 @@ Deployment concerns are **chart values**, not API fields, because they are about
 | `global.caBundle` (Secret or ConfigMap) | Trust an internal CA for TLS to the provider, MCP servers, Slack | unset | unset |
 | `global.imageRegistry`, `global.imagePullSecrets` | Private registry or mirror | ghcr.io | ghcr.io |
 | `operator.replicas` | High availability (leader election) | 2 | 1 |
-| `networkPolicies.enabled` | Restrict traffic between TakeCare, the gateway, kagent and the MCP servers | true | false |
+| `networkPolicies.enabled` | Restrict traffic between TakeCare, the gateway, kagent and the MCP servers (ADR 0007 requires it in both profiles) | true | true |
 | `prometheusOperator.enabled` | Create a `ServiceMonitor` for the gateway (cost attribution needs its metrics) | auto-detected | false |
 | `addons.*` | MCP servers packaged with TakeCare (spec 05) | as chosen by the customer | demo set |
 
@@ -124,10 +124,10 @@ status:
 | `no-telemetry-export` | no OTLP endpoint |
 | `content-capture-on` | `captureContent: true` |
 | `single-replica` | the operator Deployment has 1 replica |
-| `gateway-metrics-not-scraped` | no `observability.metrics.prometheusURL`, or that Prometheus has no series from the gateway |
-| `no-network-policies` | `networkPolicies.enabled` is false |
-| `role-without-report` | a role at the `service` level has no `report` connector (spec 02) |
-| `connector-not-ready` | any bound connector is not `Ready` (spec 05) |
+| `gateway-metrics-not-scraped` | no `observability.metrics.prometheusURL`, or that Prometheus is unreachable, or it has no `up` series for the platform's Gateway (labels `namespace` and `gateway_networking_k8s_io_gateway_name`, which the demo relabeling and agentgateway's PodMonitor set), or its last answer is older than 3 minutes. The query runs outside the reconciliation, every 60 s with a 5 s timeout; the detail says which of the three it is |
+| `no-network-policies` | no NetworkPolicy of TakeCare's in the engine namespace. Presence, not enforcement: whether the CNI applies them is not checked |
+| `role-without-report` | a role at the `service` level has no `report` connector (spec 02; implemented with the Doc, PR 4) |
+| `connector-not-ready` | any bound connector is not `Ready` (spec 05; implemented with the connectors, PR 3b) |
 
 In the demo, `ProductionReady` stays `False` with its list: useful in a meeting or at the start of a pilot to show the path to production.
 
@@ -143,5 +143,5 @@ In the demo, `ProductionReady` stays `False` with its list: useful in a meeting 
 3. A second `TakeCarePlatform`, or one not named `main`, is rejected at admission.
 4. Removing the provider key Secret flips `ModelsReady` and `Ready` to `False`, naming the missing Secret; restoring it brings `Ready=True` back without manual action.
 5. No generated resource contains a provider key in clear text outside a `Secret`; the kagent `ModelConfig` holds only the dummy key.
-6. With `values-demo.yaml`, `ProductionReady` is `False` and lists at least `content-capture-on`, `single-replica` and `no-network-policies`; with a complete `values-prod.yaml` and the gateway scraped, it is `True`.
+6. With `values-demo.yaml`, `ProductionReady` is `False` and lists at least `content-capture-on` and `single-replica` (`gateway-metrics-not-scraped` is transient there: the demo Prometheus scrapes the gateway; NetworkPolicies are on in the demo since ADR 0007); with a complete `values-prod.yaml` and the gateway scraped, it is `True`.
 7. envtest covers: validation rules, generated resources for one and two models, condition transitions on missing Secrets, each `ProductionReady` check.

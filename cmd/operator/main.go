@@ -9,13 +9,17 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
+	"go.opentelemetry.io/otel"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -33,6 +37,8 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
 	"github.com/agaetis-it/takecare-agents/internal/engine/kagent0103"
 	"github.com/agaetis-it/takecare-agents/internal/gatewayapi"
+	"github.com/agaetis-it/takecare-agents/internal/httpclient"
+	"github.com/agaetis-it/takecare-agents/internal/telemetry"
 )
 
 // leaderElectionID names the Lease shared by the operator's replicas.
@@ -51,6 +57,9 @@ type config struct {
 	// Roles and its behavior name the same namespaces.
 	operatorNamespace string
 	engineNamespace   string
+	// operatorDeployment names the operator's own Deployment, read for the
+	// single-replica production gap.
+	operatorDeployment string
 }
 
 func main() {
@@ -80,6 +89,8 @@ func run(args []string) error {
 		"Namespace of the operator, where the platform's Secrets and the Gateway live (default: OPERATOR_NAMESPACE).")
 	fs.StringVar(&cfg.engineNamespace, "engine-namespace", os.Getenv("ENGINE_NAMESPACE"),
 		"The one namespace engine objects are written in (default: ENGINE_NAMESPACE).")
+	fs.StringVar(&cfg.operatorDeployment, "operator-deployment", os.Getenv("OPERATOR_DEPLOYMENT"),
+		"Name of the operator's Deployment, for the single-replica production gap (default: OPERATOR_DEPLOYMENT).")
 	zapOpts := zap.Options{}
 	zapOpts.BindFlags(fs)
 	if err := fs.Parse(args); err != nil {
@@ -105,13 +116,38 @@ func run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("create manager: %w", err)
 	}
+	// Outbound HTTP follows the customer's network: CA bundle and egress
+	// proxy from the chart's global values, through the environment.
+	network := httpclient.FromEnv(5 * time.Second)
+	promClient, err := network.New()
+	if err != nil {
+		return fmt.Errorf("outbound HTTP client: %w", err)
+	}
+	probe := &platform.PromProbe{Client: promClient}
+	if err := mgr.Add(probe); err != nil {
+		return fmt.Errorf("add the Prometheus probe: %w", err)
+	}
+	// One stable tracer provider for the whole process, reconfigured by the
+	// platform controller as the TakeCarePlatform changes (ADR 0006).
+	traces := telemetry.New(network)
+	otel.SetTracerProvider(traces)
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := traces.Shutdown(shutdownCtx); err != nil {
+			ctrl.Log.Error(err, "trace exporter shutdown")
+		}
+	}()
 	platformReconciler := &platform.Reconciler{
-		Client:            mgr.GetClient(),
-		APIReader:         mgr.GetAPIReader(),
-		Recorder:          mgr.GetEventRecorder("takecare-operator"),
-		OperatorNamespace: cfg.operatorNamespace,
-		EngineNamespace:   cfg.engineNamespace,
-		Engine:            &kagent0103.Models{Client: mgr.GetClient()},
+		Client:             mgr.GetClient(),
+		APIReader:          mgr.GetAPIReader(),
+		Recorder:           mgr.GetEventRecorder("takecare-operator"),
+		OperatorNamespace:  cfg.operatorNamespace,
+		EngineNamespace:    cfg.engineNamespace,
+		Engine:             &kagent0103.Models{Client: mgr.GetClient()},
+		OperatorDeployment: cfg.operatorDeployment,
+		Probe:              probe,
+		Telemetry:          traces,
 	}
 	if err := platformReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("set up the platform controller: %w", err)
@@ -163,8 +199,9 @@ func managerOptions(cfg config, scheme *runtime.Scheme) ctrl.Options {
 	operatorNS := map[string]cache.Config{cfg.operatorNamespace: {}}
 	engineNS := map[string]cache.Config{cfg.engineNamespace: {}}
 	byObject := map[client.Object]cache.ByObject{
-		&corev1.Secret{}:  {Namespaces: operatorNS},
-		&corev1.Service{}: {Namespaces: operatorNS},
+		&corev1.Secret{}:              {Namespaces: operatorNS},
+		&corev1.Service{}:             {Namespaces: operatorNS},
+		&networkingv1.NetworkPolicy{}: {Namespaces: engineNS},
 	}
 	for _, gvk := range platform.OperatorNamespaceKinds() {
 		u := &unstructured.Unstructured{}
