@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Charts `takecare-crds` (TakeCare CRDs kept on uninstall, agentgateway and kagent CRDs as dependencies, the ACK `DBProxy` CRD for the demo) and `takecare` (operator, `TakeCarePlatform` rendered from values, the Gateway, kagent and agentgateway as dependencies with the installation requirements of ADR 0007, `values-prod.yaml` template and complete `values-demo.yaml`). Helm 4 is the supported line.
+- The operator subcommand `gateway-api-crds`, run by a hook job of `takecare-crds`: installs the Gateway API CRDs embedded in the binary, without Internet access, and never downgrades a cluster's own (`gatewayAPI.install: auto | always | never`).
+- kagent 0.10.3 pinned in `hack/versions.env`; `make chart-sync`, `chart-lint`, `chart-template`, `chart-smoke` (a real install and upgrade on k3d) and a `chart` CI job.
 - API types and CRDs, group `takecare.agaetis.fr/v1alpha1` (ADR 0003): `TakeCarePlatform` (cluster-scoped singleton `main`), `TakeCareConnector`, `TakeCareDoc`, `TakeCareInvestigation` and `TakeCareDemo`, with the shared `RoleCommonSpec`, CEL validation, printer columns and the `takecare` category. Generated CRDs are in `config/crd`; no controller yet.
 - Operator skeleton (`cmd/operator`): controller-runtime manager with health probes and authenticated metrics, no controller yet.
 - `Makefile` targets `generate`, `lint`, `test`, `licenses`, `gitleaks`, `build`, `docker-build` and `docker-buildx` (amd64 and arm64).
