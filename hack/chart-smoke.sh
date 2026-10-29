@@ -5,8 +5,11 @@
 # Installs and upgrades both charts for real, with the pinned Helm 4, on a
 # k3d cluster: what helm lint, helm template and kubeconform cannot see
 # (hook jobs, server-side apply of the third-party charts, readiness).
-# Never touches the user's kube context: the cluster's kubeconfig is written
-# under ./bin. Usage: hack/chart-smoke.sh [up|install|upgrade|status|down]
+# Then checks, on the cluster, the installation requirements of ADR 0007:
+# the kagent controller's RBAC stays inside its namespace and the controller
+# is reachable through the gateway only. Never touches the user's kube
+# context: the cluster's kubeconfig is written under ./bin.
+# Usage: hack/chart-smoke.sh [up|install|upgrade|status|down|all]
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -39,17 +42,41 @@ up() {
   make chart-deps >/dev/null
 }
 
-# helm_args CHART: the demo profile, with the locally built operator image.
+# Every check prints PASS or FAIL and the total is asserted at the end, so
+# that a check that did not run cannot pass silently.
+checks=0 failed=0
+check() { # NAME COMMAND...: PASS when the command succeeds
+  local name="$1"; shift
+  checks=$((checks + 1))
+  if "$@" >/dev/null 2>&1; then printf 'PASS  %s\n' "$name"; else printf 'FAIL  %s\n' "$name"; failed=$((failed + 1)); fi
+}
+check_not() { # NAME COMMAND...: PASS when the command fails
+  local name="$1"; shift
+  checks=$((checks + 1))
+  if "$@" >/dev/null 2>&1; then printf 'FAIL  %s\n' "$name"; failed=$((failed + 1)); else printf 'PASS  %s\n' "$name"; fi
+}
+assert_checks() { # EXPECTED
+  if [[ "$checks" -ne "$1" || "$failed" -ne 0 ]]; then
+    echo "checks: ${checks} run (expected $1), ${failed} failed"
+    exit 1
+  fi
+  echo "checks: ${checks} run, all passed"
+}
+
 install() {
   log "takecare-crds (hook job installs the Gateway API CRDs)"
   "$HELM" upgrade --install takecare-crds charts/takecare-crds -n "$NS" --create-namespace \
     --set image.tag="$IMAGE_TAG" --set image.pullPolicy=IfNotPresent --set demo.enabled=true --wait --timeout 5m
-  kubectl get crd gateways.gateway.networking.k8s.io -o jsonpath='{.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version}{"\n"}'
+  check "gateway API CRDs at ${GATEWAY_API_VERSION}" \
+    test "$(kubectl get crd gateways.gateway.networking.k8s.io -o jsonpath='{.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version}')" = "$GATEWAY_API_VERSION"
+  check "hook objects deleted after success" \
+    test -z "$(kubectl get job,sa -n "$NS" -o name | grep gateway-api-crds)$(kubectl get clusterrole,clusterrolebinding -o name | grep gateway-api-crds)"
   log "takecare, demo profile"
   "$HELM" upgrade --install takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
     --set operator.image.tag="$IMAGE_TAG" --wait --timeout 10m
-  status
+  kubectl -n kagent rollout status deploy/kagent-controller --timeout=180s >/dev/null
+  verify
 }
 
 upgrade() {
@@ -59,7 +86,58 @@ upgrade() {
   "$HELM" upgrade takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
     --set operator.image.tag="$IMAGE_TAG" --set operator.extraArgs[0]=--zap-log-level=debug --wait --timeout 10m
-  status
+  check "helm upgrade of both charts succeeded without a field manager conflict" true
+  check "operator rolled out with the new argument" \
+    kubectl -n "$NS" rollout status deploy/takecare-operator --timeout=120s
+  verify
+}
+
+# verify: the ADR 0007 installation requirements, as they hold on the
+# cluster, not as they render (test/chart covers the rendering).
+verify() {
+  local sa="system:serviceaccount:kagent:kagent-controller"
+  log "RBAC of the kagent controller (rbac.namespaces=[kagent])"
+  check_not "controller cannot read Secrets in ${NS}" kubectl auth can-i get secrets -n "$NS" --as="$sa"
+  check_not "controller cannot read Secrets in kube-system" kubectl auth can-i get secrets -n kube-system --as="$sa"
+  check_not "controller cannot exec in pods of ${NS}" kubectl auth can-i create pods/exec -n "$NS" --as="$sa"
+  check_not "controller cannot mint ServiceAccount tokens in ${NS}" kubectl auth can-i create serviceaccounts/token -n "$NS" --as="$sa"
+  check_not "controller cannot create pods in ${NS}" kubectl auth can-i create pods -n "$NS" --as="$sa"
+  check "controller still reconciles in kagent (creates Deployments)" kubectl auth can-i create deployments -n kagent --as="$sa"
+  check "kagent UI runs zero replicas" test "$(kubectl -n kagent get deploy kagent-ui -o jsonpath='{.spec.replicas}')" = "0"
+
+  log "network: the controller is reachable through the gateway only"
+  # A temporary route through the gateway to the controller's API, as the
+  # operator will render for A2A (ADR 0009): the positive case that tells a
+  # working NetworkPolicy from a broken network.
+  kubectl apply -f - >/dev/null <<EOF
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata: { name: smoke-kagent, namespace: ${NS} }
+spec:
+  static:
+    host: kagent-controller.kagent.svc.cluster.local
+    port: 8083
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: { name: smoke-kagent, namespace: ${NS} }
+spec:
+  parentRefs: [{ name: agentgateway-proxy, sectionName: http }]
+  rules:
+    - matches: [{ path: { type: PathPrefix, value: /api/ } }]
+      backendRefs: [{ group: agentgateway.dev, kind: AgentgatewayBackend, name: smoke-kagent }]
+EOF
+  kubectl -n "$NS" delete pod smoke-curl --ignore-not-found >/dev/null
+  kubectl -n "$NS" run smoke-curl --image="$SMOKE_CURL_IMAGE" --restart=Never --command -- sleep 300 >/dev/null
+  kubectl -n "$NS" wait pod/smoke-curl --for=condition=Ready --timeout=120s >/dev/null
+  local curl=(kubectl -n "$NS" exec smoke-curl -- curl -s -o /dev/null -m 5 -w '%{http_code}')
+  check "through the gateway, the controller answers (route works)" \
+    test "$("${curl[@]}" "http://agentgateway-proxy.${NS}.svc/api/agents")" = "200"
+  check_not "directly, a pod outside the gateway cannot reach the controller" \
+    "${curl[@]}" "http://kagent-controller.kagent.svc.cluster.local:8083/api/agents"
+  kubectl -n "$NS" delete pod smoke-curl --now >/dev/null
+  kubectl -n "$NS" delete httproute/smoke-kagent agentgatewaybackend/smoke-kagent >/dev/null
+  assert_checks "$CHECKS_EXPECTED"
 }
 
 status() {
@@ -77,10 +155,10 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) install ;;
-  upgrade) upgrade ;;
+  install) CHECKS_EXPECTED=11 install ;;
+  upgrade) CHECKS_EXPECTED=11 upgrade ;;
   status) status ;;
   down) down ;;
-  all) up; install; upgrade ;;
+  all) up; CHECKS_EXPECTED=11 install; CHECKS_EXPECTED=11 upgrade ;;
   *) echo "usage: $0 [up|install|upgrade|status|down|all]"; exit 2 ;;
 esac
