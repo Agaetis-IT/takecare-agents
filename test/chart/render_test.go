@@ -9,6 +9,7 @@ package chart
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -115,6 +116,7 @@ var prodSets = []string{
 	flagSet, dbSet,
 	flagSet, "addons.kubernetes.namespaces={apps}", flagSet, "addons.prometheus.url=http://prometheus.monitoring.svc",
 	flagSet, "addons.prometheus.egress.namespace=monitoring", flagSet, "addons.prometheus.egress.podSelector.app=prometheus",
+	flagSet, "addons.reportSlack.destinations[0].name=on-call", flagSet, "addons.reportSlack.destinations[0].target=C0123456789",
 }
 
 // The TakeCarePlatform each profile renders must pass the CRD's validation,
@@ -151,12 +153,8 @@ func TestRenderedPlatformAgainstTheCRD(t *testing.T) {
 		wantErr string
 	}{
 		{"demo profile is complete", profileArgs("demo"), ""},
-		{"prod profile with its REQUIRED values set", append(profileArgs("prod"),
-			flagSet, "platform.models[0].baseURL=https://vllm.example.internal/v1",
-			flagSet, "platform.models[0].model=mistral-small",
-			flagSet, "platform.observability.metrics.prometheusURL=http://prometheus.monitoring.svc",
-			flagSet, "kagent.database.postgres.url=postgres://kagent:x@db:5432/kagent",
-			flagSet, "addons.kubernetes.namespaces={apps}", flagSet, "addons.prometheus.url=http://prometheus.monitoring.svc", flagSet, "addons.prometheus.egress.namespace=monitoring", flagSet, "addons.prometheus.egress.podSelector.app=prometheus"), ""},
+		{"prod profile with its REQUIRED values set", append(append(profileArgs("prod"), prodSets...),
+			flagSet, "platform.observability.metrics.prometheusURL=http://prometheus.monitoring.svc"), ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -428,6 +426,64 @@ func checkConfigMapsAreExplicit(t *testing.T, objs []*unstructured.Unstructured)
 	}
 }
 
+// The report server: one add-on at most, the operator alone may reach it,
+// its connector declares the adapter and the destinations the server got.
+func TestReportAddon(t *testing.T) {
+	demo := render(t, releaseName, profileArgs("demo")...)
+	var report *unstructured.Unstructured
+	for _, o := range ofKind(demo, "TakeCareConnector") {
+		if o.GetName() == "report" {
+			report = o
+		}
+	}
+	if report == nil {
+		t.Fatal("the demo renders no report connector")
+	}
+	if adapter, _, _ := unstructured.NestedString(report.Object, "spec", "report", "adapter"); adapter != "log" {
+		t.Errorf("demo adapter = %q, want log", adapter)
+	}
+	for _, o := range ofKind(demo, "NetworkPolicy") {
+		if o.GetName() != "takecare-addon-report-log-ingress" {
+			continue
+		}
+		raw, _ := json.Marshal(o.Object["spec"])
+		if strings.Contains(string(raw), "gateway-name") {
+			t.Error("the report server's ingress admits the gateway")
+		}
+		if !strings.Contains(string(raw), `"app.kubernetes.io/component":"operator"`) {
+			t.Error("the report server's ingress does not name the operator")
+		}
+	}
+	for _, o := range ofKind(demo, "Deployment") {
+		if o.GetName() == "takecare-addon-report-log" {
+			for _, img := range images(o) {
+				if !strings.Contains(img, "takecare-agents-mcp-report-slack") {
+					t.Errorf("report image = %s", img)
+				}
+			}
+		}
+	}
+	both := helmTemplate(t, releaseName, releaseNamespace, append(profileArgs("demo"), flagSet, "addons.reportSlack.enabled=true",
+		flagSet, "addons.reportSlack.destinations[0].name=on-call", flagSet, "addons.reportSlack.destinations[0].target=C0123")...)
+	if out, err := both.CombinedOutput(); err == nil || !strings.Contains(string(out), "exclusive") {
+		t.Errorf("both report add-ons must be refused: %v %s", err, out)
+	}
+	slack := render(t, releaseName, append(profileArgs("prod"), prodSets...)...)
+	found := false
+	for _, o := range ofKind(slack, "NetworkPolicy") {
+		if o.GetName() == "takecare-addon-report-slack-egress" {
+			found = true
+			raw, _ := json.Marshal(o.Object["spec"])
+			if !strings.Contains(string(raw), "0.0.0.0/0") || !strings.Contains(string(raw), "10.0.0.0/8") {
+				t.Errorf("slack egress is not DNS plus 443 to the outside with private ranges excluded: %s", raw)
+			}
+		}
+	}
+	if !found {
+		t.Error("the slack add-on renders no egress policy")
+	}
+}
+
 // Every MCP server admits the gateway and the operator only; the gateway
 // admits the operator, the engine namespace and the declared scrapers.
 func TestNetworkPoliciesCloseTheServersAndTheGateway(t *testing.T) {
@@ -481,9 +537,7 @@ func TestDeploymentSelectorsMatchTheirTemplates(t *testing.T) {
 // Every image is pinned: a tag or a digest, never latest or nothing.
 func TestEveryImageIsPinned(t *testing.T) {
 	for _, profile := range profiles {
-		for _, o := range render(t, releaseName, append(profileArgs(profile),
-			flagSet, "platform.models[0].baseURL=https://x/v1", flagSet, "platform.models[0].model=m",
-			flagSet, "kagent.database.postgres.url=postgres://u:p@h/db", flagSet, "addons.kubernetes.namespaces={apps}", flagSet, "addons.prometheus.url=http://prometheus.monitoring.svc", flagSet, "addons.prometheus.egress.namespace=monitoring", flagSet, "addons.prometheus.egress.podSelector.app=prometheus")...) {
+		for _, o := range render(t, releaseName, append(profileArgs(profile), prodSets...)...) {
 			for _, img := range images(o) {
 				if !strings.Contains(img, "@sha256:") && (!strings.Contains(img, ":") || strings.HasSuffix(img, ":latest")) {
 					t.Errorf("%s: %s %s/%s uses an unpinned image %q", profile, o.GetKind(), o.GetNamespace(), o.GetName(), img)
@@ -522,9 +576,7 @@ func images(o *unstructured.Unstructured) []string {
 func TestEngineInstallationRequirements(t *testing.T) {
 	for _, profile := range profiles {
 		t.Run(profile, func(t *testing.T) {
-			objs := render(t, releaseName, append(profileArgs(profile),
-				flagSet, "platform.models[0].baseURL=https://x/v1", flagSet, "platform.models[0].model=m",
-				flagSet, "kagent.database.postgres.url=postgres://u:p@h/db", flagSet, "addons.kubernetes.namespaces={apps}", flagSet, "addons.prometheus.url=http://prometheus.monitoring.svc", flagSet, "addons.prometheus.egress.namespace=monitoring", flagSet, "addons.prometheus.egress.podSelector.app=prometheus")...)
+			objs := render(t, releaseName, append(profileArgs(profile), prodSets...)...)
 
 			policies := ofKind(objs, "NetworkPolicy")
 			var names []string

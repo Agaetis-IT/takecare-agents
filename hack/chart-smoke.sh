@@ -25,6 +25,7 @@ NS=takecare-system
 # the previous binary running after `k3d image import`.
 IMAGE_TAG="${IMAGE_TAG:-smoke-$(date +%s)}"
 IMAGE="${IMAGE_REGISTRY}/takecare-operator:${IMAGE_TAG}"
+REPORT_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-report-slack:${IMAGE_TAG}"
 HELM="${HELM:-bin/helm-${HELM_VERSION}}"
 export KUBECONFIG="${PWD}/bin/${CLUSTER}.kubeconfig"
 export HELM_REPOSITORY_CONFIG="${PWD}/bin/helm/repositories.yaml" HELM_REPOSITORY_CACHE="${PWD}/bin/helm/cache"
@@ -39,9 +40,9 @@ up() {
       --kubeconfig-update-default=false --kubeconfig-switch-context=false --wait
   fi
   k3d kubeconfig write "$CLUSTER" --output "$KUBECONFIG" >/dev/null
-  log "building and importing ${IMAGE}"
-  make docker-build OPERATOR_IMG="$IMAGE" >/dev/null
-  k3d image import "$IMAGE" -c "$CLUSTER" >/dev/null
+  log "building and importing ${IMAGE} and ${REPORT_IMAGE}"
+  make docker-build OPERATOR_IMG="$IMAGE" REPORT_SLACK_IMG="$REPORT_IMAGE" >/dev/null
+  k3d image import "$IMAGE" "$REPORT_IMAGE" -c "$CLUSTER" >/dev/null
   make chart-deps >/dev/null
 }
 
@@ -82,7 +83,7 @@ install() {
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   "$HELM" upgrade --install takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
-    --set operator.image.tag="$IMAGE_TAG" --wait --timeout 10m
+    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --wait --timeout 10m
   kubectl -n kagent rollout status deploy/kagent-controller --timeout=180s >/dev/null
   verify
 }
@@ -122,7 +123,7 @@ upgrade() {
     --set image.tag="$IMAGE_TAG" --set demo.enabled=true --wait --timeout 5m
   "$HELM" upgrade takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
-    --set operator.image.tag="$IMAGE_TAG" --set operator.extraArgs[0]=--zap-log-level=debug --wait --timeout 10m
+    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set operator.extraArgs[0]=--zap-log-level=debug --wait --timeout 10m
   check "helm upgrade of both charts succeeded without a field manager conflict" true
   check "operator rolled out with the new argument" \
     kubectl -n "$NS" rollout status deploy/takecare-operator --timeout=120s
@@ -174,6 +175,28 @@ verify() {
     test "$(kubectl -n "$NS" get takecareconnector kubernetes -o jsonpath='{.status.conditions[?(@.type=="ReadOnlyGuard")].status}')" = "True"
   check_not "the add-on's ServiceAccount cannot read Secrets in the app namespace" \
     kubectl auth can-i get secrets -n demo-apps --as=system:serviceaccount:${NS}:takecare-addon-kubernetes
+  log "the report connector (spec 05): log mode in the demo"
+  check "connector report reaches Ready=True (log adapter)" \
+    connector_ready report
+  check "the report connector gets no gateway backend" \
+    bash -c "! kubectl -n ${NS} get agentgatewaybackend mcp-report >/dev/null 2>&1"
+  check "the demo platform reports the report-log-enabled gap" \
+    bash -c "[[ \"\$(kubectl get takecareplatform main -o jsonpath='{.status.productionGaps[*].id}')\" == *report-log-enabled* ]]"
+  # Only the operator may post: a pod carrying the operator's labels is
+  # admitted by the NetworkPolicy (labels are the identity there), one
+  # without them is not; and post_message shows up in the server's log.
+  kubectl -n "$NS" delete pod smoke-post --ignore-not-found >/dev/null
+  kubectl -n "$NS" run smoke-post --image="$SMOKE_CURL_IMAGE" --restart=Never \
+    --labels="app.kubernetes.io/name=takecare,app.kubernetes.io/instance=takecare,app.kubernetes.io/component=operator" \
+    --command -- sleep 300 >/dev/null
+  kubectl -n "$NS" wait pod/smoke-post --for=condition=Ready --timeout=120s >/dev/null
+  local post='{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"post_message","arguments":{"destination":"on-call","blocks":[{"type":"section","text":{"type":"mrkdwn","text":"smoke diagnosis"}}],"text":"smoke"}}}'
+  check "post_message from the operator's identity is accepted and logged" \
+    bash -c "kubectl -n ${NS} exec smoke-post -- curl -s -m 10 -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '${post}' http://takecare-addon-report-log.${NS}.svc:8080/mcp | grep -q 'logged for destination on-call' && kubectl -n ${NS} logs deploy/takecare-addon-report-log --tail=20 | grep -q 'smoke diagnosis'"
+  check_not "post_message with an unknown destination is refused by the server" \
+    bash -c "kubectl -n ${NS} exec smoke-post -- curl -s -m 10 -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '${post//on-call/everyone}' http://takecare-addon-report-log.${NS}.svc:8080/mcp | grep -q 'logged for destination'"
+  kubectl -n "$NS" delete pod smoke-post --now >/dev/null
+
   log "a forbidden right on the add-on is caught, then cleared"
   kubectl -n demo-apps delete rolebinding/smoke-drift role/smoke-drift --ignore-not-found >/dev/null
   kubectl -n demo-apps create role smoke-drift --verb=get --resource=secrets --dry-run=client -o yaml | kubectl apply -f - >/dev/null
@@ -228,6 +251,8 @@ EOF
     "${ecurl[@]}" "http://takecare-addon-kubernetes.${NS}.svc:8080/mcp"
   check_not "from the engine namespace, the prometheus server is unreachable too" \
     "${ecurl[@]}" "http://takecare-addon-prometheus.${NS}.svc:8080/mcp"
+  check_not "from the engine namespace, the report server is unreachable (never an agent's)" \
+    "${ecurl[@]}" "http://takecare-addon-report-log.${NS}.svc:8080/mcp"
   kubectl -n kagent delete pod smoke-curl --now >/dev/null
   # The gateway admits the operator and the engine namespace; the release
   # namespace itself and a third namespace are refused, and the demo
@@ -265,10 +290,10 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=31 install ;;
-  upgrade) CHECKS_EXPECTED=31 upgrade ;;
+  install) CHECKS_EXPECTED=37 install ;;
+  upgrade) CHECKS_EXPECTED=37 upgrade ;;
   status) status ;;
   down) down ;;
-  all) up; CHECKS_EXPECTED=31 install; CHECKS_EXPECTED=31 upgrade ;;
+  all) up; CHECKS_EXPECTED=37 install; CHECKS_EXPECTED=37 upgrade ;;
   *) echo "usage: $0 [up|install|upgrade|status|down|all]"; exit 2 ;;
 esac

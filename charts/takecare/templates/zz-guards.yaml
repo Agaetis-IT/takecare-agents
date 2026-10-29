@@ -34,3 +34,9 @@ reverse path order, so this file, last by name, is evaluated first.
 {{- fail "addons.prometheus.egress.podSelector is REQUIRED with NetworkPolicies: the pods of that Prometheus, the only egress the connector gets" }}
 {{- end }}
 {{- end }}
+{{- if and .Values.addons.reportSlack.enabled .Values.addons.reportLog.enabled }}
+{{- fail "addons.reportSlack and addons.reportLog are exclusive: one report connector" }}
+{{- end }}
+{{- if and .Values.addons.reportSlack.enabled (not .Values.addons.reportSlack.destinations) }}
+{{- fail "addons.reportSlack.destinations is REQUIRED: the destinations the Doc publishes to (channel IDs)" }}
+{{- end }}

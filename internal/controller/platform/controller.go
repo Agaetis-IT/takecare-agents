@@ -68,6 +68,7 @@ const (
 	GapGatewayMetricsNotScraped = "gateway-metrics-not-scraped"
 	GapNoNetworkPolicies        = "no-network-policies"
 	GapConnectorNotReady        = "connector-not-ready"
+	GapReportLogEnabled         = "report-log-enabled"
 
 	ReasonNoGaps    = "NoGaps"
 	ReasonGapsFound = "GapsFound"
@@ -621,11 +622,17 @@ func (r *Reconciler) productionGaps(ctx context.Context, p *v1alpha1.TakeCarePla
 	if err := r.List(ctx, &connectors, client.InNamespace(r.OperatorNamespace)); err != nil {
 		return fmt.Errorf("list TakeCareConnectors in %s: %w", r.OperatorNamespace, err)
 	}
-	var notReady []string
+	var notReady, logReports []string
 	for _, c := range connectors.Items {
 		if !meta.IsStatusConditionTrue(c.Status.Conditions, v1alpha1.ConditionReady) {
 			notReady = append(notReady, c.Name)
 		}
+		if c.Spec.Report != nil && c.Spec.Report.Adapter == "log" {
+			logReports = append(logReports, c.Name)
+		}
+	}
+	if len(logReports) > 0 {
+		add(GapReportLogEnabled, fmt.Sprintf("report connector(s) with the log adapter: %s; diagnoses are written to the server's log (demo only)", strings.Join(logReports, ", ")))
 	}
 	if len(notReady) > 0 {
 		slices.Sort(notReady)

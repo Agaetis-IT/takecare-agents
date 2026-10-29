@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -235,6 +236,7 @@ func managerOptions(cfg config, scheme *runtime.Scheme) ctrl.Options {
 		&corev1.Service{}:                     {Namespaces: operatorNS},
 		&networkingv1.NetworkPolicy{}:         {Namespaces: engineNS},
 		&appsv1.Deployment{}:                  {Namespaces: operatorNS},
+		&discoveryv1.EndpointSlice{}:          {Namespaces: operatorNS},
 		&takecarev1alpha1.TakeCareConnector{}: {Namespaces: operatorNS},
 	}
 	for _, gvk := range platform.OperatorNamespaceKinds() {
