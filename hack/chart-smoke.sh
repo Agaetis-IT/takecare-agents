@@ -87,8 +87,7 @@ install() {
 # platform_ready waits for the platform's Ready condition, printing the
 # conditions when it does not come.
 platform_ready() {
-  local i
-  for i in $(seq 60); do
+  for _ in $(seq 60); do
     [[ "$(kubectl get takecareplatform main -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)" == "True" ]] && return 0
     sleep 2
   done
