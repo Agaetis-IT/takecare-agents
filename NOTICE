@@ -102,6 +102,9 @@ github.com/google/cel-go v0.29.2
 github.com/google/gnostic-models v0.7.0
   License: Apache-2.0
   Source: https://github.com/google/gnostic-models/blob/v0.7.0/LICENSE
+github.com/google/go-cmp/cmp v0.7.0
+  License: BSD-3-Clause
+  Source: https://github.com/google/go-cmp/blob/v0.7.0/LICENSE
 github.com/google/jsonschema-go/jsonschema v0.4.3
   License: MIT
   Source: https://github.com/google/jsonschema-go/blob/v0.4.3/LICENSE
