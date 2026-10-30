@@ -26,6 +26,9 @@ NS=takecare-system
 IMAGE_TAG="${IMAGE_TAG:-smoke-$(date +%s)}"
 IMAGE="${IMAGE_REGISTRY}/takecare-agents-operator:${IMAGE_TAG}"
 REPORT_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-report-slack:${IMAGE_TAG}"
+CORPUS_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-corpus:${IMAGE_TAG}"
+# The demo corpus sources (values.yaml addons.demoCorpus.sources).
+CORPUS_SOURCES=(incidents runbooks deployments vendor support)
 HELM="${HELM:-bin/helm-${HELM_VERSION}}"
 export KUBECONFIG="${PWD}/bin/${CLUSTER}.kubeconfig"
 export HELM_REPOSITORY_CONFIG="${PWD}/bin/helm/repositories.yaml" HELM_REPOSITORY_CACHE="${PWD}/bin/helm/cache"
@@ -40,9 +43,9 @@ up() {
       --kubeconfig-update-default=false --kubeconfig-switch-context=false --wait
   fi
   k3d kubeconfig write "$CLUSTER" --output "$KUBECONFIG" >/dev/null
-  log "building and importing ${IMAGE} and ${REPORT_IMAGE}"
-  make docker-build OPERATOR_IMG="$IMAGE" REPORT_SLACK_IMG="$REPORT_IMAGE" >/dev/null
-  k3d image import "$IMAGE" "$REPORT_IMAGE" -c "$CLUSTER" >/dev/null
+  log "building and importing ${IMAGE}, ${REPORT_IMAGE} and ${CORPUS_IMAGE}"
+  make docker-build OPERATOR_IMG="$IMAGE" REPORT_SLACK_IMG="$REPORT_IMAGE" MCP_CORPUS_IMG="$CORPUS_IMAGE" >/dev/null
+  k3d image import "$IMAGE" "$REPORT_IMAGE" "$CORPUS_IMAGE" -c "$CLUSTER" >/dev/null
   make chart-deps >/dev/null
 }
 
@@ -81,9 +84,15 @@ install() {
   # gateway never gets a request in this run.
   kubectl -n "$NS" create secret generic takecare-model --from-literal=apiKey=smoke-placeholder \
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  # The corpus the TakeCareDemo controller writes (PR 5d); empty here, so that
+  # the corpus servers start and their connectors can be checked.
+  for src in "${CORPUS_SOURCES[@]}"; do
+    kubectl -n "$NS" create configmap "takecare-demo-corpus-${src}" --from-literal=data.json='[]' \
+      --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  done
   "$HELM" upgrade --install takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
-    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --wait --timeout 10m
+    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --wait --timeout 10m
   kubectl -n kagent rollout status deploy/kagent-controller --timeout=180s >/dev/null
   verify
 }
@@ -91,6 +100,13 @@ install() {
 # connector_ready NAME waits for a connector's Ready condition.
 connector_ready() {
   wait_condition takecareconnector "$1" Ready True
+}
+
+# corpus_ready SOURCE: a demo corpus connector is Ready with exactly its
+# three tools, all read.
+corpus_ready() {
+  connector_ready "$1" || return 1
+  [[ "$(kubectl -n "$NS" get takecareconnector "$1" -o jsonpath='{range .status.tools[*]}{.name}={.class}{"\n"}{end}' | sort | tr '\n' ' ')" == "$1_get=read $1_recent=read $1_search=read " ]]
 }
 
 # wait_condition KIND NAME TYPE STATUS waits up to two minutes for a
@@ -190,7 +206,7 @@ upgrade() {
     --set image.tag="$IMAGE_TAG" --set demo.enabled=true --wait --timeout 5m
   "$HELM" upgrade takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
-    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set operator.extraArgs[0]=--zap-log-level=debug --wait --timeout 10m
+    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set operator.extraArgs[0]=--zap-log-level=debug --wait --timeout 10m
   check "helm upgrade of both charts succeeded without a field manager conflict" true
   check "operator rolled out with the new argument" \
     kubectl -n "$NS" rollout status deploy/takecare-operator --timeout=120s
@@ -242,6 +258,10 @@ verify() {
     test "$(kubectl -n "$NS" get takecareconnector kubernetes -o jsonpath='{.status.conditions[?(@.type=="ReadOnlyGuard")].status}')" = "True"
   check_not "the add-on's ServiceAccount cannot read Secrets in the app namespace" \
     kubectl auth can-i get secrets -n demo-apps --as=system:serviceaccount:${NS}:takecare-addon-kubernetes
+  log "the demo corpus connectors (spec 05): five read-only servers"
+  for src in "${CORPUS_SOURCES[@]}"; do
+    check "connector ${src} reaches Ready=True with its three read tools" corpus_ready "$src"
+  done
   log "the report connector (spec 05): log mode in the demo"
   check "connector report reaches Ready=True (log adapter)" \
     connector_ready report
@@ -465,10 +485,10 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=55 install ;;
-  upgrade) CHECKS_EXPECTED=55 upgrade ;;
+  install) CHECKS_EXPECTED=60 install ;;
+  upgrade) CHECKS_EXPECTED=60 upgrade ;;
   status) status ;;
   down) down ;;
-  all) up; CHECKS_EXPECTED=55 install; CHECKS_EXPECTED=55 upgrade ;;
+  all) up; CHECKS_EXPECTED=60 install; CHECKS_EXPECTED=60 upgrade ;;
   *) echo "usage: $0 [up|install|upgrade|status|down|all]"; exit 2 ;;
 esac

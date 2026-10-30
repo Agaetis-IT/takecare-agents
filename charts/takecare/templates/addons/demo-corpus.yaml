@@ -1,0 +1,136 @@
+{{- if .Values.addons.demoCorpus.enabled }}
+{{- $a := .Values.addons.demoCorpus }}
+{{- $image := printf "%s/%s:%s" (.Values.global.imageRegistry | default $a.image.registry) $a.image.repository ($a.image.tag | default .Chart.AppVersion) }}
+{{- range $a.sources }}
+{{- $name := printf "corpus-%s" .name }}
+{{- $ctx := dict "root" $ "name" $name "port" 8080 }}
+---
+# Add-on {{ $name }}, DEMO ONLY: takecare-agents-mcp-corpus (ours), three
+# read tools over the demo's {{ .name }} (spec 03, spec 05). The corpus is
+# written by the TakeCareDemo controller into the ConfigMap below, which the
+# chart does not create: the server stays not ready until it exists, and
+# reloads it when the controller rewrites it at each incident.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: takecare-addon-{{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: takecare-addon-{{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "takecare.addon.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "takecare.addon.labels" $ctx | nindent 8 }}
+    spec:
+      serviceAccountName: takecare-addon-{{ $name }}
+      automountServiceAccountToken: false
+      {{- with $.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: {{ include "takecare.addon.image" (dict "image" $image "root" $) | quote }}
+          imagePullPolicy: {{ $a.image.pullPolicy }}
+          args:
+            - --prefix={{ .name }}
+            - {{ printf "--domain=%s" .domain | quote }}
+            - --corpus=/corpus/data.json
+            - --listen=:8080
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            {{- toYaml $a.resources | nindent 12 }}
+          volumeMounts:
+            - name: corpus
+              mountPath: /corpus
+              readOnly: true
+      volumes:
+        - name: corpus
+          configMap:
+            name: takecare-demo-corpus-{{ .name }}
+            # Written by the TakeCareDemo controller, not by the chart.
+            optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: takecare-addon-{{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    {{- include "takecare.addon.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+{{- if $.Values.networkPolicies.enabled }}
+---
+{{ include "takecare.addon.ingressPolicy" $ctx }}
+---
+# The server reads a mounted file: no egress at all.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: takecare-addon-{{ $name }}-egress
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "takecare.addon.selectorLabels" $ctx | nindent 6 }}
+  policyTypes: [Egress]
+  egress: []
+{{- end }}
+---
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareConnector
+metadata:
+  name: {{ .name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+spec:
+  types: [{{ .type }}]
+  description: {{ printf "%s; demo corpus, read-only" .domain | quote }}
+  mcp:
+    addon: {{ $name }}
+{{- end }}
+{{- end }}

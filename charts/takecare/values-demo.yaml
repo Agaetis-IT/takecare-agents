@@ -59,6 +59,9 @@ addons:
   # make demo-up switches to reportSlack when a token is given (PR 5).
   reportLog:
     enabled: true
+  # Five read-only servers over the corpus the TakeCareDemo controller writes.
+  demoCorpus:
+    enabled: true
   prometheus:
     enabled: true
     url: http://prometheus-server.takecare-system.svc
@@ -126,13 +129,24 @@ prometheus:
     resources:
       requests: { cpu: 100m, memory: 512Mi }
       limits: { memory: 1Gi }
-  # The receiver that posts to the operator's /v1/alerts (spec 02) is wired
-  # with the alert intake, PR 4: until then alerts are visible, not delivered.
+  # The scenery's alerts go to the Doc's webhook (spec 02 §1) with the
+  # bearer token from the Secret the chart generates, mounted at the path the
+  # install notes give. This Alertmanager is not run by Prometheus Operator,
+  # so no AlertmanagerConfig is rendered: the receiver lives here. Alerts of
+  # other namespaces stay visible, not delivered. On a cluster that serves
+  # Prometheus Operator's API, alerting.alertmanagerConfig.create=auto would
+  # add an AlertmanagerConfig too and the Doc would get each alert twice
+  # (deduplicated by fingerprint): set it to "false" there.
   alertmanager:
     enabled: true
     fullnameOverride: alertmanager
     persistence:
       enabled: false
+    extraSecretMounts:
+      - name: takecare-alerting
+        mountPath: /etc/alertmanager/secrets/takecare-alerting
+        secretName: takecare-alerting
+        readOnly: true
     config:
       route:
         receiver: "null"
@@ -140,12 +154,24 @@ prometheus:
         group_wait: 1s
         group_interval: 1s
         repeat_interval: 4h
+        routes:
+          - receiver: takecare
+            matchers: ['namespace="demo-apps"']
       inhibit_rules:
         - source_matchers: ['alertname="HighErrorRate"']
           target_matchers: ['alertname="HighLatencyP99"']
           equal: ["service"]
       receivers:
         - name: "null"
+        - name: takecare
+          webhook_configs:
+            - url: http://takecare-alerts.takecare-system.svc:8080/v1/alerts
+              # Resolved alerts close the investigation's incident.
+              send_resolved: true
+              http_config:
+                authorization:
+                  type: Bearer
+                  credentials_file: /etc/alertmanager/secrets/takecare-alerting/token
   # agentgateway proxy metrics (tokens, model calls): the source of usage and
   # cost. The proxy pod is created by the controller from the Gateway, so it
   # is discovered by its gateway-name label. The platform's
