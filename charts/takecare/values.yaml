@@ -89,6 +89,13 @@ platform:
     captureContent: false
     samplingPerMille: 1000
 
+# The roles' records (spec 02).
+investigations:
+  # -- How long an ended investigation (Completed, Failed, TimedOut,
+  # Dropped) is kept before the operator deletes it. Queued and Running
+  # ones are never deleted.
+  retention: 168h
+
 # The Doc's Alertmanager webhook (spec 02 §1).
 alerting:
   # -- Secret in the release namespace whose key `token` is the webhook's

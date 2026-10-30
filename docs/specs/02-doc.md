@@ -189,7 +189,7 @@ The Doc has no RBAC of its own: it reads the cluster through its `cluster` conne
 
 ### 5. Cost and usage
 
-- Model calls and tokens come from the gateway's Prometheus metrics, queried on the platform's `spec.observability.metrics.prometheusURL` (a Prometheus that scrapes the gateway, spec 01): `agentgateway_gen_ai_client_token_usage_sum` and `_count` by `gen_ai_token_type` (`input`, `output`, `input_cache_read` as observed with agentgateway 1.5 in the POC; to re-check on 1.6), and `agentgateway_gen_ai_server_request_duration`. Values are deltas between the start and the end of the investigation plus one scrape interval (method of the POC's `mesures.py`), priced with the platform's `pricing`.
+- Model calls and tokens come from the gateway's Prometheus metrics, queried on the platform's `spec.observability.metrics.prometheusURL` (a Prometheus that scrapes the gateway, spec 01): `agentgateway_gen_ai_client_token_usage_sum` and `_count` by `gen_ai_token_type` (four values on agentgateway 1.6.0, checked by spike 001: `input`, which already includes the cache reads and writes, `output`, `input_cache_read`, `input_cache_write`; the cache reads are priced at their own rate and taken out of `input`, which is priced at the input rate, as the POC's `mesures.py` did), and `agentgateway_gen_ai_server_request_duration`. Values are deltas between the start and the end of the investigation plus one scrape interval (method of the POC's `mesures.py`), priced with the platform's `pricing`.
 - Exact only without overlapping investigations: with `maxConcurrent: 1` (default) usage is exact; above 1, it is marked `approximate: true`.
 - If the A2A task or the traces carry usage (spike 001 checks it), that source replaces the metrics deltas.
 
