@@ -54,6 +54,21 @@ jobs:
           curl -fsSL -o /tmp/k3d "https://github.com/k3d-io/k3d/releases/download/${K3D_VERSION}/k3d-linux-amd64"
           echo "${K3D_SHA256_LINUX_AMD64}  /tmp/k3d" | sha256sum -c -
           sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+      # The runner's disk left about 4 GB free once the agent's image was
+      # pulled, under the kubelet's eviction threshold (10 % free): the
+      # cluster evicted its pods. Drop toolchains the smoke never uses, and
+      # stop early with a clear message if the room is still short.
+      - name: free the runner's disk
+        run: |
+          set -euo pipefail
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
+          free_gb=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
+          if [ "$free_gb" -lt 20 ]; then
+            echo "only ${free_gb} GB free: the smoke needs about 20 GB (images, the agent's included)" >&2
+            exit 1
+          fi
       - run: make chart-smoke
       - name: cluster state on failure
         if: failure()

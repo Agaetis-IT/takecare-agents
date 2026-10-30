@@ -275,6 +275,13 @@ EOF
   local code=(kubectl -n kagent exec smoke-a2a -- curl -s -o /dev/null -m 10 -w '%{http_code}')
   check "through the A2A route, the agent's card answers (200)" \
     test "$("${code[@]}" "${gw}/api/a2a/kagent/${agent}/.well-known/agent-card.json")" = "200"
+  # Below the agent's path the route is a prefix: on kagent 0.10.3 only the
+  # card and the agent's own A2A endpoint live there (every other sub-path
+  # is that endpoint). Pinned, so that a version serving more is noticed.
+  check "below the agent's path, an invented sub-path is the agent's A2A endpoint (JSON-RPC -32600)" \
+    bash -c "kubectl -n kagent exec smoke-a2a -- curl -s -m 10 '${gw}/api/a2a/kagent/${agent}/invented/sub/path' | grep -q '\"code\":-32600'"
+  check "a sibling agent whose name starts the same is outside the route (404)" \
+    test "$("${code[@]}" "${gw}/api/a2a/kagent/${agent}x/.well-known/agent-card.json")" = "404"
   check "through the gateway, the engine's API is out of reach: /api/agents has no route (404)" \
     test "$("${code[@]}" "${gw}/api/agents")" = "404"
   # AC 4: a tool the Doc may no longer call is refused by the gateway at
@@ -401,10 +408,10 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=48 install ;;
-  upgrade) CHECKS_EXPECTED=48 upgrade ;;
+  install) CHECKS_EXPECTED=50 install ;;
+  upgrade) CHECKS_EXPECTED=50 upgrade ;;
   status) status ;;
   down) down ;;
-  all) up; CHECKS_EXPECTED=48 install; CHECKS_EXPECTED=48 upgrade ;;
+  all) up; CHECKS_EXPECTED=50 install; CHECKS_EXPECTED=50 upgrade ;;
   *) echo "usage: $0 [up|install|upgrade|status|down|all]"; exit 2 ;;
 esac
