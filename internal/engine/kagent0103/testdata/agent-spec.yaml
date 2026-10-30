@@ -1,0 +1,57 @@
+declarative:
+  a2aConfig:
+    skills:
+    - description: Investigate one firing alert.
+      id: diagnose-alert
+      inputModes:
+      - text
+      name: diagnose-alert
+      outputModes:
+      - text
+      tags:
+      - sre
+      - read-only
+  deployment:
+    env:
+    - name: ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS
+      value: "false"
+    - name: TRACELOOP_TRACE_CONTENT
+      value: "false"
+    resources:
+      limits:
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+  modelConfig: default
+  runtime: python
+  stream: false
+  systemMessageFrom:
+    key: instructions.md
+    name: takecare-doc-instructions
+    type: ConfigMap
+  tools:
+  - mcpServer:
+      allowedHeaders:
+      - traceparent
+      - x-conversation-id
+      apiGroup: kagent.dev
+      kind: RemoteMCPServer
+      name: takecare-doc-kubernetes
+      toolNames:
+      - pods_list
+      - pods_log
+    type: McpServer
+  - mcpServer:
+      allowedHeaders:
+      - traceparent
+      - x-conversation-id
+      apiGroup: kagent.dev
+      kind: RemoteMCPServer
+      name: takecare-doc-prometheus
+      toolNames:
+      - execute_query
+    type: McpServer
+description: 'TakeCare Doc: diagnoses one firing alert, read-only, and returns a sourced
+  diagnosis.'
+type: Declarative

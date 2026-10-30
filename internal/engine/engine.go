@@ -55,3 +55,90 @@ type Models interface {
 	// OwnedTypes lists the kinds EnsureModel writes, for the controller to watch.
 	OwnedTypes() []schema.GroupVersionKind
 }
+
+// Agent is a role rendered for the engine: what the engine needs to run the
+// role's agent, and nothing about what triggers its runs (spec 06 §2: the
+// engine sees a run, never an alert).
+type Agent struct {
+	// Name of the agent in the engine; names the engine's objects.
+	Name string
+	// Namespace of the engine, where the objects are written.
+	Namespace string
+	// Description shown by the engine.
+	Description string
+	// Instructions are the agent's system message.
+	Instructions string
+	// Model names the engine's model configuration (engine.Model.Name).
+	Model string
+	// Tools are the agent's MCP servers, each behind the role's own gateway
+	// route, each with its allow-list.
+	Tools []ToolServer
+	// Skill is what the agent's A2A card advertises.
+	Skill Skill
+	// CaptureContent lets the engine record prompts, answers and tool
+	// payloads in its spans (ADR 0006); off unless the platform turns it on.
+	CaptureContent bool
+	// Labels copied onto every object, among them the owner's: objects in
+	// the engine namespace cannot carry an owner reference to the role.
+	Labels map[string]string
+}
+
+// ToolServer is one connector as the agent sees it.
+type ToolServer struct {
+	// Connector names the connector, for the object's name and description.
+	Connector string
+	// URL of the role's MCP route on the gateway.
+	URL string
+	// Tools is the allow-list. It is never empty: an empty list means every
+	// tool of the server to some engines, so a server without allowed tools
+	// is not given to the agent at all.
+	Tools []string
+}
+
+// Skill is one A2A skill.
+type Skill struct {
+	ID          string
+	Description string
+	Tags        []string
+}
+
+// Endpoint is where the gateway reaches an agent's A2A server.
+type Endpoint struct {
+	// Host and Port of the engine's A2A server.
+	Host string
+	Port int64
+	// Path is the agent's A2A path on that server, without a trailing
+	// slash. The gateway's route is a prefix on it: the agent's path and
+	// what the engine serves below it, never anything above it (ADR 0009:
+	// the engine's API is never exposed). Each implementation records what
+	// its engine serves below that path.
+	Path string
+}
+
+// Agents provisions and reports on the engine's agents.
+type Agents interface {
+	// EnsureAgent creates or updates the agent and its tool servers, and
+	// removes the tool servers the agent no longer has.
+	EnsureAgent(ctx context.Context, a Agent) error
+	// RenderedHash returns the hash of the rendering the engine holds, empty
+	// when there is none: a different hash means EnsureAgent would restart
+	// the agent.
+	RenderedHash(ctx context.Context, namespace, name string) (string, error)
+	// Hash returns the hash EnsureAgent records for a rendering.
+	Hash(a Agent) string
+	// AgentReadiness reports whether the engine runs the agent.
+	AgentReadiness(ctx context.Context, namespace, name string) (Readiness, error)
+	// DeleteAgent removes every object of the agent; it is idempotent.
+	DeleteAgent(ctx context.Context, namespace, name string) error
+	// Endpoint locates the agent's A2A server for the gateway's route.
+	Endpoint(namespace, name string) Endpoint
+	// AgentTypes lists the kinds EnsureAgent writes, for the controller to
+	// watch.
+	AgentTypes() []schema.GroupVersionKind
+}
+
+// Engine is everything the controllers need from the engine.
+type Engine interface {
+	Models
+	Agents
+}

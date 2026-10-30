@@ -23,7 +23,15 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/engine"
 )
 
-var modelConfigGVK = schema.GroupVersionKind{Group: "kagent.dev", Version: "v1alpha2", Kind: "ModelConfig"}
+// The kagent API group and version of 0.10.3.
+const (
+	kagentGroup   = "kagent.dev"
+	kagentVersion = "v1alpha2"
+	// conditionAccepted is set by kagent once it translated an object.
+	conditionAccepted = "Accepted"
+)
+
+var modelConfigGVK = schema.GroupVersionKind{Group: kagentGroup, Version: kagentVersion, Kind: "ModelConfig"}
 
 // RBAC the engine's objects need, in the engine namespace only. The kagent
 // group is named here and nowhere else outside this package (ADR 0007).
@@ -77,7 +85,7 @@ func (m *Models) ModelReadiness(ctx context.Context, namespace, name string) (en
 	conditions, _, _ := unstructured.NestedSlice(obj.Object, "status", "conditions")
 	for _, c := range conditions {
 		cond, ok := c.(map[string]any)
-		if !ok || cond["type"] != "Accepted" {
+		if !ok || cond["type"] != conditionAccepted {
 			continue
 		}
 		reason, _ := cond["reason"].(string)
