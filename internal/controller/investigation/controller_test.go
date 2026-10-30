@@ -92,8 +92,8 @@ func create(t *testing.T, c client.Client, name string) {
 	inv := &v1alpha1.TakeCareInvestigation{
 		Name: name, Namespace: ns,
 		Spec: v1alpha1.TakeCareInvestigationSpec{
-			RoleRef: v1alpha1.RoleRef{Kind: "TakeCareDoc", Name: "doc"},
-			Alert:   v1alpha1.AlertRecord{Name: "HighErrorRate", Namespace: "demo-apps"},
+			RoleRef: v1alpha1.RoleRef{Kind: "TakeCareDoc", Name: docName},
+			Alert:   v1alpha1.AlertRecord{Name: alertName, Namespace: "demo-apps"},
 			Level:   v1alpha1.LevelService,
 		},
 	}

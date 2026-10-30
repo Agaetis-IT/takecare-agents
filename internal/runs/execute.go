@@ -29,10 +29,30 @@ type Outcome struct {
 	// TaskID is the engine's task, recorded before the run was followed.
 	TaskID string
 	// TimedOut is set when the engine's share of the timeout passed; the
-	// task was then canceled, with Cancel saying what that achieved.
-	TimedOut bool
-	Cancel   engine.CancelResult
+	// task was then canceled, with Cancel saying what that achieved: one of
+	// the engine's three results, or CancelFailed with the error in
+	// CancelErr, so that a record keeps an enumerated value.
+	TimedOut  bool
+	Cancel    engine.CancelResult
+	CancelErr string
 }
+
+// CancelFailed is the cancellation result when the request itself failed.
+const CancelFailed engine.CancelResult = "error"
+
+// Clock is the time the executor reads; tests replace it.
+type Clock interface {
+	Now() time.Time
+	After(d time.Duration) <-chan time.Time
+}
+
+type wallClock struct{}
+
+func (wallClock) Now() time.Time                         { return time.Now() }
+func (wallClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
+
+// WallClock is the real clock.
+var WallClock Clock = wallClock{}
 
 // Label is the outcome's value in metrics.
 func (o Outcome) Label() string {
@@ -101,6 +121,15 @@ type Executor struct {
 	Metrics *Metrics
 	// Interval between two reads of a running task; DefaultInterval if 0.
 	Interval time.Duration
+	// Clock is WallClock when nil.
+	Clock Clock
+}
+
+func (e *Executor) clock() Clock {
+	if e.Clock == nil {
+		return WallClock
+	}
+	return e.Clock
 }
 
 // EngineDeadline is when the engine's share of a record's timeout ends.
@@ -109,17 +138,18 @@ func EngineDeadline(start time.Time, timeout time.Duration) time.Time {
 }
 
 // Execute starts the run, records its task ID, and follows it until it
-// ends or the engine's share of timeout passes. When the ID cannot be
-// recorded, the task is canceled rather than left running unknown.
-func (e *Executor) Execute(ctx context.Context, r engine.Run, timeout time.Duration, record Recorder) (Outcome, error) {
-	deadline := EngineDeadline(time.Now(), timeout)
+// ends or the deadline passes (EngineDeadline of the record's start and
+// timeout: a retry gets what remains, not a fresh timeout). When the ID
+// cannot be recorded, the task is canceled rather than left running
+// unknown.
+func (e *Executor) Execute(ctx context.Context, r engine.Run, deadline time.Time, record Recorder) (Outcome, error) {
 	taskID, err := e.Engine.Start(ctx, r)
 	if err != nil {
 		return Outcome{}, fmt.Errorf("start the run: %w", err)
 	}
 	if err := record(ctx, taskID); err != nil {
-		res := e.cancel(ctx, r, taskID)
-		return Outcome{TaskID: taskID, Cancel: res}, fmt.Errorf("record task %s (canceled: %s): %w", taskID, res, err)
+		res, errText := e.cancel(ctx, r, taskID)
+		return Outcome{TaskID: taskID, Cancel: res, CancelErr: errText}, fmt.Errorf("record task %s (cancellation: %s): %w", taskID, res, err)
 	}
 	return e.Follow(ctx, r, taskID, deadline)
 }
@@ -144,47 +174,49 @@ func (e *Executor) Follow(ctx context.Context, r engine.Run, taskID string, dead
 		case done:
 			return e.end(Outcome{Result: res, TaskID: taskID}), nil
 		}
-		wait := min(interval, time.Until(deadline))
+		wait := min(interval, deadline.Sub(e.clock().Now()))
 		if wait <= 0 {
 			return e.timedOut(ctx, r, taskID, lastErr), nil
 		}
 		select {
 		case <-ctx.Done():
 			return Outcome{TaskID: taskID}, fmt.Errorf("follow task %s: %w", taskID, ctx.Err())
-		case <-time.After(wait):
+		case <-e.clock().After(wait):
 		}
 	}
 }
 
 func (e *Executor) timedOut(ctx context.Context, r engine.Run, taskID string, lastErr error) Outcome {
-	res := e.cancel(ctx, r, taskID)
+	res, errText := e.cancel(ctx, r, taskID)
 	reason := "the engine's share of the timeout passed"
 	switch res {
 	case engine.CancelUnsupported:
 		reason += "; the engine cannot cancel the task, which runs on to its end and is discarded"
 	case engine.CancelFinished:
 		reason += "; the task had just ended"
+	case CancelFailed:
+		reason += "; the cancellation request failed: " + errText
 	}
 	if lastErr != nil {
 		reason += "; last read: " + lastErr.Error()
 	}
-	return e.end(Outcome{Outcome: engine.OutcomeFailed, Reason: reason, TaskID: taskID, TimedOut: true, Cancel: res})
+	return e.end(Outcome{Outcome: engine.OutcomeFailed, Reason: reason, TaskID: taskID, TimedOut: true, Cancel: res, CancelErr: errText})
 }
 
 // cancel sends the cancellation with its own short deadline, so that a
 // canceled caller context does not leave the task running unasked.
-func (e *Executor) cancel(ctx context.Context, r engine.Run, taskID string) engine.CancelResult {
+func (e *Executor) cancel(ctx context.Context, r engine.Run, taskID string) (engine.CancelResult, string) {
 	cctx, done := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer done()
 	res, err := e.Engine.Cancel(cctx, r, taskID)
-	label := string(res)
+	errText := ""
 	if err != nil {
-		label, res = "error", engine.CancelResult("error: "+strings.SplitN(err.Error(), "\n", 2)[0])
+		res, errText = CancelFailed, strings.SplitN(err.Error(), "\n", 2)[0]
 	}
 	if e.Metrics != nil {
-		e.Metrics.Cancels.WithLabelValues(e.Role, label).Inc()
+		e.Metrics.Cancels.WithLabelValues(e.Role, string(res)).Inc()
 	}
-	return res
+	return res, errText
 }
 
 func (e *Executor) end(o Outcome) Outcome {

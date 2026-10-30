@@ -242,7 +242,7 @@ func (h *Handler) handle(ctx context.Context, a Alert, seen map[string]*v1alpha1
 			LabelIncident:                key,
 		},
 		Spec: v1alpha1.TakeCareInvestigationSpec{
-			RoleRef: v1alpha1.RoleRef{Kind: "TakeCareDoc", Name: doc.Name},
+			RoleRef: v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareDoc, Name: doc.Name},
 			Alert: v1alpha1.AlertRecord{
 				Name: a.Labels[labelAlertName], Fingerprint: a.Fingerprint,
 				Service: a.Labels[labelService], Namespace: ns, Workload: workload,
