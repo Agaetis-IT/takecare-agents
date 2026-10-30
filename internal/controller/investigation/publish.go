@@ -15,6 +15,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -24,7 +26,13 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
 	"github.com/agaetis-it/takecare-agents/internal/reportslack"
 	"github.com/agaetis-it/takecare-agents/internal/telemetry/semconv"
+	"github.com/agaetis-it/takecare-agents/internal/usage"
 )
+
+// ConditionUsageAttributed says whether the record's usage could be
+// measured (spec 02 §5): False with the reason when it could not, and the
+// usage is then absent, never a wrong number.
+const ConditionUsageAttributed = "UsageAttributed"
 
 // Publication's retries (spec 02 §4): three after the first attempt.
 const (
@@ -37,9 +45,17 @@ type Poster interface {
 	Call(ctx context.Context, ep mcp.Endpoint, tool string, args map[string]any) (mcp.Result, error)
 }
 
-// Accounting is the part of the worker that publishes.
+// UsageSource gives the usage source of the platform, nil when it declares
+// no Prometheus.
+type UsageSource func(p *v1alpha1.TakeCarePlatform) usage.Source
+
+// Accounting is the part of the worker that measures and publishes.
 type Accounting struct {
-	Poster Poster
+	Usage UsageSource
+	// ScrapeWait is how long after a run's end the gateway's last calls are
+	// in Prometheus (one scrape interval, spec 02 §5).
+	ScrapeWait time.Duration
+	Poster     Poster
 	// Backoff is the first wait between two publication attempts; it
 	// doubles. publishBackoff when zero.
 	Backoff time.Duration
@@ -66,6 +82,101 @@ func NewDurationMetric(reg prometheus.Registerer) (*prometheus.HistogramVec, err
 	return h, nil
 }
 
+// meter holds a run's start snapshot.
+type meter struct {
+	source usage.Source
+	start  usage.Counters
+	// reason is set when the usage cannot be measured.
+	reason string
+}
+
+// startMeter reads the counters when the run starts. A resumed run lost its
+// start snapshot with the previous leader.
+func (w *Worker) startMeter(ctx context.Context, resumed bool) *meter {
+	m := &meter{}
+	p, err := w.platform(ctx)
+	switch {
+	case resumed:
+		m.reason = "the operator restarted during the run: its start was not measured"
+		return m
+	case w.Accounting.Usage == nil:
+		m.reason = "the operator measures no usage"
+		return m
+	case err != nil || p == nil:
+		m.reason = "the platform is not readable"
+		return m
+	}
+	if m.source = w.Accounting.Usage(p); m.source == nil {
+		m.reason = "the platform declares no Prometheus (observability.metrics.prometheusURL)"
+		return m
+	}
+	if m.start, err = m.source.Snapshot(ctx); err != nil {
+		m.reason = err.Error()
+	}
+	return m
+}
+
+// account measures the run once it ended: one scrape interval later, the
+// gateway's counters are read again and the difference priced. When the
+// start could not be read, or Prometheus cannot be reached, it does not
+// wait: the record says why there is no usage.
+func (w *Worker) account(ctx context.Context, inv *v1alpha1.TakeCareInvestigation, d *v1alpha1.TakeCareDoc, m *meter) *v1alpha1.TakeCareInvestigation {
+	reason := m.reason
+	var rec *v1alpha1.Usage
+	if reason == "" {
+		select {
+		case <-ctx.Done():
+			return inv
+		case <-w.clock().After(w.Accounting.ScrapeWait):
+		}
+		end, err := m.source.Snapshot(ctx)
+		if err == nil {
+			var delta usage.Counters
+			if delta, err = usage.Delta(m.start, end); err == nil {
+				var u v1alpha1.Usage
+				u, err = usage.Record(delta, w.pricing(ctx, d), maxConcurrent(d) > 1)
+				rec = &u
+			}
+		}
+		if err != nil {
+			reason, rec = err.Error(), nil
+		}
+	}
+	updated, err := w.patch(ctx, client.ObjectKeyFromObject(inv), func(i *v1alpha1.TakeCareInvestigation) {
+		i.Status.Usage = rec
+		c := metav1.Condition{Type: ConditionUsageAttributed, Status: metav1.ConditionTrue, Reason: "Measured", Message: "usage from the gateway's metrics", ObservedGeneration: i.Generation}
+		if rec == nil {
+			c.Status, c.Reason, c.Message = metav1.ConditionFalse, "NotMeasured", reason
+		} else if rec.Approximate {
+			c.Message += "; approximate: the Doc may run investigations at the same time"
+		}
+		meta.SetStatusCondition(&i.Status.Conditions, c)
+	})
+	if err != nil {
+		log.FromContext(ctx).Error(err, "record the usage", "investigation", inv.Name)
+		return inv
+	}
+	return &updated
+}
+
+// pricing is the Doc's model's pricing, nil when it has none.
+func (w *Worker) pricing(ctx context.Context, d *v1alpha1.TakeCareDoc) *v1alpha1.Pricing {
+	p, err := w.platform(ctx)
+	if err != nil || p == nil || len(p.Spec.Models) == 0 {
+		return nil
+	}
+	name := p.Spec.Models[0].Name
+	if d.Spec.Model != nil {
+		name = d.Spec.Model.Name
+	}
+	for _, m := range p.Spec.Models {
+		if m.Name == name {
+			return m.Pricing
+		}
+	}
+	return nil
+}
+
 // publish posts a completed investigation's diagnosis through the Doc's
 // report connector, to the destination its level gives (spec 02 §4); the
 // model never decides where or whether. Three retries with backoff; the
@@ -86,8 +197,16 @@ func (w *Worker) publish(ctx context.Context, inv *v1alpha1.TakeCareInvestigatio
 		}
 		return
 	}
-	// Usage is measured from PR 4c-2b (spec 02 §5).
-	pub := doc.NewPublication(inv, w.clock().Now(), "not measured yet", sent)
+	reason := ""
+	switch c := meta.FindStatusCondition(inv.Status.Conditions, ConditionUsageAttributed); {
+	case c == nil:
+		// A record published by a new leader whose predecessor stopped
+		// before the usage was read.
+		reason = "the operator restarted before the usage was read"
+	case c.Status == metav1.ConditionFalse:
+		reason = c.Message
+	}
+	pub := doc.NewPublication(inv, w.clock().Now(), reason, sent)
 	result := v1alpha1.Publication{Connector: d.Spec.Connectors.Report, Destination: destination}
 	err := w.post(ctx, d, destination, pub)
 	if err != nil && ctx.Err() != nil {
