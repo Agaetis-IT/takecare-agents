@@ -23,6 +23,9 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/engine"
 )
 
+// Kind is the engine's name in the records it runs (EngineRun.Kind).
+const Kind = "kagent"
+
 // The kagent API group and version of 0.10.3.
 const (
 	kagentGroup   = "kagent.dev"

@@ -140,6 +140,38 @@ mcp_allowed() {
   mcp_call "$@" | grep -q '"result"'
 }
 
+# operator_metrics prints the operator's metrics. They are served over HTTPS
+# behind authentication and authorization: a ServiceAccount allowed to get
+# /metrics only, and a port-forward (the demo runs one replica, the leader).
+operator_metrics() {
+  kubectl apply -f - >/dev/null <<EOF
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: smoke-metrics, namespace: ${NS} }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: { name: smoke-metrics-reader }
+rules: [{ nonResourceURLs: [/metrics], verbs: [get] }]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: { name: smoke-metrics-reader }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: smoke-metrics-reader }
+subjects: [{ kind: ServiceAccount, name: smoke-metrics, namespace: ${NS} }]
+EOF
+  local token pf out=""
+  token="$(kubectl -n "$NS" create token smoke-metrics --duration=10m)"
+  kubectl -n "$NS" port-forward deploy/takecare-operator 18443:8443 >/dev/null 2>&1 &
+  pf=$!
+  for _ in $(seq 20); do
+    out="$(curl -sk -m 5 -H "Authorization: Bearer ${token}" https://127.0.0.1:18443/metrics)" && [[ -n "$out" ]] && break
+    sleep 1
+  done
+  kill "$pf" 2>/dev/null || true
+  printf '%s\n' "$out"
+}
+
 # platform_ready waits for the platform's Ready condition, printing the
 # conditions when it does not come.
 platform_ready() {
@@ -256,8 +288,9 @@ EOF
     test "$(kubectl -n "$NS" exec smoke-alert -- curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer ${token}" -d "$payload" "$alerts_url")" = "202"
   # The webhook answers on every replica; Queued is set by the leader,
   # which after an upgrade takes the lease up to the old one's expiry.
-  check "one investigation for the incident, the second alert folded into it, Queued" \
-    bash -c "for _ in \$(seq 30); do [[ \$(kubectl -n ${NS} get takecareinvestigations -l takecare.agaetis.fr/fingerprint=5m0ke00000000001 -o jsonpath='{.items[0].status.phase}' 2>/dev/null) == Queued ]] && break; sleep 2; done; n=\$(kubectl -n ${NS} get takecareinvestigations -l takecare.agaetis.fr/fingerprint=5m0ke00000000001 -o name | wc -l | tr -d ' '); m=\$(kubectl -n ${NS} get takecareinvestigations -l takecare.agaetis.fr/fingerprint=5m0ke00000000002 -o name | wc -l | tr -d ' '); a=\$(kubectl -n ${NS} get takecareinvestigations -l takecare.agaetis.fr/fingerprint=5m0ke00000000001 -o jsonpath='{.items[0].status.alerts[0].name} {.items[0].status.phase}'); [[ \$n == 1 && \$m == 0 && \$a == 'PodNotReady Queued' ]]"
+  # The record is Queued, or already further once the Doc's agent answers.
+  check "one investigation for the incident, the second alert folded into it, admitted" \
+    bash -c "for _ in \$(seq 30); do [[ -n \$(kubectl -n ${NS} get takecareinvestigations -l takecare.agaetis.fr/fingerprint=5m0ke00000000001 -o jsonpath='{.items[0].status.phase}' 2>/dev/null) ]] && break; sleep 2; done; n=\$(kubectl -n ${NS} get takecareinvestigations -l takecare.agaetis.fr/fingerprint=5m0ke00000000001 -o name | wc -l | tr -d ' '); m=\$(kubectl -n ${NS} get takecareinvestigations -l takecare.agaetis.fr/fingerprint=5m0ke00000000002 -o name | wc -l | tr -d ' '); a=\$(kubectl -n ${NS} get takecareinvestigations -l takecare.agaetis.fr/fingerprint=5m0ke00000000001 -o jsonpath='{.items[0].status.alerts[0].name} {.items[0].status.phase}'); [[ \$n == 1 && \$m == 0 && \$a =~ ^PodNotReady\ (Queued|Running|Failed|TimedOut)\$ ]]"
   kubectl -n "$NS" delete pod smoke-alert --now >/dev/null
   kubectl -n "$NS" delete takecareinvestigations -l takecare.agaetis.fr/fingerprint=5m0ke00000000001 >/dev/null
 
@@ -284,6 +317,28 @@ EOF
     test "$("${code[@]}" "${gw}/api/a2a/kagent/${agent}x/.well-known/agent-card.json")" = "404"
   check "through the gateway, the engine's API is out of reach: /api/agents has no route (404)" \
     test "$("${code[@]}" "${gw}/api/agents")" = "404"
+  log "the Doc's runs (spec 02 §2): no model provider in the smoke, a run fails"
+  local reports_before run_payload
+  reports_before="$(kubectl -n "$NS" logs deploy/takecare-addon-report-log | grep -c 'logged for destination' || true)"
+  run_payload='{"version":"4","status":"firing","alerts":[{"status":"firing","labels":{"alertname":"HighErrorRate","namespace":"demo-apps","service":"billing-api"},"annotations":{"description":"smoke run"},"startsAt":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","fingerprint":"5m0ke00000000003"}]}'
+  kubectl -n "$NS" delete pod smoke-run --ignore-not-found >/dev/null
+  kubectl -n "$NS" run smoke-run --image="$SMOKE_CURL_IMAGE" --restart=Never --command -- sleep 300 >/dev/null
+  kubectl -n "$NS" wait pod/smoke-run --for=condition=Ready --timeout=120s >/dev/null
+  kubectl -n "$NS" exec smoke-run -- curl -s -o /dev/null -X POST -H "Authorization: Bearer ${token}" -d "$run_payload" "http://takecare-alerts.${NS}.svc:8080/v1/alerts"
+  kubectl -n "$NS" delete pod smoke-run --now >/dev/null
+  local run_sel="takecare.agaetis.fr/fingerprint=5m0ke00000000003"
+  check "a run of the real agent ends Failed with the engine's reason (no provider key in the smoke)" \
+    bash -c "for _ in \$(seq 60); do p=\$(kubectl -n ${NS} get takecareinvestigations -l ${run_sel} -o jsonpath='{.items[0].status.phase}'); [[ \$p == Failed || \$p == TimedOut || \$p == Completed ]] && break; sleep 3; done; [[ \$p == Failed && \$(kubectl -n ${NS} get takecareinvestigations -l ${run_sel} -o jsonpath='{.items[0].status.reason}') == EngineFailed:* ]]"
+  check "the run recorded its task ID and its trace ID" \
+    bash -c "[[ -n \$(kubectl -n ${NS} get takecareinvestigations -l ${run_sel} -o jsonpath='{.items[0].status.engine.taskID}') && \$(kubectl -n ${NS} get takecareinvestigations -l ${run_sel} -o jsonpath='{.items[0].status.traceID}') =~ ^[0-9a-f]{32}\$ ]]"
+  check "a failed run publishes nothing: the report server logged no new post" \
+    test "$(kubectl -n "$NS" logs deploy/takecare-addon-report-log | grep -c 'logged for destination' || true)" = "$reports_before"
+  local metrics
+  metrics="$(operator_metrics)"
+  check "takecare_runs_total counts the failed run, and no cancellation was requested" \
+    bash -c "grep -Eq '^takecare_runs_total\{outcome=\"failed\",role=\"doc\"\} [1-9]' <<<\"\$1\" && ! grep -q '^takecare_run_cancels_total' <<<\"\$1\"" _ "$metrics"
+  kubectl -n "$NS" delete takecareinvestigations -l "$run_sel" >/dev/null
+
   # AC 4: a tool the Doc may no longer call is refused by the gateway at
   # once, whatever the agent still lists. pods_log is reclassified act.
   kubectl -n "$NS" patch takecareconnector kubernetes --type=merge -p '{"spec":{"tools":[{"name":"pods_log","class":"act"}]}}' >/dev/null
@@ -408,10 +463,10 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=50 install ;;
-  upgrade) CHECKS_EXPECTED=50 upgrade ;;
+  install) CHECKS_EXPECTED=54 install ;;
+  upgrade) CHECKS_EXPECTED=54 upgrade ;;
   status) status ;;
   down) down ;;
-  all) up; CHECKS_EXPECTED=50 install; CHECKS_EXPECTED=50 upgrade ;;
+  all) up; CHECKS_EXPECTED=54 install; CHECKS_EXPECTED=54 upgrade ;;
   *) echo "usage: $0 [up|install|upgrade|status|down|all]"; exit 2 ;;
 esac

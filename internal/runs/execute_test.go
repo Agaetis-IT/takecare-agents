@@ -93,7 +93,7 @@ func TestExecute(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f := &fakeEngine{reads: tc.reads, cancel: tc.cancel}
 			e, m := executor(t, f)
-			out, err := e.Execute(context.Background(), engine.Run{}, 100*time.Millisecond, func(context.Context, string) error {
+			out, err := e.Execute(context.Background(), engine.Run{}, EngineDeadline(time.Now(), 100*time.Millisecond), func(context.Context, string) error {
 				f.log("record")
 				return nil
 			})
@@ -138,7 +138,7 @@ func TestEngineDeadline(t *testing.T) {
 func TestUnrecordedTaskIsCanceled(t *testing.T) {
 	f := &fakeEngine{cancel: engine.CancelUnsupported}
 	e, m := executor(t, f)
-	out, err := e.Execute(context.Background(), engine.Run{}, time.Second, func(context.Context, string) error {
+	out, err := e.Execute(context.Background(), engine.Run{}, EngineDeadline(time.Now(), time.Second), func(context.Context, string) error {
 		return errors.New("conflict writing the status")
 	})
 	if err == nil || !strings.Contains(err.Error(), "conflict writing the status") {

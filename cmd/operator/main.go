@@ -214,11 +214,30 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	if err != nil {
 		return nil, err
 	}
+	queue := runs.NewQueue(runs.DefaultCapacity)
 	if err := (&investigation.Reconciler{
 		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("takecare-operator"),
-		Queue: runs.NewQueue(runs.DefaultCapacity), Phases: phases,
+		Queue: queue, Phases: phases,
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up the investigation controller: %w", err)
+	}
+	// The Doc's runs, on the leader: A2A through the gateway, one shared
+	// client whose timeout bounds one call (a run is followed by polling).
+	a2aClient, err := httpclient.FromEnv(30 * time.Second).New()
+	if err != nil {
+		return nil, fmt.Errorf("A2A HTTP client: %w", err)
+	}
+	runMetrics, err := runs.NewMetrics(crmetrics.Registry)
+	if err != nil {
+		return nil, err
+	}
+	if err := mgr.Add(&investigation.Worker{
+		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("takecare-operator"), Queue: queue,
+		Executor:   &runs.Executor{Engine: &kagent0103.Runs{HTTP: a2aClient}, Role: "doc", Metrics: runMetrics},
+		Tracer:     traces.Tracer("github.com/agaetis-it/takecare-agents/internal/controller/investigation"),
+		EngineKind: kagent0103.Kind, EngineNamespace: cfg.engineNamespace, Phases: phases,
+	}); err != nil {
+		return nil, fmt.Errorf("add the investigation worker: %w", err)
 	}
 	// The Doc's rendering: its routes on the gateway, its agent in the
 	// engine, and its agent card probed through the gateway.

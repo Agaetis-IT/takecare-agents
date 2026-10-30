@@ -46,6 +46,16 @@ const (
 	AlertName        = "takecare.alert.name"
 	AlertFingerprint = "takecare.alert.fingerprint"
 	Scenario         = "takecare.scenario"
+
+	// RunOutcome is how the engine's run ended (completed, failed,
+	// failed_after_answer, lost, timed_out), on the root span.
+	RunOutcome = "takecare.run.outcome"
+	// RunAttempt counts the starts of a run: a lost task is retried once.
+	RunAttempt = "takecare.run.attempt"
+	// DegradedConnectors and DegradedReason say which sources a run went
+	// without (issue #10: the run degrades and says so, in the trace too).
+	DegradedConnectors = "takecare.degraded.connectors"
+	DegradedReason     = "takecare.degraded.reason"
 )
 
 // Span events of an investigation (spec 02).
@@ -53,7 +63,13 @@ const (
 	EventAlertAccepted          = "alert.accepted"
 	EventInvestigationStarted   = "investigation.started"
 	EventInvestigationCompleted = "investigation.completed"
-	EventDiagnosisPublished     = "diagnosis.published"
+	// EventInvestigationRetried: a lost task was started again.
+	EventInvestigationRetried = "investigation.retried"
+	// EventInvestigationResumed: the operator restarted during the run and
+	// follows the task again under the same trace; the first root span is
+	// lost with the process that held it.
+	EventInvestigationResumed = "investigation.resumed"
+	EventDiagnosisPublished   = "diagnosis.published"
 )
 
 // ServiceName is the operator's OpenTelemetry resource service.name.
