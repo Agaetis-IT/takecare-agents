@@ -36,6 +36,10 @@ operator:
   # -- Two replicas with leader election in production; the demo runs one and
   # the platform reports it as a production gap (spec 01).
   replicas: 2
+  # -- How long after an investigation ends its usage is read from
+  # Prometheus: one scrape interval of the gateway's metrics (spec 02 §5).
+  # The diagnosis is published once, with its usage, after this wait.
+  usageScrapeWait: 30s
   resources:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { memory: 512Mi }
