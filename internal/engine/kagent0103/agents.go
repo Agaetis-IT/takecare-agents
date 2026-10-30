@@ -96,6 +96,18 @@ func (*Agents) AgentTypes() []schema.GroupVersionKind {
 
 // Endpoint implements engine.Agents: kagent serves every agent's A2A on its
 // controller, at /api/a2a/<namespace>/<agent>.
+//
+// What the controller serves below that path, read in kagent v0.10.3 and
+// checked on a cluster: go/core/internal/httpserver/server.go routes the
+// prefix /api/a2a/{namespace}/{name} to the A2A mux, which picks the
+// agent's handler by namespace and name (a2a_handler_mux.go, ServeHTTP).
+// That handler (SetAgentHandler) serves the agent card when the path ends
+// with /.well-known/agent-card.json and passes every other path to the
+// agent's A2A JSON-RPC endpoint, whatever the rest of the path: an
+// invented sub-path is the agent's own endpoint (a GET answers JSON-RPC
+// -32600, invalid request). Nothing else lives below an agent's path on
+// 0.10.3; the smoke pins that answer so that a version that serves more
+// there is noticed.
 func (*Agents) Endpoint(namespace, name string) engine.Endpoint {
 	return engine.Endpoint{
 		Host: fmt.Sprintf("%s.%s.svc.cluster.local", controllerService, namespace),

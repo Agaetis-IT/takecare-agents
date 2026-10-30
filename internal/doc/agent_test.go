@@ -38,7 +38,7 @@ func TestInstructions(t *testing.T) {
 }
 
 // docs/licensing.md §4: the attribution lives at the top of the file
-// itself, with the source, its license, the version and a statement that
+// itself, with the source, its license, the version and its commit, and a statement that
 // the text was modified; it cannot disappear silently.
 func TestInstructionsKeepTheirAttribution(t *testing.T) {
 	header, _, found := strings.Cut(instructionsSource, "*/ -}}")
@@ -46,7 +46,7 @@ func TestInstructionsKeepTheirAttribution(t *testing.T) {
 		t.Fatal("instructions.md has lost its header comment")
 	}
 	golden.Assert(t, "instructions-attribution.txt", []byte(header))
-	for _, must := range []string{"HolmesGPT", "https://github.com/robusta-dev/holmesgpt", "Apache License 2.0", "0.45.0", "modified by Agaetis"} {
+	for _, must := range []string{"HolmesGPT", "https://github.com/robusta-dev/holmesgpt", "Apache License 2.0", "0.45.0", "21ca948b8b4935a2ed0aa98dae05449d10953005", "modified by Agaetis"} {
 		if !strings.Contains(header, must) {
 			t.Errorf("the attribution misses %q", must)
 		}

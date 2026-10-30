@@ -10,7 +10,9 @@ and accuracy is checked with the bench before merging (spec 04).
 Attribution (Apache-2.0 section 4, docs/licensing.md §4): the section
 "How to investigate" is adapted from the prompts of HolmesGPT
 (https://github.com/robusta-dev/holmesgpt), file generic_ask.jinja2, as
-shipped in HolmesGPT 0.45.0, the version run by spike 001. Licensed under
+shipped in HolmesGPT 0.45.0 (tag 0.45.0, commit
+21ca948b8b4935a2ed0aa98dae05449d10953005), the version run by spike 001.
+Licensed under
 the Apache License 2.0. The text was modified by Agaetis: selected,
 reworded and shortened for a read-only agent; the other sections of this
 file are Agaetis' own.
