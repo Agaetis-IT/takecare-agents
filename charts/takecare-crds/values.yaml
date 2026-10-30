@@ -9,12 +9,12 @@
 # with them. Do not uninstall it on a cluster that still runs TakeCare.
 
 global:
-  # Registry prefix for every image this chart pulls, for customer-internal
+  # -- Registry prefix for every image this chart pulls, for customer-internal
   # registries (ADR 0002). Empty: the registry of each image below.
   imageRegistry: ""
   imagePullSecrets: []
 
-# The operator image runs the Gateway API hook job (gatewayAPI below).
+# -- The operator image runs the Gateway API hook job (gatewayAPI below).
 image:
   registry: ghcr.io/agaetis-it
   repository: takecare-operator
@@ -22,7 +22,7 @@ image:
   tag: ""
   pullPolicy: IfNotPresent
 
-# Upstream Gateway API CRDs, standard channel, applied server-side by a hook
+# -- Upstream Gateway API CRDs, standard channel, applied server-side by a hook
 # job (pre-install, pre-upgrade) from the copy embedded in the operator
 # binary: no Internet access needed. Many clusters already have these CRDs
 # (Istio, Cilium, Envoy Gateway), so the job compares bundle versions:
@@ -35,7 +35,7 @@ image:
 #   never  : do nothing (the CRDs are managed outside TakeCare)
 gatewayAPI:
   install: auto
-  # Rights of the hook's ServiceAccount: create on CRDs cannot be narrowed by
+  # -- Rights of the hook's ServiceAccount: create on CRDs cannot be narrowed by
   # name, get and patch are limited to the Gateway API CRDs.
   job:
     backoffLimit: 2
@@ -44,11 +44,11 @@ gatewayAPI:
       requests: { cpu: 50m, memory: 64Mi }
       limits: { memory: 128Mi }
 
-# agentgateway CRDs (agentgateway.dev), from the upstream chart.
+# -- agentgateway CRDs (agentgateway.dev), from the upstream chart.
 agentgateway:
   enabled: true
 
-# kagent CRDs (kagent.dev), from the upstream chart. kmcp is not used by
+# -- kagent CRDs (kagent.dev), from the upstream chart. kmcp is not used by
 # TakeCare (every MCP server is a connector behind the gateway, ADR 0008).
 kagent:
   enabled: true
@@ -58,7 +58,7 @@ kagent-crds:
   substrate:
     enabled: false
 
-# Demo profile only: the ACK DBProxy CRD, a piece of scenery the Doc reads
+# -- Demo profile only: the ACK DBProxy CRD, a piece of scenery the Doc reads
 # (spec 03). No ACK controller is installed.
 demo:
   enabled: false

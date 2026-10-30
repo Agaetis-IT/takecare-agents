@@ -93,8 +93,18 @@ chart-deps: helm ## Download the charts' dependencies (Chart.lock is committed).
 	$(HELM_RUN) dependency build charts/takecare-crds
 	$(HELM_RUN) dependency build charts/takecare
 
+.PHONY: chart-docs
+chart-docs: ## Generate the charts' README.md from README.md.gotmpl and the values' comments (helm-docs).
+	$(DOCKER_RUN) $(HELM_DOCS_IMAGE) --chart-search-root charts --document-dependency-values=false \
+		--template-files README.md.gotmpl --skip-version-footer
+
+.PHONY: chart-docs-check
+chart-docs-check: chart-docs ## Fail if a chart's README.md drifted from its values.
+	@if [ -n "$$(git status --porcelain charts/*/README.md)" ]; then \
+		git --no-pager diff charts/*/README.md; echo "run make chart-docs and commit the README"; exit 1; fi
+
 .PHONY: chart-lint
-chart-lint: chart-check chart-deps ## helm lint, both charts, both profiles.
+chart-lint: chart-check chart-docs-check chart-deps ## Drift checks, then helm lint, both charts, both profiles.
 	$(HELM_RUN) lint charts/takecare-crds
 	$(HELM_RUN) lint charts/takecare-crds --set demo.enabled=true
 	$(HELM_RUN) lint charts/takecare -f charts/takecare/values-prod.yaml

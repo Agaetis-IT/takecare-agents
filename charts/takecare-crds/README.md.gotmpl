@@ -1,0 +1,52 @@
+# takecare-crds
+
+Chart version {{ template "chart.version" . }}, application version {{ template "chart.appVersion" . }}.
+
+The CRDs of TakeCare Agents and of the third-party building blocks it configures. Install and upgrade it **before** the [`takecare`](../takecare/README.md) chart.
+
+## Read this first
+
+- **Never uninstall this chart while TakeCare runs.** TakeCare's own CRDs carry `helm.sh/resource-policy: keep` and survive an uninstall. The agentgateway and kagent CRDs come from their upstream charts, which do not set that policy: uninstalling this chart deletes them, and with them **every** agentgateway and kagent resource in the cluster (routes, policies, agents, model configurations).
+- **Install it before `takecare`, upgrade it before `takecare`.** Helm applies a chart's `crds/` directory only at first install; this chart renders every CRD as a template so that `helm upgrade` updates them.
+- **A hook job installs the Gateway API CRDs** (below). Read what `gatewayAPI.install` does before installing on a cluster that already runs a Gateway API implementation (Istio, Cilium, Envoy Gateway…).
+
+## What it installs
+
+| CRDs | Source | Condition |
+|---|---|---|
+| `takecare.agaetis.fr`: `TakeCarePlatform`, `TakeCareConnector`, `TakeCareDoc`, `TakeCareInvestigation`, `TakeCareDemo` | this repository | always |
+| `agentgateway.dev` | the `agentgateway-crds` chart | `agentgateway.enabled` |
+| `kagent.dev` | the `kagent-crds` chart | `kagent.enabled` |
+| Gateway API, standard channel | the hook job, from the copy embedded in the operator image | `gatewayAPI.install` is not `never` |
+| `dbproxies.rds.services.k8s.aws` (ACK, scenery only, no controller) | vendored | `demo.enabled` |
+
+## The Gateway API hook job
+
+On `pre-install` and `pre-upgrade`, a job running the operator image applies the Gateway API CRDs embedded in the binary, server-side: no Internet access is needed at install time. It compares the bundle version of the CRDs already on the cluster first:
+
+| `gatewayAPI.install` | Behaviour |
+|---|---|
+| `auto` (default) | installs the missing CRDs, keeps the ones at the bundled version or newer, **fails** when some are older or of unknown origin, with a message naming them |
+| `always` | applies the bundle and takes ownership of the CRDs, whatever is there. On CRDs from the **experimental** channel this installs the **standard** channel over them and removes the fields the experimental channel adds, which a gateway implementation on the cluster may rely on |
+| `never` | does nothing: the Gateway API CRDs are managed outside TakeCare |
+
+The job's ServiceAccount, ClusterRole and ClusterRoleBinding exist only while it runs (`hook-delete-policy: before-hook-creation,hook-succeeded`). Its rights: `create` on CustomResourceDefinitions (Kubernetes cannot narrow `create` by name), `get` and `patch` on the Gateway API CRDs by name only.
+
+## Prerequisites
+
+- Kubernetes {{ template "chart.kubeVersion" . }}.
+- **Helm 4** (the supported line). The chart is `apiVersion: v2` with nothing Helm 4-only, so Helm 3 installs it until its end of security fixes on 2027-02-10, unsupported.
+- Rights to create CustomResourceDefinitions (cluster-admin, or an equivalent role) for the person or pipeline that installs it.
+
+## Install and upgrade
+
+```bash
+helm install takecare-crds oci://ghcr.io/agaetis-it/charts/takecare-crds -n takecare-system --create-namespace
+helm upgrade takecare-crds oci://ghcr.io/agaetis-it/charts/takecare-crds -n takecare-system
+```
+
+Then the [`takecare`](../takecare/README.md) chart.
+
+{{ template "chart.valuesSection" . }}
+
+Decisions behind this chart: [ADR 0002](../../docs/adr/0002-dependencies-installed-by-the-chart.md).

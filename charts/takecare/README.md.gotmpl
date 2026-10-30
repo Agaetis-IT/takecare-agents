@@ -1,0 +1,66 @@
+# takecare
+
+Chart version {{ template "chart.version" . }}, application version {{ template "chart.appVersion" . }}.
+
+TakeCare Agents: the operator, the `TakeCarePlatform` and the third-party building blocks it configures (agentgateway, kagent), the MCP add-ons, and for the demo Prometheus, an OpenTelemetry Collector and Jaeger. The CRDs come from the [`takecare-crds`](../takecare-crds/README.md) chart, installed first.
+
+## Read this first
+
+- **Namespace `takecare-system` only.** The chart refuses any other release namespace: the kagent values and the gateway URL they carry name it.
+- **Install [`takecare-crds`](../takecare-crds/README.md) first, upgrade it first, and never uninstall it while TakeCare runs** (it would delete the agentgateway and kagent CRDs and every resource of theirs).
+- **Production needs an external PostgreSQL for kagent.** kagent's bundled PostgreSQL is documented upstream as dev and evaluation only: `values-prod.yaml` disables it and refuses to render without `kagent.database.postgres.url`.
+- `values-prod.yaml` refuses to render until every value marked `# REQUIRED` is set, and names the first one missing.
+
+## Prerequisites on your side
+
+| What | Why | Where it goes |
+|---|---|---|
+| An OpenAI-compatible model provider and its key | every model call goes through the gateway, which alone holds the key (ADR 0004) | `platform.models`; the key in a Secret in `takecare-system` (`apiKeySecretRef`) |
+| A Prometheus that scrapes the gateway's proxy pods with the labels `namespace` and `gateway_networking_k8s_io_gateway_name` | usage and cost per investigation | `platform.observability.metrics.prometheusURL`, `networkPolicies.metricsScrapers`; `agentgateway.monitoring.enabled` renders a PodMonitor for Prometheus Operator |
+| An OTLP backend for traces (recommended) | one trace per investigation (ADR 0006) | `platform.observability.otlp.endpoint`, `kagent.otel.tracing` |
+| A PostgreSQL database for kagent | the engine's sessions | `kagent.database.postgres.url` or `urlFile` |
+| A Slack bot token with `chat:write`, and the channel IDs | publishing diagnoses | a Secret named by `addons.reportSlack.tokenSecret`, `addons.reportSlack.destinations` |
+| A CNI that enforces NetworkPolicies | the security requirements below | — |
+
+Create the Secrets in `takecare-system` before installing. The platform reports what is missing for a real production in its `ProductionReady` condition (`kubectl get tcplatform main -o yaml`).
+
+## Install, upgrade, uninstall
+
+```bash
+cp values-prod.yaml my-values.yaml   # fill every value marked REQUIRED
+helm install takecare-crds oci://ghcr.io/agaetis-it/charts/takecare-crds -n takecare-system --create-namespace
+helm install takecare      oci://ghcr.io/agaetis-it/charts/takecare      -n takecare-system -f my-values.yaml
+```
+
+Upgrade in the same order (`takecare-crds`, then `takecare`). `helm uninstall takecare` leaves the CRDs, the alert token Secret and every TakeCare resource in place; see `takecare-crds` before uninstalling that one. The install notes print the Alertmanager receiver to add.
+
+## Profiles
+
+| File | Use |
+|---|---|
+| `values-prod.yaml` | the template to copy: TakeCare and its building blocks, everything else is yours; every value to set is marked `# REQUIRED` |
+| `values-demo.yaml` | complete: adds Prometheus with the demo alerting rules, Alertmanager, an OpenTelemetry Collector, Jaeger, the demo connectors and the log report adapter; used by `make demo-up` |
+
+## Security requirements
+
+These are requirements, not recommendations ([ADR 0007](../../docs/adr/0007-agent-engine-kagent.md), installation requirements). An operator should be able to answer a security review with this section.
+
+1. **`kagent.rbac.namespaces: [kagent]` — keep it.** It replaces the kagent controller's cluster-wide rights by Roles in the engine's namespace only. Without it the controller's ServiceAccount reads every Secret and writes core, apps and batch resources cluster-wide, `pods/exec` and token minting included: a ceiling equivalent to cluster-admin. Never add the release namespace (`takecare-system`, where the model provider's key lives).
+2. **NetworkPolicies on (`networkPolicies.enabled`), and a CNI that enforces them.** The kagent controller is reachable from the gateway and its own agent pods only; the MCP servers from the gateway and the operator only; the report server from the operator only; the gateway from the operator, the engine namespace and the declared metrics scrapers only. The platform checks that the policies exist, **not** that the CNI enforces them.
+3. **The kagent controller authorizes nothing.** Its API has no authorization in any mode, and `controller.auth.mode` stays `unsecure` at milestone 1: the `trusted-proxy` mode verifies no token signature, so it would add authentication in name only. What compensates is (1) and (2): who can reach the controller, and the ceiling of its rights. Nothing restores authorization inside kagent.
+4. **Read-only connectors.** The add-ons' ServiceAccounts get `get`, `list`, `watch` in the declared namespaces only, never Secrets, `pods/exec`, `pods/attach`, `pods/portforward`, a write verb or a wildcard; ConfigMaps only when listed in `extraResources`. The operator re-checks this at run time and reports a drift.
+5. **Content capture off** (`platform.observability.captureContent: false`): prompts, tool arguments and answers stay out of traces (ADR 0006).
+
+## Private registry, proxy, internal CA
+
+| Need | Values |
+|---|---|
+| Images from a customer-internal registry | `global.imageRegistry`, `global.imagePullSecrets`; the subcharts take their own registry values (`agentgateway.image.registry`, `kagent.registry`) |
+| A corporate egress proxy | `global.egressProxy` (`httpsProxy`, `noProxy` with the cluster's names and ranges); `addons.reportSlack.egress.proxy` to narrow the report server's egress to the proxy pods |
+| An internal certificate authority | `global.caBundle` (a ConfigMap or Secret holding a PEM bundle) |
+
+Mirroring every image and installing without Internet access is tracked in issue #1.
+
+{{ template "chart.valuesSection" . }}
+
+Specs: [platform](../../docs/specs/01-platform.md), [connectors](../../docs/specs/05-connectors.md), [the Doc](../../docs/specs/02-doc.md). Decisions: [ADR 0002](../../docs/adr/0002-dependencies-installed-by-the-chart.md), [ADR 0004](../../docs/adr/0004-llm-through-the-gateway.md), [ADR 0007](../../docs/adr/0007-agent-engine-kagent.md), [ADR 0008](../../docs/adr/0008-everything-is-an-mcp-connector.md).
