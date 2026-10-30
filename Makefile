@@ -129,9 +129,14 @@ chart-template: chart-deps kubeconform ## Render both profiles and validate them
 		--set 'addons.reportSlack.destinations[0].name=on-call' --set 'addons.reportSlack.destinations[0].target=C0123456789' \
 		> "$(CHART_OUT)/takecare-prod.yaml"
 	$(HELM_RUN) template takecare charts/takecare -n takecare-system -f charts/takecare/values-demo.yaml > "$(CHART_OUT)/takecare-demo.yaml"
-	# CRD-defined kinds (TakeCare, Gateway API, agentgateway, kagent) have no
-	# schema here: their rendered instances are checked by test/chart against
-	# the CRDs on an API server.
+	# The branch rendered on a cluster that runs Prometheus Operator: the
+	# AlertmanagerConfig (spec 02 §1).
+	$(HELM_RUN) template takecare charts/takecare -n takecare-system -f charts/takecare/values-demo.yaml \
+		--api-versions monitoring.coreos.com/v1alpha1/AlertmanagerConfig > "$(CHART_OUT)/takecare-demo-prometheus-operator.yaml"
+	# CRD-defined kinds (TakeCare, Gateway API, agentgateway, kagent,
+	# Prometheus Operator's AlertmanagerConfig) have no schema here and are
+	# skipped knowingly: their rendered instances are checked by test/chart
+	# against the CRDs on an API server.
 	"$(KUBECONFORM)" -strict -summary -ignore-missing-schemas \
 		-kubernetes-version $(ENVTEST_K8S_VERSION) "$(CHART_OUT)"/*.yaml
 
