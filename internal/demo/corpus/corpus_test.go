@@ -60,7 +60,7 @@ func TestDates(t *testing.T) {
 	c := load(t, ScenarioProxyTimeout)
 	for _, tc := range []struct{ source, id, want string }{
 		{"deployments", "CI-SEED-INFRA", "2026-10-29T14:48:00Z"}, // @TS732@
-		{"vendor", "AWS-2026-0828-03", "2026-10-24T03:00:00Z"},   // @DAY6@
+		{"vendor", "AWS-SEED-RDS", "2026-10-24T03:00:00Z"},       // @DAY6@
 		{"incidents", "INC-2024-0312", "2024-03-12"},
 	} {
 		if got := find(c, tc.source, tc.id)["date"]; got != tc.want {
@@ -95,7 +95,7 @@ func TestCheckNamesWhatBreaks(t *testing.T) {
 		{"another scenario's live change", func(c Corpus) {
 			c["deployments"] = append(c["deployments"], Record{"id": "X", "service": "orders-api", "date": "2026-10-30T02:00:00Z"})
 		}, "orders-api: no change"},
-		{"two ongoing bulletins", func(c Corpus) { find(c, "vendor", "AWS-2026-0815-02")["status"] = "ongoing" }, "exactly one ongoing"},
+		{"two ongoing bulletins", func(c Corpus) { find(c, "vendor", "AWS-SEED-EC2")["status"] = "ongoing" }, "exactly one ongoing"},
 		{"a date in the future", func(c Corpus) { find(c, "support", "SUP-4471")["date"] = "2026-10-30T03:01:00Z" }, "after the incident"},
 		{"a duplicate", func(c Corpus) { c["runbooks"] = append(c["runbooks"], find(c, "runbooks", "RB-003")) }, "duplicate identifier RB-003"},
 	} {

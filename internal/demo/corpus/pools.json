@@ -1,0 +1,119 @@
+{
+  "services": [
+    {"name": "payments-api", "team": "payments"},
+    {"name": "checkout-api", "team": "checkout"},
+    {"name": "billing-api", "team": "billing"},
+    {"name": "orders-api", "team": "orders"},
+    {"name": "web-front", "team": "front"},
+    {"name": "notifications-worker", "team": "notifications"},
+    {"name": "catalog-api", "team": "catalog"},
+    {"name": "auth-service", "team": "identity"},
+    {"name": "search-api", "team": "search"},
+    {"name": "batch-export", "team": "data"}
+  ],
+  "deployments": {
+    "image": [
+      {"summary": "Application release, no configuration change.", "tags": "release version"},
+      {"summary": "Logging and tracing fix.", "tags": "fix logs traces"},
+      {"summary": "Read query optimisation.", "tags": "performance queries"},
+      {"summary": "Security dependency updates.", "tags": "dependencies security"},
+      {"summary": "Detailed health endpoint added.", "tags": "probe health endpoint"},
+      {"summary": "Pagination regression fixed.", "tags": "fix pagination"},
+      {"summary": "HTTP client moved to a new major version.", "tags": "http client dependency"},
+      {"summary": "Lower memory footprint at startup.", "tags": "memory startup"},
+      {"summary": "Business usage metrics added.", "tags": "metrics observability"},
+      {"summary": "Encoding fix on exports.", "tags": "fix encoding export"}
+    ],
+    "config": [
+      {"summary": "Rate limiting thresholds adjusted.", "tags": "configmap rate-limit thresholds"},
+      {"summary": "Connection pool size increased.", "tags": "configmap pool connections"},
+      {"summary": "Second-level cache enabled.", "tags": "configmap cache"},
+      {"summary": "Outgoing call timeouts revised.", "tags": "configmap timeout outgoing"},
+      {"summary": "Log level switched to INFO.", "tags": "configmap logs level"}
+    ],
+    "secret": [
+      {"summary": "Scheduled rotation of service credentials.", "tags": "secret rotation credentials"},
+      {"summary": "Client certificate renewed.", "tags": "secret certificate tls"}
+    ],
+    "helm": [
+      {"summary": "Resource requests and limits revised.", "tags": "helm resources limits"},
+      {"summary": "Two replicas during business hours.", "tags": "helm replicas autoscaling"}
+    ],
+    "fail": [
+      {"summary": "Automatic rollback after startup probe failures.", "tags": "rollback failed probe"},
+      {"summary": "Deployment interrupted: registry image quota exceeded.", "tags": "failed registry quota"},
+      {"summary": "Canceled by the author before the end of the rollout.", "tags": "canceled manual"}
+    ]
+  },
+  "support": {
+    "customers": ["Vasseur Group", "Maison Leonard", "Ferrand Accounting", "Bruneau Ltd", "Sorbier Catering", "Delmas Trading", "Rouviere Workshop", "Pelletier Group", "Chastel Books", "Anthelme Glassworks", "Nadaud Transport", "Grand Pre Farm"],
+    "channels": ["phone", "portal", "email", "chat"],
+    "topics": [
+      {"title": "Request to add a user", "summary": "The customer wants an extra access for a new colleague.", "tags": "access user request", "priority": "low"},
+      {"title": "Question about the monthly invoice", "summary": "The customer asks for the detail of a line of the last invoice.", "tags": "invoice question detail", "priority": "low"},
+      {"title": "Incomplete CSV export", "summary": "Some columns are missing from the export downloaded from the portal.", "tags": "export csv columns", "priority": "medium"},
+      {"title": "Notification not received", "summary": "The customer did not receive the email confirmation of the last operation.", "tags": "notification email missing", "priority": "medium"},
+      {"title": "Slow catalog display", "summary": "Loading the product list takes several seconds at peak time.", "tags": "catalog slow display", "priority": "medium"},
+      {"title": "Error at login", "summary": "Generic error message when signing in, solved by retrying.", "tags": "authentication error login", "priority": "medium"},
+      {"title": "Feature request: filter by date", "summary": "Functional wish, forwarded to product.", "tags": "feature filter request", "priority": "low"},
+      {"title": "Duplicate order", "summary": "An order shows twice in the customer history.", "tags": "order duplicate history", "priority": "medium"},
+      {"title": "Question about pricing terms", "summary": "Commercial request forwarded to the account manager.", "tags": "commercial pricing question", "priority": "low"},
+      {"title": "Attachment rejected", "summary": "The portal rejects a document above a certain size.", "tags": "portal attachment size", "priority": "low"}
+    ]
+  },
+  "vendor": [
+    {"service": "Amazon EC2", "region": "eu-west-1", "title": "Elevated instance launch errors", "summary": "An increased failure rate when launching new instances has been resolved.", "tags": "ec2 launch instances"},
+    {"service": "Amazon S3", "region": "eu-west-3", "title": "Elevated latency on GET requests", "summary": "Increased latency on read operations has been resolved.", "tags": "s3 latency read"},
+    {"service": "Amazon RDS", "region": "eu-central-1", "title": "Delayed automatic failovers", "summary": "Some Multi-AZ failovers took longer than expected.", "tags": "rds failover multi-az"},
+    {"service": "Elastic Load Balancing", "region": "eu-west-3", "title": "Unstable health checks", "summary": "Intermittent health checks have been fixed.", "tags": "elb health intermittent"},
+    {"service": "Amazon EKS", "region": "eu-west-1", "title": "Delayed control plane updates", "summary": "Control plane updates were delayed.", "tags": "eks control plane"},
+    {"service": "Amazon CloudWatch", "region": "eu-west-3", "title": "Metric ingestion delay", "summary": "A delay in custom metric ingestion has been resolved.", "tags": "cloudwatch metrics delay"},
+    {"service": "AWS Lambda", "region": "eu-west-1", "title": "Longer cold starts", "summary": "Cold start durations above normal were observed.", "tags": "lambda cold start"},
+    {"service": "Amazon EBS", "region": "eu-central-1", "title": "Slow volume creation", "summary": "Creation of new volumes was temporarily slowed down.", "tags": "ebs volume creation"},
+    {"service": "Amazon Route 53", "region": "global", "title": "Slow DNS propagation", "summary": "Some changes propagated more slowly than usual.", "tags": "route53 dns propagation"},
+    {"service": "Amazon SQS", "region": "eu-west-3", "title": "Message delivery latency", "summary": "Increased latency on message delivery has been resolved.", "tags": "sqs message latency"},
+    {"service": "AWS IAM", "region": "global", "title": "Delayed policy propagation", "summary": "Policy changes took longer to propagate.", "tags": "iam policy propagation"},
+    {"service": "Amazon ECR", "region": "eu-west-3", "title": "Slow image pulls", "summary": "Slow image pulls have been fixed.", "tags": "ecr image pull"}
+  ],
+  "incidents": [
+    {"title": "Disk saturation on compute nodes", "service": "batch-export", "severity": "major", "duration": "2h10", "symptoms": "Pods of the data namespace go Evicted in waves.", "root_cause": "Application logs were not rotated on the batch node group nodes.", "fix": "Rotation enabled and disk alert threshold lowered to 80 %.", "tags": "disk saturation eviction rotation logs"},
+    {"title": "Expired certificate on the ingress gateway", "service": "web-front", "severity": "critical", "duration": "48min", "symptoms": "All HTTPS requests fail with a verification error.", "root_cause": "Automatic renewal had silently failed three weeks earlier.", "fix": "Alert on certificate expiry at 21 days.", "tags": "certificate tls expiry renewal"},
+    {"title": "Restart loop after a version upgrade", "service": "catalog-api", "severity": "major", "duration": "1h05", "symptoms": "The container restarts in a loop right after the deployment.", "root_cause": "A mandatory environment variable had been renamed without updating the chart.", "fix": "Schema validation of the Helm values in continuous integration.", "tags": "crashloop environment variable helm"},
+    {"title": "Lost messages on the notifications queue", "service": "notifications-worker", "severity": "major", "duration": "3h45", "symptoms": "Some notifications are never delivered, with no error on the producer side.", "root_cause": "The queue retention was shorter than the consumer recovery delay.", "fix": "Retention raised to 7 days and alert on the oldest message age.", "tags": "queue message loss retention"},
+    {"title": "Subnet IP address exhaustion", "service": "checkout-api", "severity": "major", "duration": "2h30", "symptoms": "New pods stay in ContainerCreating.", "root_cause": "The subnet CIDR range no longer fitted the pod count after scaling up.", "fix": "CIDR extended and occupancy monitored.", "tags": "network cidr ip subnet pods"},
+    {"title": "Slow queries after a cache purge", "service": "search-api", "severity": "minor", "duration": "55min", "symptoms": "P95 doubles for about ten minutes after each redeployment.", "root_cause": "The cache was emptied at startup without warm-up.", "fix": "Warm-up added at startup.", "tags": "cache warm-up latency redeployment"},
+    {"title": "Double billing on replayed orders", "service": "billing-api", "severity": "critical", "duration": "5h20", "symptoms": "Some customers are charged twice for the same order.", "root_cause": "The automatic replay did not check the idempotency key.", "fix": "Idempotency key made mandatory in the API.", "tags": "idempotency replay double billing"},
+    {"title": "Identity provider outage", "service": "auth-service", "severity": "critical", "duration": "1h40", "symptoms": "No login possible, service accounts included.", "root_cause": "Outage of the external identity provider, no fallback configured.", "fix": "Short-lived token cache added.", "tags": "identity sso outage external"},
+    {"title": "Clock drift on a node", "service": "payments-api", "severity": "minor", "duration": "40min", "symptoms": "Request signatures rejected by a partner.", "root_cause": "The time synchronisation service was stopped on one node.", "fix": "NTP drift monitoring added.", "tags": "clock ntp signature drift"},
+    {"title": "Blocked on a schema migration", "service": "checkout-api", "severity": "major", "duration": "2h55", "symptoms": "The deployment stays blocked, the database rejects writes.", "root_cause": "A migration took an exclusive lock on a large table.", "fix": "Migrations split and run off-peak.", "tags": "migration lock database schema"},
+    {"title": "File descriptor leak", "service": "batch-export", "severity": "major", "duration": "4h15", "symptoms": "The service stops accepting connections after several hours.", "root_cause": "Temporary files were not closed on exceptions.", "fix": "Systematic close and alert on descriptor count.", "tags": "descriptors files leak connections"},
+    {"title": "Cascading rejections behind rate limiting", "service": "web-front", "severity": "major", "duration": "1h20", "symptoms": "A legitimate traffic peak triggers mass rejections.", "root_cause": "The limit was computed per pod, not globally.", "fix": "Rate limiting moved to the gateway.", "tags": "rate-limit rejections peak traffic"},
+    {"title": "Unreadable backup at restore time", "service": "billing-api", "severity": "critical", "duration": "6h30", "symptoms": "The test restore fails on a corrupted archive.", "root_cause": "The backup was taken during a write, without quiescing.", "fix": "Consistent snapshot and monthly restore test.", "tags": "backup restore corruption"},
+    {"title": "CPU contention after adding a sidecar", "service": "notifications-worker", "severity": "minor", "duration": "1h10", "symptoms": "P99 rises by 40 % without application change.", "root_cause": "The sidecar had no CPU limit and starved the main container.", "fix": "Explicit limits on every sidecar.", "tags": "cpu contention sidecar limits"}
+  ],
+  "runbooks": [
+    {"title": "Node in NotReady", "domain": "kubernetes", "symptoms": "A node turns NotReady and its pods are evicted.", "procedure": "1. Check the node disk and memory pressure.\n2. Check the kubelet and the container runtime.\n3. Cordon then drain before any intervention.", "tags": "node notready kubelet eviction"},
+    {"title": "TLS certificate close to expiry", "domain": "security", "symptoms": "A certificate expiry is reported within 21 days.", "procedure": "1. Identify the issuer and the renewal mode.\n2. Trigger the renewal.\n3. Check the chain presented by the gateway.", "tags": "certificate expiry renewal tls"},
+    {"title": "Message queue lagging", "domain": "messaging", "symptoms": "The age of the oldest message exceeds the threshold.", "procedure": "1. Compare production and consumption rates.\n2. Check consumer errors.\n3. Increase parallelism if processing is the bottleneck.", "tags": "queue message lag consumer"},
+    {"title": "Critical disk space on a node", "domain": "resources", "symptoms": "Available space drops below 10 %.", "procedure": "1. Identify the largest consumers.\n2. Purge unused images.\n3. Check log rotation.", "tags": "disk space purge images rotation"},
+    {"title": "Database restore", "domain": "databases", "symptoms": "Proven data loss or corruption.", "procedure": "1. Freeze writes.\n2. Identify the last valid restore point.\n3. Restore to a control instance before switching.", "tags": "restore backup database pitr"},
+    {"title": "Manual failover of a replicated database", "domain": "databases", "symptoms": "The primary instance is unreachable.", "procedure": "1. Confirm the primary is really down.\n2. Check the replication lag.\n3. Promote the replica and repoint the services.", "tags": "failover replication promotion primary"},
+    {"title": "Abnormal traffic from an address range", "domain": "security", "symptoms": "Request peak concentrated on few addresses.", "procedure": "1. Characterise the pattern.\n2. Apply a targeted limit.\n3. Escalate if the pattern persists.", "tags": "abnormal traffic limit addresses"},
+    {"title": "Rollout blocked mid-way", "domain": "kubernetes", "symptoms": "The rollout no longer progresses.", "procedure": "1. Read the ReplicaSet state and the events.\n2. Check available resources.\n3. Roll back to the previous revision if the service is degraded.", "tags": "rollout blocked replicaset revision"},
+    {"title": "Sustained CPU saturation alert", "domain": "performance", "symptoms": "CPU usage stays at the ceiling for more than 15 minutes.", "procedure": "1. Tell a legitimate load from a loop.\n2. Check the container limits.\n3. Adjust replicas before limits.", "tags": "cpu saturation limits replicas"},
+    {"title": "Lost application logs", "domain": "observability", "symptoms": "A service's logs no longer reach the collector.", "procedure": "1. Check the collection agent on the node.\n2. Check the application output format.\n3. Check the collector quotas.", "tags": "logs collection agent quota"},
+    {"title": "Missing metrics for a service", "domain": "observability", "symptoms": "A service's series disappear from the dashboards.", "procedure": "1. Check the scrape annotations on the pods.\n2. Check that /metrics is reachable.\n3. Check the relabel rules.", "tags": "metrics scrape annotations prometheus"},
+    {"title": "Service credential rotation", "domain": "security", "symptoms": "Scheduled rotation or suspected compromise.", "procedure": "1. Generate the new credential.\n2. Deploy with double validity.\n3. Revoke the old one after verification.", "tags": "rotation credential secret revocation"},
+    {"title": "Scaling up before a sales event", "domain": "capacity", "symptoms": "Planned traffic peak.", "procedure": "1. Read the load of the previous equivalent peak.\n2. Pre-size the replicas.\n3. Check the vendor quotas.", "tags": "capacity peak replicas quota"},
+    {"title": "502 errors behind the gateway", "domain": "network", "symptoms": "502 rate rising without application error.", "procedure": "1. Check the Service endpoints.\n2. Compare gateway and application timeouts.\n3. Check recent restarts.", "tags": "502 gateway endpoints timeout"},
+    {"title": "Drift between declared and actual state", "domain": "gitops", "symptoms": "A gap persists between the repository and the cluster.", "procedure": "1. Read the drift report.\n2. Identify a possible manual change.\n3. Resync after validation.", "tags": "gitops drift synchronisation"},
+    {"title": "Namespace stuck in Terminating", "domain": "kubernetes", "symptoms": "Deletion does not complete.", "procedure": "1. List the remaining resources.\n2. Identify the blocking finalizers.\n3. Remove the finalizer after verification.", "tags": "namespace terminating finalizer deletion"},
+    {"title": "Startup probe too short", "domain": "kubernetes", "symptoms": "The pod is killed before it finishes starting.", "procedure": "1. Measure the real startup time.\n2. Use a startupProbe rather than lengthening liveness.\n3. Validate again after deployment.", "tags": "startupprobe startup liveness delay"},
+    {"title": "Namespace quota reached", "domain": "resources", "symptoms": "Pod creations are rejected.", "procedure": "1. Compare the summed requests with the quota.\n2. Identify oversized workloads.\n3. Adjust requests before the quota.", "tags": "quota namespace resources requests"},
+    {"title": "Clock out of sync on a node", "domain": "system", "symptoms": "Signature rejections or inconsistent timestamps.", "procedure": "1. Check the synchronisation service.\n2. Measure the drift.\n3. Restart the service and watch.", "tags": "ntp clock drift synchronisation"},
+    {"title": "Container image not found", "domain": "kubernetes", "symptoms": "The pod stays in ImagePullBackOff.", "procedure": "1. Check the image name and tag.\n2. Check the registry credentials.\n3. Check the pull quotas.", "tags": "imagepullbackoff registry tag"},
+    {"title": "Persistent volume not attached", "domain": "storage", "symptoms": "The pod waits for its volume.", "procedure": "1. Check the availability zone of the volume and of the node.\n2. Check the claim state.\n3. Check the storage controller.", "tags": "persistent volume zone attach pvc"},
+    {"title": "Replication lagging", "domain": "databases", "symptoms": "Replication lag exceeds the threshold.", "procedure": "1. Measure the lag and its trend.\n2. Identify a long transaction on the primary.\n3. Avoid any failover while the lag grows.", "tags": "replication lag transaction primary"},
+    {"title": "Connection leak towards a third-party service", "domain": "network", "symptoms": "The number of established connections grows and never goes down.", "procedure": "1. Count connections by state.\n2. Check HTTP client reuse.\n3. Set a cap and an idle timeout.", "tags": "connections leak http client cap"}
+  ]
+}

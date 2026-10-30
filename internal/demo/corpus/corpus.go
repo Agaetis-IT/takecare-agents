@@ -40,8 +40,27 @@ const (
 	ScenarioProxyTimeout = "proxy-timeout"
 )
 
-// Sources are the corpus's sources, one MCP server each.
-var Sources = []string{"deployments", "incidents", "runbooks", "support", "vendor"}
+// Sources, one corpus MCP server each.
+const (
+	SourceDeployments = "deployments"
+	SourceIncidents   = "incidents"
+	SourceRunbooks    = "runbooks"
+	SourceSupport     = "support"
+	SourceVendor      = "vendor"
+)
+
+// Sources are every source, in a stable order.
+var Sources = []string{SourceDeployments, SourceIncidents, SourceRunbooks, SourceSupport, SourceVendor}
+
+// Record keys read by the code.
+const (
+	keyDate    = "date"
+	keyService = "service"
+	keyStatus  = "status"
+	keySummary = "summary"
+	keyTags    = "tags"
+	keyTitle   = "title"
+)
 
 // isoUTC is the layout of every generated date (2026-10-17T18:30:00Z).
 const isoUTC = "2006-01-02T15:04:05Z"

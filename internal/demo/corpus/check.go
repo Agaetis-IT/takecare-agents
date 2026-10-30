@@ -39,7 +39,7 @@ type failFunc func(format string, args ...any)
 
 // checkSignal checks the proxy-timeout facts.
 func checkSignal(c Corpus, scenario string, incident time.Time, fail failFunc) {
-	deployments := c["deployments"]
+	deployments := c[SourceDeployments]
 
 	var proxy []Record
 	for _, r := range recent(deployments, "billing-api", 24*time.Hour, incident) {
@@ -53,11 +53,11 @@ func checkSignal(c Corpus, scenario string, incident time.Time, fail failFunc) {
 	case scenario == ScenarioProxyTimeout && (len(proxy) != 1 || proxy[0]["type"] != "infrastructure" ||
 		!strings.Contains(proxy[0]["diff"], "-> 600")):
 		fail("proxy-timeout: want exactly one billing-api infrastructure change < 24 h setting idleClientTimeout to 600, found %v", ids(proxy))
-	case scenario == ScenarioProxyTimeout && strings.Contains(proxy[0]["summary"]+proxy[0]["diff"], "900"):
+	case scenario == ScenarioProxyTimeout && strings.Contains(proxy[0][keySummary]+proxy[0]["diff"], "900"):
 		fail("proxy-timeout: the DBProxy change must not carry the pool's value (900 s)")
 	}
 
-	incidents := byID(c["incidents"])
+	incidents := byID(c[SourceIncidents])
 	past := incidents["INC-2024-0312"]
 	if !strings.Contains(past["root_cause"], "300 s") || !strings.Contains(past["root_cause"], "600 s") {
 		fail("proxy-timeout: INC-2024-0312 must link the proxy's 300 s with the pool's 600 s")
@@ -65,7 +65,7 @@ func checkSignal(c Corpus, scenario string, incident time.Time, fail failFunc) {
 	if strings.Contains(past["root_cause"], "900") {
 		fail("proxy-timeout: INC-2024-0312 must not carry the pool's current value (900 s)")
 	}
-	runbooks := byID(c["runbooks"])
+	runbooks := byID(c[SourceRunbooks])
 	rb14 := runbooks["RB-014"]
 	for _, want := range []string{"idle", "pool"} {
 		if !strings.Contains(rb14["tags"], want) {
@@ -82,22 +82,26 @@ func checkSignal(c Corpus, scenario string, incident time.Time, fail failFunc) {
 	}
 }
 
+// ongoingTitle is the vendor's false lead: an ongoing storage degradation in
+// the region, true and unrelated.
+const ongoingTitle = "Degraded performance of EBS gp3 volumes - eu-west-3a"
+
 // checkNeutral checks that the other scenarios leave no live change and that
 // the vendor's false lead is the only ongoing bulletin.
 func checkNeutral(c Corpus, incident time.Time, fail failFunc) {
 	for _, service := range []string{"orders-api", "notifications-worker"} {
-		if r := recent(c["deployments"], service, 6*time.Hour, incident); len(r) > 0 {
+		if r := recent(c[SourceDeployments], service, 6*time.Hour, incident); len(r) > 0 {
 			fail("%s: no change < 6 h, its scenario is not carried; found %v", service, ids(r))
 		}
 	}
 	var ongoing []Record
-	for _, r := range c["vendor"] {
-		if r["status"] == "ongoing" {
+	for _, r := range c[SourceVendor] {
+		if r[keyStatus] == "ongoing" {
 			ongoing = append(ongoing, r)
 		}
 	}
-	if got := ids(ongoing); len(got) != 1 || got[0] != "AWS-2026-0903-01" {
-		fail("vendor: want exactly one ongoing bulletin, AWS-2026-0903-01, found %v", got)
+	if len(ongoing) != 1 || ongoing[0][keyTitle] != ongoingTitle {
+		fail("vendor: want exactly one ongoing bulletin, %q, found %v", ongoingTitle, ids(ongoing))
 	}
 }
 
@@ -110,7 +114,7 @@ func checkShape(c Corpus, incident time.Time, fail failFunc) {
 				fail("%s: duplicate identifier %s", source, r["id"])
 			}
 			seen[r["id"]] = true
-			if d, ok := r["date"]; ok {
+			if d, ok := r[keyDate]; ok {
 				if t, err := parseDate(d); err != nil {
 					fail("%s: %s: %w", source, r["id"], err)
 				} else if t.After(incident) {
@@ -125,7 +129,7 @@ func checkShape(c Corpus, incident time.Time, fail failFunc) {
 func recent(deployments []Record, service string, window time.Duration, incident time.Time) []Record {
 	var out []Record
 	for _, r := range deployments {
-		if t, err := parseDate(r["date"]); err == nil && r["service"] == service && incident.Sub(t) < window {
+		if t, err := parseDate(r[keyDate]); err == nil && r[keyService] == service && incident.Sub(t) < window {
 			out = append(out, r)
 		}
 	}
