@@ -29,7 +29,7 @@ global:
 operator:
   image:
     registry: ghcr.io/agaetis-it
-    repository: takecare-operator
+    repository: takecare-agents-operator
     # Empty: the chart's appVersion.
     tag: ""
     pullPolicy: IfNotPresent

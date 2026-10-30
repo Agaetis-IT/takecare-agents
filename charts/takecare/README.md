@@ -135,7 +135,7 @@ Mirroring every image and installing without Internet access is tracked in issue
 | operator.extraArgs | list | `[]` | Extra arguments for the operator binary, for example ["--zap-log-level=debug"]. |
 | operator.image.pullPolicy | string | `"IfNotPresent"` |  |
 | operator.image.registry | string | `"ghcr.io/agaetis-it"` |  |
-| operator.image.repository | string | `"takecare-operator"` |  |
+| operator.image.repository | string | `"takecare-agents-operator"` |  |
 | operator.image.tag | string | `""` |  |
 | operator.metrics.port | int | `8443` |  |
 | operator.metrics.secure | bool | `true` | Serve /metrics over HTTPS behind Kubernetes authentication. |

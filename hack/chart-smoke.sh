@@ -24,7 +24,7 @@ NS=takecare-system
 # and rolls the operator; a fixed tag with pullPolicy IfNotPresent would keep
 # the previous binary running after `k3d image import`.
 IMAGE_TAG="${IMAGE_TAG:-smoke-$(date +%s)}"
-IMAGE="${IMAGE_REGISTRY}/takecare-operator:${IMAGE_TAG}"
+IMAGE="${IMAGE_REGISTRY}/takecare-agents-operator:${IMAGE_TAG}"
 REPORT_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-report-slack:${IMAGE_TAG}"
 HELM="${HELM:-bin/helm-${HELM_VERSION}}"
 export KUBECONFIG="${PWD}/bin/${CLUSTER}.kubeconfig"
