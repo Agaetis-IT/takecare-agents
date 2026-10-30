@@ -13,6 +13,7 @@ package connector
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -204,30 +205,49 @@ func (r *Reconciler) endpoint(ctx context.Context, c *v1alpha1.TakeCareConnector
 			st.set(v1alpha1.ConditionReachable, false, ReasonNoReadyEndpoint, fmt.Sprintf("no ready endpoint for Service %s/%s: check the pod's readiness (for a report server, the Slack token: auth.test failed or the Secret is missing)", r.OperatorNamespace, name))
 			return nil, nil
 		}
-		ep.URL = fmt.Sprintf("http://%s.%s.svc:%d%s", name, r.OperatorNamespace, addonPort, addonPath)
+		ep.URL = addonURL(c.Spec.MCP.Addon, r.OperatorNamespace)
 	default:
 		ep.URL = c.Spec.MCP.URL
-		for _, h := range c.Spec.MCP.HeadersFrom {
-			var secret corev1.Secret
-			if err := r.Get(ctx, client.ObjectKey{Namespace: c.Namespace, Name: h.SecretKeyRef.Name}, &secret); err != nil {
-				if apierrors.IsNotFound(err) {
-					st.set(v1alpha1.ConditionReachable, false, ReasonSecretMissing, fmt.Sprintf("header %s: Secret %s/%s does not exist", h.Name, c.Namespace, h.SecretKeyRef.Name))
-					return nil, nil
-				}
-				return nil, fmt.Errorf("get Secret %s: %w", h.SecretKeyRef.Name, err)
-			}
-			value, ok := secret.Data[h.SecretKeyRef.Key]
-			if !ok {
-				st.set(v1alpha1.ConditionReachable, false, ReasonSecretMissing, fmt.Sprintf("header %s: Secret %s/%s has no key %s", h.Name, c.Namespace, h.SecretKeyRef.Name, h.SecretKeyRef.Key))
-				return nil, nil
-			}
-			if ep.Headers == nil {
-				ep.Headers = map[string][]string{}
-			}
-			ep.Headers.Set(h.Name, string(value))
+		headers, problem, err := headerValues(ctx, r.Client, c)
+		if err != nil {
+			return nil, err
 		}
+		if problem != "" {
+			st.set(v1alpha1.ConditionReachable, false, ReasonSecretMissing, problem)
+			return nil, nil
+		}
+		ep.Headers = headers
 	}
 	return ep, nil
+}
+
+// addonURL is the MCP endpoint of an add-on's Service.
+func addonURL(addon, namespace string) string {
+	return fmt.Sprintf("http://%s%s.%s.svc:%d%s", addonNamePrefix, addon, namespace, addonPort, addonPath)
+}
+
+// headerValues reads a URL connector's headers from their Secrets. A Secret
+// or key that is missing is a problem to report, not an error.
+func headerValues(ctx context.Context, c client.Reader, conn *v1alpha1.TakeCareConnector) (http.Header, string, error) {
+	var headers http.Header
+	for _, h := range conn.Spec.MCP.HeadersFrom {
+		var secret corev1.Secret
+		if err := c.Get(ctx, client.ObjectKey{Namespace: conn.Namespace, Name: h.SecretKeyRef.Name}, &secret); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil, fmt.Sprintf("header %s: Secret %s/%s does not exist", h.Name, conn.Namespace, h.SecretKeyRef.Name), nil
+			}
+			return nil, "", fmt.Errorf("get Secret %s: %w", h.SecretKeyRef.Name, err)
+		}
+		value, ok := secret.Data[h.SecretKeyRef.Key]
+		if !ok {
+			return nil, fmt.Sprintf("header %s: Secret %s/%s has no key %s", h.Name, conn.Namespace, h.SecretKeyRef.Name, h.SecretKeyRef.Key), nil
+		}
+		if headers == nil {
+			headers = http.Header{}
+		}
+		headers.Set(h.Name, string(value))
+	}
+	return headers, "", nil
 }
 
 // readyEndpoints says whether a Service has at least one ready endpoint.
@@ -744,23 +764,17 @@ func ReportEndpoint(ctx context.Context, c client.Reader, conn *v1alpha1.TakeCar
 		return ep, fmt.Errorf("connector %s is not a report connector", conn.Name)
 	}
 	if conn.Spec.MCP.Addon != "" {
-		ep.URL = fmt.Sprintf("http://%s%s.%s.svc:%d%s", addonNamePrefix, conn.Spec.MCP.Addon, conn.Namespace, addonPort, addonPath)
+		ep.URL = addonURL(conn.Spec.MCP.Addon, conn.Namespace)
 		return ep, nil
 	}
 	ep.URL = conn.Spec.MCP.URL
-	for _, h := range conn.Spec.MCP.HeadersFrom {
-		var secret corev1.Secret
-		if err := c.Get(ctx, client.ObjectKey{Namespace: conn.Namespace, Name: h.SecretKeyRef.Name}, &secret); err != nil {
-			return ep, fmt.Errorf("header %s of connector %s: %w", h.Name, conn.Name, err)
-		}
-		value, ok := secret.Data[h.SecretKeyRef.Key]
-		if !ok {
-			return ep, fmt.Errorf("header %s of connector %s: Secret %s has no key %s", h.Name, conn.Name, h.SecretKeyRef.Name, h.SecretKeyRef.Key)
-		}
-		if ep.Headers == nil {
-			ep.Headers = map[string][]string{}
-		}
-		ep.Headers.Set(h.Name, string(value))
+	headers, problem, err := headerValues(ctx, c, conn)
+	if err != nil {
+		return ep, fmt.Errorf("connector %s: %w", conn.Name, err)
 	}
+	if problem != "" {
+		return ep, fmt.Errorf("connector %s: %s", conn.Name, problem)
+	}
+	ep.Headers = headers
 	return ep, nil
 }

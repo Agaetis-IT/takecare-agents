@@ -146,11 +146,10 @@ func TestPublishByLevel(t *testing.T) {
 	}
 
 	f.investigationAt(t, "doc-silent", v1alpha1.LevelService, true)
-	// The root span ends after the publication step: once it ended,
-	// nothing more is posted for this record.
-	f.rootSpan(t, f.waitPhase(t, "doc-silent", v1alpha1.PhaseCompleted).Status.TraceID)
-	if got := len(poster.destinations()); got != 2 {
-		t.Errorf("a silent investigation was published (%d posts)", got)
+	inv = f.waitPublished(t, "doc-silent")
+	if got := len(poster.destinations()); got != 2 || !inv.Status.Published.OK || inv.Status.Published.Destination != "" ||
+		!strings.HasPrefix(inv.Status.Published.Reason, "status only: a silent") {
+		t.Errorf("a silent investigation: %d posts, published %+v", got, inv.Status.Published)
 	}
 }
 
@@ -161,9 +160,41 @@ func TestTrialWithoutDestinationIsStatusOnly(t *testing.T) {
 	f, _ := publishing(t, poster, v1alpha1.DocReport{Service: onCall})
 	f.start()
 	f.investigationAt(t, "doc-trial-only", v1alpha1.LevelTrial, false)
-	f.rootSpan(t, f.waitPhase(t, "doc-trial-only", v1alpha1.PhaseCompleted).Status.TraceID) // the publication step is over
-	if inv := f.get(t, "doc-trial-only"); inv.Status.Published != nil || len(poster.destinations()) != 0 {
-		t.Errorf("published %+v, posts %v", inv.Status.Published, poster.destinations())
+	inv := f.waitPublished(t, "doc-trial-only")
+	if p := inv.Status.Published; len(poster.destinations()) != 0 || !p.OK || p.Destination != "" || !strings.HasPrefix(p.Reason, "status only: the trial level") {
+		t.Errorf("published %+v, posts %v", p, poster.destinations())
+	}
+}
+
+// A record the previous leader completed and did not publish is published
+// by the next one; a record published, or kept in status only, is not
+// touched.
+func TestResumePublishes(t *testing.T) {
+	poster := &fakePoster{}
+	f, _ := publishing(t, poster, v1alpha1.DocReport{Service: onCall})
+	done := metav1.Now()
+	f.investigation(t, "doc-unpublished", &v1alpha1.TakeCareInvestigationStatus{
+		Phase: v1alpha1.PhaseCompleted, StartedAt: &done, CompletedAt: &done, TraceID: "6bf92f3577b34da6a3ce929d0e0e4736",
+		Diagnosis: diagnosis,
+	})
+	f.investigation(t, "doc-already", &v1alpha1.TakeCareInvestigationStatus{
+		Phase: v1alpha1.PhaseCompleted, CompletedAt: &done,
+		Diagnosis: diagnosis, Published: &v1alpha1.Publication{Connector: reportConn, Destination: onCall, OK: true},
+	})
+	f.investigation(t, "doc-failed", &v1alpha1.TakeCareInvestigationStatus{Phase: v1alpha1.PhaseFailed, CompletedAt: &done})
+	f.start()
+	inv := f.waitPublished(t, "doc-unpublished")
+	if p := inv.Status.Published; !p.OK || p.Destination != onCall {
+		t.Errorf("published = %+v", p)
+	}
+	if got := strings.Join(poster.destinations(), ","); got != onCall {
+		t.Errorf("posts = %s: only the unpublished record is posted", got)
+	}
+	if got := events(f.rootSpan(t, "6bf92f3577b34da6a3ce929d0e0e4736")); !strings.Contains(got, "investigation.resumed") || !strings.Contains(got, "diagnosis.published") {
+		t.Errorf("the publication's span events = %s", got)
+	}
+	if f.get(t, "doc-failed").Status.Published != nil {
+		t.Error("a failed record is never published")
 	}
 }
 
