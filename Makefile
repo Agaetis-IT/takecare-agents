@@ -6,9 +6,8 @@ include hack/versions.env
 
 MODULE := github.com/agaetis-it/takecare-agents
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# The images follow takecare-agents-<component> (issue #22).
 OPERATOR_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-operator:$(VERSION)
-# New images follow takecare-agents-<component> (issue #22); the operator's
-# rename to takecare-agents-operator is its own PR.
 REPORT_SLACK_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-mcp-report-slack:$(VERSION)
 # docker-buildx pushes only when PUSH=true (the release workflow, from PR 6).
 PUSH ?= false

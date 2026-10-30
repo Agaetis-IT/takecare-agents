@@ -406,7 +406,7 @@ func (h *harness) operatorDeployment(replicas int32) {
 			Selector: &metav1.LabelSelector{MatchLabels: labels},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
-				Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "operator", Image: "takecare-operator:test"}}},
+				Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "operator", Image: "takecare-agents-operator:test"}}},
 			},
 		},
 	}))
