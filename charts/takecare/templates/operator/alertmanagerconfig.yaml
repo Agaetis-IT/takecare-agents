@@ -1,0 +1,43 @@
+{{- /*
+The Doc's Alertmanager receiver for clusters run by Prometheus Operator
+(spec 02 §1): an AlertmanagerConfig in the release namespace that sends the
+alerts to the takecare-alerts Service with the webhook's bearer token. Created
+when the API is served (auto), or as forced by alerting.alertmanagerConfig.create.
+Without Prometheus Operator, add the receiver printed by the install notes.
+*/ -}}
+{{- $mode := toString .Values.alerting.alertmanagerConfig.create }}
+{{- if not (has $mode (list "auto" "true" "false")) }}
+{{- fail (printf "alerting.alertmanagerConfig.create must be auto, true or false, not %q" $mode) }}
+{{- end }}
+{{- $served := .Capabilities.APIVersions.Has "monitoring.coreos.com/v1alpha1/AlertmanagerConfig" }}
+{{- if or (eq $mode "true") (and (eq $mode "auto") $served) }}
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: takecare-doc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.labels" . | nindent 4 }}
+    {{- with .Values.alerting.alertmanagerConfig.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  route:
+    receiver: takecare-doc
+    # No matcher: the Doc keeps the alerts of its scope and matchers itself
+    # (spec 02 §1) and counts the others as ignored. continue lets the
+    # alerts reach the routes after this one as well.
+    continue: true
+  receivers:
+    - name: takecare-doc
+      webhookConfigs:
+        - url: http://takecare-alerts.{{ .Release.Namespace }}.svc:8080/v1/alerts
+          # Resolved alerts close the investigation's incident (resolvedAt).
+          sendResolved: true
+          httpConfig:
+            authorization:
+              type: Bearer
+              credentials:
+                name: {{ .Values.alerting.existingSecret | default "takecare-alerting" }}
+                key: token
+{{- end }}

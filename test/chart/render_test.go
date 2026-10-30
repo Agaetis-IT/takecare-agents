@@ -42,6 +42,7 @@ const (
 	kindRole         = "Role"
 	flagSet          = "--set"
 	verbGet          = "get"
+	tokenSecret      = "takecare-alerting"
 )
 
 var repoRoot = filepath.Join("..", "..")
@@ -432,7 +433,7 @@ func TestAlertIntakeIsExposed(t *testing.T) {
 	objs := render(t, releaseName, profileArgs("demo")...)
 	var secret, service bool
 	for _, o := range ofKind(objs, "Secret") {
-		if o.GetName() == "takecare-alerting" {
+		if o.GetName() == tokenSecret {
 			secret = o.GetAnnotations()["helm.sh/resource-policy"] == "keep"
 			token, _, _ := unstructured.NestedString(o.Object, "data", "token")
 			if len(token) < 40 {
@@ -451,7 +452,7 @@ func TestAlertIntakeIsExposed(t *testing.T) {
 	// GitOps: the customer's Secret, none generated, the operator told.
 	gitops := render(t, releaseName, append(profileArgs("demo"), flagSet, "alerting.existingSecret=my-token")...)
 	for _, o := range ofKind(gitops, "Secret") {
-		if o.GetName() == "takecare-alerting" {
+		if o.GetName() == tokenSecret {
 			t.Error("a token Secret is generated although alerting.existingSecret is set")
 		}
 	}
