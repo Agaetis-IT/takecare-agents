@@ -133,7 +133,10 @@ prometheus:
   # bearer token from the Secret the chart generates, mounted at the path the
   # install notes give. This Alertmanager is not run by Prometheus Operator,
   # so no AlertmanagerConfig is rendered: the receiver lives here. Alerts of
-  # other namespaces stay visible, not delivered.
+  # other namespaces stay visible, not delivered. On a cluster that serves
+  # Prometheus Operator's API, alerting.alertmanagerConfig.create=auto would
+  # add an AlertmanagerConfig too and the Doc would get each alert twice
+  # (deduplicated by fingerprint): set it to "false" there.
   alertmanager:
     enabled: true
     fullnameOverride: alertmanager
