@@ -295,6 +295,10 @@ EOF
   check "deleting the Doc removed its agent, tool servers and instructions in kagent, and its routes" \
     bash -c "[[ -z \$(kubectl -n kagent get agents,remotemcpservers,configmaps -l takecare.agaetis.fr/owner=smoke-doc -o name) && -z \$(kubectl -n ${NS} get httproutes,agentgatewaypolicies -l takecare.agaetis.fr/role-instance=doc.smoke-doc -o name) ]]"
 
+  # The agent's image is the largest the smoke pulls: the host's room after it.
+  log "host after the Doc's agent: disk $(df -h / | awk 'NR==2 {print $4" free of "$2}'), memory $(free -m 2>/dev/null | awk '/^Mem:/ {print $7" MiB available"}')"
+  kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}:{range .status.conditions[?(@.status=="True")]} {.type}{end}{"\n"}{end}' || true
+
   log "a forbidden right on the add-on is caught, then cleared"
   kubectl -n demo-apps delete rolebinding/smoke-drift role/smoke-drift --ignore-not-found >/dev/null
   kubectl -n demo-apps create role smoke-drift --verb=get --resource=secrets --dry-run=client -o yaml | kubectl apply -f - >/dev/null
@@ -379,6 +383,15 @@ status() {
   kubectl get pods -n kagent -o wide
   kubectl get gateway,takecareplatform -A
   kubectl get networkpolicy -n kagent
+  # Why pods were evicted or stay Pending: the nodes' pressure conditions,
+  # what they hold, the eviction events, and the host's disk.
+  kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}:{range .status.conditions[*]} {.type}={.status}{end}{"\n"}{end}' || true
+  kubectl describe nodes | grep -A8 -E '^(Allocated resources|Conditions):' || true
+  kubectl get events -A --field-selector reason=Evicted -o jsonpath='{range .items[*]}{.involvedObject.namespace}/{.involvedObject.name}: {.message}{"\n"}{end}' | sort | uniq -c | sort -rn | head -20 || true
+  kubectl get events -A --field-selector reason=FailedScheduling -o jsonpath='{range .items[*]}{.involvedObject.name}: {.message}{"\n"}{end}' | tail -5 || true
+  df -h / /var/lib/docker 2>/dev/null || df -h /
+  docker system df 2>/dev/null || true
+  free -m 2>/dev/null || true
 }
 
 down() {
