@@ -84,7 +84,7 @@ Thresholds: at least 4 out of 5 correct to merge a change of prompt, engine, mod
 | `bench.yaml` | `workflow_dispatch` | accuracy bench with a real model (repository secret), report as an artifact |
 | `release.yaml` | tag `v*` | multi-arch images (amd64, arm64), charts packaged and pushed as OCI, GitHub release with CHANGELOG excerpt |
 
-Images: `ghcr.io/agaetis-it/takecare-operator`, `ghcr.io/agaetis-it/takecare-demo-app`, `ghcr.io/agaetis-it/takecare-mcp-corpus`, `ghcr.io/agaetis-it/takecare-mcp-report-slack` (registry still to be confirmed, vision open question 1). arm64 is required: demos run on Apple Silicon.
+Images, named `takecare-agents-<component>` (issue #22): `ghcr.io/agaetis-it/takecare-agents-operator`, `ghcr.io/agaetis-it/takecare-agents-demo-app`, `ghcr.io/agaetis-it/takecare-agents-mcp-corpus`, `ghcr.io/agaetis-it/takecare-agents-mcp-report-slack` (registry still to be confirmed, vision open question 1). arm64 is required: demos run on Apple Silicon.
 
 ## Conventions
 
