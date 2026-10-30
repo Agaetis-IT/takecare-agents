@@ -9,6 +9,8 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 # The images follow takecare-agents-<component> (issue #22).
 OPERATOR_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-operator:$(VERSION)
 REPORT_SLACK_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-mcp-report-slack:$(VERSION)
+# The demo's application image (spec 03).
+DEMO_APP_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-demo-app:$(VERSION)
 # docker-buildx pushes only when PUSH=true (the release workflow, from PR 6).
 PUSH ?= false
 
@@ -199,15 +201,18 @@ DOCKER_BUILD_ARGS := --build-arg GO_BUILD_IMAGE=$(GO_BUILD_IMAGE) --build-arg RU
 	--build-arg GO_LICENSES_VERSION=$(GO_LICENSES_VERSION)
 
 .PHONY: docker-build
-docker-build: ## Build the operator and report server images for the local platform.
+docker-build: ## Build every image (operator, report server, demo app) for the local platform.
 	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=operator -t $(OPERATOR_IMG) .
 	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-report-slack -t $(REPORT_SLACK_IMG) .
+	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=demo-app -t $(DEMO_APP_IMG) .
 
 .PHONY: docker-buildx
-docker-buildx: ## Build both images for amd64 and arm64 (pushed only with PUSH=true).
+docker-buildx: ## Build every image for amd64 and arm64 (pushed only with PUSH=true).
 	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=operator -t $(OPERATOR_IMG) \
 		$(if $(filter true,$(PUSH)),--push,) .
 	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-report-slack -t $(REPORT_SLACK_IMG) \
+		$(if $(filter true,$(PUSH)),--push,) .
+	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=demo-app -t $(DEMO_APP_IMG) \
 		$(if $(filter true,$(PUSH)),--push,) .
 
 ##@ Not yet implemented
