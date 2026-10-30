@@ -149,10 +149,13 @@ func EnsureMCP(ctx context.Context, c client.Client, g Gateway, r Role, m MCP) e
 }
 
 // EnsureA2A writes the backend to the engine's A2A server and the route to
-// the role's agent. The route matches the agent's own path and nothing
-// above it, with no rewrite: the engine's API (agent creation included)
-// stays out of reach (ADR 0009), and the path seen by the engine is the one
-// it serves (spike 001 report §5.2).
+// the role's agent. The route is a PathPrefix on the agent's path, which
+// Gateway API matches segment by segment: it covers the agent's path and
+// what the engine serves below it (the A2A endpoint and the agent card,
+// served under /.well-known/), never anything above it nor a sibling agent
+// whose name starts the same. There is no rewrite: the engine's API (agent
+// creation included) stays out of reach (ADR 0009), and the path seen by
+// the engine is the one it serves (spike 001 report §5.2).
 func EnsureA2A(ctx context.Context, c client.Client, g Gateway, r Role, ep engine.Endpoint) error {
 	name := a2aName(r)
 	backend := r.object(BackendGVK, name)

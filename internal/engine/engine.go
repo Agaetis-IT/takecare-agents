@@ -108,8 +108,10 @@ type Endpoint struct {
 	Host string
 	Port int64
 	// Path is the agent's A2A path on that server, without a trailing
-	// slash; the gateway's route matches it exactly and nothing above it
-	// (ADR 0009: the engine's API is never exposed).
+	// slash. The gateway's route is a prefix on it: the agent's path and
+	// what the engine serves below it, never anything above it (ADR 0009:
+	// the engine's API is never exposed). Each implementation records what
+	// its engine serves below that path.
 	Path string
 }
 
