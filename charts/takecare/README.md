@@ -34,6 +34,20 @@ helm install takecare      oci://ghcr.io/agaetis-it/charts/takecare      -n take
 
 Upgrade in the same order (`takecare-crds`, then `takecare`). `helm uninstall takecare` leaves the CRDs, the alert token Secret and every TakeCare resource in place; see `takecare-crds` before uninstalling that one. The install notes print the Alertmanager receiver to add.
 
+**Alertmanager's token with `helm template`, Argo CD or Flux.** By default the chart generates the webhook's bearer token once, in the Secret `takecare-alerting`, and keeps it across upgrades with a Helm `lookup`. A `lookup` sees nothing when the chart is rendered outside a live `helm install` or `helm upgrade`: every sync would generate a new token and break Alertmanager's receiver. Create the Secret yourself, with the key `token`, in the release namespace, and name it in `alerting.existingSecret`:
+
+```bash
+kubectl -n takecare-system create secret generic alertmanager-takecare-token \
+  --from-literal=token="$(openssl rand -hex 32)"
+```
+
+```yaml
+alerting:
+  existingSecret: alertmanager-takecare-token
+```
+
+The operator reads the token from its cache, so a rotation of that Secret needs no restart; update Alertmanager's copy at the same time.
+
 ## Profiles
 
 | File | Use |
@@ -82,6 +96,7 @@ Mirroring every image and installing without Internet access is tracked in issue
 | agentgateway | object | see values.yaml (agentgateway chart values) | agentgateway v1.6.0 (ADR 0002). The chart installs the controller; the proxy pods are created from the Gateway above. |
 | agentgateway.agentgatewayModels | object | `{"enabled":true}` | Gateway-attached models (AgentgatewayModel) are an opt-in. |
 | agentgateway.monitoring | object | `{"enabled":false}` | PodMonitor and ServiceMonitor for Prometheus Operator; set when it is installed (gateway metrics are what usage and cost come from). |
+| alerting.existingSecret | string | `""` | Secret in the release namespace whose key `token` is the webhook's bearer token. Empty: the chart generates takecare-alerting once and keeps it (Helm lookup). Set it with helm template or a GitOps tool (Argo CD, Flux), where a lookup sees nothing and every sync would change the token. |
 | demo | object | see the keys below | Demo profile (values-demo.yaml): Prometheus with the demo alerting rules, Alertmanager, an OpenTelemetry Collector and Jaeger. The scenery itself is deployed by the TakeCareDemo controller (spec 03). |
 | demo.namespaces | list | `["demo-apps","ack-system"]` | The scenery's namespaces, created by the chart (the add-ons' Roles are rendered into them). |
 | gateway | object | `{"className":"agentgateway","create":true,"name":"agentgateway-proxy","port":80}` | The Gateway API Gateway served by agentgateway, in the release namespace. Every model, MCP and A2A call goes through it (ADR 0004, 0008, 0009). |

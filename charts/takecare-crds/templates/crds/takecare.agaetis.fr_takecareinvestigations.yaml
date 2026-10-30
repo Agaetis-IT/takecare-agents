@@ -68,6 +68,9 @@ spec:
                     additionalProperties:
                       type: string
                     type: object
+                  fingerprint:
+                    description: Alertmanager's fingerprint of the alert.
+                    type: string
                   firedAt:
                     format: date-time
                     type: string
@@ -81,6 +84,11 @@ spec:
                   namespace:
                     type: string
                   service:
+                    type: string
+                  workload:
+                    description: |-
+                      The workload the alert is about, from its labels: the incident key
+                      with the namespace (spec 02 §1).
                     type: string
                 required:
                 - name
@@ -119,9 +127,40 @@ spec:
               rule: self == oldSelf
           status:
             description: |-
-              TakeCareInvestigationStatus is the investigation's record: the diagnosis,
-              its publication, usage and trace.
+              TakeCareInvestigationStatus is the investigation's record: the shared run
+              status, and what is the Doc's: the diagnosis, its publication, the other
+              alerts of the same incident, the resolution.
             properties:
+              alerts:
+                description: |-
+                  Other alerts of the same incident (same namespace and workload, within
+                  the Doc's cooldown), handled by this investigation instead of their own.
+                items:
+                  description: GroupedAlert is an alert folded into an investigation
+                    of the same incident.
+                  properties:
+                    fingerprint:
+                      type: string
+                    firedAt:
+                      format: date-time
+                      type: string
+                    name:
+                      type: string
+                  required:
+                  - fingerprint
+                  - firedAt
+                  - name
+                  type: object
+                maxItems: 50
+                type: array
+                x-kubernetes-list-type: atomic
+              attempts:
+                description: |-
+                  How many times the run was started: a task lost to a restart is
+                  retried once, then the run fails with the reason.
+                format: int32
+                minimum: 0
+                type: integer
               completedAt:
                 format: date-time
                 type: string
@@ -184,13 +223,26 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              degraded:
+                description: |-
+                  Set when the run went on without some of its sources (a connector
+                  down): the output says so, the run is not failed for it.
+                properties:
+                  connectors:
+                    items:
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: set
+                  reason:
+                    type: string
+                type: object
               diagnosis:
                 description: The agent's answer, unchanged.
                 type: string
               engine:
                 description: |-
-                  Which engine ran the investigation. Free strings: the engine is not an
-                  API concept, only something the operator records (ADR 0007).
+                  Which engine ran it. Free strings: the engine is not an API concept,
+                  only something the operator records (ADR 0007).
                 properties:
                   agent:
                     type: string
@@ -203,14 +255,9 @@ spec:
                 format: int64
                 type: integer
               phase:
-                description: InvestigationPhase is where an investigation stands.
-                enum:
-                - Queued
-                - Running
-                - Completed
-                - Failed
-                - TimedOut
-                - Dropped
+                description: |-
+                  RunPhase is where a run of an agent role stands. The shared phases are
+                  below; each record kind validates its own set, which may add phases.
                 type: string
               published:
                 description: Publication is the outcome of publishing the diagnosis.
@@ -226,6 +273,9 @@ spec:
                 required:
                 - ok
                 type: object
+              reason:
+                description: Why the run is in its phase, for Failed and Dropped.
+                type: string
               resolvedAt:
                 format: date-time
                 type: string
@@ -235,11 +285,12 @@ spec:
               traceID:
                 type: string
               usage:
-                description: Usage is the model usage of one investigation.
+                description: Usage is the model usage of one run.
                 properties:
                   approximate:
-                    description: True when investigations overlapped and usage could
-                      not be attributed exactly.
+                    description: |-
+                      True when the usage could not be attributed to this run alone: runs
+                      overlapped, or another role shares the model (spec 02 §5).
                     type: boolean
                   cachedInputTokens:
                     format: int64
@@ -263,6 +314,11 @@ spec:
                 - outputTokens
                 type: object
             type: object
+            x-kubernetes-validations:
+            - message: phase must be Queued, Running, Completed, Failed, TimedOut
+                or Dropped
+              rule: '!has(self.phase) || self.phase in [''Queued'', ''Running'', ''Completed'',
+                ''Failed'', ''TimedOut'', ''Dropped'']'
         required:
         - spec
         type: object

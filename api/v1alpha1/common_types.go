@@ -110,3 +110,92 @@ type RoleStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
+
+// RunPhase is where a run of an agent role stands. The shared phases are
+// below; each record kind validates its own set, which may add phases.
+type RunPhase string
+
+// Shared run phases (spec 06 §3).
+const (
+	RunQueued    RunPhase = "Queued"
+	RunRunning   RunPhase = "Running"
+	RunCompleted RunPhase = "Completed"
+	RunFailed    RunPhase = "Failed"
+	RunDropped   RunPhase = "Dropped"
+)
+
+// RunStatus is the status every agent role's record shares (spec 06 §3): a
+// run of the role on the engine, its outcome, cost and trace. The record
+// kinds embed it and add what is theirs (a diagnosis, a review, a plan).
+type RunStatus struct {
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// +optional
+	Phase RunPhase `json:"phase,omitempty"`
+
+	// Why the run is in its phase, for Failed and Dropped.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+
+	// +listType=map
+	// +listMapKey=type
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// +optional
+	StartedAt *metav1.Time `json:"startedAt,omitempty"`
+	// +optional
+	CompletedAt *metav1.Time `json:"completedAt,omitempty"`
+
+	// How many times the run was started: a task lost to a restart is
+	// retried once, then the run fails with the reason.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Attempts int32 `json:"attempts,omitempty"`
+
+	// Which engine ran it. Free strings: the engine is not an API concept,
+	// only something the operator records (ADR 0007).
+	// +optional
+	Engine *EngineRun `json:"engine,omitempty"`
+
+	// Set when the run went on without some of its sources (a connector
+	// down): the output says so, the run is not failed for it.
+	// +optional
+	Degraded *Degradation `json:"degraded,omitempty"`
+
+	// +optional
+	Usage *Usage `json:"usage,omitempty"`
+
+	// +optional
+	TraceID string `json:"traceID,omitempty"`
+}
+
+// EngineRun identifies one engine task.
+type EngineRun struct {
+	Kind   string `json:"kind,omitempty"`
+	Agent  string `json:"agent,omitempty"`
+	TaskID string `json:"taskID,omitempty"`
+}
+
+// Degradation says which sources a run went without, and why.
+type Degradation struct {
+	// +listType=set
+	// +optional
+	Connectors []string `json:"connectors,omitempty"`
+	// +optional
+	Reason string `json:"reason,omitempty"`
+}
+
+// Usage is the model usage of one run.
+type Usage struct {
+	ModelCalls        int64 `json:"modelCalls"`
+	InputTokens       int64 `json:"inputTokens"`
+	CachedInputTokens int64 `json:"cachedInputTokens,omitempty"`
+	OutputTokens      int64 `json:"outputTokens"`
+	// Estimated cost with its currency, for example "0.0093 USD".
+	EstimatedCost string `json:"estimatedCost,omitempty"`
+	// True when the usage could not be attributed to this run alone: runs
+	// overlapped, or another role shares the model (spec 02 §5).
+	Approximate bool `json:"approximate,omitempty"`
+}
