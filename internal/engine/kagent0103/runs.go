@@ -26,6 +26,13 @@ const conversationHeader = "x-conversation-id"
 // _agent_executor.py, A2aAgentExecutor.cancel raises
 // NotImplementedError("Cancellation is not supported"). Checked on a
 // cluster: the task goes on to its end after the refusal.
+//
+// a2a-go maps -32603 to a2a.ErrInternalError, not to
+// a2a.ErrUnsupportedOperation (-32004; internal/jsonrpc/jsonrpc.go in
+// v2.6.0): on 0.10.3 only this string match recognizes the refusal. Cancel
+// keeps both: the sentinel for an engine that answers per the A2A
+// specification, the string for kagent 0.10.3. Do not drop the string
+// match as redundant.
 const cancelUnsupported = "Cancellation is not supported"
 
 // Runs drives runs over A2A (ADR 0009), through the gateway.
