@@ -43,7 +43,7 @@ func TestEnsureModelWritesExactlyTheSpikeFields(t *testing.T) {
 	m := &Models{Client: c}
 	owner := metav1.OwnerReference{APIVersion: "takecare.agaetis.fr/v1alpha1", Kind: "TakeCarePlatform", Name: "main", UID: "0000-1111"}
 	model := engine.Model{
-		Name: "default", Namespace: engineNS, Model: "google/gemini-3.7-flash",
+		Name: testModel, Namespace: engineNS, Model: "google/gemini-3.7-flash",
 		GatewayURL:     "http://agentgateway-proxy.takecare-system.svc/v1",
 		DummyKeySecret: "takecare-engine-dummy-key", DummyKeyField: "apiKey",
 		Owner: owner, Labels: map[string]string{"app.kubernetes.io/part-of": "takecare"},
@@ -55,7 +55,7 @@ func TestEnsureModelWritesExactlyTheSpikeFields(t *testing.T) {
 	}
 	got := &unstructured.Unstructured{}
 	got.SetGroupVersionKind(modelConfigGVK)
-	if err := c.Get(ctx, client.ObjectKey{Namespace: engineNS, Name: "default"}, got); err != nil {
+	if err := c.Get(ctx, client.ObjectKey{Namespace: engineNS, Name: testModel}, got); err != nil {
 		t.Fatal(err)
 	}
 	want := map[string]any{
@@ -73,17 +73,15 @@ func TestEnsureModelWritesExactlyTheSpikeFields(t *testing.T) {
 	}
 
 	t.Run("readiness follows the Accepted condition", func(t *testing.T) {
-		r, err := m.ModelReadiness(ctx, engineNS, "default")
+		r, err := m.ModelReadiness(ctx, engineNS, testModel)
 		if err != nil || r.Ready || r.Reason != "ModelConfigPending" {
 			t.Fatalf("before any condition: %+v, %v", r, err)
 		}
-		got.Object["status"] = map[string]any{"conditions": []any{map[string]any{
-			"type": "Accepted", "status": "True", "reason": "Accepted", "message": "ok", "lastTransitionTime": "2026-10-29T00:00:00Z",
-		}}}
+		got.Object["status"] = map[string]any{"conditions": []any{kagentCondition(conditionAccepted, "True", conditionAccepted, "ok")}}
 		if err := c.Status().Update(ctx, got); err != nil {
 			t.Fatal(err)
 		}
-		r, err = m.ModelReadiness(ctx, engineNS, "default")
+		r, err = m.ModelReadiness(ctx, engineNS, testModel)
 		if err != nil || !r.Ready {
 			t.Fatalf("after Accepted=True: %+v, %v", r, err)
 		}

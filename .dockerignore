@@ -7,3 +7,5 @@
 !internal/**/*.go
 **/*_test.go
 !internal/gatewayapi/standard-install.yaml
+# Files the binaries embed (go:embed).
+!internal/doc/instructions.md

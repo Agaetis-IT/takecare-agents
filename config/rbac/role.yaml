@@ -50,6 +50,18 @@ metadata:
 rules:
 - apiGroups:
   - ""
+  resources:
+  - configmaps
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
   resourceNames:
   - takecare-engine-dummy-key
   resources:
@@ -59,7 +71,9 @@ rules:
 - apiGroups:
   - kagent.dev
   resources:
+  - agents
   - modelconfigs
+  - remotemcpservers
   verbs:
   - create
   - delete
@@ -138,6 +152,18 @@ rules:
   verbs:
   - get
   - list
+  - watch
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - httproutes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - takecare.agaetis.fr
