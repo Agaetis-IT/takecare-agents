@@ -42,7 +42,7 @@ Specs and ADRs are written and reviewed in a separate design loop with the produ
 | 3'b | `ProductionReady` gaps and `internal/telemetry` (operator tracing, `semconv`) | 01, ADR 0006 | spec 01 acceptance criterion 6 (`role-without-report` needs PR 4, `connector-not-ready` PR 3b) |
 | 3b-1 | Connectors: controller, tool discovery and classification, add-ons `kubernetes` and `prometheus` with their chart-rendered RBAC, NetworkPolicies (servers, prometheus egress, the gateway itself), `connector-not-ready` | 05 | spec 05 acceptance criteria 1 to 4 and 6 |
 | 3b-2 | `takecare-mcp-report-slack` (one tool, `auth.test`, log mode) and the `report-slack` / `report-log` add-ons | 05 | spec 05 criterion 5 with the fake Slack (PR 6) |
-| 4 | Doc: alert intake, `TakeCareInvestigation`, kagent `Agent` rendering and A2A trigger, tool allow-lists (agent and gateway), publishing, usage, trace | 02 | spec 02 acceptance criteria 2 to 8 (1 and 10 need the demo and the bench, 9 needs the fake LLM: all three closed in PR 6) |
+| 4 | Doc: alert intake, `TakeCareInvestigation` built on the shared `RunStatus`; the engine boundary sees a run, never an alert (spec 06 §10); kagent `Agent` rendering and A2A trigger, tool allow-lists (agent and gateway), publishing, usage, trace | 02, 06 | spec 02 acceptance criteria 2 to 8 (1 and 10 need the demo and the bench, 9 needs the fake LLM: all three closed in PR 6) |
 | 5 | Demo: scenery images, English corpus, `demo-corpus` add-on, `TakeCareDemo` controller, `make demo-*` | 03, 05 | spec 03 acceptance criteria |
 | 6 | E2E with fake LLM and fake Slack, accuracy bench | 04 | spec 04 acceptance criteria; spec 02 criteria 1 and 10 |
 

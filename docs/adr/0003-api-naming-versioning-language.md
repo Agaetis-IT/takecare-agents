@@ -52,6 +52,8 @@ type RoleCommonSpec struct {
 
 And a shared status: `conditions` (standard types `Ready`, `Degraded`, plus `LevelSupported`), `observedGeneration`, effective `level`.
 
+> **Note (2026-10-30, spec 06 §3)**: `RoleCommonSpec` is the trunk of the **agent** roles. Guardrails (Ranger, Kit, Psy) embed a `GuardrailCommonSpec` (level, suspend) instead; experiences have no kind. Each agent role has a record kind (`TakeCare<Record>`, such as `TakeCareInvestigation`) whose status embeds the shared `RunStatus`.
+
 ### Language
 
 **English is the default language everywhere**: API fields and values, code, comments, documentation (README, ADRs, specs), issues and PRs, Kubernetes events, logs, and the messages the agents post (Slack).
