@@ -122,7 +122,8 @@ Alertmanager ──POST /v1/alerts──▶ operator (alert intake)
 The Doc controller generates and keeps up to date one kagent `Agent` per `TakeCareDoc`:
 
 - `ModelConfig`: the platform model (or `spec.model`), routed through the gateway.
-- **Gateway routes**: for each bound connector (except `report`), the controller generates the Doc's own MCP route on the gateway (`/mcp/<namespace>/<role>/<connector>`) with an authorization policy listing only the tools the current level allows, and a kagent `RemoteMCPServer` pointing at that route. The route is the Doc's identity at the gateway (ADR 0008). The controller also generates the A2A route to the Doc's agent (`/a2a/<namespace>/<role>`), through which the operator triggers investigations.
+- **Gateway routes**: for each bound connector (except `report`), the controller generates the Doc's own MCP route on the gateway (`/mcp/<namespace>/<role>/<connector>`) with an authorization policy listing only the tools the current level allows, and a kagent `RemoteMCPServer` pointing at that route. The route is the Doc's identity at the gateway (ADR 0008). The controller also generates the A2A route to the Doc's agent, through which the operator triggers investigations: it is a prefix on the engine's own path for that agent (kagent: `/api/a2a/<engine namespace>/<agent>`), matched segment by segment, so it covers that path and what the engine serves below it, never anything above it nor a sibling agent. On kagent 0.10.3 only the agent card and the agent's own A2A endpoint live below that path (read in the sources, recorded in `internal/engine/kagent0103`, pinned by the smoke). There is no rewrite, so the engine's API (agent creation included) stays out of reach and the path the engine sees is the one it serves (spike 001 report §5.2). The operator builds that URL itself and never reads it from the agent card; the card advertises the gateway's root (kagent's `a2aBaseUrl`).
+- **Which connectors the agent gets**: a bound connector whose tools were discovered, even if it is unavailable now (the agent degrades and says so, `Degraded` and `ConnectorsReady` name it); never one that was never discovered (`status.tools` empty: what it exposes is unknown), nor one without a tool the level allows. On kagent 0.10.3 an empty `toolNames` gives the agent **every** tool of the server (read in the pinned sources, `internal/engine/kagent0103`): a tool reference is never rendered without its allow-list, and a test fails if one is.
 - **Tools**: one `RemoteMCPServer` reference per bound connector, each restricted with `toolNames` to the tools the **current level** allows:
 
   | Level | Tools rendered |
@@ -132,7 +133,9 @@ The Doc controller generates and keeps up to date one kagent `Agent` per `TakeCa
   | `seasoned` | not implemented in milestone 1 |
 
   The same allow-list is applied at the gateway as per-tool authorization for the Doc's identity (ADR 0008): two independent layers.
-- **Instructions** (`systemMessage`): the investigation guidance, generated from `internal/doc/instructions.md` (golden-tested). It includes HolmesGPT-inspired investigation practice (credited) and the output rules below.
+- **Instructions**: the investigation guidance, rendered from `internal/doc/instructions.md` (golden-tested) with the Doc's scope and the types of its connectors, into a ConfigMap of the engine's namespace that the `Agent` reads (`systemMessageFrom`, as validated by spike 001). It includes HolmesGPT-inspired investigation practice (credited in the file) and the output rules below.
+- **Updates**: the two layers of the allow-list are not updated alike. The gateway's policies follow the connectors at once: a tool that is no longer allowed is refused from the next call. A re-rendered `Agent` restarts its pod, which loses a running task (spike 001 report §5.5): its re-rendering waits while an investigation of the Doc is `Running`, **at most until that investigation's timeout**; after that it is applied and the run's retry takes over. `status.renderPendingSince` and the `EngineReady` message say that a rendering waits, since when and until when.
+- **Deletion**: the `Agent`, its `RemoteMCPServer`s and its ConfigMap live in the engine's namespace and cannot carry an owner reference to the Doc: a finalizer removes them. Without the operator, the deletion waits; the chart's README gives the manual way out.
 - **A2A**: an `a2aConfig` with the skill `diagnose-alert` (ADR 0009). The agent card is reachable through the gateway.
 - Exact field names follow the kagent version pinned after spike 001; the spike's working manifests are the reference.
 
@@ -200,11 +203,18 @@ status:
   conditions:
     - type: Ready
     - type: LevelSupported
+    - type: ModelResolved        # spec.model, or the platform's first model, is declared by the platform
     - type: ConnectorsReady      # every bound connector exists and is Ready; required types covered
-    - type: EngineReady          # kagent Agent accepted, A2A endpoint reachable through the gateway
+    - type: EngineReady          # kagent Agent accepted and ready, and its card answers through the gateway's A2A route
+    - type: Degraded             # a recommended connector type is missing, or a bound connector is known but unavailable
   lastInvestigation: doc-3fa29c1b07-a1b2c3
   lastInvestigationTime: "2026-10-16T03:00:51Z"
+  renderPendingSince: null       # set while a re-rendering of the agent waits for a running investigation
 ```
+
+`EngineReady` needs the agent card to answer **through the gateway's A2A route**, not only the `Agent` to be ready: kagent sets `Ready` before the agent's pod serves (spike 001 report §3). A card that does not answer yet is `AgentStarting` for a start grace of two minutes, then `A2AUnreachable` with a warning event.
+
+A misconfigured Doc (`MissingConnectorType`, a bound connector that does not exist, `ScopeNotCovered`, an unknown model, `SingleDocOnly`) runs nothing: its routes and its agent are removed. What may pass by itself (the platform's gateway not ready, no cluster or metrics connector with known tools yet) leaves what was rendered in place.
 
 ## Metrics (operator)
 

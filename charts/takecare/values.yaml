@@ -263,6 +263,10 @@ kagent:
     # -- The engine's model and tool calls carry the caller's trace context
     # (ADR 0006); the controller copies OTEL_* into the agent pods.
     env: []
+    # -- The URL agent cards advertise: the gateway's root, so that a client
+    # following a card stays behind the gateway (ADR 0009, spike 001 report
+    # §5.2). The operator never reads it: it builds the A2A URL itself.
+    a2aBaseUrl: http://agentgateway-proxy.takecare-system.svc.cluster.local
   # -- The chart deploys a UI and a PostgreSQL. The UI has no place in TakeCare
   # (nothing reaches the controller but the gateway): zero replicas.
   ui:

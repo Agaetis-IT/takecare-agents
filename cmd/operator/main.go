@@ -26,6 +26,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -42,10 +43,12 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/controller/connector"
 	"github.com/agaetis-it/takecare-agents/internal/controller/investigation"
 	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
+	"github.com/agaetis-it/takecare-agents/internal/controller/takecaredoc"
 	"github.com/agaetis-it/takecare-agents/internal/engine/kagent0103"
 	"github.com/agaetis-it/takecare-agents/internal/gatewayapi"
 	"github.com/agaetis-it/takecare-agents/internal/httpclient"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
+	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/runs"
 	"github.com/agaetis-it/takecare-agents/internal/telemetry"
 )
@@ -217,6 +220,20 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up the investigation controller: %w", err)
 	}
+	// The Doc's rendering: its routes on the gateway, its agent in the
+	// engine, and its agent card probed through the gateway.
+	gatewayClient, err := httpclient.FromEnv(3 * time.Second).New()
+	if err != nil {
+		return nil, fmt.Errorf("gateway HTTP client: %w", err)
+	}
+	if err := (&takecaredoc.Reconciler{
+		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("takecare-operator"),
+		OperatorNamespace: cfg.operatorNamespace, EngineNamespace: cfg.engineNamespace,
+		Engine: &kagent0103.Agents{Client: mgr.GetClient()},
+		Probe:  takecaredoc.HTTPCardProbe(gatewayClient),
+	}).SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("set up the Doc controller: %w", err)
+	}
 	connectorReconciler := &connector.Reconciler{
 		Client:            mgr.GetClient(),
 		Recorder:          mgr.GetEventRecorder("takecare-operator"),
@@ -268,6 +285,7 @@ func managerOptions(cfg config, scheme *runtime.Scheme) ctrl.Options {
 	engineNS := map[string]cache.Config{cfg.engineNamespace: {}}
 	byObject := map[client.Object]cache.ByObject{
 		&corev1.Secret{}:                          {Namespaces: operatorNS},
+		&corev1.ConfigMap{}:                       {Namespaces: engineNS},
 		&corev1.Service{}:                         {Namespaces: operatorNS},
 		&networkingv1.NetworkPolicy{}:             {Namespaces: engineNS},
 		&appsv1.Deployment{}:                      {Namespaces: operatorNS},
@@ -276,16 +294,23 @@ func managerOptions(cfg config, scheme *runtime.Scheme) ctrl.Options {
 		&takecarev1alpha1.TakeCareDoc{}:           {Namespaces: operatorNS},
 		&takecarev1alpha1.TakeCareInvestigation{}: {Namespaces: operatorNS},
 	}
-	for _, gvk := range platform.OperatorNamespaceKinds() {
-		u := &unstructured.Unstructured{}
-		u.SetGroupVersionKind(gvk)
-		byObject[u] = cache.ByObject{Namespaces: operatorNS}
+	// Third-party kinds, each once: two controllers may name the same.
+	seen := map[schema.GroupVersionKind]bool{}
+	scope := func(gvks []schema.GroupVersionKind, namespaces map[string]cache.Config) {
+		for _, gvk := range gvks {
+			if seen[gvk] {
+				continue
+			}
+			seen[gvk] = true
+			u := &unstructured.Unstructured{}
+			u.SetGroupVersionKind(gvk)
+			byObject[u] = cache.ByObject{Namespaces: namespaces}
+		}
 	}
-	for _, gvk := range (&kagent0103.Models{}).OwnedTypes() {
-		u := &unstructured.Unstructured{}
-		u.SetGroupVersionKind(gvk)
-		byObject[u] = cache.ByObject{Namespaces: engineNS}
-	}
+	scope(platform.OperatorNamespaceKinds(), operatorNS)
+	scope(routes.Kinds(), operatorNS)
+	scope((&kagent0103.Models{}).OwnedTypes(), engineNS)
+	scope((&kagent0103.Agents{}).AgentTypes(), engineNS)
 	return ctrl.Options{
 		Scheme:                 scheme,
 		Cache:                  cache.Options{ByObject: byObject},

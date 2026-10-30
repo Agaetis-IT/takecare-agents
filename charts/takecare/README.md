@@ -48,6 +48,18 @@ alerting:
 
 The operator reads the token from its cache, so a rotation of that Secret needs no restart; update Alertmanager's copy at the same time.
 
+**Deleting a Doc needs the operator.** A `TakeCareDoc` carries the finalizer `takecare.agaetis.fr/engine-objects`: its agent lives in the engine's namespace, where Kubernetes cannot delete it with the Doc, so the operator removes it before letting the Doc go. Without a running operator (uninstalled first, scaled to zero, crash-looping), `kubectl delete takecaredoc` waits. To finish the deletion by hand, remove the engine's objects of that Doc, then the finalizer:
+
+```bash
+DOC=doc   # the TakeCareDoc's name
+kubectl -n kagent delete agents.kagent.dev,remotemcpservers.kagent.dev,configmaps \
+  -l takecare.agaetis.fr/role=doc,takecare.agaetis.fr/owner="$DOC"
+kubectl -n takecare-system patch takecaredoc "$DOC" --type=json \
+  -p='[{"op":"remove","path":"/metadata/finalizers"}]'
+```
+
+The Doc's routes and policies on the gateway, in the release namespace, carry an owner reference and follow the Doc on their own. Replace `kagent` and `takecare-system` if you changed the engine's or the release's namespace.
+
 ## Profiles
 
 | File | Use |
@@ -105,6 +117,7 @@ Mirroring every image and installing without Internet access is tracked in issue
 | global.imagePullSecrets | list | `[]` |  |
 | global.imageRegistry | string | `""` | Registry prefix for every image of this chart and of the hook job of takecare-crds, for customer-internal registries (ADR 0002). Empty: each image's own registry. Third-party subcharts take their own registry values (agentgateway.image.registry, kagent.registry). |
 | kagent | object | see values.yaml (kagent chart values; rbac.namespaces is an ADR 0007 requirement) | kagent 0.10.3, the agent engine (ADR 0007). Installed in its own namespace, created by this chart, with the installation requirements of ADR 0007. |
+| kagent.controller.a2aBaseUrl | string | `"http://agentgateway-proxy.takecare-system.svc.cluster.local"` | The URL agent cards advertise: the gateway's root, so that a client following a card stays behind the gateway (ADR 0009, spike 001 report §5.2). The operator never reads it: it builds the A2A URL itself. |
 | kagent.controller.auth.mode | string | `"unsecure"` | Who may call the controller's API, which the operator reaches through the gateway (A2A). `unsecure` relies on the NetworkPolicy above and on rbac.namespaces: the controller authorizes nothing in any mode (ADR 0007). `trusted-proxy` makes the controller answer 401 to any call without a bearer JWT, decoded without signature check; measured on 0.10.3: the operator's own ServiceAccount token is accepted. It stays off until the agent pods' callbacks are verified under it (PR 4): a default that breaks investigations is worse than a written gap. |
 | kagent.controller.env | list | `[]` | The engine's model and tool calls carry the caller's trace context (ADR 0006); the controller copies OTEL_* into the agent pods. |
 | kagent.database | object | `{"postgres":{"bundled":{"enabled":false},"url":""}}` | The bundled PostgreSQL is documented by kagent as dev and evaluation only, so it is off here: production sets database.postgres.url (or urlFile) to the customer's database and the chart refuses to render without one; the demo profile turns the bundled one on. |

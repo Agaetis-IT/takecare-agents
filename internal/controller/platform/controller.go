@@ -195,6 +195,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+		st.gatewayURL = route
 		if err := r.reconcileModels(ctx, &platform, st, route); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -546,6 +547,7 @@ func (r *Reconciler) labels(p *v1alpha1.TakeCarePlatform) map[string]string {
 func (r *Reconciler) writeStatus(ctx context.Context, p *v1alpha1.TakeCarePlatform, st *status) error {
 	p.Status.ObservedGeneration = p.Generation
 	p.Status.Models = st.models
+	p.Status.GatewayURL = st.gatewayURL
 	p.Status.ProductionGaps = st.gaps
 	for _, c := range st.conditions {
 		meta.SetStatusCondition(&p.Status.Conditions, c)
@@ -687,6 +689,7 @@ func conditionMessage(obj map[string]any, condType string) string {
 type status struct {
 	conditions []metav1.Condition
 	models     []v1alpha1.ModelStatus
+	gatewayURL string
 	gaps       []v1alpha1.ProductionGap
 	generation int64
 }
