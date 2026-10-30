@@ -366,6 +366,7 @@ func managerOptions(cfg config, scheme *runtime.Scheme) ctrl.Options {
 		&takecarev1alpha1.TakeCareConnector{}:     {Namespaces: operatorNS},
 		&takecarev1alpha1.TakeCareDoc{}:           {Namespaces: operatorNS},
 		&takecarev1alpha1.TakeCareInvestigation{}: {Namespaces: operatorNS},
+		&takecarev1alpha1.TakeCareDemo{}:          {Namespaces: operatorNS},
 	}
 	// Third-party kinds, each once: two controllers may name the same.
 	seen := map[schema.GroupVersionKind]bool{}
