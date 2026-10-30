@@ -1,6 +1,15 @@
 TakeCare Agents is installed in {{ .Release.Namespace }}.
 
+{{ $mode := toString .Values.alerting.alertmanagerConfig.create -}}
+{{ if or (eq $mode "true") (and (eq $mode "auto") (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1alpha1/AlertmanagerConfig")) -}}
+The Doc is triggered by Alertmanager. The AlertmanagerConfig takecare-doc
+routes the alerts to it: check that your Alertmanager resource selects it
+(alerting.alertmanagerConfig.labels) and that its
+alertmanagerConfigMatcherStrategy lets alerts of other namespaces through
+(see the chart's README). Otherwise, add this receiver to its configuration
+{{- else -}}
 The Doc is triggered by Alertmanager. Add this receiver to its configuration
+{{- end }}
 (the token is in the Secret {{ .Values.alerting.existingSecret | default "takecare-alerting" }}, key token):
 
   receivers:

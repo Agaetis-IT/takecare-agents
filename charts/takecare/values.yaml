@@ -103,6 +103,18 @@ alerting:
   # it (Helm lookup). Set it with helm template or a GitOps tool (Argo CD,
   # Flux), where a lookup sees nothing and every sync would change the token.
   existingSecret: ""
+  alertmanagerConfig:
+    # -- An AlertmanagerConfig (Prometheus Operator) that sends the alerts to
+    # the Doc: auto creates it when the cluster serves
+    # monitoring.coreos.com/v1alpha1, true or false force it. Prometheus
+    # Operator adds a matcher on the AlertmanagerConfig's own namespace by
+    # default: the Doc then receives only the alerts of the release
+    # namespace, unless the Alertmanager resource sets
+    # alertmanagerConfigMatcherStrategy.type: None. See the README.
+    create: auto
+    # -- Labels the Alertmanager resource's alertmanagerConfigSelector looks
+    # for, if it selects AlertmanagerConfigs by label.
+    labels: {}
 
 # -- The Gateway API Gateway served by agentgateway, in the release namespace.
 # Every model, MCP and A2A call goes through it (ADR 0004, 0008, 0009).
