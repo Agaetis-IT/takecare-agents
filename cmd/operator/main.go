@@ -41,6 +41,7 @@ import (
 	takecarev1alpha1 "github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/alerts"
 	"github.com/agaetis-it/takecare-agents/internal/controller/connector"
+	"github.com/agaetis-it/takecare-agents/internal/controller/demo"
 	"github.com/agaetis-it/takecare-agents/internal/controller/investigation"
 	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
 	"github.com/agaetis-it/takecare-agents/internal/controller/takecaredoc"
@@ -79,6 +80,10 @@ type config struct {
 	alertsTokenSecret string
 	// investigationRetention is how long an ended investigation is kept.
 	investigationRetention time.Duration
+	// demo runs the TakeCareDemo controller, with demoAppImage as
+	// billing-api's image: the chart sets both with demo.enabled.
+	demo         bool
+	demoAppImage string
 	// usageScrapeWait is how long after a run's end its last model calls
 	// are in Prometheus (one scrape interval, spec 02 §5).
 	usageScrapeWait time.Duration
@@ -121,6 +126,10 @@ func run(args []string) error {
 		"Secret, in the operator namespace, whose key token is the webhook's bearer token.")
 	fs.StringVar(&cfg.operatorDeployment, "operator-deployment", os.Getenv("OPERATOR_DEPLOYMENT"),
 		"Name of the operator's Deployment, for the single-replica production gap (default: OPERATOR_DEPLOYMENT).")
+	fs.BoolVar(&cfg.demo, "demo", false,
+		"Run the TakeCareDemo controller (demo only: its rights come from the chart's demo Roles).")
+	fs.StringVar(&cfg.demoAppImage, "demo-app-image", "",
+		"Image of the demo application, billing-api (required with --demo).")
 	zapOpts := zap.Options{}
 	zapOpts.BindFlags(fs)
 	if err := fs.Parse(args); err != nil {
@@ -138,6 +147,9 @@ func run(args []string) error {
 	restConfig, err := ctrl.GetConfig()
 	if err != nil {
 		return fmt.Errorf("load kubeconfig: %w", err)
+	}
+	if cfg.demo && cfg.demoAppImage == "" {
+		return errors.New("demo-app-image is required with --demo")
 	}
 	if cfg.operatorNamespace == "" || cfg.engineNamespace == "" {
 		return errors.New("operator-namespace and engine-namespace are required (the chart sets OPERATOR_NAMESPACE and ENGINE_NAMESPACE)")
@@ -293,6 +305,16 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	}
 	if err := connectorReconciler.SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up the connector controller: %w", err)
+	}
+	// The demo's scenery (spec 03), read outside the cache: its namespaces
+	// are not the operator's.
+	if cfg.demo {
+		if err := (&demo.Reconciler{
+			Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("takecare-operator"),
+			AppImage: cfg.demoAppImage,
+		}).SetupWithManager(mgr); err != nil {
+			return nil, fmt.Errorf("set up the demo controller: %w", err)
+		}
 	}
 	return traces, nil
 }

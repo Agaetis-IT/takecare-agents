@@ -373,9 +373,20 @@ kagent:
 # @default -- see the keys below
 demo:
   enabled: false
-  # -- The scenery's namespaces, created by the chart (the add-ons' Roles are
-  # rendered into them).
-  namespaces: [demo-apps, ack-system]
+  # -- The scenery's namespaces, created by the chart: the add-ons' Roles and
+  # the operator's demo Roles are rendered into them. They must match the
+  # TakeCareDemo's appNamespace and platformNamespace (its defaults).
+  appNamespace: demo-apps
+  platformNamespace: ack-system
+  # -- The demo application, billing-api, deployed by the TakeCareDemo
+  # controller.
+  # @default -- see the keys below
+  app:
+    image:
+      registry: ghcr.io/agaetis-it
+      repository: takecare-agents-demo-app
+      # Empty: the chart's appVersion.
+      tag: ""
   jaeger:
     image: jaegertracing/jaeger:2.22.0 # pin: JAEGER_IMAGE
     resources:

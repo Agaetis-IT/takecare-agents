@@ -10,6 +10,7 @@ package testenv
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -33,14 +34,14 @@ func RepoRoot() string {
 
 // ChartCRDs renders the takecare-crds chart with the pinned Helm (HELM, set
 // by the Makefile) and returns its CRDs: agentgateway's, kagent's, and
-// TakeCare's own copies.
-func ChartCRDs(t *testing.T) []*apiextensionsv1.CustomResourceDefinition {
+// TakeCare's own copies; with demo, the demo's too (ACK's DBProxy).
+func ChartCRDs(t *testing.T, demo bool) []*apiextensionsv1.CustomResourceDefinition {
 	t.Helper()
 	helm := os.Getenv("HELM")
 	if helm == "" {
 		t.Fatal("HELM is not set: run `make test`, which downloads the pinned Helm and the charts' dependencies")
 	}
-	cmd := exec.Command(helm, "template", "takecare-crds", filepath.Join(RepoRoot(), "charts", "takecare-crds"), "-n", "takecare-system", "--set", "gatewayAPI.install=never") //nolint:gosec // the test's own binary and arguments
+	cmd := exec.Command(helm, "template", "takecare-crds", filepath.Join(RepoRoot(), "charts", "takecare-crds"), "-n", "takecare-system", "--set", "gatewayAPI.install=never", "--set", fmt.Sprintf("demo.enabled=%t", demo)) //nolint:gosec // the test's own binary and arguments
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -72,6 +73,17 @@ func ChartCRDs(t *testing.T) []*apiextensionsv1.CustomResourceDefinition {
 // It fails, never skips, without the envtest binaries.
 func Start(t *testing.T) *rest.Config {
 	t.Helper()
+	return start(t, false)
+}
+
+// StartDemo is Start with the demo's CRDs.
+func StartDemo(t *testing.T) *rest.Config {
+	t.Helper()
+	return start(t, true)
+}
+
+func start(t *testing.T, demo bool) *rest.Config {
+	t.Helper()
 	if os.Getenv("KUBEBUILDER_ASSETS") == "" {
 		t.Fatal("KUBEBUILDER_ASSETS is not set: run `make test`, which installs the envtest binaries")
 	}
@@ -82,7 +94,7 @@ func Start(t *testing.T) *rest.Config {
 		t.Fatalf("load the embedded Gateway API bundle: %v", err)
 	}
 	env := &envtest.Environment{
-		CRDs:                  append(ChartCRDs(t), bundle.CRDs...),
+		CRDs:                  append(ChartCRDs(t, demo), bundle.CRDs...),
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, err := env.Start()

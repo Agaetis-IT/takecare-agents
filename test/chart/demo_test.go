@@ -5,6 +5,8 @@ package chart
 
 import (
 	"path"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -176,5 +178,63 @@ func TestDemoAlertmanagerDeliversToTheDoc(t *testing.T) {
 	}
 	if !mounted {
 		t.Errorf("Secret %s is not mounted at %s in the alertmanager container", tokenSecret, path.Dir(credentials))
+	}
+}
+
+// The operator's demo rights (spec 03) come from the chart under
+// demo.enabled, by name, in the scenery's namespaces only: production
+// renders none, and no operator Role there lies outside the release and
+// engine namespaces.
+func TestDemoOperatorRoles(t *testing.T) {
+	demo := render(t, releaseName, profileArgs("demo")...)
+	want := map[string]map[string][]string{ // namespace -> resource -> names
+		"demo-apps":  {"deployments": {"billing-api"}, "services": {"billing-api"}},
+		"ack-system": {"dbproxies": {"billing-db-proxy"}},
+	}
+	got := map[string]map[string][]string{}
+	for _, o := range ofKind(demo, kindRole) {
+		if o.GetName() != "takecare-operator-demo" {
+			continue
+		}
+		got[o.GetNamespace()] = map[string][]string{}
+		for _, r := range rulesByRole(t, []*unstructured.Unstructured{o})[kindRole+"/takecare-operator-demo"] {
+			if msg := forbidden(r); msg != "" {
+				t.Errorf("%s: %s", o.GetNamespace(), msg)
+			}
+			for _, v := range r.Verbs {
+				if !slices.Contains([]string{verbGet, "create", "patch", "delete"}, v) {
+					t.Errorf("%s: verb %s on %v", o.GetNamespace(), v, r.Resources)
+				}
+			}
+			if len(r.ResourceNames) == 0 {
+				t.Errorf("%s: %v not limited by name", o.GetNamespace(), r.Resources)
+			}
+			for _, res := range r.Resources {
+				got[o.GetNamespace()][res] = r.ResourceNames
+			}
+		}
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("demo Roles %v, want %v", got, want)
+	}
+
+	prod := render(t, releaseName, append(profileArgs("prod"), prodSets...)...)
+	for _, o := range ofKind(prod, kindRole) {
+		if o.GetName() == "takecare-operator-demo" {
+			t.Errorf("prod renders the demo Role in %s", o.GetNamespace())
+		}
+		if strings.HasPrefix(o.GetName(), "takecare-operator") && o.GetNamespace() != releaseNamespace && o.GetNamespace() != engineNamespace {
+			t.Errorf("prod renders the operator Role %s in %s", o.GetName(), o.GetNamespace())
+		}
+	}
+	for _, o := range ofKind(prod, "Deployment") {
+		if o.GetName() != "takecare-operator" {
+			continue
+		}
+		containers, _, _ := unstructured.NestedSlice(o.Object, "spec", "template", "spec", "containers")
+		args, _, _ := unstructured.NestedStringSlice(containers[0].(map[string]any), "args")
+		if slices.Contains(args, "--demo") {
+			t.Error("prod runs the demo controller")
+		}
 	}
 }

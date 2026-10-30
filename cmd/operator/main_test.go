@@ -126,7 +126,7 @@ func staticMapper(scheme *runtime.Scheme) meta.RESTMapper {
 // scheme, same options, same setupControllers), with a mapper that needs no
 // cluster, and must fail when apiextensions is dropped from the scheme.
 func TestStartupWiringRecognizesEveryWatchedType(t *testing.T) {
-	cfg := config{metricsAddr: "0", probeAddr: "0", operatorNamespace: "takecare-system", engineNamespace: "kagent", operatorDeployment: "takecare-operator"}
+	cfg := config{metricsAddr: "0", probeAddr: "0", operatorNamespace: "takecare-system", engineNamespace: "kagent", operatorDeployment: "takecare-operator", demo: true, demoAppImage: "demo-app:test"}
 	restCfg := &rest.Config{Host: "http://127.0.0.1:1"}
 	wire := func(scheme *runtime.Scheme) error {
 		opts := managerOptions(cfg, scheme)
