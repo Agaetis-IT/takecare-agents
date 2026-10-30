@@ -72,6 +72,21 @@ func waitPhase(t *testing.T, c client.Client, name string, want v1alpha1.RunPhas
 	t.Fatalf("%s did not reach %s (at %q)", name, want, phaseOf(t, c, name))
 }
 
+// waitQueued waits for the record to be in the queue: the phase is written
+// one reconcile before the record is added.
+func waitQueued(t *testing.T, q *runs.Queue, name string) {
+	t.Helper()
+	key := types.NamespacedName{Namespace: ns, Name: name}
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		if q.Contains(key) {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("%s is Queued but not in the queue", name)
+}
+
 func create(t *testing.T, c client.Client, name string) {
 	t.Helper()
 	inv := &v1alpha1.TakeCareInvestigation{
@@ -109,13 +124,17 @@ func TestAdmission(t *testing.T) {
 
 	queue := runs.NewQueue(2)
 	stop := manager(t, cfg, queue)
-	for i := range 3 {
-		create(t, c, fmt.Sprintf("doc-run-%d", i))
-		time.Sleep(200 * time.Millisecond) // creation order decides who is dropped
+	// The order the controller admits records in decides which one is
+	// dropped; wait for each admission before creating the next, rather than
+	// betting on a delay (a slow runner admitted doc-run-2 before doc-run-1).
+	for i, want := range []v1alpha1.RunPhase{v1alpha1.PhaseQueued, v1alpha1.PhaseQueued, v1alpha1.PhaseDropped} {
+		name := fmt.Sprintf("doc-run-%d", i)
+		create(t, c, name)
+		waitPhase(t, c, name, want)
+		if want == v1alpha1.PhaseQueued {
+			waitQueued(t, queue, name)
+		}
 	}
-	waitPhase(t, c, "doc-run-0", v1alpha1.PhaseQueued)
-	waitPhase(t, c, "doc-run-1", v1alpha1.PhaseQueued)
-	waitPhase(t, c, "doc-run-2", v1alpha1.PhaseDropped)
 	var dropped v1alpha1.TakeCareInvestigation
 	if err := c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: "doc-run-2"}, &dropped); err != nil {
 		t.Fatal(err)
