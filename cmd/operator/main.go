@@ -14,6 +14,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
@@ -32,16 +33,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	takecarev1alpha1 "github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/alerts"
 	"github.com/agaetis-it/takecare-agents/internal/controller/connector"
+	"github.com/agaetis-it/takecare-agents/internal/controller/investigation"
 	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
 	"github.com/agaetis-it/takecare-agents/internal/engine/kagent0103"
 	"github.com/agaetis-it/takecare-agents/internal/gatewayapi"
 	"github.com/agaetis-it/takecare-agents/internal/httpclient"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
+	"github.com/agaetis-it/takecare-agents/internal/runs"
 	"github.com/agaetis-it/takecare-agents/internal/telemetry"
 )
 
@@ -64,6 +69,8 @@ type config struct {
 	// operatorDeployment names the operator's own Deployment, read for the
 	// single-replica production gap.
 	operatorDeployment string
+	// alertsAddr serves the Alertmanager webhook (spec 02 §1).
+	alertsAddr string
 }
 
 func main() {
@@ -93,6 +100,8 @@ func run(args []string) error {
 		"Namespace of the operator, where the platform's Secrets and the Gateway live (default: OPERATOR_NAMESPACE).")
 	fs.StringVar(&cfg.engineNamespace, "engine-namespace", os.Getenv("ENGINE_NAMESPACE"),
 		"The one namespace engine objects are written in (default: ENGINE_NAMESPACE).")
+	fs.StringVar(&cfg.alertsAddr, "alerts-bind-address", ":8080",
+		"Address the Alertmanager webhook (POST /v1/alerts) binds to; 0 disables it.")
 	fs.StringVar(&cfg.operatorDeployment, "operator-deployment", os.Getenv("OPERATOR_DEPLOYMENT"),
 		"Name of the operator's Deployment, for the single-replica production gap (default: OPERATOR_DEPLOYMENT).")
 	zapOpts := zap.Options{}
@@ -182,6 +191,27 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	if err != nil {
 		return nil, fmt.Errorf("MCP HTTP client: %w", err)
 	}
+	// The Doc's trigger: the Alertmanager webhook, on every replica, and
+	// the admission of its records into the leader's run queue.
+	alertMetrics, err := alerts.NewMetrics(crmetrics.Registry)
+	if err != nil {
+		return nil, err
+	}
+	if err := mgr.Add(&alertServer{addr: cfg.alertsAddr, handler: &alerts.Handler{
+		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Namespace: cfg.operatorNamespace, Metrics: alertMetrics,
+	}}); err != nil {
+		return nil, fmt.Errorf("add the alert intake: %w", err)
+	}
+	phases, err := investigation.NewPhaseMetric(crmetrics.Registry)
+	if err != nil {
+		return nil, err
+	}
+	if err := (&investigation.Reconciler{
+		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("takecare-operator"),
+		Queue: runs.NewQueue(runs.DefaultCapacity), Phases: phases,
+	}).SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("set up the investigation controller: %w", err)
+	}
 	connectorReconciler := &connector.Reconciler{
 		Client:            mgr.GetClient(),
 		Recorder:          mgr.GetEventRecorder("takecare-operator"),
@@ -232,12 +262,14 @@ func managerOptions(cfg config, scheme *runtime.Scheme) ctrl.Options {
 	operatorNS := map[string]cache.Config{cfg.operatorNamespace: {}}
 	engineNS := map[string]cache.Config{cfg.engineNamespace: {}}
 	byObject := map[client.Object]cache.ByObject{
-		&corev1.Secret{}:                      {Namespaces: operatorNS},
-		&corev1.Service{}:                     {Namespaces: operatorNS},
-		&networkingv1.NetworkPolicy{}:         {Namespaces: engineNS},
-		&appsv1.Deployment{}:                  {Namespaces: operatorNS},
-		&discoveryv1.EndpointSlice{}:          {Namespaces: operatorNS},
-		&takecarev1alpha1.TakeCareConnector{}: {Namespaces: operatorNS},
+		&corev1.Secret{}:                          {Namespaces: operatorNS},
+		&corev1.Service{}:                         {Namespaces: operatorNS},
+		&networkingv1.NetworkPolicy{}:             {Namespaces: engineNS},
+		&appsv1.Deployment{}:                      {Namespaces: operatorNS},
+		&discoveryv1.EndpointSlice{}:              {Namespaces: operatorNS},
+		&takecarev1alpha1.TakeCareConnector{}:     {Namespaces: operatorNS},
+		&takecarev1alpha1.TakeCareDoc{}:           {Namespaces: operatorNS},
+		&takecarev1alpha1.TakeCareInvestigation{}: {Namespaces: operatorNS},
 	}
 	for _, gvk := range platform.OperatorNamespaceKinds() {
 		u := &unstructured.Unstructured{}
@@ -292,4 +324,37 @@ func runGatewayAPICRDs(args []string) error {
 	}
 	ctx := ctrl.SetupSignalHandler()
 	return gatewayapi.Install(log.IntoContext(ctx, ctrl.Log.WithName("gateway-api-crds")), c, m)
+}
+
+// alertServer serves the Alertmanager webhook on every replica (creating a
+// record is idempotent; the run happens on the leader).
+type alertServer struct {
+	addr    string
+	handler http.Handler
+}
+
+// NeedLeaderElection keeps the webhook on every replica.
+func (*alertServer) NeedLeaderElection() bool { return false }
+
+// Start serves until ctx ends.
+func (s *alertServer) Start(ctx context.Context) error {
+	if s.addr == "" || s.addr == "0" {
+		return nil
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/v1/alerts", s.handler)
+	srv := &http.Server{Addr: s.addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	errs := make(chan error, 1)
+	go func() { errs <- srv.ListenAndServe() }()
+	select {
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		return srv.Shutdown(shutdownCtx)
+	case err := <-errs:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return fmt.Errorf("alert intake: %w", err)
+	}
 }

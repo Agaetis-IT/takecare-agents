@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -128,6 +129,10 @@ func TestStartupWiringRecognizesEveryWatchedType(t *testing.T) {
 	wire := func(scheme *runtime.Scheme) error {
 		opts := managerOptions(cfg, scheme)
 		opts.MapperProvider = func(*rest.Config, *http.Client) (meta.RESTMapper, error) { return staticMapper(scheme), nil }
+		// The test wires twice in one process: controller names would
+		// collide and fail for a reason that is not the one under test.
+		skip := true
+		opts.Controller.SkipNameValidation = &skip
 		mgr, err := ctrl.NewManager(restCfg, opts)
 		if err != nil {
 			return fmt.Errorf("new manager: %w", err)
@@ -161,7 +166,7 @@ func TestStartupWiringRecognizesEveryWatchedType(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := wire(bare); err == nil {
-		t.Fatal("a scheme without apiextensions wires without an error: the startup crash can come back")
+	if err := wire(bare); err == nil || !strings.Contains(err.Error(), "CustomResourceDefinition") {
+		t.Fatalf("a scheme without apiextensions must fail on the CRD watch, got %v", err)
 	}
 }
