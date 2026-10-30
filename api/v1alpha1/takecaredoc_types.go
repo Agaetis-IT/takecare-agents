@@ -5,6 +5,9 @@ package v1alpha1
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+// KindTakeCareDoc is the Doc's kind, as records name their role (RoleRef).
+const KindTakeCareDoc = "TakeCareDoc"
+
 // TakeCareDocSpec configures the Doc, the incident diagnosis role (spec 02).
 type TakeCareDocSpec struct {
 	RoleCommonSpec `json:",inline"`

@@ -409,7 +409,7 @@ func (r *Reconciler) forget(key types.NamespacedName) {
 func (r *Reconciler) role(d *v1alpha1.TakeCareDoc) routes.Role {
 	return routes.Role{
 		Kind: doc.Kind, Name: d.Name, Namespace: d.Namespace,
-		Owner:  *metav1.NewControllerRef(d, v1alpha1.GroupVersion.WithKind("TakeCareDoc")),
+		Owner:  *metav1.NewControllerRef(d, v1alpha1.GroupVersion.WithKind(v1alpha1.KindTakeCareDoc)),
 		Labels: map[string]string{"app.kubernetes.io/part-of": "takecare", "takecare.agaetis.fr/role": doc.Kind},
 	}
 }
@@ -713,7 +713,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&v1alpha1.TakeCarePlatform{}, allDocs, builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, statusChanged{}))).
 		Watches(&v1alpha1.TakeCareInvestigation{}, handler.EnqueueRequestsFromMapFunc(func(_ context.Context, o client.Object) []reconcile.Request {
 			inv, ok := o.(*v1alpha1.TakeCareInvestigation)
-			if !ok || inv.Spec.RoleRef.Kind != "TakeCareDoc" {
+			if !ok || inv.Spec.RoleRef.Kind != v1alpha1.KindTakeCareDoc {
 				return nil
 			}
 			return []reconcile.Request{{Namespace: inv.Namespace, Name: inv.Spec.RoleRef.Name}}

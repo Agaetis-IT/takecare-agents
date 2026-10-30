@@ -20,9 +20,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	kevents "k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/config"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -42,6 +46,8 @@ const (
 	task1      = "task-1"
 	taskLeft   = "task-left"
 	promConn   = "prometheus"
+	k8sConn    = "kubernetes"
+	testReason = "Test"
 )
 
 // poll is one answer of the fake engine to a read of a task.
@@ -212,7 +218,7 @@ func (f *workerFixture) setReady(t *testing.T, ready bool) {
 		status = metav1.ConditionTrue
 	}
 	for _, ct := range []string{v1alpha1.ConditionReady, v1alpha1.ConditionEngineReady} {
-		meta.SetStatusCondition(&d.Status.Conditions, metav1.Condition{Type: ct, Status: status, Reason: "Test", LastTransitionTime: metav1.Now()})
+		meta.SetStatusCondition(&d.Status.Conditions, metav1.Condition{Type: ct, Status: status, Reason: testReason, LastTransitionTime: metav1.Now()})
 	}
 	if err := f.c.Status().Update(context.Background(), &d); err != nil {
 		t.Fatal(err)
@@ -427,9 +433,9 @@ func TestSuspendedDocRunsNothing(t *testing.T) {
 func TestRunDegraded(t *testing.T) {
 	f := startWorker(t, map[string][]poll{task1: {completed}})
 	f.doc(t, true, func(d *v1alpha1.TakeCareDoc) {
-		d.Spec.Connectors = v1alpha1.DocConnectors{Cluster: []string{"kubernetes"}, Metrics: []string{promConn}}
+		d.Spec.Connectors = v1alpha1.DocConnectors{Cluster: []string{k8sConn}, Metrics: []string{promConn}}
 	})
-	for _, name := range []string{"kubernetes", promConn} {
+	for _, name := range []string{k8sConn, promConn} {
 		c := &v1alpha1.TakeCareConnector{Name: name, Namespace: ns}
 		c.Spec.Types = []v1alpha1.ConnectorType{v1alpha1.ConnectorMetrics}
 		c.Spec.MCP.Addon = name
@@ -440,7 +446,7 @@ func TestRunDegraded(t *testing.T) {
 		if name == promConn {
 			ready = metav1.ConditionFalse
 		}
-		meta.SetStatusCondition(&c.Status.Conditions, metav1.Condition{Type: v1alpha1.ConditionReady, Status: ready, Reason: "Test", LastTransitionTime: metav1.Now()})
+		meta.SetStatusCondition(&c.Status.Conditions, metav1.Condition{Type: v1alpha1.ConditionReady, Status: ready, Reason: testReason, LastTransitionTime: metav1.Now()})
 		if err := f.c.Status().Update(context.Background(), c); err != nil {
 			t.Fatal(err)
 		}
@@ -489,5 +495,67 @@ func TestResume(t *testing.T) {
 	inv = f.waitPhase(t, "doc-resume-noid", v1alpha1.PhaseCompleted)
 	if inv.Status.Attempts != 2 || inv.Status.Engine.TaskID != task1 {
 		t.Errorf("resumed without ID: attempts %d, task %q", inv.Status.Attempts, inv.Status.Engine.TaskID)
+	}
+}
+
+// A record put back in the queue while it is run (the reconciler re-adds a
+// Queued record on any reconcile, the intake's status patches included)
+// must not run twice, whatever maxConcurrent allows. The run is held before
+// it marks the record Running, the window where the stale copy would pass.
+func TestARecordInFlightIsNotRunTwice(t *testing.T) {
+	scheme := runtime.NewScheme()
+	for _, add := range []func(*runtime.Scheme) error{clientgoscheme.AddToScheme, v1alpha1.AddToScheme} {
+		if err := add(scheme); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d := &v1alpha1.TakeCareDoc{Name: docName, Namespace: ns}
+	d.Spec.Investigation.MaxConcurrent = 2
+	d.Spec.Connectors.Cluster = []string{k8sConn}
+	for _, ct := range []string{v1alpha1.ConditionReady, v1alpha1.ConditionEngineReady} {
+		meta.SetStatusCondition(&d.Status.Conditions, metav1.Condition{Type: ct, Status: metav1.ConditionTrue, Reason: testReason})
+	}
+	inv := &v1alpha1.TakeCareInvestigation{Name: "doc-once", Namespace: ns}
+	inv.Spec.RoleRef = v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareDoc, Name: docName}
+	inv.Spec.Alert = v1alpha1.AlertRecord{Name: alertName}
+	inv.Status.Phase = v1alpha1.PhaseQueued
+	p := &v1alpha1.TakeCarePlatform{Name: "main"}
+	p.Status.GatewayURL = "http://gw"
+	hold, held := make(chan struct{}), make(chan struct{}, 1)
+	c := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(d, inv, p).
+		WithStatusSubresource(&v1alpha1.TakeCareInvestigation{}, &v1alpha1.TakeCareDoc{}).
+		WithInterceptorFuncs(interceptor.Funcs{Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if _, ok := obj.(*v1alpha1.TakeCareConnector); ok {
+				select {
+				case held <- struct{}{}:
+				default:
+				}
+				<-hold // the run waits here, before markRunning
+			}
+			return cl.Get(ctx, key, obj, opts...)
+		}}).Build()
+	engineFake := &fakeRuns{scripts: map[string][]poll{task1: {completed}}, traces: map[string]string{}}
+	w := &Worker{
+		Client: c, Recorder: kevents.NewFakeRecorder(10), Queue: runs.NewQueue(0),
+		Executor:   &runs.Executor{Engine: engineFake, Role: docName, Interval: time.Millisecond},
+		Tracer:     sdktrace.NewTracerProvider().Tracer("test"),
+		EngineKind: engineKind, EngineNamespace: engineKind, GateRetry: time.Millisecond,
+	}
+	w.running, w.inFlightRecords, w.freed = map[types.NamespacedName]int{}, map[types.NamespacedName]bool{}, make(chan struct{}, 1)
+	ctx := context.Background()
+	key := client.ObjectKeyFromObject(inv)
+
+	w.admit(ctx, key)
+	<-held // the first run is in flight, the record still Queued
+	w.admit(ctx, key)
+	close(hold)
+	w.wg.Wait()
+	if engineFake.starts != 1 {
+		t.Fatalf("the engine saw %d starts of one record", engineFake.starts)
+	}
+	var got v1alpha1.TakeCareInvestigation
+	if err := c.Get(ctx, key, &got); err != nil || got.Status.Phase != v1alpha1.PhaseCompleted {
+		t.Fatalf("phase %s, %v", got.Status.Phase, err)
 	}
 }

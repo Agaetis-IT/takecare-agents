@@ -64,7 +64,13 @@ const (
 // the second and third steps of spec 06 §2, the record making a run and the
 // engine running it. It holds the leader's queue, at most the Doc's
 // maxConcurrent runs at once, and starts a run only for a Doc that is not
-// suspended, Ready and EngineReady; otherwise the record waits Queued.
+// suspended, Ready and EngineReady; otherwise the record waits Queued, as
+// long as it takes, without failing.
+//
+// The queue is served oldest first and the worker waits when the oldest
+// record's Doc cannot run: with one Doc per cluster (spec 02, SingleDocOnly)
+// that is the right order. A second role, or a second Doc, needs one queue
+// per role resource, or admission that skips a blocked Doc's records.
 type Worker struct {
 	Client   client.Client
 	Recorder recorder.EventRecorder
@@ -84,7 +90,11 @@ type Worker struct {
 	wg      sync.WaitGroup
 	mu      sync.Mutex
 	running map[types.NamespacedName]int // runs in flight, per Doc
-	freed   chan struct{}
+	// inFlightRecords holds the records being run: the reconciler may put
+	// a record back in the queue while it is still Queued (a status patch
+	// of the intake reconciles it), and a record must never run twice.
+	inFlightRecords map[types.NamespacedName]bool
+	freed           chan struct{}
 }
 
 // NeedLeaderElection implements manager.LeaderElectionRunnable: the queue
@@ -103,6 +113,7 @@ func (w *Worker) clock() runs.Clock {
 // for its runs to stop.
 func (w *Worker) Start(ctx context.Context) error {
 	w.running = map[types.NamespacedName]int{}
+	w.inFlightRecords = map[types.NamespacedName]bool{}
 	w.freed = make(chan struct{}, 1)
 	if w.GateRetry <= 0 {
 		w.GateRetry = defaultGateRetry
@@ -139,12 +150,19 @@ type run struct {
 // before taking the next record.
 func (w *Worker) admit(ctx context.Context, key types.NamespacedName) bool {
 	logger := log.FromContext(ctx).WithValues("investigation", key.Name)
+	if w.recordInFlight(key) {
+		return false // already being run: the queue held a stale copy
+	}
 	var inv v1alpha1.TakeCareInvestigation
 	if err := w.Client.Get(ctx, key, &inv); err != nil {
-		if !apierrors.IsNotFound(err) {
-			logger.Error(err, "read the investigation")
+		if apierrors.IsNotFound(err) {
+			return false
 		}
-		return false
+		// A transient read error must not take the record out of the
+		// queue: nothing else would put it back before a resync.
+		logger.Error(err, "read the investigation")
+		w.Queue.Add(key, time.Time{})
+		return true
 	}
 	if inv.Status.Phase != v1alpha1.PhaseQueued {
 		return false
@@ -196,14 +214,26 @@ func (w *Worker) inFlight(docKey types.NamespacedName) int {
 	return w.running[docKey]
 }
 
+func (w *Worker) recordInFlight(key types.NamespacedName) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.inFlightRecords[key]
+}
+
 func (w *Worker) startRun(ctx context.Context, r run) {
 	w.mu.Lock()
+	if w.inFlightRecords[r.key] {
+		w.mu.Unlock()
+		return
+	}
+	w.inFlightRecords[r.key] = true
 	w.running[r.docKey]++
 	w.mu.Unlock()
 	w.wg.Go(func() {
 		defer func() {
 			w.mu.Lock()
 			w.running[r.docKey]--
+			delete(w.inFlightRecords, r.key)
 			w.mu.Unlock()
 			select {
 			case w.freed <- struct{}{}:
@@ -227,7 +257,7 @@ func (w *Worker) resume(ctx context.Context) error {
 	}
 	for i := range list.Items {
 		inv := &list.Items[i]
-		if inv.Status.Phase != v1alpha1.PhaseRunning || inv.Spec.RoleRef.Kind != "TakeCareDoc" {
+		if inv.Status.Phase != v1alpha1.PhaseRunning || inv.Spec.RoleRef.Kind != v1alpha1.KindTakeCareDoc {
 			continue
 		}
 		w.startRun(ctx, run{
@@ -245,7 +275,7 @@ func (w *Worker) resume(ctx context.Context) error {
 // next leader to resume.
 func (w *Worker) drive(ctx context.Context, r run) error {
 	var inv v1alpha1.TakeCareInvestigation
-	if err := w.Client.Get(ctx, r.key, &inv); err != nil {
+	if err := w.read(ctx, r.key, &inv); err != nil {
 		return client.IgnoreNotFound(err)
 	}
 	// Before the record is Running it is out of the queue: anything that
@@ -320,6 +350,24 @@ func (w *Worker) drive(ctx context.Context, r run) error {
 	}
 	w.finish(ctx, &inv, d, span, out)
 	return nil
+}
+
+// read gets the record, retrying a transient error until ctx ends: a
+// record left unread would stay Queued out of the queue, or Running with
+// nobody following it until the next leader.
+func (w *Worker) read(ctx context.Context, key types.NamespacedName, inv *v1alpha1.TakeCareInvestigation) error {
+	for {
+		err := w.Client.Get(ctx, key, inv)
+		if err == nil || apierrors.IsNotFound(err) {
+			return err
+		}
+		log.FromContext(ctx).Error(err, "read the investigation, retrying", "investigation", key.Name)
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("read investigation %s: %w", key.Name, ctx.Err())
+		case <-w.clock().After(w.GateRetry):
+		}
+	}
 }
 
 // recorder writes the task ID into the record before the task is followed.
