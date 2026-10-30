@@ -357,6 +357,9 @@ func TestRendering(t *testing.T) {
 		f.setConnector(t, "prometheus", read("execute_query"), true)
 		f.waitCondition(t, "doc", v1alpha1.ConditionEngineReady, metav1.ConditionFalse, ReasonA2AUnreachable)
 		f.answer.Store(true)
+		// The next probe comes with the next reconcile (an unreachable card
+		// is looked at again after 30 s): trigger one rather than wait.
+		f.setConnector(t, "prometheus", read("execute_query", "get_targets"), true)
 		f.waitCondition(t, "doc", v1alpha1.ConditionEngineReady, metav1.ConditionTrue, ReasonReady)
 	})
 

@@ -68,6 +68,7 @@ const (
 	GapGatewayMetricsNotScraped = "gateway-metrics-not-scraped"
 	GapNoNetworkPolicies        = "no-network-policies"
 	GapConnectorNotReady        = "connector-not-ready"
+	GapRoleWithoutReport        = "role-without-report"
 	GapReportLogEnabled         = "report-log-enabled"
 
 	ReasonNoGaps    = "NoGaps"
@@ -141,6 +142,7 @@ func OperatorNamespaceKinds() []schema.GroupVersionKind {
 // +kubebuilder:rbac:groups=apps,resources=deployments,resourceNames=takecare-operator,verbs=get,namespace=takecare-system
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch,namespace=kagent
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareconnectors,verbs=get;list;watch,namespace=takecare-system
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaredocs,verbs=get;list;watch,namespace=takecare-system
 
 // Reconciler reconciles the TakeCarePlatform.
 type Reconciler struct {
@@ -566,6 +568,52 @@ func samplingRatio(perMille *int32) float64 {
 	return min(max(float64(*perMille)/1000, 0), 1)
 }
 
+// resourceGaps adds the gaps the roles and connectors give (spec 01):
+// role-without-report, report-log-enabled and connector-not-ready.
+func (r *Reconciler) resourceGaps(ctx context.Context, add func(id, detail string)) error {
+	// role-without-report (spec 01): a role at the service level, or at
+	// seasoned which behaves as service, without a report connector.
+	var docs v1alpha1.TakeCareDocList
+	if err := r.List(ctx, &docs, client.InNamespace(r.OperatorNamespace)); err != nil {
+		return fmt.Errorf("list TakeCareDocs in %s: %w", r.OperatorNamespace, err)
+	}
+	var unreported []string
+	for _, d := range docs.Items {
+		if (d.Spec.Level == v1alpha1.LevelService || d.Spec.Level == v1alpha1.LevelSeasoned) && d.Spec.Connectors.Report == "" {
+			unreported = append(unreported, "TakeCareDoc "+d.Name)
+		}
+	}
+	if len(unreported) > 0 {
+		slices.Sort(unreported)
+		add(GapRoleWithoutReport, fmt.Sprintf("role(s) at the service level without a report connector, whose diagnoses reach no one: %s", strings.Join(unreported, ", ")))
+	}
+
+	// connector-not-ready (spec 05): any connector of the operator namespace
+	// that is not Ready.
+	var connectors v1alpha1.TakeCareConnectorList
+	if err := r.List(ctx, &connectors, client.InNamespace(r.OperatorNamespace)); err != nil {
+		return fmt.Errorf("list TakeCareConnectors in %s: %w", r.OperatorNamespace, err)
+	}
+	var notReady, logReports []string
+	for _, c := range connectors.Items {
+		if !meta.IsStatusConditionTrue(c.Status.Conditions, v1alpha1.ConditionReady) {
+			notReady = append(notReady, c.Name)
+		}
+		if c.Spec.Report != nil && c.Spec.Report.Adapter == "log" {
+			logReports = append(logReports, c.Name)
+		}
+	}
+	if len(logReports) > 0 {
+		add(GapReportLogEnabled, fmt.Sprintf("report connector(s) with the log adapter: %s; diagnoses are written to the server's log (demo only)", strings.Join(logReports, ", ")))
+	}
+	if len(notReady) > 0 {
+		slices.Sort(notReady)
+		add(GapConnectorNotReady, fmt.Sprintf("connector(s) not Ready: %s", strings.Join(notReady, ", ")))
+	}
+
+	return nil
+}
+
 // productionGaps evaluates the checks that depend on the platform alone and
 // sets ProductionReady (spec 01): advisory, never part of Ready.
 func (r *Reconciler) productionGaps(ctx context.Context, p *v1alpha1.TakeCarePlatform, st *status, gatewayNS, gatewayName string) error {
@@ -618,27 +666,8 @@ func (r *Reconciler) productionGaps(ctx context.Context, p *v1alpha1.TakeCarePla
 		add(GapNoNetworkPolicies, fmt.Sprintf("no NetworkPolicy of TakeCare's in the engine namespace %s (networkPolicies.enabled is false); whether the CNI enforces them is not checked", r.EngineNamespace))
 	}
 
-	// connector-not-ready (spec 05): any connector of the operator namespace
-	// that is not Ready. role-without-report joins with the Doc (PR 4).
-	var connectors v1alpha1.TakeCareConnectorList
-	if err := r.List(ctx, &connectors, client.InNamespace(r.OperatorNamespace)); err != nil {
-		return fmt.Errorf("list TakeCareConnectors in %s: %w", r.OperatorNamespace, err)
-	}
-	var notReady, logReports []string
-	for _, c := range connectors.Items {
-		if !meta.IsStatusConditionTrue(c.Status.Conditions, v1alpha1.ConditionReady) {
-			notReady = append(notReady, c.Name)
-		}
-		if c.Spec.Report != nil && c.Spec.Report.Adapter == "log" {
-			logReports = append(logReports, c.Name)
-		}
-	}
-	if len(logReports) > 0 {
-		add(GapReportLogEnabled, fmt.Sprintf("report connector(s) with the log adapter: %s; diagnoses are written to the server's log (demo only)", strings.Join(logReports, ", ")))
-	}
-	if len(notReady) > 0 {
-		slices.Sort(notReady)
-		add(GapConnectorNotReady, fmt.Sprintf("connector(s) not Ready: %s", strings.Join(notReady, ", ")))
+	if err := r.resourceGaps(ctx, add); err != nil {
+		return err
 	}
 
 	st.gaps = gaps
@@ -750,6 +779,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	inEngineNS := predicate.NewPredicateFuncs(func(o client.Object) bool { return o.GetNamespace() == r.EngineNamespace })
 	b = b.Watches(&networkingv1.NetworkPolicy{}, toMain, builder.WithPredicates(inEngineNS))
 	b = b.Watches(&v1alpha1.TakeCareConnector{}, toMain, builder.WithPredicates(inOperatorNS))
+	b = b.Watches(&v1alpha1.TakeCareDoc{}, toMain, builder.WithPredicates(inOperatorNS, predicate.GenerationChangedPredicate{}))
 	if r.Probe != nil {
 		b = b.WatchesRawSource(source.TypedChannel(r.Probe.Events(), handler.TypedEnqueueRequestsFromMapFunc(
 			func(_ context.Context, req reconcile.Request) []reconcile.Request { return []reconcile.Request{req} })))

@@ -18,6 +18,10 @@ const (
 	appsNS     = "demo-apps"
 	operatorNS = "takecare-system"
 	engineNS   = "kagent"
+
+	podNotReady     = "PodNotReady"
+	podCrashLooping = "PodCrashLooping"
+	onCall          = "on-call"
 )
 
 func investigation() *v1alpha1.TakeCareInvestigation {
@@ -31,9 +35,9 @@ func investigation() *v1alpha1.TakeCareInvestigation {
 
 func TestMessage(t *testing.T) {
 	grouped := investigation()
-	grouped.Spec.Alert = v1alpha1.AlertRecord{Name: "PodCrashLooping", Namespace: appsNS, Workload: "notifications-worker",
+	grouped.Spec.Alert = v1alpha1.AlertRecord{Name: podCrashLooping, Namespace: appsNS, Workload: "notifications-worker",
 		Annotations: map[string]string{"summary": "notifications-worker restarts."}}
-	grouped.Status.Alerts = []v1alpha1.GroupedAlert{{Name: "PodNotReady", Fingerprint: "5m0ke00000000002", FiredAt: metav1.NewTime(time.Date(2026, 10, 16, 3, 0, 12, 0, time.UTC))}}
+	grouped.Status.Alerts = []v1alpha1.GroupedAlert{{Name: podNotReady, Fingerprint: "5m0ke00000000002", FiredAt: metav1.NewTime(time.Date(2026, 10, 16, 3, 0, 12, 0, time.UTC))}}
 	bare := investigation()
 	bare.Spec.Alert = v1alpha1.AlertRecord{Name: "TargetDown", Namespace: appsNS}
 	for name, inv := range map[string]*v1alpha1.TakeCareInvestigation{

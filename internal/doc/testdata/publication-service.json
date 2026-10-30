@@ -1,0 +1,25 @@
+[
+  {
+    "text": {
+      "text": "Doc · HighErrorRate on billing-api",
+      "type": "plain_text"
+    },
+    "type": "header"
+  },
+  {
+    "text": {
+      "text": "Observed: billing-api pod log, 504 from db-proxy at 03:00:05.\nRoot cause: the proxy's idle timeout is shorter than the pool's.\nAction: the platform team aligns the proxy's idle timeout with the pool's.",
+      "type": "mrkdwn"
+    },
+    "type": "section"
+  },
+  {
+    "elements": [
+      {
+        "text": "39s after the alert · 7 model calls · 42,560 tokens · 0.0075 USD · trace 4bf92f3577b34da6a3ce929d0e0e4736",
+        "type": "mrkdwn"
+      }
+    ],
+    "type": "context"
+  }
+]

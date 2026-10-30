@@ -231,11 +231,18 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	if err != nil {
 		return nil, err
 	}
+	duration, err := investigation.NewDurationMetric(crmetrics.Registry)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := mgr.Add(&investigation.Worker{
 		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("takecare-operator"), Queue: queue,
 		Executor:   &runs.Executor{Engine: &kagent0103.Runs{HTTP: a2aClient}, Role: "doc", Metrics: runMetrics},
 		Tracer:     traces.Tracer("github.com/agaetis-it/takecare-agents/internal/controller/investigation"),
 		EngineKind: kagent0103.Kind, EngineNamespace: cfg.engineNamespace, Phases: phases,
+		// Publication through the report connector (spec 02 §4).
+		Accounting: investigation.Accounting{Poster: &mcp.Client{HTTP: mcpClient}, Duration: duration},
 	}); err != nil {
 		return nil, fmt.Errorf("add the investigation worker: %w", err)
 	}
