@@ -1,0 +1,276 @@
+# deployments
+CI-2300	2026-09-30T04:08:34Z	notifications-worker	notifications-worker v1.0.0 rolled out
+CI-2301	2026-09-30T09:03:08Z	auth-service	Secret rotation on auth-service
+CI-2302	2026-09-30T09:52:18Z	orders-api	orders-api v5.0.9 rolled out
+CI-2303	2026-09-30T11:36:56Z	payments-api	payments-api v1.9.3 rolled out
+CI-2304	2026-09-30T12:20:14Z	billing-api	billing-config v3.3.5 rolled out
+CI-2305	2026-09-30T13:20:53Z	catalog-api	catalog-api v4.1.8 rolled out
+CI-2306	2026-10-01T03:07:06Z	payments-api	payments-api v5.7.6 rolled out
+CI-2307	2026-10-01T03:28:17Z	web-front	Secret rotation on web-front
+CI-2308	2026-10-01T15:02:38Z	batch-export	batch-config v2.5.2 rolled out
+CI-2309	2026-10-01T15:36:05Z	web-front	web-front v2.6.5 rolled out
+CI-2310	2026-10-01T22:12:43Z	web-front	web-front v5.9.5 rolled out
+CI-2311	2026-10-02T05:25:58Z	payments-api	payments-api v4.5.3 rolled out
+CI-2312	2026-10-02T06:11:56Z	orders-api	orders-api v2.7.1 rolled out
+CI-2313	2026-10-02T13:09:16Z	catalog-api	catalog-api v2.2.0 rolled out
+CI-2314	2026-10-02T15:25:04Z	web-front	web-front v3.4.2 rolled out
+CI-2315	2026-10-02T17:26:47Z	search-api	search-api v2.2.4 rolled out
+CI-2316	2026-10-03T03:42:49Z	batch-export	batch-export v3.1.0 rolled out
+CI-2317	2026-10-03T11:39:27Z	auth-service	auth-service v4.7.5 rolled out
+CI-2318	2026-10-03T13:02:55Z	checkout-api	checkout-api v3.3.5 rolled out
+CI-2319	2026-10-03T15:00:07Z	search-api	search-config v2.8.6 rolled out
+CI-2320	2026-10-04T00:31:21Z	payments-api	payments-api v6.3.6 rolled out
+CI-2321	2026-10-04T04:42:57Z	orders-api	orders-config v5.4.3 rolled out
+CI-2322	2026-10-04T09:32:14Z	auth-service	auth-config v1.8.5 rolled out
+CI-2323	2026-10-04T15:22:00Z	checkout-api	checkout-api v5.3.9 rolled out
+CI-2324	2026-10-05T00:11:06Z	search-api	Deployment failed: search-api v3.8.8
+CI-2325	2026-10-05T08:45:17Z	catalog-api	Deployment failed: catalog-api v4.0.9
+CI-2326	2026-10-05T11:08:34Z	billing-api	billing-api v3.2.6 rolled out
+CI-2327	2026-10-05T13:25:51Z	catalog-api	catalog-config v3.6.0 rolled out
+CI-2328	2026-10-05T13:39:00Z	auth-service	auth-service v3.6.0 rolled out
+CI-2329	2026-10-05T16:48:26Z	web-front	web-front v5.9.4 rolled out
+CI-2330	2026-10-05T18:44:43Z	billing-api	billing-api v5.4.4 rolled out
+CI-2331	2026-10-06T02:31:50Z	web-front	web-front v6.3.7 rolled out
+CI-2332	2026-10-06T05:13:25Z	search-api	search-api v2.2.2 rolled out
+CI-2333	2026-10-06T13:53:29Z	auth-service	Deployment failed: auth-service v5.6.0
+CI-2334	2026-10-06T15:07:09Z	billing-api	Secret rotation on billing-api
+CI-2335	2026-10-06T18:12:22Z	web-front	web-front v4.6.8 rolled out
+CI-2336	2026-10-07T02:12:52Z	search-api	search-api v1.6.3 rolled out
+CI-2337	2026-10-07T06:55:44Z	billing-api	billing-api v5.9.3 rolled out
+CI-2338	2026-10-08T10:05:20Z	web-front	web-config v2.2.4 rolled out
+CI-2339	2026-10-09T01:16:39Z	catalog-api	catalog-api v1.2.9 rolled out
+CI-2340	2026-10-09T02:56:13Z	notifications-worker	notifications-worker v4.3.6 rolled out
+CI-2341	2026-10-09T07:51:43Z	billing-api	billing-api v3.7.5 rolled out
+CI-2342	2026-10-09T12:06:42Z	catalog-api	catalog-api v5.7.3 rolled out
+CI-2343	2026-10-09T16:30:49Z	orders-api	orders-api v3.4.5 rolled out
+CI-2344	2026-10-10T05:32:47Z	payments-api	Secret rotation on payments-api
+CI-2345	2026-10-10T07:56:24Z	notifications-worker	notifications-worker v5.1.8 rolled out
+CI-2346	2026-10-10T10:33:43Z	catalog-api	catalog-api v4.0.1 rolled out
+CI-2347	2026-10-10T14:06:19Z	checkout-api	checkout-api v2.8.4 rolled out
+CI-2348	2026-10-10T14:45:16Z	search-api	search-config v4.6.4 rolled out
+CI-2349	2026-10-10T19:46:03Z	payments-api	payments-api v1.0.4 rolled out
+CI-2350	2026-10-11T00:14:12Z	payments-api	Secret rotation on payments-api
+CI-2351	2026-10-11T05:30:11Z	auth-service	Secret rotation on auth-service
+CI-2352	2026-10-11T12:49:58Z	batch-export	batch-export v5.2.3 rolled out
+CI-2353	2026-10-11T22:00:03Z	auth-service	auth-service v3.2.0 rolled out
+CI-2354	2026-10-12T00:09:46Z	web-front	web-config v4.7.4 rolled out
+CI-2355	2026-10-12T08:57:37Z	payments-api	payments-api v6.5.4 rolled out
+CI-2356	2026-10-12T11:56:11Z	catalog-api	catalog-config v1.7.0 rolled out
+CI-2357	2026-10-12T17:09:38Z	payments-api	Secret rotation on payments-api
+CI-2358	2026-10-12T18:02:45Z	catalog-api	catalog-api v4.4.3 rolled out
+CI-2359	2026-10-12T21:33:54Z	orders-api	orders-config v5.6.9 rolled out
+CI-2360	2026-10-13T08:50:57Z	web-front	web-config v3.4.9 rolled out
+CI-2361	2026-10-13T16:57:18Z	notifications-worker	notifications-worker v5.9.6 rolled out
+CI-2362	2026-10-13T20:05:06Z	notifications-worker	notifications-worker v1.9.8 rolled out
+CI-2363	2026-10-14T05:57:20Z	web-front	web-config v4.2.4 rolled out
+CI-2364	2026-10-14T13:55:09Z	notifications-worker	notifications-worker v3.8.7 rolled out
+CI-2365	2026-10-14T17:24:47Z	checkout-api	checkout-api v3.4.5 rolled out
+CI-2366	2026-10-14T22:53:24Z	orders-api	orders-api v2.0.9 rolled out
+CI-2367	2026-10-14T23:45:06Z	orders-api	orders-api v5.4.3 rolled out
+CI-2368	2026-10-15T02:10:30Z	checkout-api	checkout-api v3.3.0 rolled out
+CI-2369	2026-10-15T02:42:26Z	auth-service	Deployment failed: auth-service v2.9.1
+CI-2370	2026-10-15T03:50:56Z	payments-api	payments-config v4.1.6 rolled out
+CI-2371	2026-10-15T09:21:30Z	checkout-api	checkout-api v3.1.2 rolled out
+CI-2372	2026-10-15T12:26:32Z	batch-export	Deployment failed: batch-export v1.0.1
+CI-2373	2026-10-15T22:30:47Z	catalog-api	catalog-api v1.5.6 rolled out
+CI-2374	2026-10-16T02:45:51Z	web-front	web-front v1.7.9 rolled out
+CI-2375	2026-10-16T03:00:00Z	notifications-worker	notifications-worker v1.9.4 rolled out
+CI-2376	2026-10-16T05:26:34Z	catalog-api	catalog-config v6.4.4 rolled out
+CI-2377	2026-10-16T14:31:41Z	orders-api	Deployment failed: orders-api v2.7.3
+CI-2378	2026-10-16T17:14:07Z	search-api	search-api v1.7.0 rolled out
+CI-2379	2026-10-16T20:07:42Z	auth-service	auth-service v6.4.0 rolled out
+CI-2380	2026-10-16T21:21:00Z	orders-api	orders-config v4.5.5 rolled out
+CI-2381	2026-10-17T05:49:18Z	notifications-worker	notifications-worker v1.3.6 rolled out
+CI-2382	2026-10-17T06:47:15Z	checkout-api	checkout-api v6.3.3 rolled out
+CI-2383	2026-10-17T08:20:00Z	billing-api	billing-api v2.0.1 rolled out
+CI-2384	2026-10-17T10:22:36Z	auth-service	auth-service v3.6.8 rolled out
+CI-2385	2026-10-17T12:58:16Z	orders-api	orders-api v3.0.7 rolled out
+CI-2386	2026-10-17T18:16:42Z	checkout-api	checkout-api v2.7.7 rolled out
+CI-2387	2026-10-18T11:37:23Z	notifications-worker	notifications-worker v1.1.3 rolled out
+CI-2388	2026-10-18T16:08:07Z	batch-export	batch-export v3.4.8 rolled out
+CI-2389	2026-10-18T17:15:22Z	orders-api	orders-api v1.8.6 rolled out
+CI-2390	2026-10-19T01:47:41Z	payments-api	payments-config v2.1.5 rolled out
+CI-2391	2026-10-19T05:56:01Z	catalog-api	catalog-api v6.3.6 rolled out
+CI-2392	2026-10-19T08:18:32Z	auth-service	auth-service v3.0.3 rolled out
+CI-2393	2026-10-19T09:40:11Z	payments-api	payments-api v2.2.4 rolled out
+CI-2394	2026-10-19T14:52:15Z	checkout-api	checkout-api v3.4.1 rolled out
+CI-2395	2026-10-20T02:31:37Z	orders-api	orders-api v2.4.9 rolled out
+CI-2396	2026-10-20T02:52:57Z	payments-api	payments-api v6.7.3 rolled out
+CI-2397	2026-10-20T04:15:41Z	catalog-api	catalog-api v5.8.9 rolled out
+CI-2398	2026-10-20T16:37:46Z	batch-export	batch-config v2.5.5 rolled out
+CI-2399	2026-10-20T17:36:39Z	orders-api	orders-api v4.9.4 rolled out
+CI-2400	2026-10-21T03:00:00Z	notifications-worker	Secret rotation on notifications-worker
+CI-2401	2026-10-21T13:48:11Z	catalog-api	catalog-config v3.2.5 rolled out
+CI-2402	2026-10-21T17:31:39Z	notifications-worker	notifications-worker v4.0.6 rolled out
+CI-2403	2026-10-22T04:00:48Z	batch-export	batch-export v6.3.1 rolled out
+CI-2404	2026-10-22T13:26:47Z	checkout-api	Helm revision of checkout-api
+CI-2405	2026-10-22T19:03:41Z	billing-api	billing-api v4.9.3 rolled out
+CI-2406	2026-10-23T04:20:00Z	notifications-api	Secret rotation on notifications-api
+CI-2407	2026-10-23T06:20:13Z	billing-api	billing-api v4.9.7 rolled out
+CI-2408	2026-10-23T14:12:17Z	search-api	search-config v2.9.2 rolled out
+CI-2409	2026-10-24T02:15:13Z	billing-api	billing-api v2.0.7 rolled out
+CI-2410	2026-10-24T08:53:40Z	catalog-api	catalog-config v3.3.9 rolled out
+CI-2411	2026-10-24T11:08:42Z	batch-export	batch-export v3.6.1 rolled out
+CI-2412	2026-10-24T16:47:41Z	checkout-api	checkout-api v3.9.3 rolled out
+CI-2413	2026-10-24T20:11:26Z	catalog-api	catalog-config v3.2.9 rolled out
+CI-2414	2026-10-24T20:16:07Z	orders-api	orders-config v4.8.1 rolled out
+CI-2415	2026-10-24T23:07:03Z	notifications-worker	notifications-worker v2.1.1 rolled out
+CI-2416	2026-10-25T01:22:56Z	web-front	Deployment failed: web-front v1.5.9
+CI-2417	2026-10-25T05:15:18Z	batch-export	Helm revision of batch-export
+CI-2418	2026-10-25T07:54:42Z	notifications-worker	Deployment failed: notifications-worker v1.4.3
+CI-2419	2026-10-25T18:07:10Z	search-api	search-api v5.0.5 rolled out
+CI-2420	2026-10-25T22:24:23Z	auth-service	auth-service v5.0.0 rolled out
+CI-2421	2026-10-25T23:12:52Z	web-front	web-front v4.3.5 rolled out
+CI-2422	2026-10-26T02:20:00Z	orders-api	orders-config v3.8.0 rolled out
+CI-2423	2026-10-26T02:58:53Z	notifications-worker	notifications-worker v6.3.6 rolled out
+CI-2424	2026-10-26T08:20:20Z	checkout-api	checkout-api v6.6.1 rolled out
+CI-2425	2026-10-26T10:12:12Z	notifications-worker	notifications-worker v4.0.6 rolled out
+CI-2426	2026-10-26T15:07:14Z	payments-api	payments-api v1.6.7 rolled out
+CI-2427	2026-10-26T16:21:16Z	batch-export	batch-config v4.5.1 rolled out
+CI-2428	2026-10-26T18:37:40Z	notifications-worker	notifications-worker v4.8.1 rolled out
+CI-2429	2026-10-26T19:49:12Z	auth-service	auth-service v6.4.3 rolled out
+CI-2430	2026-10-27T01:40:00Z	orders-db	orders-db read/write split scheduled
+CI-2431	2026-10-27T16:24:33Z	web-front	web-front v6.8.3 rolled out
+CI-2432	2026-10-27T18:13:46Z	batch-export	batch-export v4.8.2 rolled out
+CI-2433	2026-10-27T18:34:32Z	batch-export	batch-export v2.3.8 rolled out
+CI-2434	2026-10-27T22:28:01Z	catalog-api	catalog-api v4.1.1 rolled out
+CI-2435	2026-10-28T02:40:00Z	payments-api	infra-aws: idleClientTimeout set on the payments DBProxy
+CI-2436	2026-10-28T05:23:15Z	notifications-worker	notifications-config v4.6.9 rolled out
+CI-2437	2026-10-28T09:46:13Z	catalog-api	catalog-config v6.9.3 rolled out
+CI-2438	2026-10-28T13:32:42Z	notifications-worker	notifications-worker v4.3.2 rolled out
+CI-2439	2026-10-28T18:17:24Z	checkout-api	Deployment failed: checkout-api v1.3.5
+CI-2440	2026-10-28T19:18:53Z	catalog-api	catalog-api v3.9.2 rolled out
+CI-2441	2026-10-29T00:20:00Z	billing-api	Deployment failed: billing-api v2.9.0
+CI-2442	2026-10-29T00:38:45Z	notifications-worker	notifications-worker v6.6.7 rolled out
+CI-2443	2026-10-29T02:00:00Z	checkout-api	checkout-api v4.7.1 rolled out
+CI-2444	2026-10-29T05:44:44Z	orders-api	orders-config v2.1.6 rolled out
+CI-2445	2026-10-29T06:00:30Z	catalog-api	catalog-api v5.6.1 rolled out
+CI-2446	2026-10-29T06:13:49Z	notifications-worker	Deployment failed: notifications-worker v6.5.1
+CI-2447	2026-10-29T07:20:00Z	billing-api	billing-config v4.1.0 rolled out
+CI-2448	2026-10-29T14:48:00Z	billing-api	infra-aws: idleClientTimeout set on the billing DBProxy
+CI-2449	2026-10-29T16:10:45Z	notifications-worker	Deployment failed: notifications-worker v6.5.0
+CI-2450	2026-10-29T17:41:35Z	notifications-worker	notifications-worker v6.3.7 rolled out
+CI-2451	2026-10-29T20:00:00Z	billing-api	billing-api v3.2.1 rolled out
+CI-2452	2026-10-29T20:12:00Z	notifications-worker	Helm revision of notifications-worker
+CI-2453	2026-10-29T21:42:27Z	search-api	Helm revision of search-api
+CI-2454	2026-10-29T22:00:00Z	billing-api	infra-aws: idle timeout raised on the billing-api load balancer
+CI-2455	2026-10-29T22:40:00Z	notifications-api	notifications-api v2.0.0 rolled out
+CI-2456	2026-10-29T23:40:00Z	order-history-api	order-history-config v2.0.0 rolled out
+CI-2457	2026-10-29T23:51:36Z	payments-api	payments-api v2.4.2 rolled out
+CI-2458	2026-10-30T00:50:00Z	orders-worker	orders-worker-config v1.4.0 rolled out
+CI-2459	2026-10-30T01:25:00Z	web-front	web-front v5.1.0 rolled out
+# incidents
+INC-2024-0312	2024-03-12	billing-api	Intermittent 504s and growing memory on billing-api, off-peak hours
+INC-2024-0455	2024-04-28	payments-api	Expired certificate on the payment gateway
+INC-2024-0501	2024-05-15	platform	Disk saturation on compute nodes
+INC-2024-0632	2024-06-30	checkout-api	Higher latency after the checkout database migration
+INC-2024-1209	2024-12-09T11:18:22Z	batch-export	File descriptor leak
+INC-2025-0206	2025-02-06T16:44:52Z	notifications-worker	Lost messages on the notifications queue
+INC-2025-0207	2025-02-07	notifications-worker	notifications-worker in CrashLoopBackOff after a memory limit cut
+INC-2025-0419	2025-04-19T02:17:01Z	batch-export	Disk saturation on compute nodes
+INC-2025-0525	2025-05-25T06:13:57Z	payments-api	Clock drift on a node
+INC-2025-0611	2025-06-11	billing-api	504s on billing-api during invoice exports
+INC-2025-0915	2025-09-15T10:43:26Z	catalog-api	Restart loop after a version upgrade
+INC-2025-0918	2025-09-18	billing-api	billing-api memory leak in the PDF renderer
+INC-2025-1001	2025-10-01T15:07:18Z	billing-api	Double billing on replayed orders
+INC-2025-1202	2025-12-02T22:09:54Z	auth-service	Identity provider outage
+INC-2026-0113	2026-01-13T03:18:20Z	search-api	Slow queries after a cache purge
+INC-2026-0228	2026-02-28T07:47:17Z	web-front	Expired certificate on the ingress gateway
+INC-2026-0403	2026-04-03T04:35:27Z	checkout-api	Blocked on a schema migration
+INC-2026-0508	2026-05-08T10:13:38Z	checkout-api	Subnet IP address exhaustion
+# runbooks
+RB-001			Node in NotReady
+RB-002			TLS certificate close to expiry
+RB-003			Rotation of the mesh TLS certificates
+RB-004			Message queue lagging
+RB-005			Critical disk space on a node
+RB-006			Database restore
+RB-007			Memory growth of an application container
+RB-008			Manual failover of a replicated database
+RB-009			Abnormal traffic from an address range
+RB-010			Rollout blocked mid-way
+RB-011			Sustained CPU saturation alert
+RB-012			Lost application logs
+RB-013			Missing metrics for a service
+RB-014			Connection pool exhaustion - idle timeout mismatch on the network path
+RB-015			Service credential rotation
+RB-016			Scaling up before a sales event
+RB-017			502 errors behind the gateway
+RB-018			Drift between declared and actual state
+RB-019			Intermittent 502/504 behind the load balancer
+RB-020			Namespace stuck in Terminating
+RB-021			Pod stuck out of the Ready state
+RB-022			Startup probe too short
+RB-023			Readiness probe flapping under load
+RB-024			Namespace quota reached
+RB-025			Clock out of sync on a node
+RB-026			Container restarting in a loop after a release
+RB-028			Container OOMKilled and restarting in a loop
+RB-032			Latency rising without application change
+# support
+SUP-4422	2026-10-10T05:29:06Z	catalog-api	Question about pricing terms
+SUP-4423	2026-10-10T06:02:18Z	billing-api	Attachment rejected
+SUP-4424	2026-10-10T18:52:02Z	billing-api	Question about the monthly invoice
+SUP-4425	2026-10-11T03:13:43Z	search-api	Feature request: filter by date
+SUP-4426	2026-10-11T13:08:00Z	orders-api	Feature request: filter by date
+SUP-4427	2026-10-11T19:14:32Z	billing-api	Error at login
+SUP-4428	2026-10-12T20:59:21Z	search-api	Question about pricing terms
+SUP-4429	2026-10-13T10:29:57Z	orders-api	Duplicate order
+SUP-4430	2026-10-14T22:58:55Z	auth-service	Attachment rejected
+SUP-4431	2026-10-15T08:08:12Z	batch-export	Notification not received
+SUP-4432	2026-10-15T11:46:58Z	payments-api	Incomplete CSV export
+SUP-4433	2026-10-15T14:53:41Z	catalog-api	Notification not received
+SUP-4434	2026-10-15T17:34:48Z	orders-api	Notification not received
+SUP-4435	2026-10-16T06:50:13Z	payments-api	Attachment rejected
+SUP-4436	2026-10-16T12:49:29Z	orders-api	Question about the monthly invoice
+SUP-4437	2026-10-16T20:34:28Z	batch-export	Incomplete CSV export
+SUP-4438	2026-10-16T23:57:58Z	batch-export	Error at login
+SUP-4439	2026-10-17T09:56:30Z	web-front	Feature request: filter by date
+SUP-4440	2026-10-18T22:22:54Z	search-api	Duplicate order
+SUP-4441	2026-10-19T07:38:27Z	batch-export	Request to add a user
+SUP-4442	2026-10-19T09:24:22Z	batch-export	Error at login
+SUP-4443	2026-10-20T03:35:35Z	orders-api	Slow catalog display
+SUP-4444	2026-10-21T01:23:25Z	catalog-api	Error at login
+SUP-4445	2026-10-21T06:03:40Z	notifications-worker	Attachment rejected
+SUP-4446	2026-10-21T13:00:56Z	billing-api	Slow catalog display
+SUP-4447	2026-10-22T02:06:54Z	orders-api	Incomplete CSV export
+SUP-4448	2026-10-22T04:04:42Z	payments-api	Notification not received
+SUP-4449	2026-10-22T05:14:58Z	auth-service	Request to add a user
+SUP-4450	2026-10-22T22:40:45Z	batch-export	Question about the monthly invoice
+SUP-4451	2026-10-23T07:19:38Z	notifications-worker	Question about the monthly invoice
+SUP-4452	2026-10-24T08:36:18Z	catalog-api	Attachment rejected
+SUP-4453	2026-10-24T17:16:24Z	checkout-api	Duplicate order
+SUP-4454	2026-10-24T18:25:52Z	batch-export	Notification not received
+SUP-4455	2026-10-25T07:27:51Z	notifications-worker	Slow catalog display
+SUP-4456	2026-10-25T08:46:12Z	notifications-worker	Slow catalog display
+SUP-4457	2026-10-25T10:33:26Z	billing-api	Request to add a user
+SUP-4458	2026-10-25T20:16:23Z	web-front	Duplicate order
+SUP-4459	2026-10-25T22:35:06Z	search-api	Incomplete CSV export
+SUP-4460	2026-10-26T14:11:41Z	checkout-api	Feature request: filter by date
+SUP-4461	2026-10-27T07:37:05Z	orders-api	Error at login
+SUP-4462	2026-10-27T11:15:33Z	checkout-api	Question about the monthly invoice
+SUP-4463	2026-10-27T21:16:30Z	web-front	Duplicate order
+SUP-4464	2026-10-28T02:01:28Z	billing-api	Error at login
+SUP-4465	2026-10-28T13:56:02Z	billing-api	Question about pricing terms
+SUP-4466	2026-10-29T05:20:00Z	web-front	Forgotten password, portal access
+SUP-4467	2026-10-29T06:25:02Z	search-api	Request to add a user
+SUP-4468	2026-10-29T20:48:33Z	batch-export	Request to add a user
+SUP-4469	2026-10-30T00:00:00Z	billing-api	Monthly accounting export request
+SUP-4470	2026-10-30T02:02:00Z	checkout-api	Orders pending for unusually long
+SUP-4471	2026-10-30T02:19:00Z	checkout-api	Slow order confirmation at checkout
+# vendor
+AWS-2026-0807-03	2026-08-07T01:59:28Z	Amazon CloudWatch	Resolved - metric ingestion delay, eu-west-3
+AWS-2026-0817-04	2026-08-17T06:18:28Z	AWS Lambda	Resolved - longer cold starts, eu-west-1
+AWS-2026-0822-01	2026-08-22T11:49:16Z	Amazon ECR	Resolved - slow image pulls, eu-west-3
+AWS-2026-0823-02	2026-08-23T05:53:05Z	AWS IAM	Resolved - delayed policy propagation, global
+AWS-2026-0904-01	2026-09-04T10:31:43Z	Amazon EKS	Resolved - delayed control plane updates, eu-west-1
+AWS-2026-0907-02	2026-09-07T05:13:15Z	Elastic Load Balancing	Resolved - unstable health checks, eu-west-3
+AWS-2026-0917-03	2026-09-17T06:42:52Z	Amazon SQS	Resolved - message delivery latency, eu-west-3
+AWS-2026-0927-03	2026-09-27T16:11:14Z	Amazon Route 53	Resolved - slow dns propagation, global
+AWS-2026-0930-01	2026-09-30T05:48:02Z	Amazon EBS	Resolved - slow volume creation, eu-central-1
+AWS-2026-0815-02	2026-10-11T03:00:00Z	Amazon EC2	Resolved - inter-zone network latency, eu-west-3
+AWS-2026-1013-04	2026-10-13T01:13:14Z	Amazon RDS	Resolved - delayed automatic failovers, eu-central-1
+AWS-2026-1013-03	2026-10-13T08:08:17Z	Amazon S3	Resolved - elevated latency on get requests, eu-west-3
+AWS-2026-1017-04	2026-10-17T02:21:25Z	Amazon EC2	Resolved - elevated instance launch errors, eu-west-1
+AWS-2026-0828-03	2026-10-24T03:00:00Z	Amazon RDS	Resolved - elevated API errors on Amazon RDS, eu-west-1
+AWS-2026-0903-01	2026-10-30T02:08:00Z	Amazon EBS	Degraded performance of EBS gp3 volumes - eu-west-3a
