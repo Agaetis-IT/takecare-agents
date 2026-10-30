@@ -236,6 +236,31 @@ addons:
     destinations:
       - { name: on-call, target: log }
       - { name: review, target: log }
+  # -- The demo's corpus, DEMO ONLY (spec 03, spec 05): one read-only MCP
+  # server and one TakeCareConnector per source, over a corpus the
+  # TakeCareDemo controller writes into the ConfigMap
+  # `takecare-demo-corpus-<name>` (key `data.json`). Requires demo.enabled.
+  # @default -- see the keys below
+  demoCorpus:
+    enabled: false
+    image:
+      registry: ghcr.io/agaetis-it
+      repository: takecare-agents-mcp-corpus
+      # Empty: the chart's appVersion.
+      tag: ""
+      pullPolicy: IfNotPresent
+    # -- The sources: the name prefixes the tools (`<name>_search`,
+    # `<name>_get`, `<name>_recent`) and names the connector; domain describes
+    # the source in the tools' descriptions.
+    sources:
+      - { name: incidents, type: knowledge, domain: Post-mortems of incidents resolved by the SRE team }
+      - { name: runbooks, type: knowledge, domain: Operational runbooks of the SRE team }
+      - { name: deployments, type: changes, domain: Deployment log of the continuous delivery pipeline }
+      - { name: vendor, type: knowledge, domain: Status bulletins of the cloud vendor (AWS) }
+      - { name: support, type: tickets, domain: Business support tickets raised by customers }
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits: { memory: 128Mi }
 
 # ---------------------------------------------------------------------------
 # Subcharts. Keys below are the upstream charts' own values.
