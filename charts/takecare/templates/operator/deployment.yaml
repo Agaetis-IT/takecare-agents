@@ -37,6 +37,7 @@ spec:
             - --metrics-secure={{ .Values.operator.metrics.secure }}
             - --alerts-token-secret={{ .Values.alerting.existingSecret | default "takecare-alerting" }}
             - --investigation-retention={{ .Values.investigations.retention }}
+            - --usage-scrape-wait={{ .Values.operator.usageScrapeWait }}
             {{- range .Values.operator.extraArgs }}
             - {{ . | quote }}
             {{- end }}

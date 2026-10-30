@@ -51,6 +51,7 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/runs"
 	"github.com/agaetis-it/takecare-agents/internal/telemetry"
+	"github.com/agaetis-it/takecare-agents/internal/usage"
 )
 
 // leaderElectionID names the Lease shared by the operator's replicas.
@@ -78,6 +79,9 @@ type config struct {
 	alertsTokenSecret string
 	// investigationRetention is how long an ended investigation is kept.
 	investigationRetention time.Duration
+	// usageScrapeWait is how long after a run's end its last model calls
+	// are in Prometheus (one scrape interval, spec 02 §5).
+	usageScrapeWait time.Duration
 }
 
 func main() {
@@ -111,6 +115,8 @@ func run(args []string) error {
 		"Address the Alertmanager webhook (POST /v1/alerts) binds to; 0 disables it.")
 	fs.DurationVar(&cfg.investigationRetention, "investigation-retention", investigation.DefaultRetention,
 		"How long an ended investigation is kept before it is deleted (spec 02); Queued and Running ones are never deleted.")
+	fs.DurationVar(&cfg.usageScrapeWait, "usage-scrape-wait", 30*time.Second,
+		"How long after a run ends its usage is read from Prometheus: one scrape interval of the gateway.")
 	fs.StringVar(&cfg.alertsTokenSecret, "alerts-token-secret", alerts.TokenSecretName,
 		"Secret, in the operator namespace, whose key token is the webhook's bearer token.")
 	fs.StringVar(&cfg.operatorDeployment, "operator-deployment", os.Getenv("OPERATOR_DEPLOYMENT"),
@@ -245,14 +251,23 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	if err != nil {
 		return nil, err
 	}
-
+	// Usage from the gateway's metrics on the platform's Prometheus, and
+	// publication through the report connector (spec 02 §4, §5).
+	usageSource := func(p *takecarev1alpha1.TakeCarePlatform) usage.Source {
+		if p.Spec.Observability.Metrics == nil || p.Spec.Observability.Metrics.PrometheusURL == "" {
+			return nil
+		}
+		return usage.Prometheus{HTTP: promClient, URL: p.Spec.Observability.Metrics.PrometheusURL}
+	}
 	if err := mgr.Add(&investigation.Worker{
 		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("takecare-operator"), Queue: queue,
 		Executor:   &runs.Executor{Engine: &kagent0103.Runs{HTTP: a2aClient}, Role: "doc", Metrics: runMetrics},
 		Tracer:     traces.Tracer("github.com/agaetis-it/takecare-agents/internal/controller/investigation"),
 		EngineKind: kagent0103.Kind, EngineNamespace: cfg.engineNamespace, Phases: phases,
-		// Publication through the report connector (spec 02 §4).
-		Accounting: investigation.Accounting{Poster: &mcp.Client{HTTP: mcpClient}, Duration: duration},
+		Accounting: investigation.Accounting{
+			Usage: usageSource, ScrapeWait: cfg.usageScrapeWait,
+			Poster: &mcp.Client{HTTP: mcpClient}, Duration: duration,
+		},
 	}); err != nil {
 		return nil, fmt.Errorf("add the investigation worker: %w", err)
 	}

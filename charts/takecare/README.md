@@ -145,6 +145,7 @@ Mirroring every image and installing without Internet access is tracked in issue
 | operator.resources.requests.cpu | string | `"50m"` |  |
 | operator.resources.requests.memory | string | `"128Mi"` |  |
 | operator.tolerations | list | `[]` |  |
+| operator.usageScrapeWait | string | `"30s"` | How long after an investigation ends its usage is read from Prometheus: one scrape interval of the gateway's metrics (spec 02 §5). The diagnosis is published once, with its usage, after this wait. |
 | platform | object | see the keys below | The TakeCarePlatform, cluster-scoped singleton named main, rendered from this block (spec 01). Secrets it references live in the release namespace. |
 | platform.engine.namespace | string | `"kagent"` | Where the engine runs and where the operator writes what it generates for it. Must equal kagent.namespaceOverride below: the operator's Roles are rendered for that namespace, and the chart refuses to render if they differ. |
 | platform.gateway.gatewayRef | object | `{"name":"","namespace":""}` | The Gateway served by agentgateway. Empty name: the one this chart creates (gateway.name) in the release namespace. A Gateway elsewhere is refused by the operator (Ready=False, GatewayOutsideOperatorNamespace): the models it generates must sit next to the provider key Secret, which it never copies to another namespace. |

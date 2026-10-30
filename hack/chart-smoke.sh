@@ -331,6 +331,8 @@ EOF
     bash -c "for _ in \$(seq 60); do p=\$(kubectl -n ${NS} get takecareinvestigations -l ${run_sel} -o jsonpath='{.items[0].status.phase}'); [[ \$p == Failed || \$p == TimedOut || \$p == Completed ]] && break; sleep 3; done; [[ \$p == Failed && \$(kubectl -n ${NS} get takecareinvestigations -l ${run_sel} -o jsonpath='{.items[0].status.reason}') == EngineFailed:* ]]"
   check "the run recorded its task ID and its trace ID" \
     bash -c "[[ -n \$(kubectl -n ${NS} get takecareinvestigations -l ${run_sel} -o jsonpath='{.items[0].status.engine.taskID}') && \$(kubectl -n ${NS} get takecareinvestigations -l ${run_sel} -o jsonpath='{.items[0].status.traceID}') =~ ^[0-9a-f]{32}\$ ]]"
+  check "the run's usage was accounted one scrape later (UsageAttributed set, with a reason when not measured)" \
+    bash -c "for _ in \$(seq 30); do [[ -n \$(kubectl -n ${NS} get takecareinvestigations -l ${run_sel} -o jsonpath='{.items[0].status.conditions[?(@.type==\"UsageAttributed\")].status}') ]] && exit 0; sleep 3; done; exit 1"
   check "a failed run publishes nothing: the report server logged no new post" \
     test "$(kubectl -n "$NS" logs deploy/takecare-addon-report-log | grep -c 'logged for destination' || true)" = "$reports_before"
   local metrics
@@ -463,10 +465,10 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=54 install ;;
-  upgrade) CHECKS_EXPECTED=54 upgrade ;;
+  install) CHECKS_EXPECTED=55 install ;;
+  upgrade) CHECKS_EXPECTED=55 upgrade ;;
   status) status ;;
   down) down ;;
-  all) up; CHECKS_EXPECTED=54 install; CHECKS_EXPECTED=54 upgrade ;;
+  all) up; CHECKS_EXPECTED=55 install; CHECKS_EXPECTED=55 upgrade ;;
   *) echo "usage: $0 [up|install|upgrade|status|down|all]"; exit 2 ;;
 esac
