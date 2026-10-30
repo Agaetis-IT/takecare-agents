@@ -197,6 +197,34 @@ verify() {
     bash -c "kubectl -n ${NS} exec smoke-post -- curl -s -m 10 -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '${post//on-call/everyone}' http://takecare-addon-report-log.${NS}.svc:8080/mcp | grep -q 'logged for destination'"
   kubectl -n "$NS" delete pod smoke-post --now >/dev/null
 
+  log "the Doc's trigger (spec 02 §1)"
+  kubectl -n "$NS" apply -f - >/dev/null <<EOF
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareDoc
+metadata: { name: smoke-doc, namespace: ${NS} }
+spec:
+  level: trial
+  scope: { namespaces: [demo-apps] }
+EOF
+  local token now alerts_url="http://takecare-alerts.${NS}.svc:8080/v1/alerts"
+  token="$(kubectl -n "$NS" get secret takecare-alerting -o jsonpath='{.data.token}' | base64 -d)"
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  local payload='{"version":"4","status":"firing","alerts":[{"status":"firing","labels":{"alertname":"PodCrashLooping","namespace":"demo-apps","pod":"notifications-worker-5c7b9d8f4-q8zrt"},"annotations":{},"startsAt":"'"$now"'","fingerprint":"5m0ke00000000001"},{"status":"firing","labels":{"alertname":"PodNotReady","namespace":"demo-apps","pod":"notifications-worker-5c7b9d8f4-q8zrt"},"annotations":{},"startsAt":"'"$now"'","fingerprint":"5m0ke00000000002"}]}'
+  kubectl -n "$NS" delete pod smoke-alert --ignore-not-found >/dev/null
+  kubectl -n "$NS" run smoke-alert --image="$SMOKE_CURL_IMAGE" --restart=Never --command -- sleep 300 >/dev/null
+  kubectl -n "$NS" wait pod/smoke-alert --for=condition=Ready --timeout=120s >/dev/null
+  check "the webhook refuses a call without the token (401)" \
+    test "$(kubectl -n "$NS" exec smoke-alert -- curl -s -o /dev/null -w '%{http_code}' -X POST -d "$payload" "$alerts_url")" = "401"
+  check "the webhook takes two alerts of one incident (202)" \
+    test "$(kubectl -n "$NS" exec smoke-alert -- curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer ${token}" -d "$payload" "$alerts_url")" = "202"
+  # The webhook answers on every replica; Queued is set by the leader,
+  # which after an upgrade takes the lease up to the old one's expiry.
+  check "one investigation for the incident, the second alert folded into it, Queued" \
+    bash -c "for _ in \$(seq 30); do [[ \$(kubectl -n ${NS} get takecareinvestigations -l takecare.agaetis.fr/fingerprint=5m0ke00000000001 -o jsonpath='{.items[0].status.phase}' 2>/dev/null) == Queued ]] && break; sleep 2; done; n=\$(kubectl -n ${NS} get takecareinvestigations -l takecare.agaetis.fr/fingerprint=5m0ke00000000001 -o name | wc -l | tr -d ' '); m=\$(kubectl -n ${NS} get takecareinvestigations -l takecare.agaetis.fr/fingerprint=5m0ke00000000002 -o name | wc -l | tr -d ' '); a=\$(kubectl -n ${NS} get takecareinvestigations -l takecare.agaetis.fr/fingerprint=5m0ke00000000001 -o jsonpath='{.items[0].status.alerts[0].name} {.items[0].status.phase}'); [[ \$n == 1 && \$m == 0 && \$a == 'PodNotReady Queued' ]]"
+  kubectl -n "$NS" delete pod smoke-alert --now >/dev/null
+  kubectl -n "$NS" delete takecareinvestigations -l takecare.agaetis.fr/fingerprint=5m0ke00000000001 >/dev/null
+  kubectl -n "$NS" delete takecaredoc smoke-doc >/dev/null
+
   log "a forbidden right on the add-on is caught, then cleared"
   kubectl -n demo-apps delete rolebinding/smoke-drift role/smoke-drift --ignore-not-found >/dev/null
   kubectl -n demo-apps create role smoke-drift --verb=get --resource=secrets --dry-run=client -o yaml | kubectl apply -f - >/dev/null
@@ -290,10 +318,10 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=37 install ;;
-  upgrade) CHECKS_EXPECTED=37 upgrade ;;
+  install) CHECKS_EXPECTED=40 install ;;
+  upgrade) CHECKS_EXPECTED=40 upgrade ;;
   status) status ;;
   down) down ;;
-  all) up; CHECKS_EXPECTED=37 install; CHECKS_EXPECTED=37 upgrade ;;
+  all) up; CHECKS_EXPECTED=40 install; CHECKS_EXPECTED=40 upgrade ;;
   *) echo "usage: $0 [up|install|upgrade|status|down|all]"; exit 2 ;;
 esac

@@ -72,6 +72,8 @@ spec:
               containerPort: {{ .Values.operator.metrics.port }}
             - name: probes
               containerPort: 8081
+            - name: alerts
+              containerPort: 8080
           livenessProbe:
             httpGet: { path: /healthz, port: probes }
             initialDelaySeconds: 15

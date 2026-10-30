@@ -1,0 +1,18 @@
+TakeCare Agents is installed in {{ .Release.Namespace }}.
+
+The Doc is triggered by Alertmanager. Add this receiver to its configuration
+(the token is in the Secret takecare-alerting, key token):
+
+  receivers:
+    - name: takecare
+      webhook_configs:
+        - url: http://takecare-alerts.{{ .Release.Namespace }}.svc:8080/v1/alerts
+          send_resolved: true
+          http_config:
+            authorization:
+              type: Bearer
+              credentials_file: /etc/alertmanager/secrets/takecare-alerting/token
+
+and mount the Secret takecare-alerting into Alertmanager at that path.
+
+Status: kubectl get takecare -A

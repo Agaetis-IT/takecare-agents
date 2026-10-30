@@ -1,0 +1,36 @@
+# The Doc's trigger (spec 02 §1): the Alertmanager webhook served by every
+# operator replica at POST /v1/alerts, behind a bearer token. The token is
+# generated once and kept across upgrades (lookup); point Alertmanager's
+# receiver at it (see NOTES.txt).
+{{- $existing := lookup "v1" "Secret" .Release.Namespace "takecare-alerting" }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: takecare-alerting
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+type: Opaque
+data:
+  {{- if and $existing $existing.data $existing.data.token }}
+  token: {{ $existing.data.token }}
+  {{- else }}
+  token: {{ randAlphaNum 40 | b64enc }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: takecare-alerts
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "takecare.operator.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: alerts
+      port: 8080
+      targetPort: alerts

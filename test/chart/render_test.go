@@ -426,6 +426,30 @@ func checkConfigMapsAreExplicit(t *testing.T, objs []*unstructured.Unstructured)
 	}
 }
 
+// The webhook: a token Secret kept on uninstall and across upgrades, and a
+// Service on the operator's alerts port.
+func TestAlertIntakeIsExposed(t *testing.T) {
+	objs := render(t, releaseName, profileArgs("demo")...)
+	var secret, service bool
+	for _, o := range ofKind(objs, "Secret") {
+		if o.GetName() == "takecare-alerting" {
+			secret = o.GetAnnotations()["helm.sh/resource-policy"] == "keep"
+			token, _, _ := unstructured.NestedString(o.Object, "data", "token")
+			if len(token) < 40 {
+				t.Errorf("token too short: %d", len(token))
+			}
+		}
+	}
+	for _, o := range ofKind(objs, "Service") {
+		if o.GetName() == "takecare-alerts" {
+			service = true
+		}
+	}
+	if !secret || !service {
+		t.Errorf("token Secret kept: %t, Service: %t", secret, service)
+	}
+}
+
 // The report server: one add-on at most, the operator alone may reach it,
 // its connector declares the adapter and the destinations the server got.
 func TestReportAddon(t *testing.T) {
