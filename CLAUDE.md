@@ -21,7 +21,7 @@ Two Claude Code sessions work on this repository at the same time, on the same m
 
 | Session    | Model | Mode             | Does                                                                                                                    | Never does                                                                                       |
 | ---------- | ----- | ---------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `coder`    | Opus  | acceptEdits      | implements the planned PRs, writes tests, runs `make`, commits, opens PRs                                               | merges, edits specs or ADRs, opens a PR without an `APPROVE`                                     |
+| `coder`    | Opus  | acceptEdits      | implements the planned PRs, writes tests, runs `make`, commits, opens PRs, merges a PR with an `APPROVE` once its CI is green | edits specs or ADRs, opens or merges a PR without an `APPROVE`                                   |
 | `reviewer` | Fable | Plan (read-only) | owns the design loop with Pierre, reads diffs, checks them against specs and ADRs, answers the coder's design questions | edits any file, runs anything that writes, approves its own suggestions without reading the diff |
 
 The reviewer is the design-loop partner mentioned above. The coder's first stop for any doubt is the reviewer, not Pierre.
@@ -43,7 +43,7 @@ The reviewer is the design-loop partner mentioned above. The coder's first stop 
 
 2. The reviewer reads the diff (`git diff main...<branch>`), the spec, the ADRs it touches and the acceptance criteria. It answers `@coder` with **one** message whose first line is one of:
 
-   - `APPROVE <branch>` — optional nits below, none blocking. The coder opens the PR with the `pr-ready` description and stops.
+   - `APPROVE <branch>` — optional nits below, none blocking. The coder opens the PR with the `pr-ready` description and squash-merges it once every CI check is green.
    - `CHANGES <branch>` — numbered list, each item naming the file and the rule, spec or ADR it violates. The coder fixes every item, or argues back once with a reason, then sends a new `REVIEW_REQUEST`.
    - `ESCALATE <branch>` — see below.
 
@@ -213,7 +213,7 @@ Scopes: `api`, `platform`, `connector`, `doc`, `investigation`, `engine`, `repor
 **Pull requests**
 
 - Title in Conventional Commits form; the PR is squash-merged with that title.
-- A PR is opened only after an `APPROVE` from the reviewer (see "Working as two sessions"). Merging is Pierre's.
+- A PR is opened only after an `APPROVE` from the reviewer (see "Working as two sessions"). The coder merges it once every CI check is green; Pierre is not in that loop.
 - The description follows `.github/pull_request_template.md`: spec and acceptance criteria covered (each with how it was checked), tests added, docs updated, **Open questions**.
 - Keep a PR under roughly 600 changed lines excluding generated files; split otherwise.
 - `CHANGELOG.md` is updated in the PR for every user-visible change (Keep a Changelog, section "Unreleased").
