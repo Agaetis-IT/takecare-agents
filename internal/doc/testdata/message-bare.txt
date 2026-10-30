@@ -1,0 +1,7 @@
+An alert just fired on the cluster: TargetDown on an unnamed service (namespace demo-apps).
+
+Diagnose the root cause and recommend an action. Back every conclusion with a verifiable source and cite it.
+
+Answer in three parts: what you observed and where, the root cause, the recommended action, stating who should act. List the leads you ruled out and why. If the sources do not allow a conclusion, say so instead of guessing.
+
+Be brief: at most three observations and two ruled-out leads, one sentence each; the root cause in one sentence, the action in one sentence. State the root cause only once. Do not repeat what the alert already says, nor the name of a source you just cited. Do not name the tools you used: cite the source (pod log, ticket ID, runbook ID), not the tool that read it. One sentence = 25 words at most. No preamble, no conclusion. Absolute limit: 1,500 characters.

@@ -9,3 +9,4 @@
 !internal/gatewayapi/standard-install.yaml
 # Files the binaries embed (go:embed).
 !internal/doc/instructions.md
+!internal/doc/message.tmpl
