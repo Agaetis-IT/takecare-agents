@@ -333,8 +333,9 @@ func (w *Worker) drive(ctx context.Context, r run) error {
 			return requeue(err)
 		}
 	}
-	// The grouped alerts the run's message carries (unknown for a resumed
-	// run).
+	// The usage's start snapshot, and the grouped alerts the run's message
+	// carries (unknown for a resumed run).
+	m := w.startMeter(ctx, r.resumed)
 	var sent map[string]bool
 	if !r.resumed {
 		sent = doc.Sent(&inv)
@@ -385,6 +386,7 @@ func (w *Worker) drive(ctx context.Context, r run) error {
 	if ended == nil {
 		return nil
 	}
+	ended = w.account(ctx, ended, d, m)
 	if ended.Status.Phase == v1alpha1.PhaseCompleted {
 		w.publish(ctx, ended, d, span, sent)
 	}

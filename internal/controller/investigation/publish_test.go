@@ -14,12 +14,14 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/doc"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
+	"github.com/agaetis-it/takecare-agents/internal/usage"
 )
 
 const reportURL = "http://report.example/mcp"
@@ -56,16 +58,37 @@ func (p *fakePoster) destinations() []string {
 	return out
 }
 
+// fakeUsage answers increasing counters: each snapshot adds one run's
+// worth; err makes Prometheus unreachable.
+type fakeUsage struct {
+	mu  sync.Mutex
+	n   float64
+	err error
+}
+
+func (u *fakeUsage) Snapshot(context.Context) (usage.Counters, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.err != nil {
+		return usage.Counters{}, u.err
+	}
+	u.n++
+	return usage.Counters{ModelCalls: 7 * u.n, Input: 41250 * u.n, CacheRead: 30200 * u.n, Output: 1310 * u.n}, nil
+}
+
 // publishing builds a fixture whose Doc publishes through a report
 // connector at the given level's destinations.
-func publishing(t *testing.T, poster *fakePoster, report v1alpha1.DocReport) (*workerFixture, *prometheus.HistogramVec) {
+func publishing(t *testing.T, source *fakeUsage, poster *fakePoster, report v1alpha1.DocReport) (*workerFixture, *prometheus.HistogramVec) {
 	t.Helper()
 	f := startWorker(t, map[string][]poll{task1: {completed}, task2: {completed}, task3: {completed}})
 	duration, err := NewDurationMetric(prometheus.NewRegistry())
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.accounting = Accounting{Poster: poster, Backoff: time.Millisecond, Duration: duration}
+	f.accounting = Accounting{
+		Usage:      func(*v1alpha1.TakeCarePlatform) usage.Source { return source },
+		ScrapeWait: 10 * time.Millisecond, Poster: poster, Backoff: time.Millisecond, Duration: duration,
+	}
 	c := &v1alpha1.TakeCareConnector{Name: reportConn, Namespace: ns}
 	c.Spec.Types = []v1alpha1.ConnectorType{v1alpha1.ConnectorReport}
 	c.Spec.MCP.URL = reportURL
@@ -110,13 +133,19 @@ func (f *workerFixture) waitPublished(t *testing.T, name string) *v1alpha1.TakeC
 // carries the banner and never reaches on-call.
 func TestPublishByLevel(t *testing.T) {
 	poster := &fakePoster{}
-	f, duration := publishing(t, poster, v1alpha1.DocReport{Trial: "review", Service: onCall})
+	f, duration := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Trial: "review", Service: onCall})
 	f.start()
 
 	f.investigationAt(t, "doc-service", v1alpha1.LevelService, false)
 	inv := f.waitPublished(t, "doc-service")
 	if p := inv.Status.Published; !p.OK || p.Destination != onCall || p.Connector != reportConn {
 		t.Errorf("published = %+v", p)
+	}
+	if u := inv.Status.Usage; u == nil || u.ModelCalls != 7 || u.InputTokens != 41250 || u.OutputTokens != 1310 || u.Approximate {
+		t.Errorf("usage = %+v", u)
+	}
+	if !meta.IsStatusConditionTrue(inv.Status.Conditions, ConditionUsageAttributed) {
+		t.Error("UsageAttributed is not True")
 	}
 	if got := events(f.rootSpan(t, inv.Status.TraceID)); !strings.HasSuffix(got, "diagnosis.published") {
 		t.Errorf("span events = %s", got)
@@ -138,7 +167,7 @@ func TestPublishByLevel(t *testing.T) {
 	if !strings.Contains(trialText, doc.TrialBanner) || !strings.Contains(string(trialBlocks), doc.TrialBanner) || strings.Contains(serviceText, doc.TrialBanner) {
 		t.Error("the trial banner opens trial messages only")
 	}
-	if !strings.Contains(serviceText, diagnosis) || !strings.Contains(serviceText, "usage unknown: not measured yet") {
+	if !strings.Contains(serviceText, diagnosis) || !strings.Contains(serviceText, "7 model calls") {
 		t.Errorf("service message = %s", serviceText)
 	}
 	if url != reportURL {
@@ -157,7 +186,7 @@ func TestPublishByLevel(t *testing.T) {
 // on-call.
 func TestTrialWithoutDestinationIsStatusOnly(t *testing.T) {
 	poster := &fakePoster{}
-	f, _ := publishing(t, poster, v1alpha1.DocReport{Service: onCall})
+	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Service: onCall})
 	f.start()
 	f.investigationAt(t, "doc-trial-only", v1alpha1.LevelTrial, false)
 	inv := f.waitPublished(t, "doc-trial-only")
@@ -171,7 +200,7 @@ func TestTrialWithoutDestinationIsStatusOnly(t *testing.T) {
 // touched.
 func TestResumePublishes(t *testing.T) {
 	poster := &fakePoster{}
-	f, _ := publishing(t, poster, v1alpha1.DocReport{Service: onCall})
+	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Service: onCall})
 	done := metav1.Now()
 	f.investigation(t, "doc-unpublished", &v1alpha1.TakeCareInvestigationStatus{
 		Phase: v1alpha1.PhaseCompleted, StartedAt: &done, CompletedAt: &done, TraceID: "6bf92f3577b34da6a3ce929d0e0e4736",
@@ -190,6 +219,9 @@ func TestResumePublishes(t *testing.T) {
 	if got := strings.Join(poster.destinations(), ","); got != onCall {
 		t.Errorf("posts = %s: only the unpublished record is posted", got)
 	}
+	if text := poster.calls[0]["text"].(string); !strings.Contains(text, "usage unknown: the operator restarted before the usage was read") {
+		t.Errorf("message = %s", text)
+	}
 	if got := events(f.rootSpan(t, "6bf92f3577b34da6a3ce929d0e0e4736")); !strings.Contains(got, "investigation.resumed") || !strings.Contains(got, "diagnosis.published") {
 		t.Errorf("the publication's span events = %s", got)
 	}
@@ -202,7 +234,7 @@ func TestResumePublishes(t *testing.T) {
 // with its reason.
 func TestPublicationFailure(t *testing.T) {
 	poster := &fakePoster{fail: true}
-	f, _ := publishing(t, poster, v1alpha1.DocReport{Service: onCall})
+	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Service: onCall})
 	f.start()
 	f.investigationAt(t, "doc-unposted", v1alpha1.LevelService, false)
 	inv := f.waitPublished(t, "doc-unposted")
@@ -214,11 +246,28 @@ func TestPublicationFailure(t *testing.T) {
 	}
 }
 
+// Prometheus unreachable: no usage and no wait; the record and the message
+// say why, never a number.
+func TestUsageUnmeasured(t *testing.T) {
+	poster := &fakePoster{}
+	f, _ := publishing(t, &fakeUsage{err: errors.New("Prometheus at http://prometheus is unreachable")}, poster, v1alpha1.DocReport{Service: onCall})
+	f.start()
+	f.investigationAt(t, "doc-unmeasured", v1alpha1.LevelService, false)
+	inv := f.waitPublished(t, "doc-unmeasured")
+	c := meta.FindStatusCondition(inv.Status.Conditions, ConditionUsageAttributed)
+	if inv.Status.Usage != nil || c == nil || c.Status != metav1.ConditionFalse || !strings.Contains(c.Message, "unreachable") {
+		t.Errorf("usage %+v, condition %+v", inv.Status.Usage, c)
+	}
+	if text := poster.calls[0]["text"].(string); !strings.Contains(text, "usage unknown: Prometheus at http://prometheus is unreachable") {
+		t.Errorf("message = %s", text)
+	}
+}
+
 // An alert folded into the record after its run started is named in the
 // publication; one the run's message carried is not.
 func TestPublicationNamesLaterAlerts(t *testing.T) {
 	poster := &fakePoster{}
-	f, _ := publishing(t, poster, v1alpha1.DocReport{Service: onCall})
+	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Service: onCall})
 	f.engine.beforeDone = func() {
 		var inv v1alpha1.TakeCareInvestigation
 		if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: "doc-grouped"}, &inv); err != nil {
