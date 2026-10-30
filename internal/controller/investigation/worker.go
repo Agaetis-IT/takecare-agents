@@ -251,7 +251,8 @@ func (w *Worker) startRun(ctx context.Context, r run) {
 // resume follows again the runs a previous leader left Running: by their
 // task ID when it was recorded, the engine telling whether it still knows
 // the task; a run without a task ID may or may not have been sent, and is
-// treated as lost.
+// treated as lost. It also publishes the records left Completed without a
+// publication: the previous leader stopped between the two steps.
 func (w *Worker) resume(ctx context.Context) error {
 	var list v1alpha1.TakeCareInvestigationList
 	if err := w.Client.List(ctx, &list); err != nil {
@@ -259,7 +260,14 @@ func (w *Worker) resume(ctx context.Context) error {
 	}
 	for i := range list.Items {
 		inv := &list.Items[i]
-		if inv.Status.Phase != v1alpha1.PhaseRunning || inv.Spec.RoleRef.Kind != v1alpha1.KindTakeCareDoc {
+		if inv.Spec.RoleRef.Kind != v1alpha1.KindTakeCareDoc {
+			continue
+		}
+		if inv.Status.Phase == v1alpha1.PhaseCompleted && inv.Status.Published == nil {
+			w.wg.Go(func() { w.republish(ctx, inv) })
+			continue
+		}
+		if inv.Status.Phase != v1alpha1.PhaseRunning {
 			continue
 		}
 		w.startRun(ctx, run{
@@ -269,6 +277,23 @@ func (w *Worker) resume(ctx context.Context) error {
 		})
 	}
 	return nil
+}
+
+// republish publishes a record a previous leader completed and did not
+// publish. The root span was lost with that leader: the publication's span
+// is a child under the recorded trace, with the resumed event, like a
+// resumed run's.
+func (w *Worker) republish(ctx context.Context, inv *v1alpha1.TakeCareInvestigation) {
+	d, err := w.doc(ctx, inv)
+	if err != nil || d == nil {
+		if err != nil {
+			log.FromContext(ctx).Error(err, "read the Doc to publish", "investigation", inv.Name)
+		}
+		return
+	}
+	ctx, span := w.span(ctx, inv, d, true)
+	defer span.End()
+	w.publish(ctx, inv, d, span, nil)
 }
 
 // drive runs one investigation to its end: start (or resume), follow,

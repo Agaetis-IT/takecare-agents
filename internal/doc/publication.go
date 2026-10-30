@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 )
@@ -144,7 +145,12 @@ func (p Publication) Blocks() []any {
 	}
 	body := p.Diagnosis
 	if len(body) > sectionLimit {
-		body = body[:sectionLimit-1] + "…"
+		// Cut on a rune boundary, leaving room for the ellipsis' 3 bytes.
+		cut := sectionLimit - len("…")
+		for cut > 0 && !utf8.RuneStart(body[cut]) {
+			cut--
+		}
+		body = body[:cut] + "…"
 	}
 	blocks = append(blocks, map[string]any{keyType: "section", keyText: text("mrkdwn", body)})
 	notes := p.notes()

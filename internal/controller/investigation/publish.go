@@ -180,11 +180,22 @@ func (w *Worker) pricing(ctx context.Context, d *v1alpha1.TakeCareDoc) *v1alpha1
 // publish posts a completed investigation's diagnosis through the Doc's
 // report connector, to the destination its level gives (spec 02 §4); the
 // model never decides where or whether. Three retries with backoff; the
-// outcome goes to status.published, a final failure to a warning event.
+// outcome goes to status.published, a final failure to a warning event. A
+// record kept in status only says so in status.published too, so that a
+// record without it is one the operator still has to publish (resume).
 func (w *Worker) publish(ctx context.Context, inv *v1alpha1.TakeCareInvestigation, d *v1alpha1.TakeCareDoc, span trace.Span, sent map[string]bool) {
 	destination, ok := doc.Destination(d, inv)
 	if !ok {
-		return // status only: trial without a trial destination, or silent
+		reason := "status only: the trial level has no destination"
+		if inv.Spec.Silent {
+			reason = "status only: a silent investigation is never published"
+		}
+		if _, err := w.patch(ctx, client.ObjectKeyFromObject(inv), func(i *v1alpha1.TakeCareInvestigation) {
+			i.Status.Published = &v1alpha1.Publication{OK: true, Reason: reason}
+		}); err != nil {
+			log.FromContext(ctx).Error(err, "record the status-only publication", "investigation", inv.Name)
+		}
+		return
 	}
 	reason := ""
 	if c := meta.FindStatusCondition(inv.Status.Conditions, ConditionUsageAttributed); c != nil && c.Status == metav1.ConditionFalse {
@@ -193,6 +204,9 @@ func (w *Worker) publish(ctx context.Context, inv *v1alpha1.TakeCareInvestigatio
 	pub := doc.NewPublication(inv, w.clock().Now(), reason, sent)
 	result := v1alpha1.Publication{Connector: d.Spec.Connectors.Report, Destination: destination}
 	err := w.post(ctx, d, destination, pub)
+	if err != nil && ctx.Err() != nil {
+		return // the operator stops: the next leader publishes (resume)
+	}
 	if err == nil {
 		result.OK = true
 	} else {
