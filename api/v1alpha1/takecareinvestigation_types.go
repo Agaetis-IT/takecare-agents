@@ -5,18 +5,14 @@ package v1alpha1
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-// InvestigationPhase is where an investigation stands.
-// +kubebuilder:validation:Enum=Queued;Running;Completed;Failed;TimedOut;Dropped
-type InvestigationPhase string
-
-// Investigation phases.
+// Investigation phases: the shared run phases plus TimedOut (spec 02).
 const (
-	PhaseQueued    InvestigationPhase = "Queued"
-	PhaseRunning   InvestigationPhase = "Running"
-	PhaseCompleted InvestigationPhase = "Completed"
-	PhaseFailed    InvestigationPhase = "Failed"
-	PhaseTimedOut  InvestigationPhase = "TimedOut"
-	PhaseDropped   InvestigationPhase = "Dropped"
+	PhaseQueued             = RunQueued
+	PhaseRunning            = RunRunning
+	PhaseCompleted          = RunCompleted
+	PhaseFailed             = RunFailed
+	PhaseDropped            = RunDropped
+	PhaseTimedOut  RunPhase = "TimedOut"
 )
 
 // TakeCareInvestigationSpec records the alert an investigation answers. The
@@ -47,10 +43,17 @@ type RoleRef struct {
 type AlertRecord struct {
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
+	// Alertmanager's fingerprint of the alert.
+	// +optional
+	Fingerprint string `json:"fingerprint,omitempty"`
 	// +optional
 	Service string `json:"service,omitempty"`
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
+	// The workload the alert is about, from its labels: the incident key
+	// with the namespace (spec 02 §1).
+	// +optional
+	Workload string `json:"workload,omitempty"`
 	// +optional
 	FiredAt metav1.Time `json:"firedAt,omitempty"`
 	// +optional
@@ -59,29 +62,12 @@ type AlertRecord struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
-// TakeCareInvestigationStatus is the investigation's record: the diagnosis,
-// its publication, usage and trace.
+// TakeCareInvestigationStatus is the investigation's record: the shared run
+// status, and what is the Doc's: the diagnosis, its publication, the other
+// alerts of the same incident, the resolution.
+// +kubebuilder:validation:XValidation:rule="!has(self.phase) || self.phase in ['Queued', 'Running', 'Completed', 'Failed', 'TimedOut', 'Dropped']",message="phase must be Queued, Running, Completed, Failed, TimedOut or Dropped"
 type TakeCareInvestigationStatus struct {
-	// +optional
-	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-
-	// +optional
-	Phase InvestigationPhase `json:"phase,omitempty"`
-
-	// +listType=map
-	// +listMapKey=type
-	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
-
-	// +optional
-	StartedAt *metav1.Time `json:"startedAt,omitempty"`
-	// +optional
-	CompletedAt *metav1.Time `json:"completedAt,omitempty"`
-
-	// Which engine ran the investigation. Free strings: the engine is not an
-	// API concept, only something the operator records (ADR 0007).
-	// +optional
-	Engine *EngineRun `json:"engine,omitempty"`
+	RunStatus `json:",inline"`
 
 	// The agent's answer, unchanged.
 	// +optional
@@ -90,21 +76,22 @@ type TakeCareInvestigationStatus struct {
 	// +optional
 	Published *Publication `json:"published,omitempty"`
 
+	// Other alerts of the same incident (same namespace and workload, within
+	// the Doc's cooldown), handled by this investigation instead of their own.
+	// +kubebuilder:validation:MaxItems=50
+	// +listType=atomic
 	// +optional
-	Usage *Usage `json:"usage,omitempty"`
-
-	// +optional
-	TraceID string `json:"traceID,omitempty"`
+	Alerts []GroupedAlert `json:"alerts,omitempty"`
 
 	// +optional
 	ResolvedAt *metav1.Time `json:"resolvedAt,omitempty"`
 }
 
-// EngineRun identifies one engine task.
-type EngineRun struct {
-	Kind   string `json:"kind,omitempty"`
-	Agent  string `json:"agent,omitempty"`
-	TaskID string `json:"taskID,omitempty"`
+// GroupedAlert is an alert folded into an investigation of the same incident.
+type GroupedAlert struct {
+	Name        string      `json:"name"`
+	Fingerprint string      `json:"fingerprint"`
+	FiredAt     metav1.Time `json:"firedAt"`
 }
 
 // Publication is the outcome of publishing the diagnosis.
@@ -113,18 +100,6 @@ type Publication struct {
 	Destination string `json:"destination,omitempty"`
 	OK          bool   `json:"ok"`
 	Reason      string `json:"reason,omitempty"`
-}
-
-// Usage is the model usage of one investigation.
-type Usage struct {
-	ModelCalls        int64 `json:"modelCalls"`
-	InputTokens       int64 `json:"inputTokens"`
-	CachedInputTokens int64 `json:"cachedInputTokens,omitempty"`
-	OutputTokens      int64 `json:"outputTokens"`
-	// Estimated cost with its currency, for example "0.0093 USD".
-	EstimatedCost string `json:"estimatedCost,omitempty"`
-	// True when investigations overlapped and usage could not be attributed exactly.
-	Approximate bool `json:"approximate,omitempty"`
 }
 
 // +kubebuilder:object:root=true
