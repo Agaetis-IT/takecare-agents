@@ -152,7 +152,8 @@ make help        # every target
 make generate    # deepcopy, CRDs, RBAC manifests
 make chart-sync  # copy the CRDs and the pinned versions into the charts
 make lint        # golangci-lint, ruff, shellcheck, markdownlint, SPDX headers
-make chart-lint  # chart drift check + helm lint, both charts, both profiles
+make chart-docs  # regenerate the charts' README value tables (helm-docs)
+make chart-lint  # chart drift checks (CRDs, pins, READMEs) + helm lint, both charts, both profiles
 make chart-template  # render both profiles, validate with kubeconform
 make test        # unit + golden + envtest + chart tests
 make licenses    # dependency license check, regenerates NOTICE
@@ -162,7 +163,7 @@ make docker-buildx   # operator image, amd64 + arm64
 
 Prerequisites: Go (version in `go.mod`), Docker, make. Every pinned version lives in [`hack/versions.env`](hack/versions.env); the linters run from pinned images, the Go tools, Helm 4 and kubeconform are installed into `./bin` (Helm runs with its own repository config there, never yours).
 
-The charts live in [`charts/`](charts/): `takecare-crds` (the CRDs, to install and upgrade first, never uninstalled while TakeCare runs) and `takecare` (the operator and its building blocks). `values-prod.yaml` is the template a customer fills, every value to set marked `# REQUIRED`; `values-demo.yaml` is complete.
+The charts live in [`charts/`](charts/), each with its own README to read before installing: [`takecare-crds`](charts/takecare-crds/README.md) (the CRDs, to install and upgrade first, never uninstalled while TakeCare runs) and [`takecare`](charts/takecare/README.md) (the operator and its building blocks: prerequisites, security requirements, values). `values-prod.yaml` is the template a customer fills, every value to set marked `# REQUIRED`; `values-demo.yaml` is complete.
 
 ## How we work
 
