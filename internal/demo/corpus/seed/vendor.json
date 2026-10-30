@@ -1,6 +1,6 @@
 [
   {
-    "id": "AWS-2026-0903-01",
+    "id": "AWS-SEED-EBS",
     "date": "@TS52@",
     "title": "Degraded performance of EBS gp3 volumes - eu-west-3a",
     "service": "Amazon EBS",
@@ -12,7 +12,7 @@
     "tags": "ebs gp3 latency write volume disk eu-west-3a degradation"
   },
   {
-    "id": "AWS-2026-0828-03",
+    "id": "AWS-SEED-RDS",
     "date": "@DAY6@",
     "title": "Resolved - elevated API errors on Amazon RDS, eu-west-1",
     "service": "Amazon RDS",
@@ -22,7 +22,7 @@
     "tags": "rds api errors eu-west-1 resolved"
   },
   {
-    "id": "AWS-2026-0815-02",
+    "id": "AWS-SEED-EC2",
     "date": "@DAY19@",
     "title": "Resolved - inter-zone network latency, eu-west-3",
     "service": "Amazon EC2",
