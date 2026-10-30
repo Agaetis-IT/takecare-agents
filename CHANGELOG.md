@@ -37,3 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `hack/versions.env`, the single place for pinned third-party versions; the agent engine is left out until ADR 0007 and ADR 0010 are settled.
 - CI workflow: Go, Python, shell and Markdown linters, SPDX headers, unit and envtest tests, license check, multi-arch image build, gitleaks.
 - Proprietary `LICENSE`, generated `NOTICE` and the licensing rules in `docs/licensing.md`.
+
+### Changed
+
+- The operator's image is renamed `takecare-agents-operator` (was `takecare-operator`), following the `takecare-agents-<component>` naming of the images (issue #22). A mirror of the images must add the new name. The Deployment, its ServiceAccount, the RBAC objects, the server-side apply field owner and the leader election ID keep their names, so an upgrade replaces the pods without a second leader or a field ownership conflict.

@@ -57,7 +57,7 @@ Then the [`takecare`](../takecare/README.md) chart.
 | gatewayAPI.job | object | `{"activeDeadlineSeconds":300,"backoffLimit":2,"resources":{"limits":{"memory":"128Mi"},"requests":{"cpu":"50m","memory":"64Mi"}}}` | Rights of the hook's ServiceAccount: create on CRDs cannot be narrowed by name, get and patch are limited to the Gateway API CRDs. |
 | global.imagePullSecrets | list | `[]` |  |
 | global.imageRegistry | string | `""` | Registry prefix for every image this chart pulls, for customer-internal registries (ADR 0002). Empty: the registry of each image below. |
-| image | object | `{"pullPolicy":"IfNotPresent","registry":"ghcr.io/agaetis-it","repository":"takecare-operator","tag":""}` | The operator image runs the Gateway API hook job (gatewayAPI below). |
+| image | object | `{"pullPolicy":"IfNotPresent","registry":"ghcr.io/agaetis-it","repository":"takecare-agents-operator","tag":""}` | The operator image runs the Gateway API hook job (gatewayAPI below). |
 | kagent | object | `{"enabled":true}` | kagent CRDs (kagent.dev), from the upstream chart. kmcp is not used by TakeCare (every MCP server is a connector behind the gateway, ADR 0008). |
 | kagent-crds.kmcp.enabled | bool | `false` |  |
 | kagent-crds.substrate.enabled | bool | `false` |  |

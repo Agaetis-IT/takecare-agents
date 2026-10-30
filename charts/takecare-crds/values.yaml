@@ -17,7 +17,7 @@ global:
 # -- The operator image runs the Gateway API hook job (gatewayAPI below).
 image:
   registry: ghcr.io/agaetis-it
-  repository: takecare-operator
+  repository: takecare-agents-operator
   # Empty: the chart's appVersion.
   tag: ""
   pullPolicy: IfNotPresent
