@@ -1,0 +1,34 @@
+[
+  {
+    "id": "AWS-2026-0903-01",
+    "date": "@TS52@",
+    "title": "Degraded performance of EBS gp3 volumes - eu-west-3a",
+    "service": "Amazon EBS",
+    "region": "eu-west-3",
+    "zone": "eu-west-3a",
+    "status": "ongoing",
+    "summary": "We are investigating increased write latencies on gp3 volumes in the eu-west-3a availability zone. Operations complete, with increased latency. Other zones in the region are not affected.",
+    "impact": "Increased write latency on gp3 volumes in eu-west-3a.",
+    "tags": "ebs gp3 latency write volume disk eu-west-3a degradation"
+  },
+  {
+    "id": "AWS-2026-0828-03",
+    "date": "@DAY6@",
+    "title": "Resolved - elevated API errors on Amazon RDS, eu-west-1",
+    "service": "Amazon RDS",
+    "region": "eu-west-1",
+    "status": "resolved",
+    "summary": "An elevated error rate on RDS management API calls has been resolved. Running instances were not affected.",
+    "tags": "rds api errors eu-west-1 resolved"
+  },
+  {
+    "id": "AWS-2026-0815-02",
+    "date": "@DAY19@",
+    "title": "Resolved - inter-zone network latency, eu-west-3",
+    "service": "Amazon EC2",
+    "region": "eu-west-3",
+    "status": "resolved",
+    "summary": "Increased network latency between availability zones was resolved after a device replacement.",
+    "tags": "network latency inter-zone ec2 eu-west-3 resolved"
+  }
+]

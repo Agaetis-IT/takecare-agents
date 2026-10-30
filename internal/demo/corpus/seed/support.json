@@ -1,0 +1,50 @@
+[
+  {
+    "id": "SUP-4471",
+    "date": "@TS41@",
+    "title": "Slow order confirmation at checkout",
+    "service": "checkout-api",
+    "channel": "phone",
+    "priority": "high",
+    "customer": "Vasseur Group (key account)",
+    "summary": "The customer reports that confirming an order has taken more than 30 seconds since mid-morning, with abandoned carts seen by the business. No error message, only waiting.",
+    "status": "open",
+    "tags": "checkout slow confirmation cart abandon timeout"
+  },
+  {
+    "id": "SUP-4470",
+    "date": "@TS58@",
+    "title": "Orders pending for unusually long",
+    "service": "checkout-api",
+    "channel": "portal",
+    "priority": "medium",
+    "customer": "Maison Leonard",
+    "summary": "Several orders stay in 'processing' for minutes. They eventually go through. The customer asks whether maintenance is in progress.",
+    "status": "open",
+    "tags": "checkout pending processing slow maintenance"
+  },
+  {
+    "id": "SUP-4469",
+    "date": "@TS180@",
+    "title": "Monthly accounting export request",
+    "service": "billing-api",
+    "channel": "email",
+    "priority": "low",
+    "customer": "Ferrand Accounting",
+    "summary": "Functional request: get the accounting export in the format expected by the accountant. Not related to any incident.",
+    "status": "open",
+    "tags": "export accounting functional request billing"
+  },
+  {
+    "id": "SUP-4465",
+    "date": "@TS1300@",
+    "title": "Forgotten password, portal access",
+    "service": "web-front",
+    "channel": "portal",
+    "priority": "low",
+    "customer": "Bruneau Ltd",
+    "summary": "Access reset done. No technical impact.",
+    "status": "closed",
+    "tags": "access password portal closed"
+  }
+]
