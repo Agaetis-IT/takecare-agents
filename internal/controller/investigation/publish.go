@@ -198,7 +198,12 @@ func (w *Worker) publish(ctx context.Context, inv *v1alpha1.TakeCareInvestigatio
 		return
 	}
 	reason := ""
-	if c := meta.FindStatusCondition(inv.Status.Conditions, ConditionUsageAttributed); c != nil && c.Status == metav1.ConditionFalse {
+	switch c := meta.FindStatusCondition(inv.Status.Conditions, ConditionUsageAttributed); {
+	case c == nil:
+		// A record published by a new leader whose predecessor stopped
+		// before the usage was read.
+		reason = "the operator restarted before the usage was read"
+	case c.Status == metav1.ConditionFalse:
 		reason = c.Message
 	}
 	pub := doc.NewPublication(inv, w.clock().Now(), reason, sent)

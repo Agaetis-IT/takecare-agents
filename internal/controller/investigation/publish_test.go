@@ -200,7 +200,7 @@ func TestTrialWithoutDestinationIsStatusOnly(t *testing.T) {
 // touched.
 func TestResumePublishes(t *testing.T) {
 	poster := &fakePoster{}
-	f, _ := publishing(t, poster, v1alpha1.DocReport{Service: onCall})
+	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Service: onCall})
 	done := metav1.Now()
 	f.investigation(t, "doc-unpublished", &v1alpha1.TakeCareInvestigationStatus{
 		Phase: v1alpha1.PhaseCompleted, StartedAt: &done, CompletedAt: &done, TraceID: "6bf92f3577b34da6a3ce929d0e0e4736",
@@ -218,6 +218,9 @@ func TestResumePublishes(t *testing.T) {
 	}
 	if got := strings.Join(poster.destinations(), ","); got != onCall {
 		t.Errorf("posts = %s: only the unpublished record is posted", got)
+	}
+	if text := poster.calls[0]["text"].(string); !strings.Contains(text, "usage unknown: the operator restarted before the usage was read") {
+		t.Errorf("message = %s", text)
 	}
 	if got := events(f.rootSpan(t, "6bf92f3577b34da6a3ce929d0e0e4736")); !strings.Contains(got, "investigation.resumed") || !strings.Contains(got, "diagnosis.published") {
 		t.Errorf("the publication's span events = %s", got)
