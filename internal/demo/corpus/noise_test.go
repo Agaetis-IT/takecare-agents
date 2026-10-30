@@ -112,3 +112,14 @@ func TestGenerateGolden(t *testing.T) {
 	}
 	golden.Assert(t, "proxy-timeout.txt", []byte(b.String()))
 }
+
+// A bulletin's id is named after its date, curated ones included: the
+// vendor's false lead must hold no contradiction.
+func TestVendorIDsAgreeWithTheirDates(t *testing.T) {
+	for _, r := range generate(t, ScenarioProxyTimeout, incident)[SourceVendor] {
+		day := strings.ReplaceAll(r[keyDate][:10], "-", "")
+		if want := "AWS-" + day[:4] + "-" + day[4:] + "-"; !strings.HasPrefix(r["id"], want) {
+			t.Errorf("%s dated %s", r["id"], r[keyDate])
+		}
+	}
+}

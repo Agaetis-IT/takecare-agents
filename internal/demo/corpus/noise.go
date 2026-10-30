@@ -326,16 +326,11 @@ func renumber(records []Record, prefix string, base int) []Record {
 	return records
 }
 
-// vendorIDs names the generated bulletins after their date and a rank.
+// vendorIDs names every bulletin after its date and a rank, the curated
+// ones included: a seed's id is a placeholder, since its date is relative.
 func (g *generator) vendorIDs(records []Record) []Record {
 	taken := map[string]bool{}
 	for _, r := range records {
-		taken[r["id"]] = r["id"] != ""
-	}
-	for _, r := range records {
-		if r["id"] != "" {
-			continue
-		}
 		day := strings.ReplaceAll(r[keyDate][:10], "-", "")
 		rank := 1 + g.rng.IntN(4)
 		for taken[fmt.Sprintf("AWS-%s-%s-%02d", day[:4], day[4:], rank)] {

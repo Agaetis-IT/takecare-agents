@@ -82,6 +82,10 @@ func checkSignal(c Corpus, scenario string, incident time.Time, fail failFunc) {
 	}
 }
 
+// ongoingTitle is the vendor's false lead: an ongoing storage degradation in
+// the region, true and unrelated.
+const ongoingTitle = "Degraded performance of EBS gp3 volumes - eu-west-3a"
+
 // checkNeutral checks that the other scenarios leave no live change and that
 // the vendor's false lead is the only ongoing bulletin.
 func checkNeutral(c Corpus, incident time.Time, fail failFunc) {
@@ -96,8 +100,8 @@ func checkNeutral(c Corpus, incident time.Time, fail failFunc) {
 			ongoing = append(ongoing, r)
 		}
 	}
-	if got := ids(ongoing); len(got) != 1 || got[0] != "AWS-2026-0903-01" {
-		fail("vendor: want exactly one ongoing bulletin, AWS-2026-0903-01, found %v", got)
+	if len(ongoing) != 1 || ongoing[0][keyTitle] != ongoingTitle {
+		fail("vendor: want exactly one ongoing bulletin, %q, found %v", ongoingTitle, ids(ongoing))
 	}
 }
 

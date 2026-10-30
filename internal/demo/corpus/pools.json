@@ -42,7 +42,7 @@
     "fail": [
       {"summary": "Automatic rollback after startup probe failures.", "tags": "rollback failed probe"},
       {"summary": "Deployment interrupted: registry image quota exceeded.", "tags": "failed registry quota"},
-      {"summary": "Canceled by the author before the end of the rollout.", "tags": "cancelled manual"}
+      {"summary": "Canceled by the author before the end of the rollout.", "tags": "canceled manual"}
     ]
   },
   "support": {

@@ -164,20 +164,20 @@ INC-2024-0312	2024-03-12	billing-api	Intermittent 504s and growing memory on bil
 INC-2024-0455	2024-04-28	payments-api	Expired certificate on the payment gateway
 INC-2024-0501	2024-05-15	platform	Disk saturation on compute nodes
 INC-2024-0632	2024-06-30	checkout-api	Higher latency after the checkout database migration
-INC-2024-1209	2024-12-09T11:18:22Z	batch-export	File descriptor leak
-INC-2025-0206	2025-02-06T16:44:52Z	notifications-worker	Lost messages on the notifications queue
+INC-2024-1209	2024-12-09T11:18:22Z	auth-service	Identity provider outage
+INC-2025-0206	2025-02-06T16:44:52Z	batch-export	Disk saturation on compute nodes
 INC-2025-0207	2025-02-07	notifications-worker	notifications-worker in CrashLoopBackOff after a memory limit cut
-INC-2025-0419	2025-04-19T02:17:01Z	batch-export	Disk saturation on compute nodes
-INC-2025-0525	2025-05-25T06:13:57Z	payments-api	Clock drift on a node
+INC-2025-0403	2025-04-03T09:58:45Z	batch-export	File descriptor leak
+INC-2025-0525	2025-05-25T06:13:57Z	search-api	Slow queries after a cache purge
 INC-2025-0611	2025-06-11	billing-api	504s on billing-api during invoice exports
-INC-2025-0915	2025-09-15T10:43:26Z	catalog-api	Restart loop after a version upgrade
 INC-2025-0918	2025-09-18	billing-api	billing-api memory leak in the PDF renderer
-INC-2025-1001	2025-10-01T15:07:18Z	billing-api	Double billing on replayed orders
-INC-2025-1202	2025-12-02T22:09:54Z	auth-service	Identity provider outage
-INC-2026-0113	2026-01-13T03:18:20Z	search-api	Slow queries after a cache purge
-INC-2026-0228	2026-02-28T07:47:17Z	web-front	Expired certificate on the ingress gateway
-INC-2026-0403	2026-04-03T04:35:27Z	checkout-api	Blocked on a schema migration
-INC-2026-0508	2026-05-08T10:13:38Z	checkout-api	Subnet IP address exhaustion
+INC-2025-1001	2025-10-01T15:07:18Z	notifications-worker	Lost messages on the notifications queue
+INC-2025-1202	2025-12-02T22:09:54Z	checkout-api	Subnet IP address exhaustion
+INC-2026-0113	2026-01-13T03:18:20Z	catalog-api	Restart loop after a version upgrade
+INC-2026-0226	2026-02-26T18:39:28Z	checkout-api	Blocked on a schema migration
+INC-2026-0403	2026-04-03T04:35:27Z	billing-api	Double billing on replayed orders
+INC-2026-0508	2026-05-08T10:13:38Z	web-front	Expired certificate on the ingress gateway
+INC-2026-0907	2026-09-07T19:12:54Z	payments-api	Clock drift on a node
 # runbooks
 RB-001			Node in NotReady
 RB-002			TLS certificate close to expiry
@@ -268,9 +268,9 @@ AWS-2026-0907-02	2026-09-07T05:13:15Z	Elastic Load Balancing	Resolved - unstable
 AWS-2026-0917-03	2026-09-17T06:42:52Z	Amazon SQS	Resolved - message delivery latency, eu-west-3
 AWS-2026-0927-03	2026-09-27T16:11:14Z	Amazon Route 53	Resolved - slow dns propagation, global
 AWS-2026-0930-01	2026-09-30T05:48:02Z	Amazon EBS	Resolved - slow volume creation, eu-central-1
-AWS-2026-0815-02	2026-10-11T03:00:00Z	Amazon EC2	Resolved - inter-zone network latency, eu-west-3
-AWS-2026-1013-04	2026-10-13T01:13:14Z	Amazon RDS	Resolved - delayed automatic failovers, eu-central-1
-AWS-2026-1013-03	2026-10-13T08:08:17Z	Amazon S3	Resolved - elevated latency on get requests, eu-west-3
+AWS-2026-1011-04	2026-10-11T03:00:00Z	Amazon EC2	Resolved - inter-zone network latency, eu-west-3
+AWS-2026-1013-03	2026-10-13T01:13:14Z	Amazon RDS	Resolved - delayed automatic failovers, eu-central-1
+AWS-2026-1013-04	2026-10-13T08:08:17Z	Amazon S3	Resolved - elevated latency on get requests, eu-west-3
 AWS-2026-1017-04	2026-10-17T02:21:25Z	Amazon EC2	Resolved - elevated instance launch errors, eu-west-1
-AWS-2026-0828-03	2026-10-24T03:00:00Z	Amazon RDS	Resolved - elevated API errors on Amazon RDS, eu-west-1
-AWS-2026-0903-01	2026-10-30T02:08:00Z	Amazon EBS	Degraded performance of EBS gp3 volumes - eu-west-3a
+AWS-2026-1024-03	2026-10-24T03:00:00Z	Amazon RDS	Resolved - elevated API errors on Amazon RDS, eu-west-1
+AWS-2026-1030-02	2026-10-30T02:08:00Z	Amazon EBS	Degraded performance of EBS gp3 volumes - eu-west-3a
