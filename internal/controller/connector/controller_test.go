@@ -222,6 +222,9 @@ func (h *harness) get(name string) *v1alpha1.TakeCareConnector {
 	return &c
 }
 
+// waitCondition waits for a condition computed for the connector's current
+// generation: a condition left by an earlier reconcile, with the same status
+// and reason, does not count (it raced with the reconcile under CI load).
 func (h *harness) waitCondition(name, condType string, status metav1.ConditionStatus, reason string) *metav1.Condition {
 	h.t.Helper()
 	var got *metav1.Condition
@@ -231,7 +234,7 @@ func (h *harness) waitCondition(name, condType string, status metav1.ConditionSt
 			return false
 		}
 		got = meta.FindStatusCondition(c.Status.Conditions, condType)
-		return got != nil && got.Status == status && (reason == "" || got.Reason == reason)
+		return got != nil && got.ObservedGeneration == c.Generation && got.Status == status && (reason == "" || got.Reason == reason)
 	})
 	return got
 }
