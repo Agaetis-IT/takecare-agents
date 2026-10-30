@@ -80,6 +80,12 @@ func TestRecord(t *testing.T) {
 	if u.EstimatedCost != "0.0075 USD" || u.ModelCalls != 7 || u.InputTokens != 41250 || u.CachedInputTokens != 30200 || u.OutputTokens != 1310 || !u.Approximate {
 		t.Errorf("usage = %+v", u)
 	}
+	// More cache reads than input tokens (a metric oddity): clamped, never
+	// a negative input component.
+	odd := Counters{ModelCalls: 1, Input: 100, CacheRead: 1000, Output: 0}
+	if u, err := Record(odd, pricing, false); err != nil || u.EstimatedCost != "0.0000 USD" {
+		t.Errorf("clamped cache reads: %+v, %v", u, err)
+	}
 	if u, err := Record(d, nil, false); err != nil || u.EstimatedCost != "" {
 		t.Errorf("without pricing: %+v, %v", u, err)
 	}

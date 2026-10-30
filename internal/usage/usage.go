@@ -27,7 +27,13 @@ import (
 // Counters are the gateway's cumulative usage at one instant.
 type Counters struct {
 	ModelCalls float64
-	// Input includes the cache reads and writes (agentgateway 1.6).
+	// Input includes the cache reads and writes: agentgateway 1.6.0 emits
+	// four gen_ai_token_type values, input (cache included), output,
+	// input_cache_read and input_cache_write (spike 001 report, §5.4 and the
+	// note on agentgateway 1.6.0's labels; the POC's mesures.py, checked
+	// against the provider's invoice). Record therefore prices the cache
+	// reads apart and subtracts them from the input: the subtraction is
+	// right, do not remove it.
 	Input     float64
 	CacheRead float64
 	Output    float64
@@ -153,7 +159,9 @@ func Record(d Counters, pricing *v1alpha1.Pricing, approximate bool) (v1alpha1.U
 			return u, err
 		}
 	}
-	cost := ((d.Input-d.CacheRead)*in + d.CacheRead*cached + d.Output*out) / 1e6
+	// A metric oddity must never give a negative input component.
+	cacheRead := min(d.CacheRead, d.Input)
+	cost := ((d.Input-cacheRead)*in + cacheRead*cached + d.Output*out) / 1e6
 	u.EstimatedCost = strconv.FormatFloat(cost, 'f', 4, 64) + " " + strings.ToUpper(pricing.Currency)
 	return u, nil
 }
