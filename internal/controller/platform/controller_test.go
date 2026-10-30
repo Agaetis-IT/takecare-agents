@@ -257,6 +257,9 @@ func TestPlatformBecomesReadyWithTwoModels(t *testing.T) {
 	if len(p.Status.Models) != 2 || p.Status.Models[0].Route != "http://agentgateway-proxy.takecare-system.svc/v1" {
 		t.Errorf("status.models = %+v", p.Status.Models)
 	}
+	if p.Status.GatewayURL != "http://agentgateway-proxy.takecare-system.svc" {
+		t.Errorf("status.gatewayURL = %q, want the gateway's Service without a path", p.Status.GatewayURL)
+	}
 
 	t.Run("generated objects carry what the spike validated, and no provider key", func(t *testing.T) {
 		gm := &unstructured.Unstructured{}

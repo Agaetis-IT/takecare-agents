@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -24,6 +25,7 @@ import (
 	takecarev1alpha1 "github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
 	"github.com/agaetis-it/takecare-agents/internal/engine/kagent0103"
+	"github.com/agaetis-it/takecare-agents/internal/routes"
 )
 
 func TestNewSchemeRegistersCoreTypes(t *testing.T) {
@@ -112,7 +114,7 @@ func staticMapper(scheme *runtime.Scheme) meta.RESTMapper {
 	for _, gvk := range platform.OperatorNamespaceKinds() {
 		m.Add(gvk, meta.RESTScopeNamespace)
 	}
-	for _, gvk := range (&kagent0103.Models{}).OwnedTypes() {
+	for _, gvk := range slices.Concat(routes.Kinds(), (&kagent0103.Models{}).OwnedTypes(), (&kagent0103.Agents{}).AgentTypes()) {
 		m.Add(gvk, meta.RESTScopeNamespace)
 	}
 	return m

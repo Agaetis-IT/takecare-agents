@@ -268,6 +268,13 @@ spec:
               observedGeneration:
                 format: int64
                 type: integer
+              renderPendingSince:
+                description: |-
+                  RenderPendingSince is set while a new rendering of the engine's agent
+                  waits for a running investigation to end (a re-rendered agent restarts
+                  and loses its task). The gateway's tool policies are never deferred.
+                format: date-time
+                type: string
             type: object
         required:
         - spec

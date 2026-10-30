@@ -48,6 +48,18 @@ alerting:
 
 The operator reads the token from its cache, so a rotation of that Secret needs no restart; update Alertmanager's copy at the same time.
 
+**Deleting a Doc needs the operator.** A `TakeCareDoc` carries the finalizer `takecare.agaetis.fr/engine-objects`: its agent lives in the engine's namespace, where Kubernetes cannot delete it with the Doc, so the operator removes it before letting the Doc go. Without a running operator (uninstalled first, scaled to zero, crash-looping), `kubectl delete takecaredoc` waits. To finish the deletion by hand, remove the engine's objects of that Doc, then the finalizer:
+
+```bash
+DOC=doc   # the TakeCareDoc's name
+kubectl -n kagent delete agents.kagent.dev,remotemcpservers.kagent.dev,configmaps \
+  -l takecare.agaetis.fr/role=doc,takecare.agaetis.fr/owner="$DOC"
+kubectl -n takecare-system patch takecaredoc "$DOC" --type=json \
+  -p='[{"op":"remove","path":"/metadata/finalizers"}]'
+```
+
+The Doc's routes and policies on the gateway, in the release namespace, carry an owner reference and follow the Doc on their own. Replace `kagent` and `takecare-system` if you changed the engine's or the release's namespace.
+
 ## Profiles
 
 | File | Use |

@@ -104,6 +104,12 @@ type TakeCareDocStatus struct {
 	LastInvestigation string `json:"lastInvestigation,omitempty"`
 	// +optional
 	LastInvestigationTime *metav1.Time `json:"lastInvestigationTime,omitempty"`
+
+	// RenderPendingSince is set while a new rendering of the engine's agent
+	// waits for a running investigation to end (a re-rendered agent restarts
+	// and loses its task). The gateway's tool policies are never deferred.
+	// +optional
+	RenderPendingSince *metav1.Time `json:"renderPendingSince,omitempty"`
 }
 
 // +kubebuilder:object:root=true

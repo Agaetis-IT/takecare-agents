@@ -156,6 +156,11 @@ type TakeCarePlatformStatus struct {
 	// +listMapKey=name
 	// +optional
 	Models []ModelStatus `json:"models,omitempty"`
+
+	// GatewayURL is the in-cluster base URL of the gateway, without a path:
+	// where the roles' MCP and A2A routes are served (ADR 0008, 0009).
+	// +optional
+	GatewayURL string `json:"gatewayURL,omitempty"`
 }
 
 // ProductionGap is one thing missing for a real production.

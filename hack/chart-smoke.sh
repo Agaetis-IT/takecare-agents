@@ -105,6 +105,41 @@ wait_condition() {
   return 1
 }
 
+# wait_condition_long KIND NAME TYPE STATUS SECONDS: wait_condition with a
+# longer bound, for what pulls an image first (the agent's pod).
+wait_condition_long() {
+  local kind="$1" name="$2" ctype="$3" want="$4" seconds="$5"
+  for _ in $(seq $((seconds / 5))); do
+    [[ "$(kubectl -n "$NS" get "$kind" "$name" -o jsonpath="{.status.conditions[?(@.type==\"$ctype\")].status}" 2>/dev/null)" == "$want" ]] && return 0
+    sleep 5
+  done
+  kubectl -n "$NS" get "$kind" "$name" -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}: {.message}{"\n"}{end}' >&2
+  return 1
+}
+
+# mcp_call NAMESPACE POD URL TOOL: from the pod, opens an MCP session at URL
+# and calls TOOL without arguments; prints the JSON-RPC answer. An allowed
+# tool answers a "result" (an error result when arguments are missing); a
+# tool the gateway refuses answers a JSON-RPC "error".
+mcp_call() {
+  # shellcheck disable=SC2016 # the script expands in the pod, not here
+  kubectl -n "$1" exec "$2" -- sh -c '
+    url=$0 tool=$1 accept="Accept: application/json, text/event-stream" json="Content-Type: application/json"
+    sid=$(curl -s -m 10 -D - -o /dev/null -X POST -H "$json" -H "$accept" \
+      -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"smoke\",\"version\":\"0\"}}}" "$url" |
+      tr -d "\r" | sed -n "s/^[Mm]cp-[Ss]ession-[Ii]d: //p")
+    curl -s -m 10 -o /dev/null -X POST -H "$json" -H "$accept" -H "Mcp-Session-Id: $sid" \
+      -d "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}" "$url"
+    curl -s -m 20 -X POST -H "$json" -H "$accept" -H "Mcp-Session-Id: $sid" \
+      -d "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"$tool\",\"arguments\":{}}}" "$url"
+  ' "$3" "$4"
+}
+
+# mcp_allowed NAMESPACE POD URL TOOL: succeeds when the call gets a result.
+mcp_allowed() {
+  mcp_call "$@" | grep -q '"result"'
+}
+
 # platform_ready waits for the platform's Ready condition, printing the
 # conditions when it does not come.
 platform_ready() {
@@ -203,8 +238,10 @@ apiVersion: takecare.agaetis.fr/v1alpha1
 kind: TakeCareDoc
 metadata: { name: smoke-doc, namespace: ${NS} }
 spec:
-  level: trial
+  level: service
   scope: { namespaces: [demo-apps] }
+  connectors: { cluster: [kubernetes], metrics: [prometheus], report: report }
+  report: { service: on-call }
 EOF
   local token now alerts_url="http://takecare-alerts.${NS}.svc:8080/v1/alerts"
   token="$(kubectl -n "$NS" get secret takecare-alerting -o jsonpath='{.data.token}' | base64 -d)"
@@ -223,7 +260,40 @@ EOF
     bash -c "for _ in \$(seq 30); do [[ \$(kubectl -n ${NS} get takecareinvestigations -l takecare.agaetis.fr/fingerprint=5m0ke00000000001 -o jsonpath='{.items[0].status.phase}' 2>/dev/null) == Queued ]] && break; sleep 2; done; n=\$(kubectl -n ${NS} get takecareinvestigations -l takecare.agaetis.fr/fingerprint=5m0ke00000000001 -o name | wc -l | tr -d ' '); m=\$(kubectl -n ${NS} get takecareinvestigations -l takecare.agaetis.fr/fingerprint=5m0ke00000000002 -o name | wc -l | tr -d ' '); a=\$(kubectl -n ${NS} get takecareinvestigations -l takecare.agaetis.fr/fingerprint=5m0ke00000000001 -o jsonpath='{.items[0].status.alerts[0].name} {.items[0].status.phase}'); [[ \$n == 1 && \$m == 0 && \$a == 'PodNotReady Queued' ]]"
   kubectl -n "$NS" delete pod smoke-alert --now >/dev/null
   kubectl -n "$NS" delete takecareinvestigations -l takecare.agaetis.fr/fingerprint=5m0ke00000000001 >/dev/null
-  kubectl -n "$NS" delete takecaredoc smoke-doc >/dev/null
+
+  log "the Doc's rendering (spec 02 §2, ADR 0008, 0009)"
+  local agent=takecare-doc-smoke-doc gw="http://agentgateway-proxy.${NS}.svc"
+  check "the Doc's Agent lists the read tools of its two connectors, every reference with toolNames" \
+    bash -c "for _ in \$(seq 30); do kubectl -n kagent get agent ${agent} >/dev/null 2>&1 && break; sleep 2; done; t=\$(kubectl -n kagent get agent ${agent} -o jsonpath='{range .spec.declarative.tools[*]}{.mcpServer.name}={.mcpServer.toolNames}{\"\\n\"}{end}'); [[ \$(grep -c '=\\[\"' <<<\"\$t\") == 2 && \"\$t\" == *pods_list* && \"\$t\" == *execute_query* ]]"
+  check "the Agent's content-capture switches follow the platform" \
+    bash -c "want=\$(kubectl get takecareplatform main -o jsonpath='{.spec.observability.captureContent}'); for v in ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS TRACELOOP_TRACE_CONTENT; do [[ \$(kubectl -n kagent get agent ${agent} -o jsonpath=\"{.spec.declarative.deployment.env[?(@.name=='\$v')].value}\") == \"\${want:-false}\" ]] || exit 1; done"
+  check "EngineReady=True: the agent's card answers through the gateway's A2A route" \
+    wait_condition_long takecaredoc smoke-doc EngineReady True 300
+  kubectl -n kagent delete pod smoke-a2a --ignore-not-found >/dev/null
+  kubectl -n kagent run smoke-a2a --image="$SMOKE_CURL_IMAGE" --restart=Never --command -- sleep 600 >/dev/null
+  kubectl -n kagent wait pod/smoke-a2a --for=condition=Ready --timeout=120s >/dev/null
+  local code=(kubectl -n kagent exec smoke-a2a -- curl -s -o /dev/null -m 10 -w '%{http_code}')
+  check "through the A2A route, the agent's card answers (200)" \
+    test "$("${code[@]}" "${gw}/api/a2a/kagent/${agent}/.well-known/agent-card.json")" = "200"
+  check "through the gateway, the engine's API is out of reach: /api/agents has no route (404)" \
+    test "$("${code[@]}" "${gw}/api/agents")" = "404"
+  # AC 4: a tool the Doc may no longer call is refused by the gateway at
+  # once, whatever the agent still lists. pods_log is reclassified act.
+  kubectl -n "$NS" patch takecareconnector kubernetes --type=merge -p '{"spec":{"tools":[{"name":"pods_log","class":"act"}]}}' >/dev/null
+  for _ in $(seq 30); do
+    [[ "$(kubectl -n "$NS" get agentgatewaypolicy role-doc-smoke-doc-mcp-kubernetes -o jsonpath='{.spec.backend.mcp.authorization.policy.matchExpressions[0]}')" != *pods_log* ]] && break
+    sleep 2
+  done
+  local route="${gw}/mcp/${NS}/smoke-doc/kubernetes"
+  check_not "a forged call to pods_log through the Doc's route is refused" \
+    mcp_allowed kagent smoke-a2a "$route" pods_log
+  check "a call to pods_list through the Doc's route is let through" \
+    mcp_allowed kagent smoke-a2a "$route" pods_list
+  kubectl -n "$NS" patch takecareconnector kubernetes --type=json -p '[{"op":"remove","path":"/spec/tools"}]' >/dev/null
+  kubectl -n kagent delete pod smoke-a2a --now >/dev/null
+  kubectl -n "$NS" delete takecaredoc smoke-doc --timeout=60s >/dev/null
+  check "deleting the Doc removed its agent, tool servers and instructions in kagent, and its routes" \
+    bash -c "[[ -z \$(kubectl -n kagent get agents,remotemcpservers,configmaps -l takecare.agaetis.fr/owner=smoke-doc -o name) && -z \$(kubectl -n ${NS} get httproutes,agentgatewaypolicies -l takecare.agaetis.fr/role-instance=doc.smoke-doc -o name) ]]"
 
   log "a forbidden right on the add-on is caught, then cleared"
   kubectl -n demo-apps delete rolebinding/smoke-drift role/smoke-drift --ignore-not-found >/dev/null
@@ -318,10 +388,10 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=40 install ;;
-  upgrade) CHECKS_EXPECTED=40 upgrade ;;
+  install) CHECKS_EXPECTED=48 install ;;
+  upgrade) CHECKS_EXPECTED=48 upgrade ;;
   status) status ;;
   down) down ;;
-  all) up; CHECKS_EXPECTED=40 install; CHECKS_EXPECTED=40 upgrade ;;
+  all) up; CHECKS_EXPECTED=48 install; CHECKS_EXPECTED=48 upgrade ;;
   *) echo "usage: $0 [up|install|upgrade|status|down|all]"; exit 2 ;;
 esac

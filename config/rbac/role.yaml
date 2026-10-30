@@ -169,7 +169,6 @@ rules:
   - takecare.agaetis.fr
   resources:
   - takecareconnectors
-  - takecaredocs
   verbs:
   - get
   - list
@@ -178,10 +177,27 @@ rules:
   - takecare.agaetis.fr
   resources:
   - takecareconnectors/status
+  - takecaredocs/status
   - takecareinvestigations/status
   verbs:
   - get
   - patch
+  - update
+- apiGroups:
+  - takecare.agaetis.fr
+  resources:
+  - takecaredocs
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - takecare.agaetis.fr
+  resources:
+  - takecaredocs/finalizers
+  verbs:
   - update
 - apiGroups:
   - takecare.agaetis.fr
