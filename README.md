@@ -137,6 +137,8 @@ Prerequisites: Docker (at least 4 GB of memory), k3d, kubectl, helm, make.
 | [`docs/specs/03-demo.md`](docs/specs/03-demo.md) | Demo mode and `TakeCareDemo`: the `proxy-timeout` scenario, `make demo-*` |
 | [`docs/specs/04-quality-ci.md`](docs/specs/04-quality-ci.md) | Layout, tests, accuracy bench, CI, definition of done |
 | [`docs/specs/05-connectors.md`](docs/specs/05-connectors.md) | `TakeCareConnector` and add-ons: MCP servers behind the gateway, tool classes |
+| [`docs/specs/06-role-model.md`](docs/specs/06-role-model.md) | The role model: agents, guardrails, experiences; triggers, records and `RunStatus`; concept → build mapping |
+| [`docs/specs/07-role-sheets.md`](docs/specs/07-role-sheets.md) | One page per role of the concept |
 | [`docs/spikes/001-kagent-doc-engine.md`](docs/spikes/001-kagent-doc-engine.md) | Spike 001: can kagent run the Doc as well as HolmesGPT? |
 | [`docs/specs/90-agent-output-localization.md`](docs/specs/90-agent-output-localization.md) | Localized agent output (deferred) |
 | [`docs/adr/`](docs/adr/) | Architecture decisions |

@@ -66,7 +66,7 @@ takecare-demo   takecaredemo.takecare.agaetis.fr/demo   True    1h
 ### Out of scope
 
 - The `seasoned` level (actions executed by the Doc): the API schema accepts it, but the operator rejects it with an explicit condition until it is implemented.
-- The other roles (Ranger in milestone 2, then Kiné, Mécano, etc., following the prioritization of 2026-10-15).
+- The other roles: see the concept → build mapping of [spec 06, section 9](06-role-model.md#9-concept--build-mapping-replaces-the-roadmap-of-spec-00).
 - agentregistry, Langfuse: they come with the first role that needs them.
 - Agent-to-agent exchanges and `TakeCareFinding` (ADR 0009): with the Kiné, milestone 3. The Doc exposes its A2A endpoint from milestone 1.
 - Localized agent output: English only in milestone 1 (see spec 90).
@@ -83,12 +83,7 @@ takecare-demo   takecaredemo.takecare.agaetis.fr/demo   True    1h
 
 ## Indicative roadmap
 
-| Milestone | Content |
-|---|---|
-| M2 | `TakeCareRanger`: agentgateway as a guardrail (masking, allowed models and tools, caps), data-leak scene in front of the Doc |
-| M3 | `TakeCareKine`, which builds on the Doc's diagnoses |
-| M4 | `TakeCareMecano`, chained HEAL demo; Sparring and Bootcamp service offers |
-| Later | Coach, Psy, Checkpoint, then Nutri and Guide |
+The thirteen roles, their natures and their milestones are in the concept → build mapping of [spec 06, section 9](06-role-model.md#9-concept--build-mapping-replaces-the-roadmap-of-spec-00), which replaces the roadmap first written here.
 
 ## Glossary
 
@@ -99,6 +94,10 @@ takecare-demo   takecaredemo.takecare.agaetis.fr/demo   True    1h
 | Seasoned | `seasoned` | Acts alone within the approved frame (after milestone 1) |
 | Role | a `TakeCare<Role>` kind | No accents: `TakeCareKine`, `TakeCareMecano` |
 | Investigation | `TakeCareInvestigation` (resource, trace) | One alert handled by the Doc |
+| Agent | a `TakeCare<Role>` kind embedding `RoleCommonSpec`, with a record kind | A role that runs an AI agent on the engine (Doc, Kiné, Mécano…); spec 06 |
+| Guardrail | a `TakeCare<Role>` kind embedding `GuardrailCommonSpec` | A role that configures a control around the agents, with no agent of its own (Ranger, Kit, Psy); spec 06 |
+| Experience | no kind | A service led by Agaetis with the customer's teams (Check-up, Stress Test, Bootcamp, Sparring): tooling only; spec 06 |
+| Run status | `RunStatus` | The status every agent role's record shares: phase, times, engine, usage, trace, conditions; spec 06 §3 |
 
 Role names keep their French flavour (Doc, Kiné, Mécano, Nutri…): they are the brand. Everything else in this repository is in English.
 
