@@ -1,0 +1,211 @@
+// SPDX-FileCopyrightText: 2026 Agaetis
+// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+
+package investigation
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/doc"
+	"github.com/agaetis-it/takecare-agents/internal/mcp"
+)
+
+const reportURL = "http://report.example/mcp"
+
+// fakePoster records post_message calls; fail makes every call fail.
+type fakePoster struct {
+	mu    sync.Mutex
+	calls []map[string]any
+	urls  []string
+	fail  bool
+}
+
+func (p *fakePoster) Call(_ context.Context, ep mcp.Endpoint, tool string, args map[string]any) (mcp.Result, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if tool != "post_message" {
+		return mcp.Result{}, errors.New("unexpected tool " + tool)
+	}
+	p.calls = append(p.calls, args)
+	p.urls = append(p.urls, ep.URL)
+	if p.fail {
+		return mcp.Result{}, errors.New("connection refused")
+	}
+	return mcp.Result{Text: "posted"}, nil
+}
+
+func (p *fakePoster) destinations() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]string, 0, len(p.calls))
+	for _, c := range p.calls {
+		out = append(out, c["destination"].(string))
+	}
+	return out
+}
+
+// publishing builds a fixture whose Doc publishes through a report
+// connector at the given level's destinations.
+func publishing(t *testing.T, poster *fakePoster, report v1alpha1.DocReport) (*workerFixture, *prometheus.HistogramVec) {
+	t.Helper()
+	f := startWorker(t, map[string][]poll{task1: {completed}, task2: {completed}, task3: {completed}})
+	duration, err := NewDurationMetric(prometheus.NewRegistry())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.accounting = Accounting{Poster: poster, Backoff: time.Millisecond, Duration: duration}
+	c := &v1alpha1.TakeCareConnector{Name: reportConn, Namespace: ns}
+	c.Spec.Types = []v1alpha1.ConnectorType{v1alpha1.ConnectorReport}
+	c.Spec.MCP.URL = reportURL
+	c.Spec.Report = &v1alpha1.ReportSpec{Adapter: "log", Destinations: []v1alpha1.Destination{{Name: onCall, Target: "#on-call"}, {Name: "review", Target: "#review"}}}
+	if err := f.c.Create(context.Background(), c); err != nil {
+		t.Fatal(err)
+	}
+	f.doc(t, true, func(d *v1alpha1.TakeCareDoc) {
+		d.Spec.Connectors.Report = reportConn
+		d.Spec.Report = report
+	})
+	return f, duration
+}
+
+// investigationAt creates a record at the given level.
+func (f *workerFixture) investigationAt(t *testing.T, name string, level v1alpha1.Level, silent bool) {
+	t.Helper()
+	inv := &v1alpha1.TakeCareInvestigation{Name: name, Namespace: ns}
+	inv.Spec.RoleRef = v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareDoc, Name: docName}
+	inv.Spec.Alert = v1alpha1.AlertRecord{Name: alertName, Service: "billing-api", Namespace: appsNS}
+	inv.Spec.Level, inv.Spec.Silent = level, silent
+	if err := f.c.Create(context.Background(), inv); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// waitPublished waits for the record's publication outcome.
+func (f *workerFixture) waitPublished(t *testing.T, name string) *v1alpha1.TakeCareInvestigation {
+	t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		if inv := f.get(t, name); inv.Status.Published != nil {
+			return inv
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("%s was never published", name)
+	return nil
+}
+
+// AC 3: the destination follows the level the record was created at; trial
+// carries the banner and never reaches on-call.
+func TestPublishByLevel(t *testing.T) {
+	poster := &fakePoster{}
+	f, duration := publishing(t, poster, v1alpha1.DocReport{Trial: "review", Service: onCall})
+	f.start()
+
+	f.investigationAt(t, "doc-service", v1alpha1.LevelService, false)
+	inv := f.waitPublished(t, "doc-service")
+	if p := inv.Status.Published; !p.OK || p.Destination != onCall || p.Connector != reportConn {
+		t.Errorf("published = %+v", p)
+	}
+	if got := events(f.rootSpan(t, inv.Status.TraceID)); !strings.HasSuffix(got, "diagnosis.published") {
+		t.Errorf("span events = %s", got)
+	}
+	if got := testutil.CollectAndCount(duration); got != 1 {
+		t.Errorf("takecare_investigation_duration_seconds has %d series", got)
+	}
+
+	f.investigationAt(t, "doc-trial", v1alpha1.LevelTrial, false)
+	f.waitPublished(t, "doc-trial")
+	if got := strings.Join(poster.destinations(), ","); got != "on-call,review" {
+		t.Fatalf("destinations = %s", got)
+	}
+	poster.mu.Lock()
+	trialText, serviceText := poster.calls[1]["text"].(string), poster.calls[0]["text"].(string)
+	trialBlocks, _ := json.Marshal(poster.calls[1]["blocks"])
+	url := poster.urls[0]
+	poster.mu.Unlock()
+	if !strings.Contains(trialText, doc.TrialBanner) || !strings.Contains(string(trialBlocks), doc.TrialBanner) || strings.Contains(serviceText, doc.TrialBanner) {
+		t.Error("the trial banner opens trial messages only")
+	}
+	if !strings.Contains(serviceText, diagnosis) || !strings.Contains(serviceText, "usage unknown: not measured yet") {
+		t.Errorf("service message = %s", serviceText)
+	}
+	if url != reportURL {
+		t.Errorf("posted to %s", url)
+	}
+
+	f.investigationAt(t, "doc-silent", v1alpha1.LevelService, true)
+	// The root span ends after the publication step: once it ended,
+	// nothing more is posted for this record.
+	f.rootSpan(t, f.waitPhase(t, "doc-silent", v1alpha1.PhaseCompleted).Status.TraceID)
+	if got := len(poster.destinations()); got != 2 {
+		t.Errorf("a silent investigation was published (%d posts)", got)
+	}
+}
+
+// AC 3: at trial without a trial destination, status only; nothing to
+// on-call.
+func TestTrialWithoutDestinationIsStatusOnly(t *testing.T) {
+	poster := &fakePoster{}
+	f, _ := publishing(t, poster, v1alpha1.DocReport{Service: onCall})
+	f.start()
+	f.investigationAt(t, "doc-trial-only", v1alpha1.LevelTrial, false)
+	f.rootSpan(t, f.waitPhase(t, "doc-trial-only", v1alpha1.PhaseCompleted).Status.TraceID) // the publication step is over
+	if inv := f.get(t, "doc-trial-only"); inv.Status.Published != nil || len(poster.destinations()) != 0 {
+		t.Errorf("published %+v, posts %v", inv.Status.Published, poster.destinations())
+	}
+}
+
+// A publication that keeps failing is retried three times, then recorded
+// with its reason.
+func TestPublicationFailure(t *testing.T) {
+	poster := &fakePoster{fail: true}
+	f, _ := publishing(t, poster, v1alpha1.DocReport{Service: onCall})
+	f.start()
+	f.investigationAt(t, "doc-unposted", v1alpha1.LevelService, false)
+	inv := f.waitPublished(t, "doc-unposted")
+	if p := inv.Status.Published; p.OK || !strings.Contains(p.Reason, "after 4 attempts") || !strings.Contains(p.Reason, "connection refused") {
+		t.Errorf("published = %+v", p)
+	}
+	if got := len(poster.destinations()); got != 4 {
+		t.Errorf("%d attempts, want 4", got)
+	}
+}
+
+// An alert folded into the record after its run started is named in the
+// publication; one the run's message carried is not.
+func TestPublicationNamesLaterAlerts(t *testing.T) {
+	poster := &fakePoster{}
+	f, _ := publishing(t, poster, v1alpha1.DocReport{Service: onCall})
+	f.engine.beforeDone = func() {
+		var inv v1alpha1.TakeCareInvestigation
+		if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: "doc-grouped"}, &inv); err != nil {
+			t.Error(err)
+			return
+		}
+		inv.Status.Alerts = append(inv.Status.Alerts, v1alpha1.GroupedAlert{Name: "PodCrashLooping", Fingerprint: "later", FiredAt: metav1.Now()})
+		if err := f.c.Status().Update(context.Background(), &inv); err != nil {
+			t.Error(err)
+		}
+	}
+	f.investigation(t, "doc-grouped", &v1alpha1.TakeCareInvestigationStatus{
+		Alerts: []v1alpha1.GroupedAlert{{Name: "PodNotReady", Fingerprint: "sent", FiredAt: metav1.Now()}},
+	})
+	f.start()
+	f.waitPublished(t, "doc-grouped")
+	text := poster.calls[0]["text"].(string)
+	if !strings.Contains(text, "1 other alert of the same incident, not passed to the investigation: PodCrashLooping.") || strings.Contains(text, "PodNotReady") {
+		t.Errorf("message = %s", text)
+	}
+}

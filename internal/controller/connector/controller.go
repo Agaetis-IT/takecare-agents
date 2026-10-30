@@ -733,3 +733,34 @@ func ResolveDestination(c *v1alpha1.TakeCareConnector, name string) (string, err
 	}
 	return "", fmt.Errorf("connector %s declares no destination %q", c.Name, name)
 }
+
+// ReportEndpoint is where the operator calls a report connector's tool (spec
+// 05): an add-on's Service in the connector's namespace, or the declared
+// URL with its headers from Secrets. It never checks readiness: a call that
+// fails says why.
+func ReportEndpoint(ctx context.Context, c client.Reader, conn *v1alpha1.TakeCareConnector) (mcp.Endpoint, error) {
+	ep := mcp.Endpoint{Types: conn.Spec.Types, Addon: conn.Spec.MCP.Addon != ""}
+	if !slices.Contains(conn.Spec.Types, v1alpha1.ConnectorReport) {
+		return ep, fmt.Errorf("connector %s is not a report connector", conn.Name)
+	}
+	if conn.Spec.MCP.Addon != "" {
+		ep.URL = fmt.Sprintf("http://%s%s.%s.svc:%d%s", addonNamePrefix, conn.Spec.MCP.Addon, conn.Namespace, addonPort, addonPath)
+		return ep, nil
+	}
+	ep.URL = conn.Spec.MCP.URL
+	for _, h := range conn.Spec.MCP.HeadersFrom {
+		var secret corev1.Secret
+		if err := c.Get(ctx, client.ObjectKey{Namespace: conn.Namespace, Name: h.SecretKeyRef.Name}, &secret); err != nil {
+			return ep, fmt.Errorf("header %s of connector %s: %w", h.Name, conn.Name, err)
+		}
+		value, ok := secret.Data[h.SecretKeyRef.Key]
+		if !ok {
+			return ep, fmt.Errorf("header %s of connector %s: Secret %s has no key %s", h.Name, conn.Name, h.SecretKeyRef.Name, h.SecretKeyRef.Key)
+		}
+		if ep.Headers == nil {
+			ep.Headers = map[string][]string{}
+		}
+		ep.Headers.Set(h.Name, string(value))
+	}
+	return ep, nil
+}

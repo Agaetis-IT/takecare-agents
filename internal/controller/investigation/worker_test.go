@@ -48,6 +48,11 @@ const (
 	promConn   = "prometheus"
 	k8sConn    = "kubernetes"
 	testReason = "Test"
+	task2      = "task-2"
+	task3      = "task-3"
+	onCall     = "on-call"
+	appsNS     = "shop"
+	reportConn = "report"
 )
 
 // poll is one answer of the fake engine to a read of a task.
@@ -66,6 +71,8 @@ type fakeRuns struct {
 	// traces records the trace ID the engine was called under, per task.
 	traces  map[string]string
 	cancels int
+	// beforeDone runs once, before the first answer that ends a task.
+	beforeDone func()
 }
 
 func (f *fakeRuns) Start(ctx context.Context, _ engine.Run) (string, error) {
@@ -91,6 +98,13 @@ func (f *fakeRuns) Poll(ctx context.Context, _ engine.Run, taskID string) (engin
 	if len(script) > 1 {
 		f.scripts[taskID] = script[1:]
 	}
+	if p.done && f.beforeDone != nil {
+		hook := f.beforeDone
+		f.beforeDone = nil
+		f.mu.Unlock()
+		hook()
+		f.mu.Lock()
+	}
 	return p.res, p.done, p.err
 }
 
@@ -114,6 +128,8 @@ type workerFixture struct {
 	runs   *runs.Metrics
 	cancel context.CancelFunc
 	start  func()
+	// accounting is given to the worker; set it before start.
+	accounting Accounting
 }
 
 // startWorker runs the admission controller and the worker on envtest, with
@@ -174,6 +190,7 @@ func startWorker(t *testing.T, scripts map[string][]poll) *workerFixture {
 			Executor:   &runs.Executor{Engine: f.engine, Role: docName, Metrics: f.runs, Interval: 5 * time.Millisecond},
 			Tracer:     tp.Tracer("test"),
 			EngineKind: engineKind, EngineNamespace: engineKind, Phases: f.phases, GateRetry: 50 * time.Millisecond,
+			Accounting: f.accounting,
 		}
 		if err := mgr.Add(w); err != nil {
 			t.Fatal(err)
@@ -196,7 +213,7 @@ func (f *workerFixture) doc(t *testing.T, ready bool, mutate func(*v1alpha1.Take
 	t.Helper()
 	d := &v1alpha1.TakeCareDoc{Name: docName, Namespace: ns}
 	d.Spec.Level = v1alpha1.LevelService
-	d.Spec.Scope.Namespaces = []v1alpha1.Namespace{"shop"}
+	d.Spec.Scope.Namespaces = []v1alpha1.Namespace{appsNS}
 	if mutate != nil {
 		mutate(d)
 	}
@@ -229,7 +246,7 @@ func (f *workerFixture) investigation(t *testing.T, name string, status *v1alpha
 	t.Helper()
 	inv := &v1alpha1.TakeCareInvestigation{Name: name, Namespace: ns}
 	inv.Spec.RoleRef = v1alpha1.RoleRef{Kind: "TakeCareDoc", Name: docName}
-	inv.Spec.Alert = v1alpha1.AlertRecord{Name: alertName, Fingerprint: "3fa29c1b07e4d2aa", Service: "billing-api", Namespace: "shop"}
+	inv.Spec.Alert = v1alpha1.AlertRecord{Name: alertName, Fingerprint: "3fa29c1b07e4d2aa", Service: "billing-api", Namespace: appsNS}
 	inv.Spec.Level = v1alpha1.LevelService
 	if err := f.c.Create(context.Background(), inv); err != nil {
 		t.Fatal(err)
@@ -350,8 +367,8 @@ func TestRunEndings(t *testing.T) {
 		// doc-after-answer
 		task1: {{res: engine.Result{Outcome: engine.OutcomeFailedAfterAnswer, Text: diagnosis, Reason: "the engine failed the task after the agent answered: 500"}, done: true}},
 		// doc-lost-then-ok: lost, then the retry completes
-		"task-2": {lost},
-		"task-3": {completed},
+		task2: {lost},
+		task3: {completed},
 		// doc-lost-twice
 		"task-4": {lost},
 		"task-5": {lost},
@@ -370,7 +387,7 @@ func TestRunEndings(t *testing.T) {
 
 	f.investigation(t, "doc-lost-then-ok", nil)
 	inv = f.waitPhase(t, "doc-lost-then-ok", v1alpha1.PhaseCompleted)
-	if inv.Status.Attempts != 2 || inv.Status.Engine.TaskID != "task-3" {
+	if inv.Status.Attempts != 2 || inv.Status.Engine.TaskID != task3 {
 		t.Errorf("retried run: attempts %d, task %q", inv.Status.Attempts, inv.Status.Engine.TaskID)
 	}
 	if got := events(f.rootSpan(t, inv.Status.TraceID)); !strings.Contains(got, "investigation.retried") {

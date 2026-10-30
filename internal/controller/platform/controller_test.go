@@ -531,6 +531,24 @@ func TestProductionGaps(t *testing.T) {
 		h.waitGaps()
 	})
 
+	t.Run("a role at the service level without a report connector is a gap", func(t *testing.T) {
+		d := &v1alpha1.TakeCareDoc{Name: "doc", Namespace: operatorNS}
+		d.Spec.Level = v1alpha1.LevelService
+		d.Spec.Scope.Namespaces = []v1alpha1.Namespace{"shop"}
+		h.must(h.c.Create(h.ctx, d))
+		h.waitGaps(GapRoleWithoutReport)
+		h.must(h.c.Get(h.ctx, client.ObjectKeyFromObject(d), d))
+		d.Spec.Level = v1alpha1.LevelTrial // trial may publish nowhere (spec 02 §4)
+		h.must(h.c.Update(h.ctx, d))
+		h.waitGaps()
+		h.must(h.c.Get(h.ctx, client.ObjectKeyFromObject(d), d))
+		d.Spec.Level = v1alpha1.LevelService
+		d.Spec.Connectors.Report = "report"
+		h.must(h.c.Update(h.ctx, d))
+		h.waitGaps()
+		h.must(h.c.Delete(h.ctx, d))
+	})
+
 	t.Run("a Prometheus that stops answering is a gap with the cause, never Ready=False", func(t *testing.T) {
 		h.promMode.Store("error")
 		h.waitGaps(GapGatewayMetricsNotScraped)

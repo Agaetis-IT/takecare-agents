@@ -86,6 +86,8 @@ type Worker struct {
 	Clock runs.Clock
 	// GateRetry is how long a record waits when its Doc cannot run.
 	GateRetry time.Duration
+	// Accounting measures a run's usage and publishes its diagnosis.
+	Accounting Accounting
 
 	wg      sync.WaitGroup
 	mu      sync.Mutex
@@ -306,6 +308,12 @@ func (w *Worker) drive(ctx context.Context, r run) error {
 			return requeue(err)
 		}
 	}
+	// The grouped alerts the run's message carries (unknown for a resumed
+	// run).
+	var sent map[string]bool
+	if !r.resumed {
+		sent = doc.Sent(&inv)
+	}
 	started := inv.CreationTimestamp.Time
 	if inv.Status.StartedAt != nil {
 		started = inv.Status.StartedAt.Time
@@ -348,7 +356,13 @@ func (w *Worker) drive(ctx context.Context, r run) error {
 		w.fail(ctx, &inv, span, v1alpha1.PhaseFailed, ReasonStartFailed, err.Error(), "")
 		return nil
 	}
-	w.finish(ctx, &inv, d, span, out)
+	ended := w.finish(ctx, &inv, d, span, out)
+	if ended == nil {
+		return nil
+	}
+	if ended.Status.Phase == v1alpha1.PhaseCompleted {
+		w.publish(ctx, ended, d, span, sent)
+	}
 	return nil
 }
 
@@ -412,14 +426,15 @@ func (w *Worker) markRunning(ctx context.Context, inv *v1alpha1.TakeCareInvestig
 	return nil
 }
 
-// finish records how the run ended. A failure after an answer keeps the
-// text in status.diagnosis, never published (spec 02 §2).
-func (w *Worker) finish(ctx context.Context, inv *v1alpha1.TakeCareInvestigation, d *v1alpha1.TakeCareDoc, span trace.Span, out runs.Outcome) {
+// finish records how the run ended, and returns the record as written (nil
+// when it could not be written). A failure after an answer keeps the text
+// in status.diagnosis, never published (spec 02 §2).
+func (w *Worker) finish(ctx context.Context, inv *v1alpha1.TakeCareInvestigation, d *v1alpha1.TakeCareDoc, span trace.Span, out runs.Outcome) *v1alpha1.TakeCareInvestigation {
 	span.SetAttributes(attribute.String(semconv.RunOutcome, out.Label()))
 	switch {
 	case out.TimedOut:
 		reason := ReasonTimedOut + ": " + out.Reason + " (cancellation: " + string(out.Cancel) + ")"
-		w.fail(ctx, inv, span, v1alpha1.PhaseTimedOut, ReasonTimedOut, reason, "")
+		return w.fail(ctx, inv, span, v1alpha1.PhaseTimedOut, ReasonTimedOut, reason, "")
 	case out.Outcome == engine.OutcomeCompleted:
 		now := metav1.NewTime(w.clock().Now())
 		updated, err := w.patch(ctx, client.ObjectKeyFromObject(inv), func(i *v1alpha1.TakeCareInvestigation) {
@@ -430,23 +445,25 @@ func (w *Worker) finish(ctx context.Context, inv *v1alpha1.TakeCareInvestigation
 		})
 		if err != nil {
 			log.FromContext(ctx).Error(err, "record the completed investigation", "investigation", inv.Name)
-			return
+			return nil
 		}
 		w.count(&updated, v1alpha1.PhaseCompleted)
 		span.AddEvent(semconv.EventInvestigationCompleted)
 		w.lastInvestigation(ctx, d, &updated)
+		return &updated
 	case out.Outcome == engine.OutcomeFailedAfterAnswer:
-		w.fail(ctx, inv, span, v1alpha1.PhaseFailed, ReasonEngineFailedAfterAnswer, out.Reason, out.Text)
+		return w.fail(ctx, inv, span, v1alpha1.PhaseFailed, ReasonEngineFailedAfterAnswer, out.Reason, out.Text)
 	case out.Outcome == engine.OutcomeLost:
-		w.fail(ctx, inv, span, v1alpha1.PhaseFailed, ReasonTaskLost, out.Reason+fmt.Sprintf(" (after %d attempts)", inv.Status.Attempts), "")
+		return w.fail(ctx, inv, span, v1alpha1.PhaseFailed, ReasonTaskLost, out.Reason+fmt.Sprintf(" (after %d attempts)", inv.Status.Attempts), "")
 	default:
-		w.fail(ctx, inv, span, v1alpha1.PhaseFailed, ReasonEngineFailed, out.Reason, "")
+		return w.fail(ctx, inv, span, v1alpha1.PhaseFailed, ReasonEngineFailed, out.Reason, "")
 	}
 }
 
 // fail ends the record in phase, with a reason opened by its token, and a
-// warning event: a failed run publishes nothing (spec 02 §4).
-func (w *Worker) fail(ctx context.Context, inv *v1alpha1.TakeCareInvestigation, span trace.Span, phase v1alpha1.RunPhase, token, detail, text string) {
+// warning event: a failed run publishes nothing (spec 02 §4). It returns
+// the record as written, nil when it could not be written.
+func (w *Worker) fail(ctx context.Context, inv *v1alpha1.TakeCareInvestigation, span trace.Span, phase v1alpha1.RunPhase, token, detail, text string) *v1alpha1.TakeCareInvestigation {
 	reason := detail
 	if !strings.HasPrefix(reason, token) {
 		reason = token + ": " + detail
@@ -462,7 +479,7 @@ func (w *Worker) fail(ctx context.Context, inv *v1alpha1.TakeCareInvestigation, 
 	})
 	if err != nil {
 		log.FromContext(ctx).Error(err, "record the failed investigation", "investigation", inv.Name)
-		return
+		return nil
 	}
 	w.count(&updated, phase)
 	w.Recorder.Eventf(&updated, nil, corev1.EventTypeWarning, token, "Run", "%s", reason)
@@ -473,6 +490,7 @@ func (w *Worker) fail(ctx context.Context, inv *v1alpha1.TakeCareInvestigation, 
 	if d, err := w.doc(ctx, &updated); err == nil && d != nil {
 		w.lastInvestigation(ctx, d, &updated)
 	}
+	return &updated
 }
 
 // span opens the root span invoke_agent doc, backdated to the record's

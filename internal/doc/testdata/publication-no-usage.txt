@@ -1,0 +1,5 @@
+Doc · HighErrorRate on billing-api
+Observed: billing-api pod log, 504 from db-proxy at 03:00:05.
+Root cause: the proxy's idle timeout is shorter than the pool's.
+Action: the platform team aligns the proxy's idle timeout with the pool's.
+39s after the alert · usage unknown: Prometheus at http://prometheus is unreachable · trace 4bf92f3577b34da6a3ce929d0e0e4736
