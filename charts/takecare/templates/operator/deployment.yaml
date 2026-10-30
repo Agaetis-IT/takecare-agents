@@ -35,6 +35,7 @@ spec:
             - --health-probe-bind-address=:8081
             - --metrics-bind-address=:{{ .Values.operator.metrics.port }}
             - --metrics-secure={{ .Values.operator.metrics.secure }}
+            - --alerts-token-secret={{ .Values.alerting.existingSecret | default "takecare-alerting" }}
             {{- range .Values.operator.extraArgs }}
             - {{ . | quote }}
             {{- end }}

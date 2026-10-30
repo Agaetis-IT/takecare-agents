@@ -1,7 +1,7 @@
 TakeCare Agents is installed in {{ .Release.Namespace }}.
 
 The Doc is triggered by Alertmanager. Add this receiver to its configuration
-(the token is in the Secret takecare-alerting, key token):
+(the token is in the Secret {{ .Values.alerting.existingSecret | default "takecare-alerting" }}, key token):
 
   receivers:
     - name: takecare
@@ -13,6 +13,8 @@ The Doc is triggered by Alertmanager. Add this receiver to its configuration
               type: Bearer
               credentials_file: /etc/alertmanager/secrets/takecare-alerting/token
 
-and mount the Secret takecare-alerting into Alertmanager at that path.
+and mount that Secret into Alertmanager at that path. With helm template
+or a GitOps tool, create the Secret yourself and set alerting.existingSecret:
+a generated token would change at every sync.
 
 Status: kubectl get takecare -A

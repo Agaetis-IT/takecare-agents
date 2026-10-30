@@ -85,6 +85,14 @@ platform:
     captureContent: false
     samplingPerMille: 1000
 
+# The Doc's Alertmanager webhook (spec 02 §1).
+alerting:
+  # -- Secret in the release namespace whose key `token` is the webhook's
+  # bearer token. Empty: the chart generates takecare-alerting once and keeps
+  # it (Helm lookup). Set it with helm template or a GitOps tool (Argo CD,
+  # Flux), where a lookup sees nothing and every sync would change the token.
+  existingSecret: ""
+
 # -- The Gateway API Gateway served by agentgateway, in the release namespace.
 # Every model, MCP and A2A call goes through it (ADR 0004, 0008, 0009).
 gateway:

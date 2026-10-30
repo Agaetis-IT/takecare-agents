@@ -69,8 +69,10 @@ type config struct {
 	// operatorDeployment names the operator's own Deployment, read for the
 	// single-replica production gap.
 	operatorDeployment string
-	// alertsAddr serves the Alertmanager webhook (spec 02 §1).
-	alertsAddr string
+	// alertsAddr serves the Alertmanager webhook (spec 02 §1), behind the
+	// token of the Secret alertsTokenSecret.
+	alertsAddr        string
+	alertsTokenSecret string
 }
 
 func main() {
@@ -102,6 +104,8 @@ func run(args []string) error {
 		"The one namespace engine objects are written in (default: ENGINE_NAMESPACE).")
 	fs.StringVar(&cfg.alertsAddr, "alerts-bind-address", ":8080",
 		"Address the Alertmanager webhook (POST /v1/alerts) binds to; 0 disables it.")
+	fs.StringVar(&cfg.alertsTokenSecret, "alerts-token-secret", alerts.TokenSecretName,
+		"Secret, in the operator namespace, whose key token is the webhook's bearer token.")
 	fs.StringVar(&cfg.operatorDeployment, "operator-deployment", os.Getenv("OPERATOR_DEPLOYMENT"),
 		"Name of the operator's Deployment, for the single-replica production gap (default: OPERATOR_DEPLOYMENT).")
 	zapOpts := zap.Options{}
@@ -198,7 +202,8 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		return nil, err
 	}
 	if err := mgr.Add(&alertServer{addr: cfg.alertsAddr, handler: &alerts.Handler{
-		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Namespace: cfg.operatorNamespace, Metrics: alertMetrics,
+		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), TokenSecret: cfg.alertsTokenSecret,
+		Namespace: cfg.operatorNamespace, Metrics: alertMetrics,
 	}}); err != nil {
 		return nil, fmt.Errorf("add the alert intake: %w", err)
 	}

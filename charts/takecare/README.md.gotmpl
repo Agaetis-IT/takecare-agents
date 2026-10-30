@@ -34,6 +34,20 @@ helm install takecare      oci://ghcr.io/agaetis-it/charts/takecare      -n take
 
 Upgrade in the same order (`takecare-crds`, then `takecare`). `helm uninstall takecare` leaves the CRDs, the alert token Secret and every TakeCare resource in place; see `takecare-crds` before uninstalling that one. The install notes print the Alertmanager receiver to add.
 
+**Alertmanager's token with `helm template`, Argo CD or Flux.** By default the chart generates the webhook's bearer token once, in the Secret `takecare-alerting`, and keeps it across upgrades with a Helm `lookup`. A `lookup` sees nothing when the chart is rendered outside a live `helm install` or `helm upgrade`: every sync would generate a new token and break Alertmanager's receiver. Create the Secret yourself, with the key `token`, in the release namespace, and name it in `alerting.existingSecret`:
+
+```bash
+kubectl -n takecare-system create secret generic alertmanager-takecare-token \
+  --from-literal=token="$(openssl rand -hex 32)"
+```
+
+```yaml
+alerting:
+  existingSecret: alertmanager-takecare-token
+```
+
+The operator reads the token from its cache, so a rotation of that Secret needs no restart; update Alertmanager's copy at the same time.
+
 ## Profiles
 
 | File | Use |

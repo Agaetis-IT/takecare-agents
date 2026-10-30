@@ -330,6 +330,28 @@ func TestOneWebhookOneIncident(t *testing.T) {
 	}
 }
 
+// The token Secret can be one the customer created (alerting.existingSecret).
+func TestTokenFromAnotherSecret(t *testing.T) {
+	f := start(t)
+	if err := f.c.Create(context.Background(), &corev1.Secret{Name: "gitops-token", Namespace: ns, StringData: map[string]string{TokenSecretKey: "from-gitops"}}); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(&Handler{Client: f.c, Namespace: ns, Metrics: f.metrics, TokenSecret: "gitops-token"})
+	defer srv.Close()
+	for tok, want := range map[string]int{"from-gitops": http.StatusAccepted, token: http.StatusUnauthorized} {
+		req, _ := http.NewRequest(http.MethodPost, srv.URL, strings.NewReader(`{"version":"4","alerts":[]}`))
+		req.Header.Set("Authorization", "Bearer "+tok)
+		resp, err := http.DefaultClient.Do(req) //nolint:gosec // test server
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Errorf("token %q: %d, want %d", tok, resp.StatusCode, want)
+		}
+	}
+}
+
 func TestBodyLimit(t *testing.T) {
 	f := start(t)
 	big := bytes.Repeat([]byte("a"), MaxBody+10)

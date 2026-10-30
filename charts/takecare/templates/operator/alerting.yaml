@@ -1,7 +1,10 @@
 # The Doc's trigger (spec 02 §1): the Alertmanager webhook served by every
-# operator replica at POST /v1/alerts, behind a bearer token. The token is
-# generated once and kept across upgrades (lookup); point Alertmanager's
-# receiver at it (see NOTES.txt).
+# operator replica at POST /v1/alerts, behind a bearer token. By default the
+# chart generates the token once and keeps it across upgrades (lookup). A
+# lookup sees nothing under `helm template` or a GitOps render (Argo CD,
+# Flux), where every sync would generate a new token and break Alertmanager's
+# receiver: there, create the Secret yourself and set alerting.existingSecret.
+{{- if not .Values.alerting.existingSecret }}
 {{- $existing := lookup "v1" "Secret" .Release.Namespace "takecare-alerting" }}
 apiVersion: v1
 kind: Secret
@@ -19,6 +22,7 @@ data:
   {{- else }}
   token: {{ randAlphaNum 40 | b64enc }}
   {{- end }}
+{{- end }}
 ---
 apiVersion: v1
 kind: Service

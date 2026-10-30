@@ -90,9 +90,15 @@ func register[C prometheus.Collector](reg prometheus.Registerer, c C) (C, error)
 // Handler serves POST /v1/alerts. Every replica serves it: creating the
 // record is idempotent, the run happens on the leader.
 type Handler struct {
-	// Client reads the token Secret and the Docs, and writes
-	// investigations, in the operator namespace.
+	// Client is the manager's client: it reads the token Secret and the
+	// Docs from the cache (the operator namespace is cached, so a webhook
+	// costs no call to the API server and a rotated Secret is seen without
+	// a restart), and writes investigations.
 	Client client.Client
+	// TokenSecret names the Secret holding the bearer token in the
+	// operator namespace (key TokenSecretKey); empty means TokenSecretName.
+	// The chart sets it from alerting.existingSecret.
+	TokenSecret string
 	// Reader reads investigations for deduplication and grouping straight
 	// from the API server: the cache may not hold yet the record created a
 	// moment ago, and two alerts of one incident often arrive in the same
@@ -128,6 +134,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "malformed Alertmanager payload", http.StatusBadRequest)
 		return
 	}
+	// An error on one alert answers 503 although the alerts before it are
+	// recorded: Alertmanager then resends the whole group, which is
+	// idempotent by construction (the records' names are deterministic, a
+	// resent alert is a duplicate). The metrics therefore count deliveries,
+	// not distinct alerts (spec 02 §1).
 	seen := map[string]*v1alpha1.TakeCareInvestigation{}
 	for _, a := range p.Alerts {
 		h.Metrics.Received.Inc()
@@ -147,8 +158,13 @@ func (h *Handler) authenticate(ctx context.Context, r *http.Request) error {
 	if !ok || got == "" {
 		return errors.New("no bearer token")
 	}
+	name := h.TokenSecret
+	if name == "" {
+		name = TokenSecretName
+	}
 	var s corev1.Secret
-	if err := h.Client.Get(ctx, client.ObjectKey{Namespace: h.Namespace, Name: TokenSecretName}, &s); err != nil {
+	// From the cache, never the API reader: see Client.
+	if err := h.Client.Get(ctx, client.ObjectKey{Namespace: h.Namespace, Name: name}, &s); err != nil {
 		return fmt.Errorf("token Secret: %w", err)
 	}
 	want := s.Data[TokenSecretKey]
@@ -259,7 +275,8 @@ func (h *Handler) reader() client.Reader {
 const LabelIncident = "takecare.agaetis.fr/incident"
 
 // docFor finds the Doc whose scope and matchers take the alert. Milestone 1
-// runs one Doc per cluster (spec 02).
+// runs one Doc per cluster (spec 02); when several Docs' scopes overlap, the
+// first by name takes the alert, so that the choice is deterministic.
 func (h *Handler) docFor(ctx context.Context, a Alert) (*v1alpha1.TakeCareDoc, string, error) {
 	var docs v1alpha1.TakeCareDocList
 	if err := h.Client.List(ctx, &docs, client.InNamespace(h.Namespace)); err != nil {
@@ -298,7 +315,10 @@ func matches(matchers []v1alpha1.AlertMatcher, labels map[string]string) bool {
 }
 
 // recent returns the newest investigation carrying the label value created
-// after since, if any.
+// after since, if any. It lists every record of the label value: cheap with
+// the 7-day retention of milestone 1; a longer retention (the Kiné's
+// history, spec 06 §7) will need a cache index on the label and the
+// creation time instead.
 func (h *Handler) recent(ctx context.Context, label, value string, since time.Time) (*v1alpha1.TakeCareInvestigation, error) {
 	var list v1alpha1.TakeCareInvestigationList
 	if err := h.reader().List(ctx, &list, client.InNamespace(h.Namespace), client.MatchingLabels{label: value}); err != nil {

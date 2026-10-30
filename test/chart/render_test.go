@@ -448,6 +448,21 @@ func TestAlertIntakeIsExposed(t *testing.T) {
 	if !secret || !service {
 		t.Errorf("token Secret kept: %t, Service: %t", secret, service)
 	}
+	// GitOps: the customer's Secret, none generated, the operator told.
+	gitops := render(t, releaseName, append(profileArgs("demo"), flagSet, "alerting.existingSecret=my-token")...)
+	for _, o := range ofKind(gitops, "Secret") {
+		if o.GetName() == "takecare-alerting" {
+			t.Error("a token Secret is generated although alerting.existingSecret is set")
+		}
+	}
+	for _, o := range ofKind(gitops, "Deployment") {
+		if o.GetName() == "takecare-operator" {
+			raw, _ := json.Marshal(o.Object["spec"])
+			if !strings.Contains(string(raw), "--alerts-token-secret=my-token") {
+				t.Error("the operator is not told the existing Secret")
+			}
+		}
+	}
 }
 
 // The report server: one add-on at most, the operator alone may reach it,
