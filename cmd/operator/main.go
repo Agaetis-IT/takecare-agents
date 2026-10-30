@@ -76,6 +76,8 @@ type config struct {
 	// token of the Secret alertsTokenSecret.
 	alertsAddr        string
 	alertsTokenSecret string
+	// investigationRetention is how long an ended investigation is kept.
+	investigationRetention time.Duration
 }
 
 func main() {
@@ -107,6 +109,8 @@ func run(args []string) error {
 		"The one namespace engine objects are written in (default: ENGINE_NAMESPACE).")
 	fs.StringVar(&cfg.alertsAddr, "alerts-bind-address", ":8080",
 		"Address the Alertmanager webhook (POST /v1/alerts) binds to; 0 disables it.")
+	fs.DurationVar(&cfg.investigationRetention, "investigation-retention", investigation.DefaultRetention,
+		"How long an ended investigation is kept before it is deleted (spec 02); Queued and Running ones are never deleted.")
 	fs.StringVar(&cfg.alertsTokenSecret, "alerts-token-secret", alerts.TokenSecretName,
 		"Secret, in the operator namespace, whose key token is the webhook's bearer token.")
 	fs.StringVar(&cfg.operatorDeployment, "operator-deployment", os.Getenv("OPERATOR_DEPLOYMENT"),
@@ -220,6 +224,12 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		Queue: queue, Phases: phases,
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up the investigation controller: %w", err)
+	}
+	// The retention of ended investigations, on the leader (spec 02).
+	if err := mgr.Add(&investigation.Sweeper{
+		Client: mgr.GetClient(), Namespace: cfg.operatorNamespace, Retention: cfg.investigationRetention,
+	}); err != nil {
+		return nil, fmt.Errorf("add the investigation retention: %w", err)
 	}
 	// The Doc's runs, on the leader: A2A through the gateway, one shared
 	// client whose timeout bounds one call (a run is followed by polling).
