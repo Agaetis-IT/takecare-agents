@@ -84,6 +84,7 @@ var _ engine.Agents = (*Agents)(nil)
 type Engine struct {
 	Models
 	Agents
+	Runs
 }
 
 var _ engine.Engine = (*Engine)(nil)

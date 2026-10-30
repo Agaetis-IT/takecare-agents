@@ -139,7 +139,15 @@ The Doc controller generates and keeps up to date one kagent `Agent` per `TakeCa
 - **A2A**: an `a2aConfig` with the skill `diagnose-alert` (ADR 0009). The agent card is reachable through the gateway.
 - Exact field names follow the kagent version pinned after spike 001; the spike's working manifests are the reference.
 
-The operator sends **one A2A message per investigation** through the gateway, with W3C trace context, and follows the task until a terminal state or `timeout`. The message is rendered from this template:
+The operator sends **one A2A message per investigation** through the gateway, with W3C trace context and the investigation's name as `x-conversation-id`, and follows the task until a terminal state or `timeout`:
+
+- **The endpoint** is built from the gateway's URL and the agent's path, never read from the agent card (`NewFromEndpoints`; the card serves `EngineReady` only).
+- **Non-blocking send**: the message is sent with `returnImmediately`, and kagent 0.10.3 answers at once with the task `SUBMITTED` and its ID (checked on a cluster). **The task ID is written into the investigation's status before the task is followed**, so that a restart finds the run again; if that write fails, the task is canceled rather than left running unknown.
+- **Following**: the task is read with `GetTask`. A read that fails (a cut connection) is retried: the task is lost only when the engine no longer knows it (`task not found`), which the run's retry handles (PR 4c).
+- **Timeout**: the engine gets 90 % of `timeout`; then the operator **requests cancellation** (`CancelTask`) and the investigation ends `TimedOut`. **On kagent 0.10.3 the run goes on to its own end and its result is ignored**: the python runtime cannot cancel a task (`Cancellation is not supported`, read in its sources and checked on a cluster; ADR 0007 records the gap). Each request is counted by what it achieved (`takecare_run_cancels_total{result}`), so that the cost of abandoned investigations shows.
+- **A failure after an answer**: kagent once ended `FAILED` a task that had produced a correct diagnosis (spike 001). Such a run ends `Failed` with the reason `EngineFailedAfterAnswer`; its text is kept in `status.diagnosis` and **never published**, and it is counted apart (`takecare_runs_total{outcome="failed_after_answer"}`) to measure that engine bug in production. A task that completes without an answer is a failure.
+
+The message is rendered from this template (`internal/doc/message.tmpl`, golden-tested). The alerts of the same incident folded into the investigation **before** the run starts are named after the description (`Other alerts of the same incident: …`); those folded later are not, a running investigation is never changed:
 
 ```text
 An alert just fired on the cluster: {alertname} on {service} (namespace {namespace}).
@@ -175,6 +183,7 @@ The Doc has no RBAC of its own: it reads the cluster through its `cluster` conne
   - header: `Doc · {alertname} on {service}`;
   - body: the diagnosis, unchanged;
   - context line: time since the alert, model calls, tokens, estimated cost, trace ID;
+  - when alerts of the same incident were folded into the investigation after its run started, one line says so: `2 other alerts of the same incident, not passed to the investigation: PodNotReady, …`, so that the on-call reader is not left wondering about an alert they saw;
   - at the `trial` level, a banner: `Trial: shadow diagnosis, no one was paged by TakeCare.`
 - Failures are retried 3 times with backoff; a final failure is recorded (`published: { ok: false, reason }`) and as a warning event.
 
@@ -218,7 +227,7 @@ A misconfigured Doc (`MissingConnectorType`, a bound connector that does not exi
 
 ## Metrics (operator)
 
-`takecare_alerts_received_total`, `takecare_alerts_ignored_total{reason}`, `takecare_investigations_total{role,phase}`, `takecare_investigation_duration_seconds{role}` (alert accepted to diagnosis published).
+`takecare_alerts_received_total`, `takecare_alerts_ignored_total{reason}`, `takecare_investigations_total{role,phase}`, `takecare_investigation_duration_seconds{role}` (alert accepted to diagnosis published), `takecare_runs_total{role,outcome}` (`completed`, `failed`, `failed_after_answer`, `lost`, `timed_out`), `takecare_run_cancels_total{role,result}` (`canceled`, `unsupported`, `finished`, `error`).
 
 ## Acceptance criteria
 

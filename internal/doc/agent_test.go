@@ -18,7 +18,7 @@ func TestInstructions(t *testing.T) {
 		scope  []v1alpha1.Namespace
 		types  []v1alpha1.ConnectorType
 	}{
-		{"instructions-all-types.md", []v1alpha1.Namespace{"demo-apps", "ack-system"}, []v1alpha1.ConnectorType{
+		{"instructions-all-types.md", []v1alpha1.Namespace{appsNS, "ack-system"}, []v1alpha1.ConnectorType{
 			v1alpha1.ConnectorCluster, v1alpha1.ConnectorMetrics, v1alpha1.ConnectorLogs, v1alpha1.ConnectorKnowledge, v1alpha1.ConnectorChanges, v1alpha1.ConnectorTickets,
 		}},
 		{"instructions-required-only.md", []v1alpha1.Namespace{"shop"}, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster, v1alpha1.ConnectorMetrics}},
@@ -54,23 +54,23 @@ func TestInstructionsKeepTheirAttribution(t *testing.T) {
 }
 
 func TestRender(t *testing.T) {
-	d := &v1alpha1.TakeCareDoc{Name: "doc", Namespace: "takecare-system"}
+	d := &v1alpha1.TakeCareDoc{Name: Kind, Namespace: operatorNS}
 	d.Spec.Scope.Namespaces = []v1alpha1.Namespace{"shop"}
 	a, err := Agent{
-		Doc: d, EngineNamespace: "kagent", Model: "default",
+		Doc: d, EngineNamespace: engineNS, Model: "default",
 		Tools: []engine.ToolServer{{Connector: "kubernetes", URL: "http://gw/mcp/takecare-system/doc/kubernetes", Tools: []string{"pods_list"}}},
 		Types: map[v1alpha1.ConnectorType]bool{v1alpha1.ConnectorCluster: true},
 	}.Render()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Name != "takecare-doc-doc" || a.Namespace != "kagent" || a.Skill.ID != "diagnose-alert" || a.CaptureContent {
+	if a.Name != "takecare-doc-doc" || a.Namespace != engineNS || a.Skill.ID != "diagnose-alert" || a.CaptureContent {
 		t.Errorf("agent = %+v", a)
 	}
 	if !strings.Contains(a.Instructions, "`shop`") {
 		t.Error("the instructions do not name the Doc's scope")
 	}
-	if a.Labels["takecare.agaetis.fr/owner"] != "doc" || a.Labels["takecare.agaetis.fr/owner-ns"] != "takecare-system" {
+	if a.Labels["takecare.agaetis.fr/owner"] != "doc" || a.Labels["takecare.agaetis.fr/owner-ns"] != operatorNS {
 		t.Errorf("owner labels = %v", a.Labels)
 	}
 }

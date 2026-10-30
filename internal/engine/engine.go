@@ -9,6 +9,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -141,4 +142,78 @@ type Agents interface {
 type Engine interface {
 	Models
 	Agents
+	Runs
+}
+
+// Run is one run of an agent: a rendered message, never what triggered it
+// (spec 06 §2).
+type Run struct {
+	// Namespace and Agent name the engine's agent (Agent.Namespace, Name).
+	Namespace string
+	Agent     string
+	// GatewayURL is the gateway's base URL: the run goes through the role's
+	// A2A route (ADR 0009), built from Endpoint, never read from a card.
+	GatewayURL string
+	// Message is what the agent is asked.
+	Message string
+	// ConversationID ties the run's spans and the gateway's together
+	// (ADR 0006): the record's name.
+	ConversationID string
+}
+
+// Outcome is how a run ended, as the engine reports it.
+type Outcome string
+
+// Outcomes of a run.
+const (
+	// OutcomeCompleted: the agent answered; Result.Text is the answer.
+	OutcomeCompleted Outcome = "Completed"
+	// OutcomeFailed: the run failed; Result.Reason says why.
+	OutcomeFailed Outcome = "Failed"
+	// OutcomeFailedAfterAnswer: the engine reported a failure although the
+	// agent had produced an answer (seen with kagent in spike 001). The text
+	// is kept for the record and never published; counted on its own.
+	OutcomeFailedAfterAnswer Outcome = "FailedAfterAnswer"
+	// OutcomeLost: the engine no longer knows the task (a restart lost it).
+	OutcomeLost Outcome = "Lost"
+)
+
+// Result is the end of a run.
+type Result struct {
+	Outcome Outcome
+	// Text is the agent's answer, or what it produced before a failure.
+	Text string
+	// Reason explains a failure, in the engine's words.
+	Reason string
+}
+
+// CancelResult is what a cancellation achieved.
+type CancelResult string
+
+// Cancellation results.
+const (
+	// CancelDone: the engine stopped the run.
+	CancelDone CancelResult = "canceled"
+	// CancelUnsupported: the engine cannot stop a run; it goes on to its
+	// end and its result is discarded (kagent 0.10.3's python runtime).
+	CancelUnsupported CancelResult = "unsupported"
+	// CancelFinished: the run had already ended.
+	CancelFinished CancelResult = "finished"
+)
+
+// ErrTaskUnknown is returned by Poll when the engine does not know the task.
+var ErrTaskUnknown = errors.New("the engine does not know the task")
+
+// Runs starts, follows and cancels runs. A run is known by the task ID
+// Start returns, which the caller records before following it, so that a
+// restart can find the run again.
+type Runs interface {
+	// Start sends the run and returns as soon as the engine accepted it.
+	Start(ctx context.Context, r Run) (taskID string, err error)
+	// Poll reads the task once: done is false while it runs. A task the
+	// engine does not know returns ErrTaskUnknown; any other error is
+	// transient (a cut connection is not a lost task).
+	Poll(ctx context.Context, r Run, taskID string) (res Result, done bool, err error)
+	// Cancel asks the engine to stop the run.
+	Cancel(ctx context.Context, r Run, taskID string) (CancelResult, error)
 }
