@@ -402,6 +402,27 @@ func TestRendering(t *testing.T) {
 		})
 	})
 
+	// A dependency of an alerting workload may live in another namespace the
+	// cluster connector reads: the instructions must not deny it.
+	t.Run("the instructions name every namespace the cluster connector reads", func(t *testing.T) {
+		var c v1alpha1.TakeCareConnector
+		if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: "kubernetes"}, &c); err != nil {
+			t.Fatal(err)
+		}
+		c.Spec.Kubernetes.Namespaces = []v1alpha1.Namespace{scope, "platform"}
+		if err := f.c.Update(context.Background(), &c); err != nil {
+			t.Fatal(err)
+		}
+		eventually(t, "the instructions name the connector's second namespace", func() (bool, string) {
+			cm, err := f.get(schema.GroupVersionKind{Version: "v1", Kind: "ConfigMap"}, engineNS, agent+"-instructions")
+			if err != nil {
+				return false, err.Error()
+			}
+			text, _, _ := unstructured.NestedString(cm.Object, "data", "instructions.md")
+			return strings.Contains(text, "limited to the namespaces `"+string(scope)+"`, `platform`."), text
+		})
+	})
+
 	t.Run("deleting the Doc removes its objects in both namespaces", func(t *testing.T) {
 		if err := f.c.Delete(context.Background(), f.getDoc(t, "doc")); err != nil {
 			t.Fatal(err)

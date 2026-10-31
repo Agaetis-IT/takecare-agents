@@ -269,7 +269,7 @@ func (r *Reconciler) reconcileDoc(ctx context.Context, d *v1alpha1.TakeCareDoc, 
 
 	desired, err := doc.Agent{
 		Doc: d, EngineNamespace: r.EngineNamespace, Model: model, Tools: servers,
-		Types: bound.types, CaptureContent: p.Spec.Observability.CaptureContent,
+		Types: bound.types, Readable: bound.readable, CaptureContent: p.Spec.Observability.CaptureContent,
 	}.Render()
 	if err != nil {
 		return ctrl.Result{}, err
@@ -486,6 +486,9 @@ type boundConnector struct {
 type binding struct {
 	rendered []boundConnector
 	types    map[v1alpha1.ConnectorType]bool
+	// readable are the namespaces the bound cluster connectors read, in
+	// their order, for the instructions.
+	readable []v1alpha1.Namespace
 	// blocking explains why the Doc cannot run; empty when it can.
 	blocking string
 	// transient is set when blocking may pass by itself.
@@ -563,6 +566,9 @@ func (r *Reconciler) inspect(ctx context.Context, namespace string, t v1alpha1.C
 	}
 	if t == v1alpha1.ConnectorCluster && c.Spec.Kubernetes != nil {
 		for _, ns := range c.Spec.Kubernetes.Namespaces {
+			if !f.covered[ns] {
+				b.readable = append(b.readable, ns)
+			}
 			f.covered[ns] = true
 		}
 	}

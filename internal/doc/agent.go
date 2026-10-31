@@ -55,11 +55,11 @@ var sources = []struct {
 	{v1alpha1.ConnectorTickets, func([]string) string { return "Customer support tickets." }},
 }
 
-// Instructions renders the Doc's system message for its scope and the types
-// of the connectors it is given.
-func Instructions(scope []v1alpha1.Namespace, types map[v1alpha1.ConnectorType]bool) (string, error) {
-	namespaces := make([]string, len(scope))
-	for i, n := range scope {
+// Instructions renders the Doc's system message for the namespaces it can
+// read and the types of the connectors it is given.
+func Instructions(readable []v1alpha1.Namespace, types map[v1alpha1.ConnectorType]bool) (string, error) {
+	namespaces := make([]string, len(readable))
+	for i, n := range readable {
 		namespaces[i] = "`" + string(n) + "`"
 	}
 	var lines []string
@@ -86,13 +86,21 @@ type Agent struct {
 	Tools []engine.ToolServer
 	// Types are the types of those connectors, for the instructions.
 	Types map[v1alpha1.ConnectorType]bool
+	// Readable are the namespaces the cluster connectors read, a superset of
+	// the Doc's scope (spec 02): a dependency of an alerting workload may
+	// live in another of them. Empty means the scope.
+	Readable []v1alpha1.Namespace
 	// CaptureContent follows the platform (ADR 0006).
 	CaptureContent bool
 }
 
 // Render returns the engine's view of the Doc.
 func (a Agent) Render() (engine.Agent, error) {
-	text, err := Instructions(a.Doc.Spec.Scope.Namespaces, a.Types)
+	readable := a.Readable
+	if len(readable) == 0 {
+		readable = a.Doc.Spec.Scope.Namespaces
+	}
+	text, err := Instructions(readable, a.Types)
 	if err != nil {
 		return engine.Agent{}, err
 	}

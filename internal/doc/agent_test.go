@@ -12,6 +12,9 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/golden"
 )
 
+// shopNS is a Doc's alert scope in these tests.
+const shopNS = "shop"
+
 func TestInstructions(t *testing.T) {
 	for _, tc := range []struct {
 		golden string
@@ -21,7 +24,7 @@ func TestInstructions(t *testing.T) {
 		{"instructions-all-types.md", []v1alpha1.Namespace{appsNS, "ack-system"}, []v1alpha1.ConnectorType{
 			v1alpha1.ConnectorCluster, v1alpha1.ConnectorMetrics, v1alpha1.ConnectorLogs, v1alpha1.ConnectorKnowledge, v1alpha1.ConnectorChanges, v1alpha1.ConnectorTickets,
 		}},
-		{"instructions-required-only.md", []v1alpha1.Namespace{"shop"}, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster, v1alpha1.ConnectorMetrics}},
+		{"instructions-required-only.md", []v1alpha1.Namespace{shopNS}, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster, v1alpha1.ConnectorMetrics}},
 	} {
 		t.Run(tc.golden, func(t *testing.T) {
 			types := map[v1alpha1.ConnectorType]bool{}
@@ -55,7 +58,7 @@ func TestInstructionsKeepTheirAttribution(t *testing.T) {
 
 func TestRender(t *testing.T) {
 	d := &v1alpha1.TakeCareDoc{Name: Kind, Namespace: operatorNS}
-	d.Spec.Scope.Namespaces = []v1alpha1.Namespace{"shop"}
+	d.Spec.Scope.Namespaces = []v1alpha1.Namespace{shopNS}
 	a, err := Agent{
 		Doc: d, EngineNamespace: engineNS, Model: "default",
 		Tools: []engine.ToolServer{{Connector: "kubernetes", URL: "http://gw/mcp/takecare-system/doc/kubernetes", Tools: []string{"pods_list"}}},
@@ -72,5 +75,34 @@ func TestRender(t *testing.T) {
 	}
 	if a.Labels["takecare.agaetis.fr/owner"] != "doc" || a.Labels["takecare.agaetis.fr/owner-ns"] != operatorNS {
 		t.Errorf("owner labels = %v", a.Labels)
+	}
+}
+
+// The instructions name what the cluster connectors read, not only the
+// alert scope: told that other namespaces are denied, the model never reads
+// a dependency living in one (the demo's DBProxy in ack-system).
+func TestRenderNamesTheReadableNamespaces(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		readable []v1alpha1.Namespace
+		want     string
+	}{
+		{"a connector wider than the scope", []v1alpha1.Namespace{shopNS, "platform"}, "limited to the namespaces `shop`, `platform`."},
+		{"no readable namespaces: the scope", nil, "limited to the namespaces `shop`."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &v1alpha1.TakeCareDoc{Name: Kind, Namespace: operatorNS}
+			d.Spec.Scope.Namespaces = []v1alpha1.Namespace{shopNS}
+			a, err := Agent{
+				Doc: d, EngineNamespace: engineNS, Model: "default",
+				Types: map[v1alpha1.ConnectorType]bool{v1alpha1.ConnectorCluster: true}, Readable: tc.readable,
+			}.Render()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(a.Instructions, tc.want) {
+				t.Errorf("the instructions miss %q:\n%s", tc.want, a.Instructions)
+			}
+		})
 	}
 }
