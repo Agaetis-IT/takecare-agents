@@ -261,6 +261,45 @@ func TestReadinessFollowsTheToken(t *testing.T) {
 	})
 }
 
+// A network not ready at the pod's start (an inconclusive auth.test) is
+// retried soon, not after a whole interval: found by the end-to-end run,
+// where the NetworkPolicy was not programmed yet for the new pod.
+func TestStartupRetriesAnInconclusiveCheck(t *testing.T) {
+	slack := newFakeSlack(t)
+	slack.set("500", "ok", 0)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "token"), []byte("xoxb-valid\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(Config{
+		Mode: ModeSlack, APIURL: slack.srv.URL, TokenFile: filepath.Join(dir, "token"),
+		Destinations: map[string]string{"on-call": "C0STARTUP"},
+		AuthInterval: time.Hour, StartRetry: 50 * time.Millisecond, HTTP: &http.Client{Timeout: 2 * time.Second},
+		Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = s.Run(t.Context()) }()
+	time.Sleep(200 * time.Millisecond)
+	if s.Ready() {
+		t.Fatal("ready while auth.test answers 500")
+	}
+	slack.set("ok", "ok", 0)
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && !s.Ready() {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !s.Ready() {
+		t.Fatal("not ready after Slack answered: the inconclusive start was not retried before the hour's interval")
+	}
+	calls := slack.authCalls.Load()
+	time.Sleep(300 * time.Millisecond)
+	if slack.authCalls.Load() != calls {
+		t.Error("auth.test still retried every StartRetry after a verdict")
+	}
+}
+
 func TestRateLimitsAreRetriedThenReported(t *testing.T) {
 	f := start(t, ModeSlack)
 	f.waitReady(true)

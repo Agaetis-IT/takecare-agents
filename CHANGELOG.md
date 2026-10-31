@@ -54,3 +54,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - An investigation's usage is no longer doubled when Prometheus scrapes the gateway twice (a PodMonitor and an annotation job, or the demo's own job and the chart's kubernetes-pods job): the series are collapsed to their scrape target and the gateway's own labels before they are summed. The demo profile scrapes the gateway once.
+- The Slack report server retries an inconclusive `auth.test` (no answer, a 5xx) every 10 seconds until the token has had a verdict, instead of waiting for the next 30-minute check. A network not ready when the pod starts no longer keeps the report connector not ready for half an hour.
