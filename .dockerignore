@@ -5,6 +5,8 @@
 !cmd/**/*.go
 !api/**/*.go
 !internal/**/*.go
+# The end-to-end fakes, built into test-only images.
+!test/fakellm/*.go
 **/*_test.go
 !internal/gatewayapi/standard-install.yaml
 # Files the binaries embed (go:embed).

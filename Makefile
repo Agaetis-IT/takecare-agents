@@ -9,6 +9,8 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 # The images follow takecare-agents-<component> (issue #22).
 OPERATOR_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-operator:$(VERSION)
 REPORT_SLACK_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-mcp-report-slack:$(VERSION)
+# The end-to-end tests' fakes (spec 04): built for the e2e, never released.
+FAKE_LLM_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-fake-llm:$(VERSION)
 # The demo's images (spec 03): the application and the corpus MCP server.
 DEMO_APP_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-demo-app:$(VERSION)
 MCP_CORPUS_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-mcp-corpus:$(VERSION)
@@ -207,6 +209,10 @@ docker-build: ## Build every image (operator, report server, demo app, corpus se
 	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-report-slack -t $(REPORT_SLACK_IMG) .
 	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=demo-app -t $(DEMO_APP_IMG) .
 	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-corpus -t $(MCP_CORPUS_IMG) .
+
+.PHONY: docker-build-e2e
+docker-build-e2e: ## Build the end-to-end tests' fakes (fake model provider) for the local platform.
+	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=fake-llm -t $(FAKE_LLM_IMG) .
 
 .PHONY: docker-buildx
 docker-buildx: ## Build every image for amd64 and arm64 (pushed only with PUSH=true).

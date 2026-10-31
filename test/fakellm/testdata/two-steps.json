@@ -1,0 +1,15 @@
+{
+  "source": "hand-written",
+  "date": "2026-10-31",
+  "description": "Unit-test conversation: one tool call, then an answer.",
+  "exchanges": [
+    {
+      "fingerprint": {"model": "m", "roles": ["system", "user"], "called": [], "offered": "OFFERED"},
+      "response": {"id": "c1", "object": "chat.completion", "model": "m", "choices": [{"index": 0, "finish_reason": "tool_calls", "message": {"role": "assistant", "content": null, "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "pods_list", "arguments": "{\"namespace\":\"demo-apps\"}"}}]}}], "usage": {"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110}}
+    },
+    {
+      "fingerprint": {"model": "m", "roles": ["system", "user", "assistant", "tool"], "called": ["pods_list"], "offered": "OFFERED"},
+      "response": {"id": "c2", "object": "chat.completion", "model": "m", "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "The DBProxy closes idle connections at 600 s, before the pool's 900 s."}}], "usage": {"prompt_tokens": 150, "completion_tokens": 20, "total_tokens": 170}}
+    }
+  ]
+}
