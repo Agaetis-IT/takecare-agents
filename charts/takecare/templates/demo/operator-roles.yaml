@@ -6,7 +6,9 @@ the platform namespace, by name. Rendered here under demo.enabled, never
 from RBAC markers, so that a production install holds none of them;
 test/chart checks both renders.
 Create is listed because a server-side apply that creates an object is
-authorized as a create too, by name.
+authorized as a create too, by name. List and watch are deliberately
+absent: the controller reads these objects with a get by name, outside the
+manager's cache.
 */}}
 {{- $roles := list
   (dict "ns" .Values.demo.appNamespace "rules" (list

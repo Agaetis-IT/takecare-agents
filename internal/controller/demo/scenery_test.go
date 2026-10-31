@@ -38,7 +38,13 @@ func TestAppDeployment(t *testing.T) {
 	for _, tc := range []struct {
 		mode string
 	}{{"healthy"}, {"leaky"}} {
-		dep := appDeployment(testDemo(), "demo-app:test", tc.mode)
+		d := testDemo()
+		d.Status.LastHandled.Incident = "42"
+		dep := appDeployment(d, "demo-app:test", tc.mode == "leaky")
+		wantIncident := map[string]string{"healthy": "", "leaky": "42"}[tc.mode]
+		if got := dep.Spec.Template.Annotations[annotationIncident]; got != wantIncident {
+			t.Errorf("%s: the pod template carries incident %q, want %q", tc.mode, got, wantIncident)
+		}
 		c := dep.Spec.Template.Spec.Containers[0]
 		e := env(c)
 		want := map[string]string{

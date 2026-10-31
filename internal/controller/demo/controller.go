@@ -179,7 +179,7 @@ func (r *Reconciler) deleteInvestigations(ctx context.Context, d *v1alpha1.TakeC
 
 // applyScenery applies the app, its Service and the DBProxy of the phase.
 func (r *Reconciler) applyScenery(ctx context.Context, d *v1alpha1.TakeCareDemo, incident bool) error {
-	for _, obj := range []client.Object{appDeployment(d, r.AppImage, mode(incident)), appService(d), dbProxy(d, incident)} {
+	for _, obj := range []client.Object{appDeployment(d, r.AppImage, incident), appService(d), dbProxy(d, incident)} {
 		if err := apply.Strict(ctx, r.Client, obj); err != nil {
 			return fmt.Errorf("apply %s %s/%s: %w", obj.GetObjectKind().GroupVersionKind().Kind, obj.GetNamespace(), obj.GetName(), err)
 		}
@@ -201,7 +201,7 @@ func (r *Reconciler) observe(ctx context.Context, d *v1alpha1.TakeCareDemo, inci
 	case err != nil:
 		return nil, startedAt, fmt.Errorf("read the app: %w", err)
 	default:
-		startedAt, _ = rolledOut(&dep, mode(incident))
+		startedAt, _ = rolledOut(&dep, appDeployment(d, r.AppImage, incident))
 	}
 	proxy := &unstructured.Unstructured{}
 	proxy.SetGroupVersionKind(DBProxyGVK)
@@ -215,12 +215,15 @@ func (r *Reconciler) observe(ctx context.Context, d *v1alpha1.TakeCareDemo, inci
 	return missing, startedAt, nil
 }
 
-// rolledOut reports whether the app runs one available pod of the mode,
-// and since when: with Recreate the Available condition turns true again
-// when the new pod is available.
-func rolledOut(dep *appsv1.Deployment, mode string) (time.Time, bool) {
+// rolledOut reports whether the app runs one available pod of the wanted
+// template (its mode and its incident: the previous incident's pod never
+// passes for the new one), and since when: with Recreate the Available
+// condition turns true again when the new pod is available.
+func rolledOut(dep, want *appsv1.Deployment) (time.Time, bool) {
 	s := dep.Status
-	if dep.Spec.Template.Annotations[annotationMode] != mode || s.ObservedGeneration != dep.Generation ||
+	got, wanted := dep.Spec.Template.Annotations, want.Spec.Template.Annotations
+	if got[annotationMode] != wanted[annotationMode] || got[annotationIncident] != wanted[annotationIncident] ||
+		s.ObservedGeneration != dep.Generation ||
 		s.Replicas != 1 || s.UpdatedReplicas != 1 || s.AvailableReplicas != 1 {
 		return time.Time{}, false
 	}
@@ -283,7 +286,7 @@ func (r *Reconciler) patchStatus(ctx context.Context, before, d *v1alpha1.TakeCa
 // and the DBProxy. A DBProxy kind the cluster no longer serves is gone too.
 func (r *Reconciler) removeScenery(ctx context.Context, d *v1alpha1.TakeCareDemo) error {
 	var errs []error
-	for _, obj := range []client.Object{appDeployment(d, r.AppImage, mode(false)), appService(d), dbProxy(d, false)} {
+	for _, obj := range []client.Object{appDeployment(d, r.AppImage, false), appService(d), dbProxy(d, false)} {
 		if err := r.Client.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) && !meta.IsNoMatchError(err) {
 			errs = append(errs, fmt.Errorf("delete %s %s/%s: %w", obj.GetObjectKind().GroupVersionKind().Kind, obj.GetNamespace(), obj.GetName(), err))
 		}

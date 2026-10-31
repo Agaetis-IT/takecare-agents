@@ -120,12 +120,13 @@ func (f *fixture) proxyTimeout() (int64, bool) {
 }
 
 // rollOut plays the Deployment controller envtest lacks: the pod of the
-// current template is available since `at`.
-func (f *fixture) rollOut(mode string, at time.Time) {
+// template in a mode and for an incident ("" when healthy) is available
+// since `at`.
+func (f *fixture) rollOut(mode, incident string, at time.Time) {
 	f.t.Helper()
-	f.eventually("billing-api in mode "+mode, func() bool {
+	f.eventually("billing-api in mode "+mode+" for incident "+incident, func() bool {
 		dep := f.app()
-		return dep != nil && dep.Spec.Template.Annotations[annotationMode] == mode
+		return dep != nil && dep.Spec.Template.Annotations[annotationMode] == mode && dep.Spec.Template.Annotations[annotationIncident] == incident
 	})
 	dep := f.app()
 	dep.Status = appsv1.DeploymentStatus{
@@ -179,7 +180,7 @@ func TestDemoLifecycle(t *testing.T) {
 	if c := ready(f.demo()); c == nil || c.Status != metav1.ConditionFalse || c.Reason != ReasonSceneryNotReady {
 		t.Errorf("Ready before the app is available: %+v", c)
 	}
-	f.rollOut("healthy", time.Now())
+	f.rollOut("healthy", "", time.Now())
 	f.eventually("phase Ready", func() bool {
 		d := f.demo()
 		c := ready(d)
@@ -198,7 +199,7 @@ func TestDemoLifecycle(t *testing.T) {
 		t.Errorf("before the leaky pod: started %v window %v reason %s", d.Status.IncidentStartedAt, d.Status.ExpectedAlertWindow, ready(d).Reason)
 	}
 	podReady := time.Now().Truncate(time.Second).Add(7 * time.Second)
-	f.rollOut("leaky", podReady)
+	f.rollOut("leaky", "1", podReady)
 	f.eventually("the incident started with the leaky pod", func() bool {
 		return f.demo().Status.IncidentStartedAt != nil
 	})
@@ -207,6 +208,20 @@ func TestDemoLifecycle(t *testing.T) {
 	if !d.Status.IncidentStartedAt.Time.Equal(podReady) || !d.Status.ExpectedAlertWindow.From.Time.Equal(podReady.Add(from)) || !d.Status.ExpectedAlertWindow.To.Time.Equal(podReady.Add(to)) {
 		t.Errorf("started %v window %v, want %v and +%s..+%s", d.Status.IncidentStartedAt, d.Status.ExpectedAlertWindow, podReady, from, to)
 	}
+
+	// A second incident without a reset gives a fresh leaky pod: the ramp,
+	// and the window, start again with it, never with the previous pod.
+	f.annotate(v1alpha1.AnnotationIncident, "2")
+	f.eventually("the second incident handled", func() bool {
+		d := f.demo()
+		return d.Status.LastHandled.Incident == "2" && d.Status.IncidentStartedAt == nil
+	})
+	secondReady := podReady.Add(5 * time.Minute)
+	f.rollOut("leaky", "2", secondReady)
+	f.eventually("the second incident started with its own pod", func() bool {
+		d := f.demo()
+		return d.Status.IncidentStartedAt != nil && d.Status.IncidentStartedAt.Time.Equal(secondReady)
+	})
 
 	// The reset: healthy again, and the Doc's investigations of the app
 	// namespace deleted, the others kept.
@@ -223,7 +238,7 @@ func TestDemoLifecycle(t *testing.T) {
 	if err := f.c.Get(f.ctx, client.ObjectKey{Namespace: ns, Name: "inv-elsewhere"}, &kept); err != nil {
 		t.Errorf("the reset deleted another namespace's investigation: %v", err)
 	}
-	f.rollOut("healthy", time.Now())
+	f.rollOut("healthy", "", time.Now())
 	f.eventually("phase Ready after the reset", func() bool { return f.demo().Status.Phase == v1alpha1.DemoReady })
 	if d := f.demo(); d.Status.IncidentStartedAt != nil || d.Status.ExpectedAlertWindow != nil {
 		t.Error("the reset kept the incident's times")

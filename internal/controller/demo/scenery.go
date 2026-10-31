@@ -43,6 +43,10 @@ const (
 	labelApp       = "app"
 	partOf         = "takecare-demo"
 	annotationMode = "takecare.agaetis.fr/mode"
+	// annotationIncident carries the handled incident value on the pod
+	// template: every new incident rolls a fresh leaky pod, whose start is
+	// the ramp's.
+	annotationIncident = v1alpha1.AnnotationIncident
 )
 
 // DBProxyGVK is ACK's DBProxy: only its CRD is installed, the resource is
@@ -53,9 +57,15 @@ func ownerLabels(d *v1alpha1.TakeCareDemo) map[string]string {
 	return map[string]string{LabelOwner: d.Name, labelPartOf: partOf}
 }
 
-// appDeployment is billing-api in a mode. Recreate: one pod at a time, so
-// that the metrics never mix two pods; the ramp starts with the new pod.
-func appDeployment(d *v1alpha1.TakeCareDemo, image, mode string) *appsv1.Deployment {
+// appDeployment is billing-api, healthy or in the incident last handled.
+// Recreate: one pod at a time, so that the metrics never mix two pods; the
+// ramp starts with the new pod.
+func appDeployment(d *v1alpha1.TakeCareDemo, image string, incident bool) *appsv1.Deployment {
+	mode := mode(incident)
+	handled := ""
+	if incident {
+		handled = d.Status.LastHandled.Incident
+	}
 	labels := map[string]string{labelApp: appName, labelPartOf: partOf}
 	env := []corev1.EnvVar{
 		{Name: "MODE", Value: mode},
@@ -81,6 +91,7 @@ func appDeployment(d *v1alpha1.TakeCareDemo, image, mode string) *appsv1.Deploym
 					"prometheus.io/port":   strconv.Itoa(appPort),
 					"prometheus.io/path":   "/metrics",
 					annotationMode:         mode,
+					annotationIncident:     handled,
 				},
 				Spec: corev1.PodSpec{
 					AutomountServiceAccountToken: new(false),
