@@ -44,10 +44,14 @@ const (
 const (
 	DefaultAPIURL       = "https://slack.com/api"
 	DefaultAuthInterval = 30 * time.Minute
-	maxPostAttempts     = 3
-	maxRetryAfter       = 30 * time.Second
-	ToolName            = "post_message"
-	fieldBlocks         = "blocks"
+	// DefaultStartRetry is how soon an inconclusive auth.test is retried
+	// while the token has had no verdict yet: a network not ready at the
+	// pod's start must not keep it not ready for a whole interval.
+	DefaultStartRetry = 10 * time.Second
+	maxPostAttempts   = 3
+	maxRetryAfter     = 30 * time.Second
+	ToolName          = "post_message"
+	fieldBlocks       = "blocks"
 )
 
 // authErrors are the Slack errors that mean the token is no longer good:
@@ -68,6 +72,7 @@ type Config struct {
 	// channel ID or name. The server posts nowhere else.
 	Destinations map[string]string
 	AuthInterval time.Duration
+	StartRetry   time.Duration
 	HTTP         *http.Client
 	Logger       *slog.Logger
 }
@@ -77,6 +82,8 @@ type Server struct {
 	cfg   Config
 	mcp   *sdk.Server
 	ready atomic.Bool
+	// decided is set by the first verdict on the token, accepted or not.
+	decided atomic.Bool
 	// authState is the last auth.test verdict, for /readyz's body.
 	authMu    sync.Mutex
 	authState string
@@ -94,6 +101,9 @@ func New(cfg Config) (*Server, error) {
 	}
 	if cfg.AuthInterval == 0 {
 		cfg.AuthInterval = DefaultAuthInterval
+	}
+	if cfg.StartRetry == 0 {
+		cfg.StartRetry = min(DefaultStartRetry, cfg.AuthInterval)
 	}
 	if cfg.HTTP == nil {
 		return nil, errors.New("an HTTP client is required")
@@ -143,8 +153,9 @@ func (s *Server) Handler() http.Handler {
 }
 
 // Run checks the token at startup, then every AuthInterval and whenever a
-// post hit an authentication error, until ctx ends. Log mode has nothing
-// to check.
+// post hit an authentication error, until ctx ends; until the token has had
+// a verdict, an inconclusive check is retried every StartRetry. Log mode
+// has nothing to check.
 func (s *Server) Run(ctx context.Context) error {
 	if s.cfg.Mode == ModeLog {
 		<-ctx.Done()
@@ -154,11 +165,16 @@ func (s *Server) Run(ctx context.Context) error {
 	ticker := time.NewTicker(s.cfg.AuthInterval)
 	defer ticker.Stop()
 	for {
+		var retry <-chan time.Time
+		if !s.decided.Load() {
+			retry = time.After(s.cfg.StartRetry)
+		}
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
 		case <-s.kick:
+		case <-retry:
 		}
 		s.authTest(ctx)
 	}
@@ -191,6 +207,7 @@ func (s *Server) authTest(ctx context.Context) {
 
 func (s *Server) setAuth(ready bool, state string) {
 	s.ready.Store(ready)
+	s.decided.Store(true)
 	s.authMu.Lock()
 	s.authState = state
 	s.authMu.Unlock()
