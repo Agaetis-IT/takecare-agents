@@ -144,6 +144,22 @@ chart-template: chart-deps kubeconform ## Render both profiles and validate them
 	"$(KUBECONFORM)" -strict -summary -ignore-missing-schemas \
 		-kubernetes-version $(ENVTEST_K8S_VERSION) "$(CHART_OUT)"/*.yaml
 
+# The release's charts: chart version = app version (spec 04); Chart.yaml
+# keeps its development version. The packages are linted as published.
+CHART_PKG ?= bin/charts
+.PHONY: chart-package
+chart-package: chart-deps ## Package both charts at RELEASE_VERSION into CHART_PKG and lint the packages.
+	@test -n "$(RELEASE_VERSION)" || { echo "RELEASE_VERSION is required (the tag without its v)"; exit 1; }
+	rm -rf "$(CHART_PKG)" && mkdir -p "$(CHART_PKG)"
+	$(HELM_RUN) package charts/takecare-crds charts/takecare --version "$(RELEASE_VERSION)" --app-version "$(RELEASE_VERSION)" -d "$(CHART_PKG)"
+	$(HELM_RUN) lint "$(CHART_PKG)/takecare-crds-$(RELEASE_VERSION).tgz" --set demo.enabled=true
+	$(HELM_RUN) lint "$(CHART_PKG)/takecare-$(RELEASE_VERSION).tgz" -f charts/takecare/values-prod.yaml
+	$(HELM_RUN) lint "$(CHART_PKG)/takecare-$(RELEASE_VERSION).tgz" -f charts/takecare/values-demo.yaml
+
+.PHONY: release-notes-test
+release-notes-test: ## Check hack/release-notes.sh against its fixture.
+	hack/release-notes-test.sh
+
 ##@ Lint
 
 .PHONY: lint

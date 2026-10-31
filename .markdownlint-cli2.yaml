@@ -20,3 +20,6 @@ config:
   MD041: false
   # CLAUDE.md uses bold labels for short sub-sections.
   MD036: false
+  # Keep a Changelog repeats Added, Fixed… under every version.
+  MD024:
+    siblings_only: true

@@ -147,6 +147,7 @@ Prerequisites: Docker with at least 4 GB of memory (the stack uses about 3.5 GiB
 | [`docs/spikes/001-kagent-doc-engine.md`](docs/spikes/001-kagent-doc-engine.md) | Spike 001: can kagent run the Doc as well as HolmesGPT? |
 | [`docs/specs/90-agent-output-localization.md`](docs/specs/90-agent-output-localization.md) | Localized agent output (deferred) |
 | [`docs/adr/`](docs/adr/) | Architecture decisions |
+| [`docs/release.md`](docs/release.md) | Releasing: the tag, what the release workflow publishes, the checks after, fixing forward |
 | [`docs/licensing.md`](docs/licensing.md) | License rules: SPDX headers, provenance of copied code, allowed dependency licenses |
 | [`CLAUDE.md`](CLAUDE.md) | How to work on this repository: ground rules, PR sequence, known pitfalls |
 
