@@ -46,9 +46,21 @@ type Source interface {
 
 // Queries on agentgateway 1.6's metric: tokens by type, and model calls as
 // the number of input observations (one per call).
+//
+// A Prometheus that scrapes the gateway twice (a PodMonitor and an
+// annotation job, or the demo's own job and the chart's kubernetes-pods
+// job) holds each series twice, and a plain sum doubles the bill: the
+// end-to-end run found 58,800 input tokens for the 29,400 the fake model
+// served. So the series are first collapsed to their identity, the scrape
+// target and the labels the gateway exports itself, which every job carries
+// alike, and only then summed. Not `max without (job)`: the jobs also add
+// labels of their own (the pod's labels, the node), so the same series under
+// two jobs differs by more than job. Two proxy pods (two instances) or two
+// models (other gen_ai labels) still add up.
 const (
-	queryByType = `sum by (gen_ai_token_type) (agentgateway_gen_ai_client_token_usage_sum)`
-	queryCalls  = `sum(agentgateway_gen_ai_client_token_usage_count{gen_ai_token_type="input"})`
+	seriesIdentity = `instance, gateway, listener, bind, route, route_rule, gen_ai_operation_name, gen_ai_system, gen_ai_request_model, gen_ai_response_model, gen_ai_token_type`
+	queryByType    = `sum by (gen_ai_token_type) (max by (` + seriesIdentity + `) (agentgateway_gen_ai_client_token_usage_sum))`
+	queryCalls     = `sum(max by (` + seriesIdentity + `) (agentgateway_gen_ai_client_token_usage_count{gen_ai_token_type="input"}))`
 )
 
 // Prometheus reads the counters from the Prometheus that scrapes the

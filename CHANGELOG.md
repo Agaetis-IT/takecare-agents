@@ -50,3 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - The operator's image is renamed `takecare-agents-operator` (was `takecare-operator`), following the `takecare-agents-<component>` naming of the images (issue #22). A mirror of the images must add the new name. The Deployment, its ServiceAccount, the RBAC objects, the server-side apply field owner and the leader election ID keep their names, so an upgrade replaces the pods without a second leader or a field ownership conflict.
+
+### Fixed
+
+- An investigation's usage is no longer doubled when Prometheus scrapes the gateway twice (a PodMonitor and an annotation job, or the demo's own job and the chart's kubernetes-pods job): the series are collapsed to their scrape target and the gateway's own labels before they are summed. The demo profile scrapes the gateway once.

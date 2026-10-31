@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
@@ -91,5 +92,23 @@ func TestRecord(t *testing.T) {
 	}
 	if _, err := Record(d, &v1alpha1.Pricing{InputPerMTok: "cheap", OutputPerMTok: "1"}, false); err == nil {
 		t.Error("a price that is not a decimal must be an error")
+	}
+}
+
+// The queries collapse a series scraped by two jobs before summing (the
+// end-to-end run's doubled bill). Prometheus evaluates them, so this test
+// pins their form: grouped by the scrape target and the gateway's own
+// labels, never by a job's labels; the e2e scrapes the gateway twice on
+// purpose and checks the exact token counts.
+func TestQueriesCollapseDuplicateScrapes(t *testing.T) {
+	for _, q := range []string{queryByType, queryCalls} {
+		if !strings.Contains(q, "max by (instance, gateway, listener") {
+			t.Errorf("%s does not collapse duplicate scrapes first", q)
+		}
+		for _, jobLabel := range []string{"job", "pod_template_hash", "node", "app_kubernetes_io"} {
+			if strings.Contains(q, jobLabel) {
+				t.Errorf("%s groups by %s, a label a scrape job adds", q, jobLabel)
+			}
+		}
 	}
 }
