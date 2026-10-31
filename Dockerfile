@@ -25,10 +25,12 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags="-s -w" -o component ./cmd/${COMPONENT}
 # Full license texts (and NOTICE files) of every third-party module in the
 # binary, shipped in the image (docs/licensing.md). go-licenses itself is built
-# for the build platform; only the analysis targets the image's platform.
+# for the build platform; only the analysis targets the image's platform. A
+# binary with no third-party module gets an empty directory.
 RUN go install github.com/google/go-licenses/v2@${GO_LICENSES_VERSION} && \
     GOOS=${TARGETOS} GOARCH=${TARGETARCH} go-licenses save ./cmd/${COMPONENT} \
-    --ignore github.com/agaetis-it/takecare-agents --save_path /workspace/licenses
+    --ignore github.com/agaetis-it/takecare-agents --save_path /workspace/licenses && \
+    mkdir -p /workspace/licenses
 
 FROM ${RUNTIME_IMAGE}
 WORKDIR /
