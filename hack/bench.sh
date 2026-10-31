@@ -42,18 +42,18 @@ pf_pids=()
 prev_cooldown=""
 cooldown_set=false
 restore() {
-  if $cooldown_set; then
-    if [[ -n "$prev_cooldown" ]]; then
-      kubectl -n "$NS" patch takecaredoc "$DOC" --type=json \
-        -p "[{\"op\":\"replace\",\"path\":\"/spec/investigation/cooldown\",\"value\":\"${prev_cooldown}\"}]" >/dev/null
-    else
-      kubectl -n "$NS" patch takecaredoc "$DOC" --type=json \
-        -p '[{"op":"remove","path":"/spec/investigation/cooldown"}]' >/dev/null
-    fi
-    log "the Doc's cooldown is restored (${prev_cooldown:-unset})"
-  fi
+  # The token file first: it must not outlive a failed restore.
   for p in "${pf_pids[@]}"; do kill "$p" 2>/dev/null || true; done
   rm -rf "$WORK"
+  if $cooldown_set; then
+    local patch='[{"op":"remove","path":"/spec/investigation/cooldown"}]'
+    [[ -n "$prev_cooldown" ]] && patch="[{\"op\":\"replace\",\"path\":\"/spec/investigation/cooldown\",\"value\":\"${prev_cooldown}\"}]"
+    if kubectl -n "$NS" patch takecaredoc "$DOC" --type=json -p "$patch" >/dev/null; then
+      log "the Doc's cooldown is restored (${prev_cooldown:-unset})"
+    else
+      log "could not restore the cooldown (${prev_cooldown:-unset}): check the Doc"
+    fi
+  fi
 }
 trap restore EXIT
 trap 'exit 130' INT TERM

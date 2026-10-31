@@ -14,7 +14,7 @@ The bench copies the firing `HighErrorRate` alert from Alertmanager and posts on
 
 **The Doc's `cooldown` is 1 s while the bench runs.** Grouping by incident (spec 02 §1) would otherwise fold every copy into the incident's investigation. The previous value is restored on every exit, a failure or an interruption included. Meanwhile, an alert of the demo with a new start time would open its own investigation, published as usual: run the bench on a demo kept for it.
 
-The `bench` workflow (manual dispatch) runs the same on k3d with the repository secret `TAKECARE_MODEL_API_KEY`, with `BENCH_MIN=4`, and uploads the report and the table as artifacts.
+The `bench` workflow (manual dispatch) runs the same on k3d with the repository secret `TAKECARE_MODEL_API_KEY`, failing under ⌈4N/5⌉ correct (4 for N=5), and uploads the report and the table as artifacts.
 
 ## Scoring
 
