@@ -30,9 +30,6 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  REGISTRY: ghcr.io/agaetis-it
-
 jobs:
   dry-run:
     name: release dry run (charts packaged and linted, notes read)
@@ -79,7 +76,9 @@ jobs:
           fi
           version="${TAG#v}"
           hack/release-notes.sh "$version" >"$RUNNER_TEMP/notes.md"
-          echo "VERSION=${version}" >>"$GITHUB_ENV"
+          # The registry is a pinned constant: hack/versions.env only.
+          source hack/versions.env
+          { echo "VERSION=${version}"; echo "REGISTRY=${IMAGE_REGISTRY}"; } >>"$GITHUB_ENV"
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
@@ -94,24 +93,30 @@ jobs:
           make helm
           source hack/versions.env
           printf '%s' "$GH_TOKEN" | "bin/helm-${HELM_VERSION}" registry login ghcr.io -u "$ACTOR" --password-stdin
+      # Only a not-found answer means absent: any other error (a registry
+      # hiccup, a denied pull) stops the release rather than risk a replace.
       - name: refuse to replace a published version
         run: |
           set -euo pipefail
           source hack/versions.env
-          for image in operator mcp-report-slack demo-app mcp-corpus; do
-            if docker buildx imagetools inspect "${REGISTRY}/takecare-agents-${image}:${VERSION}" >/dev/null 2>&1; then
-              echo "${REGISTRY}/takecare-agents-${image}:${VERSION} is already published: release ${VERSION} with a new version (fix forward)" >&2
-              exit 1
+          absent() { # NAME COMMAND...
+            local out
+            if out="$("${@:2}" 2>&1)"; then
+              echo "$1 ${VERSION} is already published: release a new version (fix forward)" >&2
+              return 1
             fi
+            if grep -qiE 'not found|manifest unknown|name unknown' <<<"$out"; then return 0; fi
+            printf 'cannot tell whether %s %s is published:\n%s\n' "$1" "$VERSION" "$out" >&2
+            return 1
+          }
+          for image in operator mcp-report-slack demo-app mcp-corpus; do
+            absent "image takecare-agents-${image}" docker buildx imagetools inspect "${REGISTRY}/takecare-agents-${image}:${VERSION}"
           done
           for chart in takecare-crds takecare; do
-            if "bin/helm-${HELM_VERSION}" show chart "oci://${REGISTRY}/charts/${chart}" --version "$VERSION" >/dev/null 2>&1; then
-              echo "chart ${chart} ${VERSION} is already published: release with a new version (fix forward)" >&2
-              exit 1
-            fi
+            absent "chart ${chart}" "bin/helm-${HELM_VERSION}" show chart "oci://${REGISTRY}/charts/${chart}" --version "$VERSION"
           done
       - name: images (amd64 + arm64)
-        run: make docker-buildx PUSH=true VERSION="$VERSION" IMAGE_REGISTRY="$REGISTRY"
+        run: make docker-buildx PUSH=true VERSION="$VERSION"
       - name: charts
         run: |
           set -euo pipefail
