@@ -121,7 +121,7 @@ install() {
       --set addons.reportSlack.destinations[1].name=review --set "addons.reportSlack.destinations[1].target=${TAKECARE_SLACK_REVIEW_CHANNEL:-$TAKECARE_SLACK_ONCALL_CHANNEL}")
   fi
   local stamp
-  stamp="$( (find charts "${DEMO_VALUES:-charts}" -type f | sort | xargs shasum; printf '%s\n' "${crds[@]}" "${sets[@]}") | shasum | cut -c1-40)"
+  stamp="$( (find charts ${DEMO_VALUES:+"$DEMO_VALUES"} -type f | sort | xargs shasum; printf '%s\n' "${crds[@]}" "${sets[@]}") | shasum | cut -c1-40)"
   if [[ "$(cat "${STATE}/helm" 2>/dev/null)" == "$stamp" ]] && "$HELM" status takecare -n "$NS" >/dev/null 2>&1; then
     log "charts and values unchanged: the releases stay as they are"
     return 0

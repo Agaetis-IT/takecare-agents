@@ -9,6 +9,7 @@
 package e2e
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"regexp"
@@ -30,7 +31,7 @@ var (
 // diagnosis come from the fake model's fixtures and are compared as they
 // are.
 func TestSlackMessage(t *testing.T) {
-	raw, err := os.ReadFile(os.Getenv("E2E_SLACK_MESSAGES"))
+	raw, err := os.ReadFile(os.Getenv("E2E_SLACK_MESSAGES")) //nolint:gosec // the file hack/e2e.sh wrote for this test
 	if err != nil {
 		t.Fatalf("E2E_SLACK_MESSAGES: %v (run through hack/e2e.sh)", err)
 	}
@@ -63,9 +64,13 @@ func TestSlackMessage(t *testing.T) {
 	if i := strings.LastIndex(text, "\n"); i >= 0 {
 		text = text[:i+1] + digits.ReplaceAllString(traceID.ReplaceAllString(text[i+1:], "<trace>"), "<n>")
 	}
-	out, err := json.MarshalIndent(map[string]any{"text": text, "blocks": blocks}, "", "  ")
-	if err != nil {
+	// Unescaped, so that the masks read <n> and <trace> in the golden.
+	var out bytes.Buffer
+	enc := json.NewEncoder(&out)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(map[string]any{"text": text, "blocks": blocks}); err != nil {
 		t.Fatal(err)
 	}
-	golden.Assert(t, "slack-message.json", append(out, '\n'))
+	golden.Assert(t, "slack-message.json", out.Bytes())
 }

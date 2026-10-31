@@ -1,7 +1,7 @@
 {
   "source": "hand-written",
   "date": "2026-10-31",
-  "description": "The Doc on proxy-timeout (spec 03), written by hand until a recorded set replaces it (make fakellm-record with a real model). Each exchange answers the conversation as it stands; kagent executes the tool calls through the gateway against the real MCP servers. Tools are offered under the hash of the 48 tools kagent offers the demo Doc (captured on the e2e cluster): the read tools of the kubernetes, prometheus and five corpus connectors, and kagent's own ask_user.",
+  "description": "The Doc on proxy-timeout (spec 03), written by hand until a recorded set replaces it (make fakellm-record with a real model). Each exchange answers the conversation as it stands; kagent executes the tool calls through the gateway against the real MCP servers. Tools are offered under the hash of the 48 tools kagent offers the demo Doc (captured on the e2e cluster): the read tools of the kubernetes, prometheus and five corpus connectors, and kagent's own ask_user. When a connector's tool set changes, the hash changes and replay fails: the fake model's \"unknown request\" log line prints the request's fingerprint (with the new hash) and the offered tool names, which is what a fixture needs, without a real key.",
   "exchanges": [
     {
       "fingerprint": {

@@ -9,9 +9,10 @@
 # trace in Jaeger, and nothing served but the fixtures. Every check prints
 # PASS or FAIL and the run asserts their total.
 # Usage: hack/e2e.sh [run|fakes|record|status|down]   (run keeps the cluster
-# for inspection; fakes redeploys the fakes and their fixtures; record
-# replaces the fixtures with a real model's conversation; status prints what
-# a failed run needs, for CI)
+# for inspection and needs a fresh one: make e2e-down before running it
+# again; fakes redeploys the fakes and their fixtures; record replaces the
+# fixtures with a real model's conversation; status prints what a failed run
+# needs, for CI)
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -24,19 +25,16 @@ NS=takecare-system
 E2E_NS=takecare-e2e
 export KUBECONFIG="${PWD}/bin/takecare-demo.kubeconfig"
 export DEMO_IMAGES=build DEMO_VALUES=test/e2e/values-e2e.yaml
-# A real key, for `record` only: from the environment or .env, never
-# printed, never given to the demo's gateway.
+# A real key, for `record` only, read before the placeholders below: from
+# the environment; record reads .env itself. Never printed, never given to
+# the demo's gateway.
 REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
-if [[ -z "$REAL_MODEL_API_KEY" && -f .env ]]; then
-  # shellcheck disable=SC1091
-  REAL_MODEL_API_KEY="$(set -a && source .env && printf '%s' "${TAKECARE_MODEL_API_KEY:-}")"
-fi
 # Placeholders: the fake provider ignores the key, the fake Slack accepts
 # this token only. Nothing here is a credential, and .env is not read again.
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=7
+CHECKS_EXPECTED=8
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -115,8 +113,12 @@ run() {
     bash -c "f=\$($get='{.spec.alert.firedAt}'); c=\$($get='{.status.completedAt}'); (( \$(date -d \"\$c\" +%s 2>/dev/null || date -j -f %Y-%m-%dT%H:%M:%SZ \"\$c\" +%s) - \$(date -d \"\$f\" +%s 2>/dev/null || date -j -f %Y-%m-%dT%H:%M:%SZ \"\$f\" +%s) < 180 ))"
   check "published to the on-call destination" \
     bash -c "[[ \$($get='{.status.published.ok}') == true ]]"
-  # The exact counts the fixtures serve: values-e2e scrapes the gateway twice
-  # on purpose, so a usage that does not collapse duplicate scrapes fails.
+  # values-e2e scrapes the gateway a second time on purpose: the usage check
+  # below guards the deduplication only while that second scrape happens.
+  check "the gateway's second scrape (job agentgateway-duplicate) is up" \
+    bash -c "kubectl -n $NS port-forward svc/prometheus-server 18990:80 >/dev/null 2>&1 & pf=\$!; sleep 2; curl -s 'http://localhost:18990/api/v1/query?query=up%7Bjob%3D%22agentgateway-duplicate%22%7D' | jq -e '[.data.result[] | select(.value[1] == \"1\")] | length > 0' >/dev/null; r=\$?; kill \$pf; exit \$r"
+  # The exact counts the fixtures serve: with the gateway scraped twice, a
+  # usage that does not collapse duplicate scrapes fails.
   local want
   want="$(jq -r '[.exchanges[].response.usage] | "\(map(.prompt_tokens) | add) \(map(.completion_tokens) | add) \(length)"' "$FIXTURES"/*.json)"
   check "usage measured exactly: input, output tokens and model calls = the fixtures' (${want})" \
@@ -139,18 +141,27 @@ run() {
 }
 
 # record replaces the fixtures with a real model's conversation: the fake
-# model in record mode, forwarding to FAKELLM_UPSTREAM (default OpenRouter)
-# with the key FAKELLM_UPSTREAM_KEY (or TAKECARE_MODEL_API_KEY from the
-# environment or .env), for the model FAKELLM_UPSTREAM_MODEL. Run on a demo
-# brought up by `hack/e2e.sh run` or `fakes` + `demo.sh up`; costs one real
-# investigation.
+# model in record mode, forwarding to FAKELLM_UPSTREAM with the key
+# FAKELLM_UPSTREAM_KEY (or TAKECARE_MODEL_API_KEY from the environment or
+# .env), for the model FAKELLM_UPSTREAM_MODEL (both by default the demo's).
+# Run on a demo brought up by `hack/e2e.sh run` or `fakes` + `demo.sh up`;
+# costs one real investigation.
 record() {
   local key="${FAKELLM_UPSTREAM_KEY:-${REAL_MODEL_API_KEY:-}}"
+  if [[ -z "$key" && -f .env ]]; then
+    # shellcheck disable=SC1091
+    key="$(set -a && source .env && printf '%s' "${TAKECARE_MODEL_API_KEY:-}")"
+  fi
   [[ -n "$key" ]] || { echo "FAKELLM_UPSTREAM_KEY (a real model key) is required" >&2; exit 1; }
   printf '%s' "$key" | kubectl -n "$E2E_NS" create secret generic fake-llm-upstream \
     --from-file=key=/dev/stdin --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  # By default, the demo's own provider and model (values-demo.yaml).
+  local upstream model
+  upstream="${FAKELLM_UPSTREAM:-$(awk '$1 == "baseURL:" {print $2; exit}' charts/takecare/values-demo.yaml)}"
+  model="${FAKELLM_UPSTREAM_MODEL:-$(awk '$1 == "model:" {print $2; exit}' charts/takecare/values-demo.yaml)}"
+  [[ -n "$upstream" && -n "$model" ]] || { echo "no provider or model in values-demo.yaml: set FAKELLM_UPSTREAM and FAKELLM_UPSTREAM_MODEL" >&2; exit 1; }
   kubectl -n "$E2E_NS" patch deployment fake-llm --type=json -p '[
-    {"op":"replace","path":"/spec/template/spec/containers/0/args","value":["--mode=record","--upstream='"${FAKELLM_UPSTREAM:-https://openrouter.ai/api/v1}"'","--upstream-model='"${FAKELLM_UPSTREAM_MODEL:-google/gemini-3.7-flash}"'","--api-key-file=/upstream/key","--out=/tmp/recorded.json"]},
+    {"op":"replace","path":"/spec/template/spec/containers/0/args","value":["--mode=record","--upstream='"$upstream"'","--upstream-model='"$model"'","--api-key-file=/upstream/key","--out=/tmp/recorded.json"]},
     {"op":"add","path":"/spec/template/spec/volumes/-","value":{"name":"upstream","secret":{"secretName":"fake-llm-upstream"}}},
     {"op":"add","path":"/spec/template/spec/volumes/-","value":{"name":"tmp","emptyDir":{}}},
     {"op":"add","path":"/spec/template/spec/containers/0/volumeMounts/-","value":{"name":"upstream","mountPath":"/upstream","readOnly":true}},
