@@ -150,11 +150,14 @@ func TestRecordThenReplay(t *testing.T) {
 		if strings.Contains(string(body), `"stream"`) {
 			streamed = "yes"
 		}
+		if !strings.Contains(string(body), `"model":"vendor/real-model"`) {
+			streamed += " (not the upstream model)"
+		}
 		_, _ = io.WriteString(w, `{"id":"r1","object":"chat.completion","model":"m","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"recorded"}}],"usage":{"prompt_tokens":5,"completion_tokens":1,"total_tokens":6}}`)
 	}))
 	defer upstream.Close()
 	out := filepath.Join(t.TempDir(), "recorded.json")
-	rec := NewRecord(upstream.URL+"/", "sk-test", out, upstream.Client(), quiet)
+	rec := NewRecord(upstream.URL+"/", "vendor/real-model", "sk-test", out, upstream.Client(), quiet)
 	srv := httptest.NewServer(rec.Handler())
 	post(t, srv.URL, conversation(1, tools, true))
 	srv.Close()

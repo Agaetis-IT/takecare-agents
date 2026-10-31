@@ -7,7 +7,8 @@
 # context: the cluster's kubeconfig is bin/takecare-demo.kubeconfig, passed
 # explicitly to every command. Secrets come from the environment, or from an
 # optional .env (git-ignored) sourced here and never printed.
-# Usage: hack/demo.sh up|incident|verdict|screens|screens-stop|reset|down
+# DEMO_VALUES names an extra values file (the end-to-end tests' fakes).
+# Usage: hack/demo.sh cluster|up|incident|verdict|screens|screens-stop|reset|down
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -104,7 +105,10 @@ secrets() {
 # made of (the charts, the values, the flags, the image tag) matches the
 # release in place: a second make demo-up changes nothing.
 install() {
-  local tag="$1" sets=() crds=(--set demo.enabled=true)
+  local tag="$1" sets=() crds=(--set demo.enabled=true) values=(-f charts/takecare/values-demo.yaml)
+  if [[ -n "${DEMO_VALUES:-}" ]]; then
+    values+=(-f "$DEMO_VALUES")
+  fi
   if [[ -n "$tag" ]]; then
     # The CRD chart's hook job runs the operator's image too.
     crds+=(--set "image.tag=${tag}")
@@ -117,7 +121,7 @@ install() {
       --set addons.reportSlack.destinations[1].name=review --set "addons.reportSlack.destinations[1].target=${TAKECARE_SLACK_REVIEW_CHANNEL:-$TAKECARE_SLACK_ONCALL_CHANNEL}")
   fi
   local stamp
-  stamp="$( (find charts -type f | sort | xargs shasum; printf '%s\n' "${crds[@]}" "${sets[@]}") | shasum | cut -c1-40)"
+  stamp="$( (find charts ${DEMO_VALUES:+"$DEMO_VALUES"} -type f | sort | xargs shasum; printf '%s\n' "${crds[@]}" "${sets[@]}") | shasum | cut -c1-40)"
   if [[ "$(cat "${STATE}/helm" 2>/dev/null)" == "$stamp" ]] && "$HELM" status takecare -n "$NS" >/dev/null 2>&1; then
     log "charts and values unchanged: the releases stay as they are"
     return 0
@@ -127,13 +131,14 @@ install() {
   # The TakeCareDemo before the operator: its controller writes the corpora
   # the corpus servers need to be ready, which the install below waits for.
   kubectl apply -f demo/manifests/demo.yaml >/dev/null
-  "$HELM" upgrade --install takecare charts/takecare -n "$NS" -f charts/takecare/values-demo.yaml "${sets[@]}" \
+  "$HELM" upgrade --install takecare charts/takecare -n "$NS" "${values[@]}" "${sets[@]}" \
     --wait --timeout 10m >/dev/null
   echo "$stamp" >"${STATE}/helm"
 }
 
 up() {
-  if [[ -f .env ]]; then
+  # DEMO_NO_DOTENV=1: the caller set every variable (the end-to-end test).
+  if [[ -f .env && "${DEMO_NO_DOTENV:-}" != 1 ]]; then
     set -a
     # shellcheck disable=SC1091
     source .env
@@ -251,6 +256,11 @@ down() {
 }
 
 case "${1:-}" in
+  cluster)
+    prerequisites
+    mkdir -p "$STATE"
+    cluster
+    ;;
   up) up ;;
   incident) incident ;;
   verdict) verdict ;;
@@ -258,5 +268,5 @@ case "${1:-}" in
   screens-stop) screens_stop ;;
   reset) reset ;;
   down) down ;;
-  *) die "usage: $0 up|incident|verdict|screens|screens-stop|reset|down" ;;
+  *) die "usage: $0 cluster|up|incident|verdict|screens|screens-stop|reset|down" ;;
 esac
