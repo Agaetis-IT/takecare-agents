@@ -1,0 +1,54 @@
+# values-e2e.yaml: the end-to-end tests' overrides of values-demo.yaml
+# (spec 04): the model is the fake provider, Slack is the fake Slack, both
+# in the namespace takecare-e2e, which the e2e creates (never the chart).
+# No product NetworkPolicy changes: the gateway's egress is not bounded,
+# and the report server reaches the fake Slack through its proxy hook.
+
+platform:
+  models:
+    - name: default
+      provider: openai-compatible
+      baseURL: http://fake-llm.takecare-e2e.svc:8080/v1
+      model: e2e-doc
+      apiKeySecretRef:
+        name: takecare-model
+        key: apiKey
+      pricing:
+        inputPerMTok: "0.75"
+        cachedInputPerMTok: "0.075"
+        outputPerMTok: "3.75"
+        currency: USD
+
+addons:
+  reportSlack:
+    apiURL: http://fake-slack.takecare-e2e.svc:8080/api
+    egress:
+      proxy:
+        namespace: takecare-e2e
+        podSelector:
+          app: fake-slack
+        port: 8080
+
+# A second scrape of the gateway's metrics, ON PURPOSE: the chart's
+# kubernetes-pods job already scrapes them, and a customer's Prometheus often
+# does it twice (a PodMonitor and an annotation job). The operator's usage
+# queries must collapse the duplicate; the e2e asserts the exact token counts
+# of the fixtures, so a usage doubled by this job fails it.
+prometheus:
+  extraScrapeConfigs: |
+    - job_name: agentgateway-duplicate
+      kubernetes_sd_configs:
+        - role: pod
+          namespaces:
+            names: [takecare-system]
+      relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_label_gateway_networking_k8s_io_gateway_name]
+          regex: agentgateway-proxy
+          action: keep
+        - source_labels: [__meta_kubernetes_pod_ip]
+          target_label: __address__
+          replacement: $1:15020
+        - source_labels: [__meta_kubernetes_namespace]
+          target_label: namespace
+        - source_labels: [__meta_kubernetes_pod_label_gateway_networking_k8s_io_gateway_name]
+          target_label: gateway_networking_k8s_io_gateway_name

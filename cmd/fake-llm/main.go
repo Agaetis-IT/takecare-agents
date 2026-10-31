@@ -34,6 +34,7 @@ func run(args []string) error {
 	mode := fs.String("mode", "replay", "replay (serve the fixtures) or record (proxy to --upstream and write --out).")
 	fixtures := fs.String("fixtures", "/fixtures", "Directory of the fixture files to replay.")
 	upstream := fs.String("upstream", "", "Record mode: the real provider's OpenAI-compatible base URL.")
+	model := fs.String("upstream-model", "", "Record mode: the model to ask the real provider for (the request's otherwise).")
 	keyFile := fs.String("api-key-file", "", "Record mode: file holding the real provider's key (never logged).")
 	out := fs.String("out", "/recorded/fixtures.json", "Record mode: the fixture file to write.")
 	listen := fs.String("listen", ":8080", "Address to serve on.")
@@ -59,7 +60,7 @@ func run(args []string) error {
 		if err != nil || *upstream == "" {
 			return errors.New("record mode needs --upstream and a readable --api-key-file")
 		}
-		srv = fakellm.NewRecord(*upstream, strings.TrimSpace(string(key)), *out, &http.Client{Timeout: 120 * time.Second}, log)
+		srv = fakellm.NewRecord(*upstream, *model, strings.TrimSpace(string(key)), *out, &http.Client{Timeout: 120 * time.Second}, log)
 	default:
 		return fmt.Errorf("mode %q: replay or record", *mode)
 	}

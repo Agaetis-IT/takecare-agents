@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +39,7 @@ type Server struct {
 
 	// Record mode only.
 	upstream string
+	model    string
 	apiKey   string
 	http     *http.Client
 	out      string
@@ -64,11 +66,13 @@ func NewReplay(files []Fixtures, log *slog.Logger) (*Server, error) {
 }
 
 // NewRecord proxies to a real provider and writes what it answers to out.
-// The key is read once and never logged.
-func NewRecord(upstream, apiKey, out string, hc *http.Client, log *slog.Logger) *Server {
+// model, if set, replaces the request's model upstream (the e2e names its
+// model e2e-doc); the fingerprint keeps the request's. The key is read once
+// and never logged.
+func NewRecord(upstream, model, apiKey, out string, hc *http.Client, log *slog.Logger) *Server {
 	return &Server{
 		log: log, known: map[string]json.RawMessage{},
-		upstream: strings.TrimSuffix(upstream, "/"), apiKey: apiKey, http: hc, out: out,
+		upstream: strings.TrimSuffix(upstream, "/"), model: model, apiKey: apiKey, http: hc, out: out,
 		recorded: Fixtures{Source: "recorded", Date: time.Now().UTC().Format(time.DateOnly)},
 	}
 }
@@ -114,6 +118,15 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(s.Stats())
 	})
+	// The recorded fixtures, to fetch them out of the pod (record mode).
+	mux.HandleFunc("GET /recorded", func(w http.ResponseWriter, _ *http.Request) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(s.recorded)
+	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "ok\n") })
 	return mux
 }
@@ -147,7 +160,10 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 		}
 		s.mu.Unlock()
 		if resp == nil {
-			s.log.Error("unknown request: no fixture has this fingerprint", "fingerprint", fp.Key())
+			// The tools offered and the stream flag are what a fixture's author
+			// needs to write the missing exchange; no content is logged.
+			s.log.Error("unknown request: no fixture has this fingerprint", "fingerprint", fp.Key(),
+				"called", fp.Called, "offered", offered(&req), "stream", req.Stream)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{
@@ -173,6 +189,9 @@ func (s *Server) forward(ctx context.Context, body []byte, fp Fingerprint) (json
 	}
 	delete(generic, "stream")
 	delete(generic, "stream_options")
+	if s.model != "" {
+		generic["model"] = s.model
+	}
 	plain, err := json.Marshal(generic)
 	if err != nil {
 		return nil, fmt.Errorf("encode the request: %w", err)
@@ -197,6 +216,12 @@ func (s *Server) forward(ctx context.Context, body []byte, fp Fingerprint) (json
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	for _, e := range s.recorded.Exchanges {
+		if e.Fingerprint.Key() == fp.Key() {
+			// Replay would refuse the file: say it now, not at the next replay.
+			s.log.Warn("this fingerprint was already recorded: replay will refuse the file until one of the two exchanges is removed", "fingerprint", fp.Key())
+		}
+	}
 	s.recorded.Exchanges = append(s.recorded.Exchanges, Exchange{Fingerprint: fp, Response: resp})
 	s.stats.Recorded++
 	raw, err := json.MarshalIndent(s.recorded, "", "  ")
@@ -261,3 +286,13 @@ func (s *Server) stream(w http.ResponseWriter, resp json.RawMessage, usage bool)
 
 // ErrNoFixtures says a replay server was given nothing to serve.
 var ErrNoFixtures = errors.New("no fixture to replay")
+
+// offered lists the names of the tools offered, sorted.
+func offered(r *Request) []string {
+	names := make([]string, 0, len(r.Tools))
+	for _, t := range r.Tools {
+		names = append(names, t.Function.Name)
+	}
+	slices.Sort(names)
+	return names
+}

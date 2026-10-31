@@ -1,0 +1,28 @@
+{
+  "blocks": [
+    {
+      "text": {
+        "text": "Doc · HighErrorRate on billing-api",
+        "type": "plain_text"
+      },
+      "type": "header"
+    },
+    {
+      "text": {
+        "text": "Observed: the billing-db-proxy DBProxy (ack-system) closes idle client connections after 600 s (spec.idleClientTimeout), while billing-api recycles idle pool connections after 900 s (DB_POOL_IDLE_TIMEOUT_SECONDS). 504s rose on billing-api with the pod Running and Ready, no restart. The deployment log records the change setting idleClientTimeout to 600 on the billing DBProxy about 12 h ago.\nRoot cause: the proxy's idle timeout (600 s) is shorter than the pool's recycling (900 s), so the pool reuses connections the proxy already closed (RB-014).\nAction: the platform team raises the DBProxy idleClientTimeout above 900 s, or the billing team lowers the pool's idle timeout below 600 s.\nRuled out: memory growth, a symptom of failing requests, not the cause (RB-007's warning); the load balancer idle timeout change, which concerns long exports only.",
+        "type": "mrkdwn"
+      },
+      "type": "section"
+    },
+    {
+      "elements": [
+        {
+          "text": "\u003cn\u003es after the alert · \u003cn\u003e model calls · \u003cn\u003e,\u003cn\u003e tokens · \u003cn\u003e USD · trace \u003ctrace\u003e",
+          "type": "mrkdwn"
+        }
+      ],
+      "type": "context"
+    }
+  ],
+  "text": "Doc · HighErrorRate on billing-api\nObserved: the billing-db-proxy DBProxy (ack-system) closes idle client connections after 600 s (spec.idleClientTimeout), while billing-api recycles idle pool connections after 900 s (DB_POOL_IDLE_TIMEOUT_SECONDS). 504s rose on billing-api with the pod Running and Ready, no restart. The deployment log records the change setting idleClientTimeout to 600 on the billing DBProxy about 12 h ago.\nRoot cause: the proxy's idle timeout (600 s) is shorter than the pool's recycling (900 s), so the pool reuses connections the proxy already closed (RB-014).\nAction: the platform team raises the DBProxy idleClientTimeout above 900 s, or the billing team lowers the pool's idle timeout below 600 s.\nRuled out: memory growth, a symptom of failing requests, not the cause (RB-007's warning); the load balancer idle timeout change, which concerns long exports only.\n\u003cn\u003es after the alert · \u003cn\u003e model calls · \u003cn\u003e,\u003cn\u003e tokens · \u003cn\u003e USD · trace \u003ctrace\u003e"
+}
