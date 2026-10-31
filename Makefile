@@ -227,11 +227,6 @@ docker-buildx: ## Build every image for amd64 and arm64 (pushed only with PUSH=t
 	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-corpus -t $(MCP_CORPUS_IMG) \
 		$(if $(filter true,$(PUSH)),--push,) .
 
-##@ Not yet implemented
-
-.PHONY: demo-bench
-demo-bench: ## Accuracy bench on the demo (PR 6).
-	@echo "$@: not implemented yet, see CLAUDE.md (PR 6)"; exit 1
 
 ##@ End-to-end (spec 04; never changes your kube context)
 
@@ -245,13 +240,16 @@ fakellm-record: ## Replace the fake model's fixtures with a real model's convers
 
 ##@ Demo (spec 03; never changes your kube context)
 
-.PHONY: demo-up demo-incident demo-verdict demo-screens demo-screens-stop demo-reset demo-down
+.PHONY: demo-up demo-incident demo-verdict demo-bench demo-screens demo-screens-stop demo-reset demo-down
 demo-up: ## Create the k3d demo and install everything (TAKECARE_MODEL_API_KEY; DEMO_IMAGES=build until the first release).
 	hack/demo.sh up
 demo-incident: ## Start the proxy-timeout incident and print the expected alert window.
 	hack/demo.sh incident
 demo-verdict: ## Wait for the Doc's diagnosis of the incident and print it with its usage.
 	hack/demo.sh verdict
+N ?= 5
+demo-bench: ## Accuracy bench: N silent investigations of the ongoing incident, scored (the Doc's cooldown is 1 s meanwhile; BENCH_MIN=k fails under k).
+	hack/bench.sh $(N)
 demo-screens: ## Port-forward Prometheus, Alertmanager and Jaeger, and print the URLs.
 	hack/demo.sh screens
 demo-screens-stop: ## Stop the port-forwards demo-screens started.

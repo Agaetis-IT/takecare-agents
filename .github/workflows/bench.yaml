@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: 2026 Agaetis
+# SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+
+# The accuracy bench (spec 04) with a real model: the demo on k3d, the
+# proxy-timeout incident, then N silent investigations scored by
+# hack/bench.sh. Manual only; the model key is the repository secret
+# TAKECARE_MODEL_API_KEY. No Slack token: the demo reports to its log. The
+# report and the table are uploaded as artifacts, never committed.
+name: bench
+
+on:
+  workflow_dispatch:
+    inputs:
+      n:
+        description: Number of investigations
+        default: "5"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench
+  cancel-in-progress: false
+
+jobs:
+  bench:
+    name: accuracy bench on k3d (real model)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: check the model key
+        env:
+          TAKECARE_MODEL_API_KEY: ${{ secrets.TAKECARE_MODEL_API_KEY }}
+          N: ${{ inputs.n }}
+        run: |
+          if [ -z "$TAKECARE_MODEL_API_KEY" ]; then
+            echo "the repository secret TAKECARE_MODEL_API_KEY is not set: the bench needs a real model" >&2
+            exit 1
+          fi
+          if ! [[ "$N" =~ ^[1-9][0-9]?$ ]]; then
+            echo "n must be an integer from 1 to 99" >&2
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: install k3d (version and checksum from hack/versions.env)
+        run: |
+          set -euo pipefail
+          source hack/versions.env
+          curl -fsSL -o /tmp/k3d "https://github.com/k3d-io/k3d/releases/download/${K3D_VERSION}/k3d-linux-amd64"
+          echo "${K3D_SHA256_LINUX_AMD64}  /tmp/k3d" | sha256sum -c -
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+      - name: free the runner's disk
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
+          free_gb=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
+          if [ "$free_gb" -lt 20 ]; then
+            echo "only ${free_gb} GB free: the demo needs about 20 GB (images, the agent's included)" >&2
+            exit 1
+          fi
+      - name: demo up
+        env:
+          TAKECARE_MODEL_API_KEY: ${{ secrets.TAKECARE_MODEL_API_KEY }}
+          DEMO_IMAGES: build
+          DEMO_NO_DOTENV: "1"
+        run: make demo-up
+      - run: make demo-incident
+      # Spec 04's threshold, 4 out of 5, scaled to N: ceil(4N/5).
+      - name: bench
+        env:
+          N: ${{ inputs.n }}
+          BENCH_DIR: bin/bench
+        run: |
+          set -euo pipefail
+          export BENCH_MIN=$(( (4 * N + 4) / 5 ))
+          hack/bench.sh "$N" | tee bin/bench-table.md
+      - name: table in the run's summary
+        if: always()
+        run: cat bin/bench-table.md >>"$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: bench-report
+          path: |
+            bin/bench/report-*.json
+            bin/bench-table.md
+          if-no-files-found: warn
+      - name: cluster state on failure
+        if: failure()
+        run: hack/e2e.sh status || true

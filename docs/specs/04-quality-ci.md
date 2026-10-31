@@ -68,7 +68,7 @@ A small HTTP server implementing `chat.postMessage` and `auth.test`, recording m
 
 Taken from the POC's `mesures.py`:
 
-- runs N investigations on the ongoing `proxy-timeout` incident by posting N synthetic `HighErrorRate` alerts to `/v1/alerts`, each with a distinct `bench_run=<i>` label (hence a distinct fingerprint, so neither dedup nor cooldown applies) and the label `takecare_silent="true"` (no Slack, spec 02);
+- runs N investigations on the ongoing `proxy-timeout` incident by posting N synthetic `HighErrorRate` alerts to `/v1/alerts`, each with a distinct `bench_run=<i>` label (hence a distinct fingerprint, so the fingerprint deduplication does not apply; grouping by incident, spec 02 §1, would fold them into the ongoing incident's investigation, so the bench sets the Doc's `cooldown` to 1 s for its duration and restores it on exit, posting one alert at a time) and the label `takecare_silent="true"` (no Slack, spec 02);
 - a diagnosis is **correct** when it names the proxy (`proxy`) **and** the idle timeout (`idle`, `idleClientTimeout`, `600 s`), case-insensitive;
 - it also reports whether the memory lead is mentioned (measured, not scored), the length, the duration, the model calls, tokens and cost of each run;
 - output: a table and a JSON report (`test/bench/report-<date>.json`).

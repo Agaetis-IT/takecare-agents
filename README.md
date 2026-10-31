@@ -128,7 +128,7 @@ make demo-reset                     # puts the scenery back in shape, ready for 
 make demo-down                      # deletes the cluster and the demo's working files
 ```
 
-`DEMO_IMAGES=build` builds the images from this tree and imports them into the cluster. Until the first release publishes them, it is the only way. Without it, `demo-up` pulls the release images from the registry. A second `make demo-up` changes nothing and takes seconds. With `TAKECARE_SLACK_BOT_TOKEN` and `TAKECARE_SLACK_ONCALL_CHANNEL` (and optionally `TAKECARE_SLACK_REVIEW_CHANNEL`), diagnoses are posted to Slack; without them they go to the report server's log, and `make demo-verdict` reads them from the investigation. `make demo-bench N=5` arrives with PR 6.
+`DEMO_IMAGES=build` builds the images from this tree and imports them into the cluster. Until the first release publishes them, it is the only way. Without it, `demo-up` pulls the release images from the registry. A second `make demo-up` changes nothing and takes seconds. With `TAKECARE_SLACK_BOT_TOKEN` and `TAKECARE_SLACK_ONCALL_CHANNEL` (and optionally `TAKECARE_SLACK_REVIEW_CHANNEL`), diagnoses are posted to Slack; without them they go to the report server's log, and `make demo-verdict` reads them from the investigation. `make demo-bench N=5` runs the accuracy bench on the ongoing incident (see `test/bench/README.md`).
 
 Prerequisites: Docker with at least 4 GB of memory (the stack uses about 3.5 GiB in an incident), k3d, kubectl, make; Helm 4 is downloaded by the Makefile.
 
