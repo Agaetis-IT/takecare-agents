@@ -98,8 +98,9 @@ connector_ready() {
   wait_condition takecareconnector "$1" Ready True
 }
 
-# empty_corpora writes empty corpora where the TakeCareDemo controller will
-# write its own (PR 5d-2), so that the corpus servers are ready (helm --wait).
+# empty_corpora writes empty corpora where the TakeCareDemo controller writes
+# its own, so that the corpus servers are ready without a TakeCareDemo (helm
+# --wait); the controller replaces them, and they go with their demo.
 empty_corpora() {
   for src in "${CORPUS_SOURCES[@]}"; do
     kubectl -n "$NS" create configmap "takecare-demo-corpus-${src}" --from-literal=data.json='[]' \
@@ -280,6 +281,10 @@ YAML
     wait_condition_long takecaredemo demo Ready True 180
   check "the healthy DBProxy keeps AWS's default idle timeout" \
     test -z "$(kubectl -n ack-system get dbproxies.rds.services.k8s.aws billing-db-proxy -o jsonpath='{.spec.idleClientTimeout}')"
+  check "the controller writes the healthy corpus into the five ConfigMaps" \
+    bash -c "for src in ${CORPUS_SOURCES[*]}; do [[ \$(kubectl -n ${NS} get configmap takecare-demo-corpus-\$src -o jsonpath='{.metadata.annotations.takecare\.agaetis\.fr/scenario}') == none && \$(kubectl -n ${NS} get configmap takecare-demo-corpus-\$src -o jsonpath='{.data.data\.json}' | wc -c) -gt 1000 ]] || exit 1; done"
+  check "SceneryReady finds the rules Prometheus loaded equal to the chart's" \
+    bash -c "for _ in \$(seq 24); do [[ \$(kubectl -n ${NS} get takecaredemo demo -o jsonpath='{.status.conditions[?(@.type==\"SceneryReady\")].message}') == *\"Prometheus loaded the chart's rules\"* ]] && exit 0; sleep 5; done; exit 1"
   kubectl -n "$NS" annotate takecaredemo demo takecare.agaetis.fr/incident="$(date +%s)" --overwrite >/dev/null
   check "the incident sets idleClientTimeout 600 and starts with the leaky pod" \
     bash -c "for _ in \$(seq 36); do [[ -n \$(kubectl -n ${NS} get takecaredemo demo -o jsonpath='{.status.expectedAlertWindow.from}') ]] && break; sleep 5; done; [[ \$(kubectl -n ack-system get dbproxies.rds.services.k8s.aws billing-db-proxy -o jsonpath='{.spec.idleClientTimeout}') == 600 && -n \$(kubectl -n ${NS} get takecaredemo demo -o jsonpath='{.status.incidentStartedAt}') ]]"
@@ -289,6 +294,10 @@ YAML
   kubectl -n "$NS" delete takecaredemo demo --timeout=60s >/dev/null
   check "deleting the TakeCareDemo removes billing-api and the DBProxy" \
     bash -c "! kubectl -n demo-apps get deployment billing-api >/dev/null 2>&1 && ! kubectl -n ack-system get dbproxies.rds.services.k8s.aws billing-db-proxy >/dev/null 2>&1"
+  # The corpora went with their demo (ownerReferences): empty ones again, so
+  # that the corpus servers stay ready for the upgrade's --wait.
+  kubectl -n "$NS" wait --for=delete configmap/takecare-demo-corpus-incidents --timeout=60s >/dev/null 2>&1 || true
+  empty_corpora
   log "the report connector (spec 05): log mode in the demo"
   check "connector report reaches Ready=True (log adapter)" \
     connector_ready report
@@ -512,10 +521,10 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=65 install ;;
-  upgrade) CHECKS_EXPECTED=65 upgrade ;;
+  install) CHECKS_EXPECTED=67 install ;;
+  upgrade) CHECKS_EXPECTED=67 upgrade ;;
   status) status ;;
   down) down ;;
-  all) up; CHECKS_EXPECTED=65 install; CHECKS_EXPECTED=65 upgrade ;;
+  all) up; CHECKS_EXPECTED=67 install; CHECKS_EXPECTED=67 upgrade ;;
   *) echo "usage: $0 [up|install|upgrade|status|down|all]"; exit 2 ;;
 esac

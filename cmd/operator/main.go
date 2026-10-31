@@ -311,7 +311,7 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	if cfg.demo {
 		if err := (&demo.Reconciler{
 			Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("takecare-operator"),
-			AppImage: cfg.demoAppImage,
+			AppImage: cfg.demoAppImage, Rules: demo.PrometheusRules(promClient),
 		}).SetupWithManager(mgr); err != nil {
 			return nil, fmt.Errorf("set up the demo controller: %w", err)
 		}

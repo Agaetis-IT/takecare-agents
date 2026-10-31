@@ -2,19 +2,24 @@
 // SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
 
 // Package demo is the TakeCareDemo controller (spec 03): it deploys the
-// proxy-timeout scenery (billing-api, its Service, the DBProxy) and replays
-// its incident on request, through the annotations AnnotationIncident and
-// AnnotationReset. Demo only: the operator runs it with --demo, which the
-// chart sets with demo.enabled.
+// proxy-timeout scenery (billing-api, its Service, the DBProxy, the corpus)
+// and replays its incident on request, through the annotations
+// AnnotationIncident and AnnotationReset. Demo only: the operator runs it
+// with --demo, which the chart sets with demo.enabled.
 //
 // The scenery lives in the demo's app and platform namespaces, which the
 // manager's cache does not cover: the cache lists the release and engine
 // namespaces only, and a namespace it listed without rights would fail its
-// sync, and the operator with it. So the controller reads the scenery
-// through the uncached API reader, writes it with
+// sync, and the operator with it. So the controller reads the scenery, and
+// the corpus ConfigMaps, through the uncached API reader, writes them with
 // server-side apply, and looks again at a periodic requeue instead of
 // watching them. Its rights there come from the chart's demo Roles, under
 // demo.enabled, never from RBAC markers: a production install holds none.
+//
+// At each reconcile it tells what drifted from what it writes (see
+// drift.go): it writes the scenery again and reports the drift as an event;
+// the rules Prometheus loaded, which the chart owns, it can only report, in
+// SceneryReady.
 package demo
 
 import (
@@ -52,6 +57,8 @@ const (
 	ReasonIncidentStarting     = "IncidentStarting"
 	ReasonIncident             = "Incident"
 	ReasonReset                = "Reset"
+	ReasonSceneryDrift         = "SceneryDrift"
+	ReasonPhaseChanged         = "PhaseChanged"
 )
 
 const (
@@ -74,6 +81,17 @@ type Reconciler struct {
 	Recorder recorder.EventRecorder
 	// AppImage is billing-api's image (takecare-agents-demo-app).
 	AppImage string
+	// Rules reads the alerting rules Prometheus loaded; nil leaves them
+	// unchecked.
+	Rules RulesFunc
+	Now   func() time.Time
+}
+
+func (r *Reconciler) now() time.Time {
+	if r.Now != nil {
+		return r.Now()
+	}
+	return time.Now()
 }
 
 // Reconcile applies the scenery of the demo's phase, handles a new action
@@ -110,23 +128,45 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, r.patchStatus(ctx, before, &d)
 	}
 
-	if err := r.handleActions(ctx, &d); err != nil {
+	action, err := r.handleActions(ctx, &d)
+	if err != nil {
 		return ctrl.Result{}, err
 	}
 	incident := d.Status.Phase == v1alpha1.DemoIncidentInProgress
+	// Drift is what moved since the last apply; right after an action the
+	// differences are the action's.
+	drift, err := r.sceneryDrift(ctx, &d, incident, action)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 	if err := r.applyScenery(ctx, &d, incident); err != nil {
 		return ctrl.Result{}, err
+	}
+	corpusDrift, err := r.syncCorpus(ctx, &d, incident, action, r.now())
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if drift = append(drift, corpusDrift...); len(drift) > 0 {
+		r.Recorder.Eventf(&d, nil, corev1.EventTypeWarning, ReasonSceneryDrift, "Reconcile", "scenery drift, written again: %s", strings.Join(drift, "; "))
 	}
 	missing, startedAt, err := r.observe(ctx, &d, incident)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+	rules, unchecked, err := r.checkRules(ctx, &d)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	missing = append(missing, rules...)
 	if startedAt.IsZero() && (!incident || d.Status.IncidentStartedAt != nil) {
 		// The leaky pod is awaited while the incident starts; otherwise an
 		// app that is not available in its mode is missing.
 		missing = append(missing, fmt.Sprintf("%s is not available in mode %s", appName, mode(incident)))
 	}
-	r.report(&d, incident, missing, startedAt)
+	r.report(&d, incident, missing, startedAt, unchecked)
+	if d.Status.Phase != before.Status.Phase {
+		r.Recorder.Eventf(&d, nil, corev1.EventTypeNormal, ReasonPhaseChanged, "Reconcile", "phase %s (was %s)", d.Status.Phase, phaseName(before.Status.Phase))
+	}
 	if err := r.patchStatus(ctx, before, &d); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -137,12 +177,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 }
 
 // handleActions takes a new reset, then a new incident (an incident starts
-// from a reset scenery anyway).
-func (r *Reconciler) handleActions(ctx context.Context, d *v1alpha1.TakeCareDemo) error {
+// from a reset scenery anyway), and reports whether it took one.
+func (r *Reconciler) handleActions(ctx context.Context, d *v1alpha1.TakeCareDemo) (bool, error) {
+	action := false
 	if v := d.Annotations[v1alpha1.AnnotationReset]; v != "" && v != d.Status.LastHandled.Reset {
 		if err := r.deleteInvestigations(ctx, d); err != nil {
-			return err
+			return false, err
 		}
+		action = true
 		d.Status.LastHandled.Reset = v
 		d.Status.Phase = v1alpha1.DemoResetting
 		d.Status.IncidentStartedAt, d.Status.ExpectedAlertWindow = nil, nil
@@ -150,11 +192,12 @@ func (r *Reconciler) handleActions(ctx context.Context, d *v1alpha1.TakeCareDemo
 	}
 	if v := d.Annotations[v1alpha1.AnnotationIncident]; v != "" && v != d.Status.LastHandled.Incident {
 		d.Status.LastHandled.Incident = v
+		action = true
 		d.Status.Phase = v1alpha1.DemoIncidentInProgress
 		d.Status.IncidentStartedAt, d.Status.ExpectedAlertWindow = nil, nil
 		r.Recorder.Eventf(d, nil, corev1.EventTypeNormal, ReasonIncident, "Incident", "starting incident %s: DBProxy idleClientTimeout %d s, billing-api leaky", v, proxyIdleTimeout)
 	}
-	return nil
+	return action, nil
 }
 
 // deleteInvestigations deletes the Doc's investigations of the app
@@ -212,6 +255,16 @@ func (r *Reconciler) observe(ctx context.Context, d *v1alpha1.TakeCareDemo, inci
 	case err != nil:
 		return nil, startedAt, fmt.Errorf("read the DBProxy: %w", err)
 	}
+	for _, source := range corpus.Sources {
+		var cm corev1.ConfigMap
+		err := r.Reader.Get(ctx, client.ObjectKey{Namespace: d.Namespace, Name: CorpusConfigMap(source)}, &cm)
+		switch {
+		case apierrors.IsNotFound(err):
+			missing = append(missing, fmt.Sprintf("corpus ConfigMap %s is missing", CorpusConfigMap(source)))
+		case err != nil:
+			return nil, startedAt, fmt.Errorf("read the %s corpus: %w", source, err)
+		}
+	}
 	return missing, startedAt, nil
 }
 
@@ -236,7 +289,7 @@ func rolledOut(dep, want *appsv1.Deployment) (time.Time, bool) {
 }
 
 // report moves the phase on and sets the conditions.
-func (r *Reconciler) report(d *v1alpha1.TakeCareDemo, incident bool, missing []string, startedAt time.Time) {
+func (r *Reconciler) report(d *v1alpha1.TakeCareDemo, incident bool, missing []string, startedAt time.Time, unchecked string) {
 	ready := len(missing) == 0
 	switch {
 	case incident && d.Status.IncidentStartedAt == nil && !startedAt.IsZero():
@@ -257,7 +310,11 @@ func (r *Reconciler) report(d *v1alpha1.TakeCareDemo, incident bool, missing []s
 		r.set(d, v1alpha1.ConditionReady, false, ReasonSceneryNotReady, msg)
 		return
 	}
-	r.set(d, v1alpha1.ConditionSceneryReady, true, ReasonReady, "billing-api and the DBProxy are in place; the corpus is not checked yet")
+	msg := "billing-api, the DBProxy and the corpus are as written, and Prometheus loaded the chart's rules"
+	if unchecked != "" {
+		msg = "billing-api, the DBProxy and the corpus are as written; " + unchecked
+	}
+	r.set(d, v1alpha1.ConditionSceneryReady, true, ReasonReady, msg)
 	if incident && d.Status.IncidentStartedAt == nil {
 		r.set(d, v1alpha1.ConditionReady, true, ReasonIncidentStarting, "the incident is starting: waiting for the leaky pod")
 		return
@@ -301,4 +358,11 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Named("takecaredemo").
 		For(&v1alpha1.TakeCareDemo{}).
 		Complete(r)
+}
+
+func phaseName(p v1alpha1.DemoPhase) string {
+	if p == "" {
+		return "none"
+	}
+	return string(p)
 }

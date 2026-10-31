@@ -1,8 +1,9 @@
 {{- if .Values.demo.enabled }}
 {{- /*
 The operator's demo rights (spec 03), DEMO ONLY: the TakeCareDemo controller
-writes billing-api and its Service in the app namespace and the DBProxy in
-the platform namespace, by name. Rendered here under demo.enabled, never
+writes billing-api and its Service in the app namespace, the DBProxy in the
+platform namespace and the corpus ConfigMaps in the release namespace, and
+reads the chart's demo rules there, by name. Rendered here under demo.enabled, never
 from RBAC markers, so that a production install holds none of them;
 test/chart checks both renders.
 Create is listed because a server-side apply that creates an object is
@@ -10,12 +11,19 @@ authorized as a create too, by name. List and watch are deliberately
 absent: the controller reads these objects with a get by name, outside the
 manager's cache.
 */}}
+{{- $corpus := list }}
+{{- range .Values.addons.demoCorpus.sources }}
+{{- $corpus = append $corpus (printf "takecare-demo-corpus-%s" .name) }}
+{{- end }}
 {{- $roles := list
   (dict "ns" .Values.demo.appNamespace "rules" (list
     (dict "apiGroups" (list "apps") "resources" (list "deployments") "names" (list "billing-api"))
     (dict "apiGroups" (list "") "resources" (list "services") "names" (list "billing-api"))))
   (dict "ns" .Values.demo.platformNamespace "rules" (list
     (dict "apiGroups" (list "rds.services.k8s.aws") "resources" (list "dbproxies") "names" (list "billing-db-proxy"))))
+  (dict "ns" .Release.Namespace "rules" (list
+    (dict "apiGroups" (list "") "resources" (list "configmaps") "names" $corpus)
+    (dict "apiGroups" (list "") "resources" (list "configmaps") "names" (list "takecare-demo-rules") "read" true)))
 }}
 {{- range $roles }}
 ---
@@ -32,7 +40,7 @@ rules:
   - apiGroups: {{ toJson .apiGroups }}
     resources: {{ toJson .resources }}
     resourceNames: {{ toJson .names }}
-    verbs: ["get", "create", "patch", "delete"]
+    verbs: {{ ternary (list "get") (list "get" "create" "patch" "delete") (default false .read) | toJson }}
   {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
