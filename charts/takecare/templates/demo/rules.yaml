@@ -1,0 +1,16 @@
+{{- if .Values.demo.enabled }}
+# The demo's alerting rules as this release gives them to Prometheus (the
+# same values), so that the TakeCareDemo controller compares them with the
+# rules Prometheus loaded and reports a drift in SceneryReady (spec 03).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: takecare-demo-rules
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.labels" . | nindent 4 }}
+    app.kubernetes.io/component: demo-scenery
+data:
+  alerting_rules.yml: |
+    {{- index .Values.prometheus.serverFiles "alerting_rules.yml" | toYaml | nindent 4 }}
+{{- end }}

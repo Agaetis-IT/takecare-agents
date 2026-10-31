@@ -18,8 +18,14 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/testenv"
 )
 
+// Names the tests share.
+const (
+	demoName      = "demo"
+	highErrorRate = "HighErrorRate"
+)
+
 func testDemo() *v1alpha1.TakeCareDemo {
-	d := &v1alpha1.TakeCareDemo{Name: "demo", Namespace: "takecare-system"}
+	d := &v1alpha1.TakeCareDemo{Name: demoName, Namespace: "takecare-system"}
 	d.Spec = v1alpha1.TakeCareDemoSpec{Scenario: "proxy-timeout", AppNamespace: "demo-apps", PlatformNamespace: "ack-system", RampMinutes: 4}
 	return d
 }

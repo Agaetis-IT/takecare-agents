@@ -187,9 +187,14 @@ func TestDemoAlertmanagerDeliversToTheDoc(t *testing.T) {
 // engine namespaces.
 func TestDemoOperatorRoles(t *testing.T) {
 	demo := render(t, releaseName, profileArgs("demo")...)
-	want := map[string]map[string][]string{ // namespace -> resource -> names
-		"demo-apps":  {"deployments": {"billing-api"}, "services": {"billing-api"}},
-		"ack-system": {"dbproxies": {"billing-db-proxy"}},
+	const write = " get,create,patch,delete"
+	want := map[string]map[string][]string{ // namespace -> "resource verbs" -> names
+		"demo-apps":  {"deployments" + write: {"billing-api"}, "services" + write: {"billing-api"}},
+		"ack-system": {"dbproxies" + write: {"billing-db-proxy"}},
+		releaseNamespace: {
+			"configmaps" + write: {"takecare-demo-corpus-incidents", "takecare-demo-corpus-runbooks", "takecare-demo-corpus-deployments", "takecare-demo-corpus-vendor", "takecare-demo-corpus-support"},
+			"configmaps get":     {"takecare-demo-rules"},
+		},
 	}
 	got := map[string]map[string][]string{}
 	for _, o := range ofKind(demo, kindRole) {
@@ -210,7 +215,7 @@ func TestDemoOperatorRoles(t *testing.T) {
 				t.Errorf("%s: %v not limited by name", o.GetNamespace(), r.Resources)
 			}
 			for _, res := range r.Resources {
-				got[o.GetNamespace()][res] = r.ResourceNames
+				got[o.GetNamespace()][res+" "+strings.Join(r.Verbs, ",")] = r.ResourceNames
 			}
 		}
 	}
@@ -235,6 +240,34 @@ func TestDemoOperatorRoles(t *testing.T) {
 		args, _, _ := unstructured.NestedStringSlice(containers[0].(map[string]any), "args")
 		if slices.Contains(args, "--demo") {
 			t.Error("prod runs the demo controller")
+		}
+	}
+}
+
+// The operator compares the rules Prometheus loaded with
+// takecare-demo-rules: that ConfigMap must hold exactly what the chart
+// gives Prometheus.
+func TestDemoRulesConfigMapIsPrometheusRules(t *testing.T) {
+	demo := render(t, releaseName, profileArgs("demo")...)
+	ours, prom := byName(demo, "ConfigMap", "takecare-demo-rules"), byName(demo, "ConfigMap", "prometheus-server")
+	if ours == nil || prom == nil {
+		t.Fatalf("takecare-demo-rules %v, prometheus-server %v", ours != nil, prom != nil)
+	}
+	a, _, _ := unstructured.NestedString(ours.Object, "data", "alerting_rules.yml")
+	b, _, _ := unstructured.NestedString(prom.Object, "data", "alerting_rules.yml")
+	var x, y any
+	if err := sigsyaml.Unmarshal([]byte(a), &x); err != nil {
+		t.Fatal(err)
+	}
+	if err := sigsyaml.Unmarshal([]byte(b), &y); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(x, y) || x == nil {
+		t.Errorf("takecare-demo-rules differs from Prometheus's alerting_rules.yml:\n%s\n---\n%s", a, b)
+	}
+	for _, o := range render(t, releaseName, append(profileArgs("prod"), prodSets...)...) {
+		if o.GetName() == "takecare-demo-rules" {
+			t.Error("prod renders the demo rules")
 		}
 	}
 }
