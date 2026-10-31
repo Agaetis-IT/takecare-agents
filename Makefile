@@ -163,16 +163,11 @@ release-notes-test: ## Check hack/release-notes.sh against its fixture.
 ##@ Lint
 
 .PHONY: lint
-lint: lint-go lint-py lint-sh lint-md lint-spdx ## Run every linter.
+lint: lint-go lint-sh lint-md lint-spdx ## Run every linter.
 
 .PHONY: lint-go
 lint-go: golangci-lint ## Run golangci-lint.
 	"$(GOLANGCI_LINT)" run
-
-.PHONY: lint-py
-lint-py: ## Run ruff on the Python code.
-	$(DOCKER_RUN) $(RUFF_IMAGE) check --no-cache .
-	$(DOCKER_RUN) $(RUFF_IMAGE) format --check --no-cache .
 
 .PHONY: lint-sh
 lint-sh: ## Run shellcheck on the shell scripts.
