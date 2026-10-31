@@ -157,7 +157,7 @@ Prerequisites: Docker with at least 4 GB of memory (the stack uses about 3.5 GiB
 make help        # every target
 make generate    # deepcopy, CRDs, RBAC manifests
 make chart-sync  # copy the CRDs and the pinned versions into the charts
-make lint        # golangci-lint, ruff, shellcheck, markdownlint, SPDX headers
+make lint        # golangci-lint, shellcheck, markdownlint, SPDX headers
 make chart-docs  # regenerate the charts' README value tables (helm-docs)
 make chart-lint  # chart drift checks (CRDs, pins, READMEs) + helm lint, both charts, both profiles
 make chart-template  # render both profiles, validate with kubeconform
