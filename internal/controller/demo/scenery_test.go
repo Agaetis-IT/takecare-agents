@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/demoapp"
 	"github.com/agaetis-it/takecare-agents/internal/testenv"
 )
 
@@ -37,11 +38,11 @@ func env(c corev1.Container) map[string]string {
 func TestAppDeployment(t *testing.T) {
 	for _, tc := range []struct {
 		mode string
-	}{{"healthy"}, {"leaky"}} {
+	}{{demoapp.ModeHealthy}, {demoapp.ModeLeaky}} {
 		d := testDemo()
 		d.Status.LastHandled.Incident = "42"
-		dep := appDeployment(d, "demo-app:test", tc.mode == "leaky")
-		wantIncident := map[string]string{"healthy": "", "leaky": "42"}[tc.mode]
+		dep := appDeployment(d, "demo-app:test", tc.mode == demoapp.ModeLeaky)
+		wantIncident := map[string]string{demoapp.ModeHealthy: "", demoapp.ModeLeaky: "42"}[tc.mode]
 		if got := dep.Spec.Template.Annotations[annotationIncident]; got != wantIncident {
 			t.Errorf("%s: the pod template carries incident %q, want %q", tc.mode, got, wantIncident)
 		}

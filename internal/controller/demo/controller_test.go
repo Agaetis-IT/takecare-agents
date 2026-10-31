@@ -24,6 +24,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/demoapp"
 	"github.com/agaetis-it/takecare-agents/internal/testenv"
 )
 
@@ -175,12 +176,12 @@ func TestDemoLifecycle(t *testing.T) {
 	f.eventually("the healthy scenery", func() bool {
 		_, set := f.proxyTimeout()
 		dep := f.app()
-		return dep != nil && dep.Spec.Template.Annotations[annotationMode] == "healthy" && !set
+		return dep != nil && dep.Spec.Template.Annotations[annotationMode] == demoapp.ModeHealthy && !set
 	})
 	if c := ready(f.demo()); c == nil || c.Status != metav1.ConditionFalse || c.Reason != ReasonSceneryNotReady {
 		t.Errorf("Ready before the app is available: %+v", c)
 	}
-	f.rollOut("healthy", "", time.Now())
+	f.rollOut(demoapp.ModeHealthy, "", time.Now())
 	f.eventually("phase Ready", func() bool {
 		d := f.demo()
 		c := ready(d)
@@ -199,7 +200,7 @@ func TestDemoLifecycle(t *testing.T) {
 		t.Errorf("before the leaky pod: started %v window %v reason %s", d.Status.IncidentStartedAt, d.Status.ExpectedAlertWindow, ready(d).Reason)
 	}
 	podReady := time.Now().Truncate(time.Second).Add(7 * time.Second)
-	f.rollOut("leaky", "1", podReady)
+	f.rollOut(demoapp.ModeLeaky, "1", podReady)
 	f.eventually("the incident started with the leaky pod", func() bool {
 		return f.demo().Status.IncidentStartedAt != nil
 	})
@@ -217,7 +218,7 @@ func TestDemoLifecycle(t *testing.T) {
 		return d.Status.LastHandled.Incident == "2" && d.Status.IncidentStartedAt == nil
 	})
 	secondReady := podReady.Add(5 * time.Minute)
-	f.rollOut("leaky", "2", secondReady)
+	f.rollOut(demoapp.ModeLeaky, "2", secondReady)
 	f.eventually("the second incident started with its own pod", func() bool {
 		d := f.demo()
 		return d.Status.IncidentStartedAt != nil && d.Status.IncidentStartedAt.Time.Equal(secondReady)
@@ -238,7 +239,7 @@ func TestDemoLifecycle(t *testing.T) {
 	if err := f.c.Get(f.ctx, client.ObjectKey{Namespace: ns, Name: "inv-elsewhere"}, &kept); err != nil {
 		t.Errorf("the reset deleted another namespace's investigation: %v", err)
 	}
-	f.rollOut("healthy", "", time.Now())
+	f.rollOut(demoapp.ModeHealthy, "", time.Now())
 	f.eventually("phase Ready after the reset", func() bool { return f.demo().Status.Phase == v1alpha1.DemoReady })
 	if d := f.demo(); d.Status.IncidentStartedAt != nil || d.Status.ExpectedAlertWindow != nil {
 		t.Error("the reset kept the incident's times")
