@@ -50,3 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - The operator's image is renamed `takecare-agents-operator` (was `takecare-operator`), following the `takecare-agents-<component>` naming of the images (issue #22). A mirror of the images must add the new name. The Deployment, its ServiceAccount, the RBAC objects, the server-side apply field owner and the leader election ID keep their names, so an upgrade replaces the pods without a second leader or a field ownership conflict.
+
+### Fixed
+
+- The Slack report server retries an inconclusive `auth.test` (no answer, a 5xx) every 10 seconds until the token has had a verdict, instead of waiting for the next 30-minute check. A network not ready when the pod starts no longer keeps the report connector not ready for half an hour.
