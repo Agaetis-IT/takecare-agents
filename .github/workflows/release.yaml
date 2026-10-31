@@ -1,0 +1,148 @@
+# SPDX-FileCopyrightText: 2026 Agaetis
+# SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+
+# The release (spec 04), on a tag v<SemVer> pushed by a maintainer
+# (docs/release.md): the four images for amd64 and arm64, both charts as
+# OCI artifacts, and the GitHub release with the tag's CHANGELOG section. A
+# prerelease tag (v0.1.0-rc.1) runs the same chain, marked prerelease.
+# Nothing published is ever replaced: a version already in the registry
+# stops the release. On pull requests, a dry run packages and lints the
+# charts and reads the Unreleased notes, with no login and no push.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yaml
+      - hack/release-notes.sh
+      - hack/release-notes-test.sh
+      - hack/testdata/changelog.md
+      - charts/**
+      - CHANGELOG.md
+      - Makefile
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    name: release dry run (charts packaged and linted, notes read)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: make release-notes-test
+      # The section in progress, or the one a release PR has just cut (its
+      # Unreleased is then empty).
+      - name: the notes of the next release
+        run: |
+          set -euo pipefail
+          for v in $(grep -oE '^## \[[^]]+\]' CHANGELOG.md | sed -E 's/^## \[(.*)\]$/\1/' | head -2); do
+            if hack/release-notes.sh "$v" >/dev/null; then echo "notes of ${v}: OK"; exit 0; fi
+          done
+          echo "neither Unreleased nor the latest section of CHANGELOG.md has an entry" >&2
+          exit 1
+      - run: make chart-package RELEASE_VERSION=0.0.0-dryrun
+
+  release:
+    name: publish the release
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: check the tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "${TAG} is not v<SemVer>: nothing is published" >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "${TAG} is not on main: a tag on a branch does not publish (docs/release.md)" >&2
+            exit 1
+          fi
+          version="${TAG#v}"
+          hack/release-notes.sh "$version" >"$RUNNER_TEMP/notes.md"
+          # The registry is a pinned constant: hack/versions.env only.
+          source hack/versions.env
+          { echo "VERSION=${version}"; echo "REGISTRY=${IMAGE_REGISTRY}"; } >>"$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: helm login
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          make helm
+          source hack/versions.env
+          printf '%s' "$GH_TOKEN" | "bin/helm-${HELM_VERSION}" registry login ghcr.io -u "$ACTOR" --password-stdin
+      # Only a not-found answer means absent: any other error (a registry
+      # hiccup, a denied pull) stops the release rather than risk a replace.
+      - name: refuse to replace a published version
+        run: |
+          set -euo pipefail
+          source hack/versions.env
+          absent() { # NAME COMMAND...
+            local out
+            if out="$("${@:2}" 2>&1)"; then
+              echo "$1 ${VERSION} is already published: release a new version (fix forward)" >&2
+              return 1
+            fi
+            if grep -qiE 'not found|manifest unknown|name unknown' <<<"$out"; then return 0; fi
+            printf 'cannot tell whether %s %s is published:\n%s\n' "$1" "$VERSION" "$out" >&2
+            return 1
+          }
+          for image in operator mcp-report-slack demo-app mcp-corpus; do
+            absent "image takecare-agents-${image}" docker buildx imagetools inspect "${REGISTRY}/takecare-agents-${image}:${VERSION}"
+          done
+          for chart in takecare-crds takecare; do
+            absent "chart ${chart}" "bin/helm-${HELM_VERSION}" show chart "oci://${REGISTRY}/charts/${chart}" --version "$VERSION"
+          done
+      - name: images (amd64 + arm64)
+        run: make docker-buildx PUSH=true VERSION="$VERSION"
+      - name: charts
+        run: |
+          set -euo pipefail
+          make chart-package RELEASE_VERSION="$VERSION"
+          source hack/versions.env
+          for chart in takecare-crds takecare; do
+            "bin/helm-${HELM_VERSION}" push "bin/charts/${chart}-${VERSION}.tgz" "oci://${REGISTRY}/charts"
+          done
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          {
+            cat "$RUNNER_TEMP/notes.md"
+            printf '\n### Artifacts\n\nImages (linux/amd64, linux/arm64):\n\n'
+            for image in operator mcp-report-slack demo-app mcp-corpus; do
+              printf -- "- \`%s/takecare-agents-%s:%s\`\n" "$REGISTRY" "$image" "$VERSION"
+            done
+            printf '\nCharts:\n\n'
+            for chart in takecare-crds takecare; do
+              printf -- "- \`oci://%s/charts/%s --version %s\`\n" "$REGISTRY" "$chart" "$VERSION"
+            done
+          } >"$RUNNER_TEMP/release.md"
+          prerelease=()
+          [[ "$VERSION" == *-* ]] && prerelease=(--prerelease)
+          gh release create "$TAG" "${prerelease[@]}" --verify-tag --title "TakeCare Agents ${VERSION}" \
+            --notes-file "$RUNNER_TEMP/release.md" "bin/charts/takecare-crds-${VERSION}.tgz" "bin/charts/takecare-${VERSION}.tgz"
