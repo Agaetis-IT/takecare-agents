@@ -56,6 +56,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
-- The Doc was told it could read only the namespaces its alerts come from, and that every other namespace was denied, so it never reached a dependency living in another namespace its cluster connector reads (the demo's `DBProxy` in `ack-system`): its instructions now name every namespace the bound cluster connectors read. On the demo bench, 2 correct diagnoses out of 5 before, see the PR for after.
+- The Doc was told it could read only the namespaces its alerts come from, and that every other namespace was denied, so it never reached a dependency living in another namespace its cluster connector reads (the demo's `DBProxy` in `ack-system`): its instructions now name every namespace the bound cluster connectors read. On the demo bench with the default model, 2 correct diagnoses out of 5 before, 5 out of 5 after.
 - An investigation's usage is no longer doubled when Prometheus scrapes the gateway twice (a PodMonitor and an annotation job, or the demo's own job and the chart's kubernetes-pods job): the series are collapsed to their scrape target and the gateway's own labels before they are summed. The demo profile scrapes the gateway once.
 - The Slack report server retries an inconclusive `auth.test` (no answer, a 5xx) every 10 seconds until the token has had a verdict, instead of waiting for the next 30-minute check. A network not ready when the pod starts no longer keeps the report connector not ready for half an hour.
