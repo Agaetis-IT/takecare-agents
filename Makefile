@@ -227,11 +227,29 @@ docker-buildx: ## Build every image for amd64 and arm64 (pushed only with PUSH=t
 
 ##@ Not yet implemented
 
-.PHONY: e2e demo-up demo-incident demo-verdict demo-screens demo-bench demo-reset demo-down
+.PHONY: e2e demo-bench
 e2e: ## End-to-end tests on k3d (PR 6).
 	@echo "$@: not implemented yet, see CLAUDE.md (PR 6)"; exit 1
-demo-up demo-incident demo-verdict demo-screens demo-bench demo-reset demo-down: ## Demo mode (PR 5).
-	@echo "$@: not implemented yet, see CLAUDE.md (PR 5)"; exit 1
+demo-bench: ## Accuracy bench on the demo (PR 6).
+	@echo "$@: not implemented yet, see CLAUDE.md (PR 6)"; exit 1
+
+##@ Demo (spec 03; never changes your kube context)
+
+.PHONY: demo-up demo-incident demo-verdict demo-screens demo-screens-stop demo-reset demo-down
+demo-up: ## Create the k3d demo and install everything (TAKECARE_MODEL_API_KEY; DEMO_IMAGES=build until the first release).
+	hack/demo.sh up
+demo-incident: ## Start the proxy-timeout incident and print the expected alert window.
+	hack/demo.sh incident
+demo-verdict: ## Wait for the Doc's diagnosis of the incident and print it with its usage.
+	hack/demo.sh verdict
+demo-screens: ## Port-forward Prometheus, Alertmanager and Jaeger, and print the URLs.
+	hack/demo.sh screens
+demo-screens-stop: ## Stop the port-forwards demo-screens started.
+	hack/demo.sh screens-stop
+demo-reset: ## Back to healthy, the incident's investigations deleted.
+	hack/demo.sh reset
+demo-down: ## Delete the demo cluster and its working files.
+	hack/demo.sh down
 
 ##@ Tools
 

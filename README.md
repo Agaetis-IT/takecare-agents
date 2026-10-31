@@ -114,18 +114,23 @@ A2A calls, tool calls and model calls all go through agentgateway.
 
 The choices and their reasons are in the [ADRs](docs/adr/).
 
-## Demo mode (planned for milestone 1)
+## Demo mode
+
+The same product on a local k3d cluster, with the `billing-api` scenery and the `proxy-timeout` incident ([spec 03](docs/specs/03-demo.md)). The demo never changes your kube context: its kubeconfig is `bin/takecare-demo.kubeconfig`.
 
 ```bash
-export TAKECARE_MODEL_API_KEY=...     # model provider key, never written to the repository
-make demo-up          # k3d cluster + TakeCare with the demo profile + billing-api scenery
-make demo-incident    # triggers the failure; the alert fires about 2 min 30 later
-make demo-bench N=5   # replays N investigations and counts the correct diagnoses
-make demo-reset       # puts the scenery back in shape
-make demo-down        # deletes the cluster
+export TAKECARE_MODEL_API_KEY=...   # or in a .env file (git-ignored), never written to the repository
+make demo-up DEMO_IMAGES=build      # k3d cluster, TakeCare with the demo profile, the scenery and the Doc
+make demo-incident                  # triggers the failure and prints the expected alert window (about 2 min 30 later)
+make demo-verdict                   # waits for the Doc's diagnosis and prints it with its usage
+make demo-screens                   # Prometheus, Alertmanager and Jaeger on localhost; demo-screens-stop
+make demo-reset                     # puts the scenery back in shape, ready for another incident
+make demo-down                      # deletes the cluster and the demo's working files
 ```
 
-Prerequisites: Docker (at least 4 GB of memory), k3d, kubectl, helm, make.
+`DEMO_IMAGES=build` builds the images from this tree and imports them into the cluster. Until the first release publishes them, it is the only way. Without it, `demo-up` pulls the release images from the registry. A second `make demo-up` changes nothing and takes seconds. With `TAKECARE_SLACK_BOT_TOKEN` and `TAKECARE_SLACK_ONCALL_CHANNEL` (and optionally `TAKECARE_SLACK_REVIEW_CHANNEL`), diagnoses are posted to Slack; without them they go to the report server's log, and `make demo-verdict` reads them from the investigation. `make demo-bench N=5` arrives with PR 6.
+
+Prerequisites: Docker with at least 4 GB of memory (the stack uses about 3.5 GiB in an incident), k3d, kubectl, make; Helm 4 is downloaded by the Makefile.
 
 ## Documentation
 
