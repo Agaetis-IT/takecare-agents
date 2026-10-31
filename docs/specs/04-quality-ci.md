@@ -23,19 +23,20 @@ internal/doc/instructions.md  the Doc's instructions (kagent systemMessage), gol
 internal/doc/message.tmpl     the per-alert A2A message, golden-tested
 charts/takecare-crds/         CRDs (TakeCare + third-party), applied on install and upgrade
 charts/takecare/              operator + dependencies; values-prod.yaml, values-demo.yaml
-demo/app/                     billing-api (Python) + Dockerfile
-demo/mcp-corpus/              MCP corpus server (Python FastMCP), seeds, generator + Dockerfile
+cmd/demo-app/                 billing-api, the demo application (Go; internal/demoapp)
+cmd/mcp-corpus/               the demo's corpus MCP server (Go; internal/corpus; seeds and generator in internal/demo/corpus)
 cmd/mcp-report-slack/         our Slack report MCP server (one tool, configurable apiURL); log variant for the demo
-spikes/001/                   throwaway spike code (spike 001), not part of the product
-demo/k3d/                     cluster config
+demo/manifests/               the Doc and the TakeCareDemo applied by make demo-up
 test/e2e/                     end-to-end tests on k3d
 test/bench/                   accuracy bench
 test/fakellm/                 fake OpenAI-compatible provider (record / replay)
+test/fakeslack/               fake Slack (auth.test, chat.postMessage, messages kept for the assertions)
+cmd/fake-llm/, cmd/fake-slack/ the fakes' commands: test-only images, never released
 hack/                         helper scripts used by the Makefile
 docs/                         specs, ADRs, assets
 ```
 
-Go for the operator (current stable Go, kubebuilder v4 layout, controller-runtime). Python only for the demo scenery (app, MCP corpus server), as in the POC.
+Go everywhere (current stable Go, kubebuilder v4 layout, controller-runtime), the demo scenery included: the POC's Python application and FastMCP corpus server were rewritten in Go in PR 5.
 
 ## Test levels
 
@@ -44,7 +45,7 @@ Go for the operator (current stable Go, kubebuilder v4 layout, controller-runtim
 | Unit | `go test` | rendering (connector RBAC, kagent Agent and tool allow-lists, gateway authorization, Slack blocks, instructions and message), alert scope and dedup, tool classification, usage attribution, semconv attributes | every push |
 | Golden | `go test` with `testdata/*.golden`, `-update` flag | prompt, Slack message, generated manifests | every push |
 | Controller | envtest | validation (CEL), reconciliation, conditions, level transitions, owner references, no write verbs | every push |
-| Chart | `helm lint`, `ct lint`, `helm template` + kubeconform | both profiles render and validate | every push |
+| Chart | `helm lint` on both profiles, `helm template` + kubeconform, and the packaged charts linted at a release version by the release dry run | both profiles render and validate | every push |
 | End-to-end | k3d in GitHub Actions, fake LLM | `demo-up` → `demo-incident` (short ramp) → diagnosis published to a fake Slack → trace in the collector | PRs labelled `e2e`, and `main` |
 | Accuracy bench | real model, k3d | N investigations, correctness ratio | on demand (`workflow_dispatch`) and before each release |
 
@@ -79,7 +80,7 @@ Thresholds: at least 4 out of 5 correct to merge a change of prompt, engine, mod
 
 | Workflow | Trigger | Jobs |
 |---|---|---|
-| `ci.yaml` | push, PR | lint (golangci-lint, ruff for Python, shellcheck, markdownlint), unit + golden + envtest, chart lint, image builds (no push on PRs), gitleaks |
+| `ci.yaml` | push, PR | lint (golangci-lint, shellcheck, markdownlint, SPDX headers), unit + golden + envtest, chart lint, image builds (no push on PRs), gitleaks |
 | `e2e.yaml` | PR label `e2e`, push to `main` | k3d end-to-end with fake LLM and fake Slack |
 | `bench.yaml` | `workflow_dispatch` | accuracy bench with a real model (repository secret), report as an artifact |
 | `release.yaml` | tag `v*` | multi-arch images (amd64, arm64), charts packaged and pushed as OCI, GitHub release with CHANGELOG excerpt |
