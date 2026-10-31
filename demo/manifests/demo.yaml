@@ -1,0 +1,10 @@
+# The demo's scenery and incident (spec 03), in the release namespace, with
+# the TakeCareDemo defaults: scenario proxy-timeout, app namespace demo-apps,
+# platform namespace ack-system, a 4-minute ramp.
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareDemo
+metadata:
+  name: demo
+  namespace: takecare-system
+spec:
+  scenario: proxy-timeout
