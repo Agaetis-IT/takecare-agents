@@ -172,31 +172,13 @@ prometheus:
                 authorization:
                   type: Bearer
                   credentials_file: /etc/alertmanager/secrets/takecare-alerting/token
-  # agentgateway proxy metrics (tokens, model calls): the source of usage and
-  # cost. The proxy pod is created by the controller from the Gateway, so it
-  # is discovered by its gateway-name label. The platform's
-  # gateway-metrics-not-scraped check looks for an `up` series carrying the
-  # labels namespace and gateway_networking_k8s_io_gateway_name, as
-  # agentgateway's PodMonitor sets them for Prometheus Operator.
-  extraScrapeConfigs: |
-    - job_name: agentgateway
-      kubernetes_sd_configs:
-        - role: pod
-          namespaces:
-            names: [takecare-system]
-      relabel_configs:
-        - source_labels: [__meta_kubernetes_pod_label_gateway_networking_k8s_io_gateway_name]
-          regex: agentgateway-proxy
-          action: keep
-        - source_labels: [__meta_kubernetes_pod_ip]
-          target_label: __address__
-          replacement: $1:15020
-        - source_labels: [__meta_kubernetes_namespace]
-          target_label: namespace
-        - source_labels: [__meta_kubernetes_pod_label_gateway_networking_k8s_io_gateway_name]
-          target_label: gateway_networking_k8s_io_gateway_name
-        - source_labels: [__meta_kubernetes_pod_name]
-          target_label: pod
+  # agentgateway proxy metrics (tokens, model calls), the source of usage and
+  # cost, are scraped once, by the chart's kubernetes-pods job: the proxy pod
+  # carries the prometheus.io annotations and the job copies the pod's labels,
+  # so its `up` series has namespace and gateway_networking_k8s_io_gateway_name,
+  # which the platform's gateway-metrics-not-scraped check looks for. A second
+  # job doubled every series (found by the end-to-end run); the operator's
+  # usage queries collapse such duplicates anyway.
   serverFiles:
     alerting_rules.yml:
       groups:
