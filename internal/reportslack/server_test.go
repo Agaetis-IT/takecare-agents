@@ -273,16 +273,14 @@ func TestStartupRetriesAnInconclusiveCheck(t *testing.T) {
 	}
 	s, err := New(Config{
 		Mode: ModeSlack, APIURL: slack.srv.URL, TokenFile: filepath.Join(dir, "token"),
-		Destinations: map[string]string{"on-call": "C0ONCALL1"},
+		Destinations: map[string]string{"on-call": "C0STARTUP"},
 		AuthInterval: time.Hour, StartRetry: 50 * time.Millisecond, HTTP: &http.Client{Timeout: 2 * time.Second},
 		Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = s.Run(ctx) }()
+	go func() { _ = s.Run(t.Context()) }()
 	time.Sleep(200 * time.Millisecond)
 	if s.Ready() {
 		t.Fatal("ready while auth.test answers 500")
