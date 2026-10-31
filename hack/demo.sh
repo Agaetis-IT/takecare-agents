@@ -193,11 +193,15 @@ verdict() {
   kubectl -n "$NS" get takecareinvestigation "$inv" -o jsonpath='investigation {.metadata.name}: {.status.phase} {.status.reason}
 alert: {.spec.alert.name} on {.spec.alert.service}
 trace: {.status.traceID}
-usage: {.status.usage.inputTokens} input tokens, {.status.usage.outputTokens} output, {.status.usage.estimatedCost}
 published: {.status.published}
 
 {.status.diagnosis}
 '
+  if [[ -n "$(kubectl -n "$NS" get takecareinvestigation "$inv" -o jsonpath='{.status.usage.inputTokens}')" ]]; then
+    kubectl -n "$NS" get takecareinvestigation "$inv" -o jsonpath='usage: {.status.usage.inputTokens} input tokens, {.status.usage.outputTokens} output, {.status.usage.estimatedCost}{"\n"}'
+  else
+    echo "usage: not measured"
+  fi
 }
 
 screens() {
