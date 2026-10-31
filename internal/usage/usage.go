@@ -56,7 +56,11 @@ type Source interface {
 // alike, and only then summed. Not `max without (job)`: the jobs also add
 // labels of their own (the pod's labels, the node), so the same series under
 // two jobs differs by more than job. Two proxy pods (two instances) or two
-// models (other gen_ai labels) still add up.
+// models (other gen_ai labels) still add up. The identity is the scrape
+// target plus every label agentgateway 1.6.0 exports on this metric, as read
+// on the e2e cluster: a later agentgateway that adds one must extend the
+// list (the version moves in a deliberate PR, hack/versions.env), or two
+// distinct series would collapse and the usage would be under-counted.
 const (
 	seriesIdentity = `instance, gateway, listener, bind, route, route_rule, gen_ai_operation_name, gen_ai_system, gen_ai_request_model, gen_ai_response_model, gen_ai_token_type`
 	queryByType    = `sum by (gen_ai_token_type) (max by (` + seriesIdentity + `) (agentgateway_gen_ai_client_token_usage_sum))`
