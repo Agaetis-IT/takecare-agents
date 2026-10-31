@@ -38,6 +38,10 @@ spec:
             - --alerts-token-secret={{ .Values.alerting.existingSecret | default "takecare-alerting" }}
             - --investigation-retention={{ .Values.investigations.retention }}
             - --usage-scrape-wait={{ .Values.operator.usageScrapeWait }}
+            {{- if .Values.demo.enabled }}
+            - --demo
+            - --demo-app-image={{ printf "%s/%s:%s" (.Values.global.imageRegistry | default .Values.demo.app.image.registry) .Values.demo.app.image.repository (.Values.demo.app.image.tag | default .Chart.AppVersion) }}
+            {{- end }}
             {{- range .Values.operator.extraArgs }}
             - {{ . | quote }}
             {{- end }}

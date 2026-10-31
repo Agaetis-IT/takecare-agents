@@ -1,0 +1,55 @@
+{{- if .Values.demo.enabled }}
+{{- /*
+The operator's demo rights (spec 03), DEMO ONLY: the TakeCareDemo controller
+writes billing-api and its Service in the app namespace and the DBProxy in
+the platform namespace, by name. Rendered here under demo.enabled, never
+from RBAC markers, so that a production install holds none of them;
+test/chart checks both renders.
+Create is listed because a server-side apply that creates an object is
+authorized as a create too, by name. List and watch are deliberately
+absent: the controller reads these objects with a get by name, outside the
+manager's cache.
+*/}}
+{{- $roles := list
+  (dict "ns" .Values.demo.appNamespace "rules" (list
+    (dict "apiGroups" (list "apps") "resources" (list "deployments") "names" (list "billing-api"))
+    (dict "apiGroups" (list "") "resources" (list "services") "names" (list "billing-api"))))
+  (dict "ns" .Values.demo.platformNamespace "rules" (list
+    (dict "apiGroups" (list "rds.services.k8s.aws") "resources" (list "dbproxies") "names" (list "billing-db-proxy"))))
+}}
+{{- range $roles }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: takecare-operator-demo
+  namespace: {{ .ns }}
+  labels:
+    {{- include "takecare.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: demo-scenery
+rules:
+  {{- range .rules }}
+  - apiGroups: {{ toJson .apiGroups }}
+    resources: {{ toJson .resources }}
+    resourceNames: {{ toJson .names }}
+    verbs: ["get", "create", "patch", "delete"]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: takecare-operator-demo
+  namespace: {{ .ns }}
+  labels:
+    {{- include "takecare.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: demo-scenery
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: takecare-operator-demo
+subjects:
+  - kind: ServiceAccount
+    name: takecare-operator
+    namespace: {{ $.Release.Namespace }}
+{{- end }}
+{{- end }}

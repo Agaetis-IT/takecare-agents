@@ -2,7 +2,7 @@
 # The demo scenery's namespaces (spec 03): the add-ons' Roles are rendered
 # into them, so they must exist at install time. The TakeCareDemo controller
 # (PR 5) deploys the scenery into them.
-{{- range .Values.demo.namespaces }}
+{{- range list .Values.demo.appNamespace .Values.demo.platformNamespace }}
 ---
 apiVersion: v1
 kind: Namespace

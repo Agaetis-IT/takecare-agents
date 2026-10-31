@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -126,7 +127,7 @@ func staticMapper(scheme *runtime.Scheme) meta.RESTMapper {
 // scheme, same options, same setupControllers), with a mapper that needs no
 // cluster, and must fail when apiextensions is dropped from the scheme.
 func TestStartupWiringRecognizesEveryWatchedType(t *testing.T) {
-	cfg := config{metricsAddr: "0", probeAddr: "0", operatorNamespace: "takecare-system", engineNamespace: "kagent", operatorDeployment: "takecare-operator"}
+	cfg := config{metricsAddr: "0", probeAddr: "0", operatorNamespace: "takecare-system", engineNamespace: "kagent", operatorDeployment: "takecare-operator", demo: true, demoAppImage: "demo-app:test"}
 	restCfg := &rest.Config{Host: "http://127.0.0.1:1"}
 	wire := func(scheme *runtime.Scheme) error {
 		opts := managerOptions(cfg, scheme)
@@ -170,5 +171,31 @@ func TestStartupWiringRecognizesEveryWatchedType(t *testing.T) {
 	}
 	if err := wire(bare); err == nil || !strings.Contains(err.Error(), "CustomResourceDefinition") {
 		t.Fatalf("a scheme without apiextensions must fail on the CRD watch, got %v", err)
+	}
+}
+
+// Every namespaced TakeCare kind is cached in the operator namespace only:
+// a kind left out is watched cluster-wide, which the operator's Roles
+// refuse on a real cluster (envtest enforces no RBAC). TakeCareDemo was
+// once missed this way, and only the smoke run saw the operator restart.
+func TestEveryNamespacedTakeCareKindIsScoped(t *testing.T) {
+	scheme, err := newScheme()
+	if err != nil {
+		t.Fatal(err)
+	}
+	scoped := map[string]bool{}
+	for obj, by := range managerOptions(config{operatorNamespace: "takecare-system", engineNamespace: "kagent"}, scheme).Cache.ByObject {
+		if gvk, err := apiutil.GVKForObject(obj, scheme); err == nil && gvk.Group == takecarev1alpha1.GroupVersion.Group {
+			_, ok := by.Namespaces["takecare-system"]
+			scoped[gvk.Kind] = ok && len(by.Namespaces) == 1
+		}
+	}
+	for kind := range scheme.KnownTypes(takecarev1alpha1.GroupVersion) {
+		if !strings.HasPrefix(kind, "TakeCare") || strings.HasSuffix(kind, "List") || kind == reflect.TypeFor[takecarev1alpha1.TakeCarePlatform]().Name() { // the platform is cluster-scoped
+			continue
+		}
+		if !scoped[kind] {
+			t.Errorf("%s is not cached in the operator namespace only", kind)
+		}
 	}
 }

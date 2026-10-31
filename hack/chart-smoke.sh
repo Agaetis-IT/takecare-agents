@@ -27,6 +27,7 @@ IMAGE_TAG="${IMAGE_TAG:-smoke-$(date +%s)}"
 IMAGE="${IMAGE_REGISTRY}/takecare-agents-operator:${IMAGE_TAG}"
 REPORT_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-report-slack:${IMAGE_TAG}"
 CORPUS_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-corpus:${IMAGE_TAG}"
+DEMO_APP_IMAGE="${IMAGE_REGISTRY}/takecare-agents-demo-app:${IMAGE_TAG}"
 # The demo corpus sources (values.yaml addons.demoCorpus.sources).
 CORPUS_SOURCES=(incidents runbooks deployments vendor support)
 HELM="${HELM:-bin/helm-${HELM_VERSION}}"
@@ -43,9 +44,9 @@ up() {
       --kubeconfig-update-default=false --kubeconfig-switch-context=false --wait
   fi
   k3d kubeconfig write "$CLUSTER" --output "$KUBECONFIG" >/dev/null
-  log "building and importing ${IMAGE}, ${REPORT_IMAGE} and ${CORPUS_IMAGE}"
-  make docker-build OPERATOR_IMG="$IMAGE" REPORT_SLACK_IMG="$REPORT_IMAGE" MCP_CORPUS_IMG="$CORPUS_IMAGE" >/dev/null
-  k3d image import "$IMAGE" "$REPORT_IMAGE" "$CORPUS_IMAGE" -c "$CLUSTER" >/dev/null
+  log "building and importing ${IMAGE}, ${REPORT_IMAGE}, ${CORPUS_IMAGE} and ${DEMO_APP_IMAGE}"
+  make docker-build OPERATOR_IMG="$IMAGE" REPORT_SLACK_IMG="$REPORT_IMAGE" MCP_CORPUS_IMG="$CORPUS_IMAGE" DEMO_APP_IMG="$DEMO_APP_IMAGE" >/dev/null
+  k3d image import "$IMAGE" "$REPORT_IMAGE" "$CORPUS_IMAGE" "$DEMO_APP_IMAGE" -c "$CLUSTER" >/dev/null
   make chart-deps >/dev/null
 }
 
@@ -84,15 +85,10 @@ install() {
   # gateway never gets a request in this run.
   kubectl -n "$NS" create secret generic takecare-model --from-literal=apiKey=smoke-placeholder \
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-  # The corpus the TakeCareDemo controller writes (PR 5d); empty here, so that
-  # the corpus servers start and their connectors can be checked.
-  for src in "${CORPUS_SOURCES[@]}"; do
-    kubectl -n "$NS" create configmap "takecare-demo-corpus-${src}" --from-literal=data.json='[]' \
-      --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-  done
+  empty_corpora
   "$HELM" upgrade --install takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
-    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --wait --timeout 10m
+    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --wait --timeout 10m
   kubectl -n kagent rollout status deploy/kagent-controller --timeout=180s >/dev/null
   verify
 }
@@ -100,6 +96,15 @@ install() {
 # connector_ready NAME waits for a connector's Ready condition.
 connector_ready() {
   wait_condition takecareconnector "$1" Ready True
+}
+
+# empty_corpora writes empty corpora where the TakeCareDemo controller will
+# write its own (PR 5d-2), so that the corpus servers are ready (helm --wait).
+empty_corpora() {
+  for src in "${CORPUS_SOURCES[@]}"; do
+    kubectl -n "$NS" create configmap "takecare-demo-corpus-${src}" --from-literal=data.json='[]' \
+      --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  done
 }
 
 # corpus_ready SOURCE: a demo corpus connector is Ready with exactly its
@@ -206,7 +211,7 @@ upgrade() {
     --set image.tag="$IMAGE_TAG" --set demo.enabled=true --wait --timeout 5m
   "$HELM" upgrade takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
-    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set operator.extraArgs[0]=--zap-log-level=debug --wait --timeout 10m
+    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set operator.extraArgs[0]=--zap-log-level=debug --wait --timeout 10m
   check "helm upgrade of both charts succeeded without a field manager conflict" true
   check "operator rolled out with the new argument" \
     kubectl -n "$NS" rollout status deploy/takecare-operator --timeout=120s
@@ -262,6 +267,28 @@ verify() {
   for src in "${CORPUS_SOURCES[@]}"; do
     check "connector ${src} reaches Ready=True with its three read tools" corpus_ready "$src"
   done
+  log "the demo controller (spec 03): scenery, incident and reset under the demo Roles"
+  kubectl -n "$NS" apply -f - >/dev/null <<'YAML'
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareDemo
+metadata:
+  name: demo
+spec:
+  scenario: proxy-timeout
+YAML
+  check "TakeCareDemo reaches Ready=True with billing-api healthy" \
+    wait_condition_long takecaredemo demo Ready True 180
+  check "the healthy DBProxy keeps AWS's default idle timeout" \
+    test -z "$(kubectl -n ack-system get dbproxies.rds.services.k8s.aws billing-db-proxy -o jsonpath='{.spec.idleClientTimeout}')"
+  kubectl -n "$NS" annotate takecaredemo demo takecare.agaetis.fr/incident="$(date +%s)" --overwrite >/dev/null
+  check "the incident sets idleClientTimeout 600 and starts with the leaky pod" \
+    bash -c "for _ in \$(seq 36); do [[ -n \$(kubectl -n ${NS} get takecaredemo demo -o jsonpath='{.status.expectedAlertWindow.from}') ]] && break; sleep 5; done; [[ \$(kubectl -n ack-system get dbproxies.rds.services.k8s.aws billing-db-proxy -o jsonpath='{.spec.idleClientTimeout}') == 600 && -n \$(kubectl -n ${NS} get takecaredemo demo -o jsonpath='{.status.incidentStartedAt}') ]]"
+  kubectl -n "$NS" annotate takecaredemo demo takecare.agaetis.fr/reset="$(date +%s)" --overwrite >/dev/null
+  check "the reset brings the demo back to phase Ready, healthy" \
+    bash -c "for _ in \$(seq 36); do [[ \$(kubectl -n ${NS} get takecaredemo demo -o jsonpath='{.status.phase}') == Ready ]] && break; sleep 5; done; [[ \$(kubectl -n ${NS} get takecaredemo demo -o jsonpath='{.status.phase}') == Ready && -z \$(kubectl -n ack-system get dbproxies.rds.services.k8s.aws billing-db-proxy -o jsonpath='{.spec.idleClientTimeout}') ]]"
+  kubectl -n "$NS" delete takecaredemo demo --timeout=60s >/dev/null
+  check "deleting the TakeCareDemo removes billing-api and the DBProxy" \
+    bash -c "! kubectl -n demo-apps get deployment billing-api >/dev/null 2>&1 && ! kubectl -n ack-system get dbproxies.rds.services.k8s.aws billing-db-proxy >/dev/null 2>&1"
   log "the report connector (spec 05): log mode in the demo"
   check "connector report reaches Ready=True (log adapter)" \
     connector_ready report
@@ -485,10 +512,10 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=60 install ;;
-  upgrade) CHECKS_EXPECTED=60 upgrade ;;
+  install) CHECKS_EXPECTED=65 install ;;
+  upgrade) CHECKS_EXPECTED=65 upgrade ;;
   status) status ;;
   down) down ;;
-  all) up; CHECKS_EXPECTED=60 install; CHECKS_EXPECTED=60 upgrade ;;
+  all) up; CHECKS_EXPECTED=65 install; CHECKS_EXPECTED=65 upgrade ;;
   *) echo "usage: $0 [up|install|upgrade|status|down|all]"; exit 2 ;;
 esac
