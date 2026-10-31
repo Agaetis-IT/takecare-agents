@@ -8,9 +8,10 @@
 # on-call channel and checked against a golden, the usage measured, the
 # trace in Jaeger, and nothing served but the fixtures. Every check prints
 # PASS or FAIL and the run asserts their total.
-# Usage: hack/e2e.sh [run|fakes|record|down]   (run keeps the cluster for
-# inspection; fakes redeploys the fakes and their fixtures; record replaces
-# the fixtures with a real model's conversation)
+# Usage: hack/e2e.sh [run|fakes|record|status|down]   (run keeps the cluster
+# for inspection; fakes redeploys the fakes and their fixtures; record
+# replaces the fixtures with a real model's conversation; status prints what
+# a failed run needs, for CI)
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -81,8 +82,13 @@ run() {
   hack/demo.sh up
   # A short ramp: the alert in about 2 minutes instead of 3.
   kubectl -n "$NS" patch takecaredemo demo --type=merge -p '{"spec":{"rampMinutes":2}}' >/dev/null
+  # The patch restarts billing-api: wait for the status of the new
+  # generation, not the Ready left by the previous one.
+  local gen obs phase
   for _ in $(seq 36); do
-    [[ "$(kubectl -n "$NS" get takecaredemo demo -o jsonpath='{.status.phase}')" == Ready ]] && break
+    read -r gen obs phase < <(kubectl -n "$NS" get takecaredemo demo \
+      -o jsonpath='{.metadata.generation} {.status.observedGeneration} {.status.phase}{"\n"}')
+    [[ "$gen" == "$obs" && "$phase" == Ready ]] && break
     sleep 5
   done
   hack/demo.sh incident
@@ -95,6 +101,14 @@ run() {
     sleep 5
   done
   local get="kubectl -n $NS get takecareinvestigation ${inv:-none} -o jsonpath"
+  # A completed run is published once its usage is measured, one scrape
+  # interval after it ends: the checks below read the published record.
+  if [[ -n "$inv" ]]; then
+    for _ in $(seq 24); do
+      [[ -n "$(kubectl -n "$NS" get takecareinvestigation "$inv" -o jsonpath='{.status.published.connector}')" ]] && break
+      sleep 5
+    done
+  fi
   check "one investigation of demo-apps, Completed, for HighErrorRate" \
     bash -c "[[ \$(kubectl -n $NS get takecareinvestigations -l takecare.agaetis.fr/alert-namespace=demo-apps -o name | wc -l) -eq 1 && \$($get='{.status.phase} {.spec.alert.name}') == 'Completed HighErrorRate' ]]"
   check "completed less than 3 minutes after the alert fired (spec 02 AC 1)" \
@@ -116,7 +130,7 @@ run() {
   local stats
   stats="$(fake_get fake-llm /stats)"
   check "the fake model served fixtures only (${stats})" \
-    bash -c "[[ '$stats' =~ \"unknown\":0 && ! '$stats' =~ \"served\":0, ]]"
+    bash -c "jq -e '.unknown == 0 and .served > 0' <<<'$stats' >/dev/null"
   if [[ "$checks" -ne "$CHECKS_EXPECTED" || "$failed" -ne 0 ]]; then
     echo "checks: ${checks} run (expected ${CHECKS_EXPECTED}), ${failed} failed"
     exit 1
@@ -149,10 +163,22 @@ record() {
   echo "recorded into ${FIXTURES}/proxy-timeout.json: review it like code, then run make e2e"
 }
 
+# status prints the cluster's state after a failed run: the pods not
+# running, the TakeCare objects and the logs of the operator and the fakes.
+status() {
+  kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded || true
+  kubectl get takecare -A || true
+  kubectl -n "$NS" get takecareinvestigations -o yaml || true
+  kubectl -n "$NS" logs deployment/takecare-operator --tail=200 || true
+  kubectl -n "$E2E_NS" logs deployment/fake-llm --tail=100 || true
+  kubectl -n "$E2E_NS" logs deployment/fake-slack --tail=50 || true
+}
+
 case "${1:-run}" in
   run) run ;;
   record) record ;;
   fakes) fakes ;;
+  status) status ;;
   down) hack/demo.sh down ;;
-  *) echo "usage: $0 [run|fakes|record|down]" >&2; exit 1 ;;
+  *) echo "usage: $0 [run|fakes|record|status|down]" >&2; exit 1 ;;
 esac
