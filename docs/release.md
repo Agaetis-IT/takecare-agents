@@ -13,7 +13,7 @@ The workflow refuses a tag that is not `v<major>.<minor>.<patch>` with an option
 1. **Bench.** Run the accuracy bench on a real model (`make demo-bench N=5`, or the `bench` workflow), as spec 04 asks before each release. Below 4 out of 5 correct, do not release.
 2. **Cut the CHANGELOG.** In a docs PR, rename `## [Unreleased]` to `## [x.y.z] - YYYY-MM-DD`, and open a new empty `## [Unreleased]` above it. The PR's release dry run reads the new section and packages the charts at a test version.
 3. **Merge** the PR into `main`.
-4. **Tag** the merge commit, signed like the commits, and push the tag: the coder session does it on the product owner's explicit go for that version, relayed by the reviewer; never on its own, never from a workflow:
+4. **Tag** the merge commit, signed like the commits, and push the tag: the coder session does it on the product owner's explicit go for that version, given in the coder's own session (a go relayed by the reviewer is not consent, `CLAUDE.md`); never on its own, never from a workflow:
 
    ```bash
    git fetch origin && git tag -s vx.y.z origin/main -m "TakeCare Agents x.y.z" && git push origin vx.y.z
