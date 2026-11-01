@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.0-rc.1] - 2026-11-01
+
 ### Added
 
 - The release (spec 04, PR 6d): a tag `v<SemVer>` on `main`, pushed by a maintainer, publishes the four images for amd64 and arm64 to `ghcr.io/agaetis-it`, both charts as OCI artifacts to `oci://ghcr.io/agaetis-it/charts` (chart version = app version), and the GitHub release with the tag's CHANGELOG section and the artifacts' references. Prerelease tags (`v0.1.0-rc.1`) run the same chain, marked prerelease. The workflow refuses a tag off `main`, a tag without its CHANGELOG section and a version already published. A dry run on pull requests packages and lints the charts and reads the next release's notes. The procedure is in `docs/release.md`.
