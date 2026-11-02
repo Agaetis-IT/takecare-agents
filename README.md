@@ -10,58 +10,55 @@
 
 ---
 
-TakeCare Agents is a collection of specialised roles (AI agents, experiences and guardrails) that prepare, heal and protect a Kubernetes production. It installs at the customer's site as a **Kubernetes operator**, on an open source stack (agentgateway, kagent, MCP), with the model of their choice. A built-in **demo mode** runs the same product on a local cluster, with a scenery and replayable incidents.
+TakeCare Agents is a collection of specialised roles (AI agents and guardrails) that take care of a Kubernetes production alongside your teams: they frame every AI agent, prepare for the peaks and heal incidents down to their cause. It installs at the customer's site as a **Kubernetes operator**, on an open source stack (agentgateway, kagent, agentregistry, MCP), with the model of their choice. A built-in **demo mode** runs the same product on a local cluster, with a scenery and replayable incidents.
 
 > **Status: under construction.** Milestone 1 (platform, Doc, demo mode) is specified in [`docs/`](docs/); the code arrives PR by PR. Nothing is installable yet.
 
 ## The staff
 
-Thirteen roles, each with its own job, grouped in three pillars. Each role has a nickname you remember and a job name that says what it does in operations. In each pillar, the experiences come first. Every role starts with a trial, touching nothing.
+Nine roles, each with its own job, in three pillars of three. Each role has a nickname you remember and a job name that says what it does in operations. A role can run several agents, each with its own scope (one Doc per cloud, for instance). Every agent starts as an apprentice, touching nothing.
 
 <p align="center">
-  <img src="docs/assets/takecare-staff.jpg" alt="The TakeCare staff: thirteen role cards grouped by pillar (prepare, heal, protect)" width="100%">
+  <img src="docs/assets/takecare-staff.jpg" alt="The TakeCare staff: nine role cards in three pillars (frame, prepare, heal)" width="100%">
 </p>
 
 | Pillar | Role | Job name | The question it answers |
 |---|---|---|---|
-| **Prepare**<br><sub>Incident anticipation</sub> | **Check-up** | Operations clean-up | Scattered docs, tools nobody knows anymore? |
-| | **Stress Test** | Load testing | Too many resources, or not enough for the next peak? |
-| | **Coach** | Peak readiness | A peak of activity ahead? |
+| **Frame**<br><sub>The agentic foundation</sub> | **Intendant** | Infra inventory and mapping | Agents and tools coming from everywhere? |
+| | **Ranger** | AI agent governance | Your agents tempted to go off-piste? |
+| | **Psy** | AI agent evaluation | Agents that make up paths or go round in circles? |
+| **Prepare**<br><sub>Incident anticipation</sub> | **Coach** | Peak readiness | A peak of activity ahead? |
 | | **Nutri** | FinOps | A cloud bill that climbs without warning? |
 | | **Guide** | Team upskilling | Your team needs to level up? |
-| **Heal**<br><sub>Assisted operations</sub> | **Bootcamp** | Disaster recovery testing | Your plan B has never been used? |
-| | **Doc** | Incident diagnosis | An incident in the middle of the night? |
+| **Heal**<br><sub>Assisted operations</sub> | **Doc** | Incident diagnosis | An incident in the middle of the night? |
 | | **Kiné** | Problem management | A pain that comes back with every incident? |
 | | **Mécano** | Lifecycle management | A version upgrade everyone keeps postponing? |
-| **Protect**<br><sub>AI agent oversight</sub> | **Sparring** | AI agent red teaming | Would your agents hold up against an attack? |
-| | **Ranger** | AI agent governance | Your agents tempted to go off-piste? |
-| | **Kit** | AI agent inventory | Agents and tools coming from everywhere? |
-| | **Psy** | AI agent evaluation | Agents that make up paths or go round in circles? |
 
-Agents: Coach, Nutri, Guide, Doc, Kiné, Mécano. Experiences run by Agaetis with your teams: Check-up, Stress Test, Bootcamp, Sparring. Guardrails: Ranger, Kit, Psy.
+Agents: Intendant, Coach, Nutri, Guide, Doc, Kiné, Mécano. Guardrails, which are not agents and apply to every agent, vendors' agents included: Ranger and Psy.
 
-### Starter packs
+### Kick-off, then journeys
 
-Each challenge, its starter pack: an entry experience run with your teams, then the cards that answer it. The Guardrails foundation is included in every pack.
+Everything starts with the **Kick-off**, once per customer: an audit and framing workshop with the customer's teams, where the agentic foundation is set up at the **base camp** (the platform, the guardrails, the infra map). Every journey then leaves from the base camp: each agent packs its bag (its configuration), then goes on its Reco.
 
-| Starter pack | The challenge | Entry experience | Then the cards |
+| Journey | The challenge | Roles | Exercise |
 |---|---|---|---|
-| **TakeCare Crew** | Grow your teams on their own infra | Check-up | Guide, Mécano |
-| **TakeCare Resilience** | Master production incidents | Bootcamp | Doc, Kiné, Mécano |
-| **TakeCare Efficiency** | Find the right level: not too much, not too little | Stress Test | Nutri, Coach |
-| **TakeCare Guardrails** | The foundation: included everywhere, also on its own | Sparring | Ranger, Kit, Psy |
+| **TakeCare Crew** | Grow your teams on their own infra | Guide, Mécano | Passage de relais |
+| **TakeCare Resilience** | Master production incidents | Doc, Kiné, Mécano | Bootcamp |
+| **TakeCare Efficiency** | Find the right level: not too much, not too little | Coach, Nutri | Stress Test (working name) |
+
+**Stages** are led by the customer's teams with Agaetis; they are services, not Kubernetes resources: the Kick-off, the **Reco** (puts agents into service), the **Qualif** (qualifies an action, gesture by gesture), the **Ravito** (adapts maps and bags when the infra changes) and the **Sparring** (red teaming of every agent). **Exercises** are what roles practise together on the training ground: the Passage de relais, the Bootcamp and the Stress Test.
 
 Milestone 1 delivers the **Doc** (incident diagnosis): on every alert, it investigates read-only and posts a sourced diagnosis to Slack (the root cause, the ruled-out leads, who should act). You decide on the treatment.
 
 ## The principle: the level is declared
 
-Every role is a Kubernetes resource that carries its **intervention level**. The operator derives from it what the role is allowed to do.
+Every role is a Kubernetes resource that carries its **intervention level**. The operator derives from it what the role is allowed to do. The Reco makes an apprentice a companion; the Qualif makes a companion a master, gesture by gesture. The API values keep their milestone 1 names.
 
 | Level | Value | What the role does |
 |---|---|---|
-| On trial | `trial` | It analyses, on your history or dry-run, touching nothing |
-| In service | `service` | It works daily and proposes; you approve and launch |
-| Seasoned | `seasoned` | It acts alone, within the frame you approved (after milestone 1) |
+| Apprentice | `trial` | It observes, on your history or dry-run, touching nothing |
+| Companion | `service` | It works daily and proposes; you approve and launch |
+| Master | `seasoned` | It acts alone, gesture by gesture, only where you decided (after milestone 1) |
 
 ```yaml
 apiVersion: takecare.agaetis.fr/v1alpha1
