@@ -168,7 +168,13 @@ func (p *Provider) exporter(ctx context.Context, otlp *v1alpha1.OTLPSpec) (sdktr
 	}
 	secure := u.Scheme == "https"
 	if strings.EqualFold(otlp.Protocol, "http") {
-		opts := []otlptracehttp.Option{otlptracehttp.WithEndpointURL(otlp.Endpoint)}
+		// The endpoint is a base URL (spec 01; the gateway backend reads its
+		// host and port only). otlptracehttp 1.47 posts to "/" for a URL
+		// without a path, where 1.44 fell back to the default path.
+		if u.Path == "" || u.Path == "/" {
+			u.Path = "/v1/traces"
+		}
+		opts := []otlptracehttp.Option{otlptracehttp.WithEndpointURL(u.String())}
 		if secure {
 			tlsCfg, err := p.network.TLSConfig()
 			if err != nil {

@@ -24,12 +24,18 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/httpclient/certtest"
 )
 
-// collector counts the OTLP/HTTP trace exports it receives.
+// collector counts the OTLP/HTTP trace exports it receives on the default path.
 func collector(t *testing.T) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+	return collectorAt(t, "/v1/traces")
+}
+
+// collectorAt counts the OTLP/HTTP trace exports it receives on path.
+func collectorAt(t *testing.T, path string) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	var exports atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/traces" {
+		if r.URL.Path == path {
 			_, _ = io.Copy(io.Discard, r.Body)
 			exports.Add(1)
 		}
@@ -47,16 +53,17 @@ func spec(endpoint string, perMille int32) v1alpha1.ObservabilitySpec {
 	return s
 }
 
-func waitExports(t *testing.T, n *atomic.Int32, want int32) {
+// waitExport waits for the collector to receive at least one export.
+func waitExport(t *testing.T, n *atomic.Int32) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		if n.Load() >= want {
+		if n.Load() >= 1 {
 			return
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("exports = %d, want at least %d", n.Load(), want)
+	t.Fatal("the collector received no export")
 }
 
 // A tracer obtained once follows every change of exporter: the platform's
@@ -88,7 +95,7 @@ func TestProviderFollowsThePlatform(t *testing.T) {
 	if err := p.sdk.ForceFlush(ctx); err != nil {
 		t.Fatal(err)
 	}
-	waitExports(t, firstExports, 1)
+	waitExport(t, firstExports)
 
 	second, secondExports := collector(t)
 	if err := p.Apply(ctx, spec(second.URL, 1000)); err != nil {
@@ -100,7 +107,7 @@ func TestProviderFollowsThePlatform(t *testing.T) {
 	if err := p.sdk.ForceFlush(ctx); err != nil {
 		t.Fatal(err)
 	}
-	waitExports(t, secondExports, 1)
+	waitExport(t, secondExports)
 	if firstExports.Load() != before {
 		t.Error("the first collector received spans after the switch")
 	}
@@ -115,6 +122,35 @@ func TestProviderFollowsThePlatform(t *testing.T) {
 	span.End()
 	if err := p.Shutdown(ctx); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The endpoint is a base URL: without a path, the HTTP exporter posts to the
+// default path; a declared path is kept.
+func TestHTTPExportPath(t *testing.T) {
+	tests := []struct {
+		name, suffix, path string
+	}{
+		{"no path", "", "/v1/traces"},
+		{"root path", "/", "/v1/traces"},
+		{"declared path", "/custom/v1/traces", "/custom/v1/traces"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			p := New(httpclient.Config{Timeout: 5 * time.Second})
+			srv, exports := collectorAt(t, tt.path)
+			if err := p.Apply(ctx, spec(srv.URL+tt.suffix, 1000)); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = p.Shutdown(ctx) })
+			_, span := p.Tracer("test").Start(ctx, "span")
+			span.End()
+			if err := p.sdk.ForceFlush(ctx); err != nil {
+				t.Fatal(err)
+			}
+			waitExport(t, exports)
+		})
 	}
 }
 
@@ -204,7 +240,7 @@ func TestGRPCExporterTrustsTheCABundle(t *testing.T) {
 		if err := p.sdk.ForceFlush(flushCtx); err != nil {
 			t.Fatalf("flush: %v", err)
 		}
-		waitExports(t, &col.exports, 1)
+		waitExport(t, &col.exports)
 	})
 
 	t.Run("without the bundle, the private CA is refused and nothing arrives", func(t *testing.T) {

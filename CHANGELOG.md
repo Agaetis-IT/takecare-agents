@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - TakeCare Agents is licensed under the Apache License 2.0: `LICENSE`, the SPDX identifier `Apache-2.0` in every source file, and a `NOTICE` in the Apache form.
 - The contributor guide moved to `AGENTS.md`, for human contributors and coding agents alike; `CLAUDE.md` imports it.
 
+### Fixed
+
+- The operator's HTTP trace export posts to `/v1/traces` when `observability.otlp.endpoint` has no path, with OpenTelemetry 1.47 as with 1.44; a declared path is kept.
+
 ## [0.1.0-rc.1] - 2026-11-01
 
 ### Added
