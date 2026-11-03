@@ -5,7 +5,7 @@ description: Use before opening or updating a pull request on TakeCare Agents. R
 
 # PR ready
 
-1. **Identify the scope.** Find the spec(s) and the PR row in `CLAUDE.md` ("Planned PR sequence") this branch implements. List the acceptance criteria this PR claims, and those it defers (with the PR that will close them).
+1. **Identify the scope.** Find the issue or spec the change implements. List the acceptance criteria this PR claims, and those it defers (with the PR that will close them).
 2. **Regenerate and check.**
 
    ```bash
@@ -21,7 +21,7 @@ description: Use before opening or updating a pull request on TakeCare Agents. R
    - no secret, token, prompt or model answer in logs, status, fixtures or golden files (`gitleaks detect --no-git` if available);
    - every new attribute name lives in `internal/telemetry/semconv`.
 4. **Docs.** README updated if a command changed; `CHANGELOG.md` "Unreleased" updated for user-visible changes; spec untouched unless the reviewer agreed; a new ADR if a decision changed (use the `new-adr` skill).
-5. **Commits.** Conventional Commits, English, scope from the list in `CLAUDE.md`. Squash fixups.
+5. **Commits.** Conventional Commits, English, scope from the list in `AGENTS.md`. Squash fixups.
 6. **Description.** Fill `.github/pull_request_template.md`:
    - one line per acceptance criterion: `[x] spec 02 AC 3: covered by TestDocTrialDestination (envtest)`;
    - deferred criteria with their target PR;

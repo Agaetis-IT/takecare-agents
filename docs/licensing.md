@@ -27,7 +27,7 @@ The challenge POC, reference material kept outside this repository, belongs to A
 
 ## 3. Dependencies
 
-- Every new dependency is justified in the PR description: why it is needed, its license, how it is maintained (`CLAUDE.md`, "Dependencies").
+- Every new dependency is justified in the PR description: why it is needed, its license, how it is maintained (`AGENTS.md`, "Dependencies").
 - **Strong copyleft licenses are forbidden** as dependencies: GPL, AGPL, and anything `go-licenses` classifies as *forbidden* or *restricted* (LGPL included). They would take away the choice of how to license TakeCare. Weak copyleft (MPL-2.0, EPL: *reciprocal* for `go-licenses`, so not blocked by the tool) needs the product owner's agreement in the PR.
 - A dependency whose license cannot be identified (`go-licenses` *unknown*, which includes SSPL) is refused until it is.
 - `make licenses` enforces this for the Go modules (`go-licenses check`, CI job `licenses`) and regenerates `NOTICE` from `go.mod`. The CI fails if the committed `NOTICE` is out of date: never edit it by hand.
