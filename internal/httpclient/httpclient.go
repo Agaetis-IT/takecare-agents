@@ -5,7 +5,7 @@
 // customer's network needs them (spec 01, chart values global.caBundle and
 // global.egressProxy): an internal certificate authority and a corporate
 // proxy, with the cluster's own addresses exempted. One configured client per
-// destination type, never http.DefaultClient (CLAUDE.md).
+// destination type, never http.DefaultClient (AGENTS.md).
 package httpclient
 
 import (

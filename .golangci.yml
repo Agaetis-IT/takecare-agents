@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # golangci-lint v2 (version pinned in hack/versions.env).
-# The minimum set is listed in CLAUDE.md; do not disable a rule to get green.
+# The minimum set is listed in AGENTS.md; do not disable a rule to get green.
 version: "2"
 run:
   allow-parallel-runners: true
@@ -11,7 +11,7 @@ run:
 linters:
   default: none
   enable:
-    # Required by CLAUDE.md.
+    # Required by AGENTS.md.
     - contextcheck
     - errcheck
     - errorlint

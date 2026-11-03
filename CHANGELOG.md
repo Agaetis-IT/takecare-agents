@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - TakeCare Agents is licensed under the Apache License 2.0: `LICENSE`, the SPDX identifier `Apache-2.0` in every source file, and a `NOTICE` in the Apache form.
+- The contributor guide moved to `AGENTS.md`, for human contributors and coding agents alike; `CLAUDE.md` imports it.
 
 ## [0.1.0-rc.1] - 2026-11-01
 
