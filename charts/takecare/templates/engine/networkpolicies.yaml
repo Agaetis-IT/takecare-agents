@@ -1,8 +1,9 @@
 {{- if and .Values.networkPolicies.enabled .Values.kagent.enabled }}
 {{- $ns := .Values.kagent.namespaceOverride | default .Release.Namespace }}
 # ADR 0007 installation requirement: the kagent controller is reachable only
-# through the gateway. Its API authorizes nothing in any mode, so who can
-# reach it is the whole security of the engine. Agent pods call the
+# through the gateway. Do not rely on the controller's own access control:
+# this policy is what keeps its API unreachable from anything but the
+# gateway. Agent pods call the
 # controller back (sessions, events) and the controller proxies A2A to them:
 # that is the only other traffic admitted. The UI runs zero replicas.
 apiVersion: networking.k8s.io/v1

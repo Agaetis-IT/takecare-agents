@@ -8,9 +8,11 @@
 | Relates to | ADR 0008 (connector placement), ADR 0010 (the 1.0 line's Kubernetes floor), spec 00 (multi-cluster deferral), spec 05 (connector controller) |
 | Milestone | Out of milestone 1 |
 
+Redacted on 2026-11-03: the measured controller findings were withdrawn from this public text; the decision is unchanged.
+
 ## Context
 
-ADR 0007 accepted kagent 0.10.3 as the engine, with three installation requirements whose only purpose is to contain a controller that **authenticates but authorizes nothing** (`NoopAuthorizer`, hard-wired) and whose default ServiceAccount is **cluster-admin-equivalent** (spike 001 report §5.7): the controller reachable only through the gateway, `rbac.namespaces`, and `AUTH_MODE=trusted-proxy`. None of these restores authorization. Security rests entirely on who can reach the controller and on the ceiling of its ServiceAccount.
+ADR 0007 accepted kagent 0.10.3 as the engine, with three installation requirements whose only purpose is to keep the controller reachable only through the gateway and its rights bounded (`rbac.namespaces`).
 
 Those requirements were written as if TakeCare ran **inside** the cluster it supervises. The spike left this open (report §12): the installation topology was not described to it, and its effect on the requirements is unsettled.
 
@@ -30,7 +32,7 @@ The topology proposed here changes the premise. It also answers a second need th
 
 - **Availability (the first reason).** A Doc that lives outside the cluster it diagnoses survives that cluster's degradation: if the supervised control plane, etcd or CNI is failing, the agent meant to explain the incident is not inside the incident. For an AIOps product this is close to a requirement, not a convenience.
 
-- **Segregation.** The controller's no-op authorizer and cluster-admin-equivalent ServiceAccount ceiling (ADR 0007 §5.7) no longer touch the customer's production: the blast radius is bounded to the administration cluster. ADR 0007's three installation requirements still apply, now on that cluster — which a customer already hardens like a tooling cluster (ArgoCD or Flux live there with write access to everything else). TakeCare is in its place there.
+- **Segregation.** The controller's broad default rights (ADR 0007) no longer touch the customer's production: the blast radius is bounded to the administration cluster. ADR 0007's three installation requirements still apply, now on that cluster — which a customer already hardens like a tooling cluster (ArgoCD or Flux live there with write access to everything else). TakeCare is in its place there.
 
 - **The Kubernetes 1.37 floor of the 1.0 line (ADR 0010) becomes negotiable, not impossible.** On a dedicated administration cluster the floor is a provisioning choice, not a constraint imposed on the customer's production. A customer on EKS or AKS stands up a 1.37 administration cluster today; a customer on-prem with an editor-supported distribution pinned below 1.37 does not, on decision alone. Substrate's privileged node agent provisioning gVisor or microVM on the customer's node images remains the harder of the two problems, and is unchanged by this ADR.
 
@@ -46,6 +48,6 @@ The topology proposed here changes the premise. It also answers a second need th
 
 ## Rejected alternatives
 
-- **TakeCare inside each supervised cluster** (the implicit premise of ADR 0007's requirements): simplest, but puts a controller with a no-op authorizer and a cluster-admin-equivalent ceiling next to the customer's production, and the diagnosing agent dies with the cluster it diagnoses.
+- **TakeCare inside each supervised cluster** (the implicit premise of ADR 0007's requirements): simplest, but puts a controller whose own access control is not relied upon and whose default rights are broad next to the customer's production, and the diagnosing agent dies with the cluster it diagnoses.
 - **A hub operated by Agaetis** supervising customers' clusters from our infrastructure: makes the hub a cross-tenant crown jewel holding the path into every customer's production, and turns Agaetis into the custodian of that access. Out of the question for this product.
 - **A central kubeconfig per workload cluster on the administration cluster**: see the connector-placement consequence above.
