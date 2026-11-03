@@ -12,7 +12,7 @@
 
 TakeCare Agents is a collection of specialised roles (AI agents and guardrails) that take care of a Kubernetes production alongside your teams: they frame every AI agent, prepare for the peaks and heal incidents down to their cause. It installs at the customer's site as a **Kubernetes operator**, on an open source stack (agentgateway, kagent, agentregistry, MCP), with the model of their choice. A built-in **demo mode** runs the same product on a local cluster, with a scenery and replayable incidents.
 
-> **Status: under construction.** Milestone 1 (platform, Doc, demo mode) is specified in [`docs/`](docs/); the code arrives PR by PR. Nothing is installable yet.
+> **Status: first prerelease.** The **Doc** works end to end: an alert in, a sourced diagnosis published, with its trace and its cost, on the demo or on your cluster. [`v0.1.0-rc.1`](CHANGELOG.md) is the first prerelease; its images and charts install from `ghcr.io/agaetis-it` once the packages are public. The eight other roles are specified, not coded yet.
 
 ## The staff
 
@@ -171,6 +171,10 @@ The charts live in [`charts/`](charts/), each with its own README to read before
 ## How we work
 
 Specs and decisions are written and reviewed before the code. Every spec leads to a PR, reviewed before merging. A decision that changes gives a new ADR, never a rewrite of the old one. Everything in this repository is written in English; only the role names keep their French flavour.
+
+## Contributing
+
+Contributions are welcome. [`CONTRIBUTING.md`](CONTRIBUTING.md) explains the development environment, the conventions, the DCO sign-off and how a pull request is reviewed; [`AGENTS.md`](AGENTS.md) is the rulebook. Issues labelled [`good first issue`](https://github.com/Agaetis-IT/takecare-agents/labels/good%20first%20issue) are a good place to start. Report a vulnerability privately, as [`SECURITY.md`](SECURITY.md) explains. Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## License
 

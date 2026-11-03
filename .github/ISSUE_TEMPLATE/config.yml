@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Agaetis
+# SPDX-License-Identifier: Apache-2.0
+blank_issues_enabled: true
+contact_links:
+  - name: Report a vulnerability
+    url: https://github.com/Agaetis-IT/takecare-agents/blob/main/SECURITY.md
+    about: Never in a public issue. Report it privately, as SECURITY.md explains.

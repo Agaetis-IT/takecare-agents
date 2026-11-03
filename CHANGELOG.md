@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The contributor documents: `CONTRIBUTING.md` (with the DCO sign-off, checked on every pull request by `make dco`), `SECURITY.md`, the code of conduct (Contributor Covenant 2.1), issue templates and Dependabot updates for Go modules and GitHub Actions.
+
 ### Changed
 
 - TakeCare Agents is licensed under the Apache License 2.0: `LICENSE`, the SPDX identifier `Apache-2.0` in every source file, and a `NOTICE` in the Apache form.

@@ -182,6 +182,10 @@ lint-md: ## Run markdownlint on the documentation.
 lint-spdx: ## Check the SPDX header of our source files.
 	hack/check-spdx.sh
 
+.PHONY: dco
+dco: ## Check the DCO sign-off of every commit of DCO_BASE..DCO_HEAD (default origin/main..HEAD; merges excepted).
+	hack/check-dco.sh $(or $(DCO_BASE),origin/main) $(or $(DCO_HEAD),HEAD)
+
 .PHONY: gitleaks
 gitleaks: ## Scan the working tree for secrets (GITLEAKS_MODE=git scans the history).
 	@# safe.directory: the mounted repository belongs to another uid inside the

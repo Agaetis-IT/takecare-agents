@@ -2,9 +2,11 @@
 
 <!-- One paragraph: what this PR does. Title in Conventional Commits form. -->
 
+Closes #<!-- issue number, if any -->
+
 ## Spec and acceptance criteria
 
-<!-- One line per criterion claimed, with how it is checked. -->
+<!-- One line per criterion claimed, with how it is checked. For a fix without a spec criterion, say how the fix is tested. -->
 - [ ] spec NN AC N: covered by `TestXxx` (unit | golden | envtest | e2e)
 
 Deferred criteria (and the PR that will close them):
@@ -17,6 +19,7 @@ Deferred criteria (and the PR that will close them):
 - [ ] `make lint` and `make test` pass
 - [ ] Read-only guard green; no secret, token, prompt or model answer in logs, status or fixtures
 - [ ] Docs updated (README, CHANGELOG "Unreleased", new ADR if a decision changed)
+- [ ] Every commit signed off (`git commit -s`, see CONTRIBUTING.md)
 
 ## Open questions
 
