@@ -253,9 +253,12 @@ func TestDemoLifecycle(t *testing.T) {
 		dep := f.app()
 		return dep != nil && dep.Spec.Template.Annotations[annotationMode] == demoapp.ModeHealthy && !set && f.corpusScenario("deployments") == "none"
 	})
-	if cm := f.corpus("runbooks"); len(cm.OwnerReferences) != 1 || cm.OwnerReferences[0].Name != demoName {
-		t.Errorf("corpus ConfigMap owners %v", cm.OwnerReferences)
-	}
+	// The corpus ConfigMaps are written one after the other: wait for the
+	// one checked, not only for the deployments source above.
+	f.eventually("the runbooks corpus owned by the demo", func() bool {
+		cm := f.corpus("runbooks")
+		return cm != nil && len(cm.OwnerReferences) == 1 && cm.OwnerReferences[0].Name == demoName
+	})
 	// The scenery is applied before the status is patched: wait for the
 	// status rather than read it once.
 	f.eventually("Ready false before the app is available", func() bool {
@@ -312,10 +315,10 @@ func TestDemoLifecycle(t *testing.T) {
 		t.Errorf("the reset deleted another namespace's investigation: %v", err)
 	}
 	f.rollOut(demoapp.ModeHealthy, "", time.Now())
-	f.eventually("phase Ready after the reset", func() bool { return f.demo().Status.Phase == v1alpha1.DemoReady })
-	if d := f.demo(); d.Status.IncidentStartedAt != nil || d.Status.ExpectedAlertWindow != nil {
-		t.Error("the reset kept the incident's times")
-	}
+	f.eventually("phase Ready after the reset, without the incident's times", func() bool {
+		d := f.demo()
+		return d.Status.Phase == v1alpha1.DemoReady && d.Status.IncidentStartedAt == nil && d.Status.ExpectedAlertWindow == nil
+	})
 
 	// Deleting the demo removes the scenery outside its namespace.
 	if err := f.c.Delete(f.ctx, f.demo()); err != nil {
