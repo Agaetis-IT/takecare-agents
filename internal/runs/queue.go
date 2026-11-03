@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Package runs holds what every agent role needs to run its records one
 // after the other (spec 02 §2, spec 06 §3): a bounded queue of pending runs,

@@ -8,6 +8,8 @@ kubeVersion: ">=1.33.0-0"
 home: https://github.com/Agaetis-IT/takecare-agents
 maintainers:
   - name: Agaetis
+annotations:
+  artifacthub.io/license: Apache-2.0
 dependencies:
   # Dependency versions are rewritten from hack/versions.env by `make chart-sync`
   # (the marker after each version names the key); CI fails on drift.

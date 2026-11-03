@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Package demo is the TakeCareDemo controller (spec 03): it deploys the
 // proxy-timeout scenery (billing-api, its Service, the DBProxy, the corpus)

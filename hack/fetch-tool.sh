@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 Agaetis
-# SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+# SPDX-License-Identifier: Apache-2.0
 #
 # Downloads a release archive, checks its sha256 against the pin in
 # hack/versions.env and extracts one binary into ./bin.

@@ -1,6 +1,6 @@
 {{- /*
 SPDX-FileCopyrightText: 2026 Agaetis
-SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+SPDX-License-Identifier: Apache-2.0
 
 The Doc's system message (spec 02 §2), a Go text/template rendered by
 internal/doc with the Doc's scope and the types of its bound connectors.

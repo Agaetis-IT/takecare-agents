@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 Agaetis
-# SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+# SPDX-License-Identifier: Apache-2.0
 #
 # The end-to-end test (spec 04): the demo on k3d with the fake model
 # provider and the fake Slack, then the complete Doc path on the incident:

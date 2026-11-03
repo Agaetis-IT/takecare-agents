@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Package testenv starts envtest API servers with the CRDs the product ships:
 // TakeCare's from config/crd, the third-party ones from the rendered

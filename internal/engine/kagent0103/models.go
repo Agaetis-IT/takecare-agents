@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Package kagent0103 implements the engine boundary for kagent 0.10.3
 // (ADR 0007). It writes kagent objects as unstructured content with the

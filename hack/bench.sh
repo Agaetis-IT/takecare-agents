@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 Agaetis
-# SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+# SPDX-License-Identifier: Apache-2.0
 #
 # The accuracy bench (spec 04): N investigations of the ongoing
 # proxy-timeout incident, scored, on the demo brought up by make demo-up.

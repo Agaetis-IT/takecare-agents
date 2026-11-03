@@ -174,7 +174,8 @@ Specs and decisions are written and reviewed before the code. Every spec leads t
 
 ## License
 
-Proprietary, copyright Agaetis, all rights reserved: see [`LICENSE`](LICENSE). Third-party components are listed in [`NOTICE`](NOTICE). The rules that keep the repository openable (SPDX headers, provenance of copied code, no strong copyleft) are in [`docs/licensing.md`](docs/licensing.md).
+Apache License 2.0, copyright Agaetis: see [`LICENSE`](LICENSE).
+Third-party notices are in [`NOTICE`](NOTICE); the rules that keep the provenance clean (SPDX headers, copied code, no strong copyleft) are in [`docs/licensing.md`](docs/licensing.md).
 
 ---
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 Agaetis
-# SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+# SPDX-License-Identifier: Apache-2.0
 #
 # Fails if one of our source files lacks an SPDX license identifier in its
 # first lines (docs/licensing.md). Code copied from a third party keeps its

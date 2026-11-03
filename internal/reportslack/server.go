@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Package reportslack is TakeCare's report MCP server (spec 05, ADR 0008):
 // one tool, post_message(destination, blocks), that the operator alone calls

@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Command demo-app is the demo's application, billing-api (spec 03). Demo
 // only. Its settings come from the environment, as the spike's did, so that

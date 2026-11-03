@@ -1,5 +1,7 @@
 TakeCare Agents
-Copyright 2026 Agaetis. All rights reserved.
+Copyright 2026 Agaetis
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
 
 This product includes the third-party Go modules listed below, each under
 its own license. The full license texts ship in the release images.

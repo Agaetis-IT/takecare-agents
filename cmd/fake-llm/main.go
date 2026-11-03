@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Command fake-llm is the end-to-end tests' model provider (spec 04),
 // replaying fixtures or recording them from a real provider. Test only:

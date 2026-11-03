@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 Agaetis
-# SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+# SPDX-License-Identifier: Apache-2.0
 #
 # Prints the CHANGELOG section of a version, the release notes of its tag:
 # the lines under `## [<version>]` up to the next `## [`. Fails when the
