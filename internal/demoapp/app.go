@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Package demoapp is the demo's application, billing-api (spec 03): it plays
 // the service in trouble AND exposes its own Prometheus metrics, as a real

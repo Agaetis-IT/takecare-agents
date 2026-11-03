@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Package fakeslack is the end-to-end tests' Slack (spec 04): auth.test and
 // chat.postMessage of the Web API, with a bearer token checked, recording

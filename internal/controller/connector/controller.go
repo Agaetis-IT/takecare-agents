@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Package connector reconciles the TakeCareConnector (spec 05, ADR 0008):
 // the gateway's MCP backend for each connector, the discovery and

@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Package gatewayapi installs the upstream Gateway API CRDs from a copy
 // embedded in the operator binary, so that an installation needs no access to

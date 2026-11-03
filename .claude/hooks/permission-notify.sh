@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-FileCopyrightText: 2026 Agaetis
-# SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+# SPDX-License-Identifier: Apache-2.0
 #
 # Notification hook, matcher "permission_prompt": a macOS notification when a
 # session waits on a permission. Reads the hook's JSON on stdin. Never blocks.

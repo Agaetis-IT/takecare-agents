@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Agaetis
-# SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+# SPDX-License-Identifier: Apache-2.0
 
 # The accuracy bench (spec 04) with a real model: the demo on k3d, the
 # proxy-timeout incident, then N silent investigations scored by

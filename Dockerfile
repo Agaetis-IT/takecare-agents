@@ -1,6 +1,6 @@
 # check=skip=InvalidDefaultArgInFrom
 # SPDX-FileCopyrightText: 2026 Agaetis
-# SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+# SPDX-License-Identifier: Apache-2.0
 
 # Base images are pinned in hack/versions.env and passed by the Makefile
 # (make docker-build, make docker-buildx); there is no default on purpose.

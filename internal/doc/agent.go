@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Package doc holds what is specific to the Doc (spec 02): its instructions,
 // and how a TakeCareDoc becomes an agent for the engine. The engine never

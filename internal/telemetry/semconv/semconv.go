@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Package semconv holds every telemetry attribute name TakeCare emits
 // (ADR 0006): the OpenTelemetry GenAI semantic conventions it follows, and

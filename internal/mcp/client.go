@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Package mcp is the operator's MCP client (ADR 0008, spec 05): it lists a
 // connector's tools to classify them, and calls a tool only where the product

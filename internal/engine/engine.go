@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Package engine is the boundary between TakeCare and its agent engine
 // (ADR 0007). The interfaces are defined here, where the controllers consume

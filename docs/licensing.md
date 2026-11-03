@@ -1,6 +1,6 @@
 # Licensing
 
-TakeCare Agents is **proprietary**: copyright Agaetis, all rights reserved (see `LICENSE`). It must stay **openable**: the day Agaetis decides to publish it under an open-source license, that should take one PR, not an audit. These rules make that possible. They apply to every PR and are checked in review and in CI.
+TakeCare Agents is licensed under the **Apache License 2.0** (see `LICENSE`), copyright Agaetis. These rules keep the provenance of every file clean, so that what we publish is ours to license or carries its own license. They apply to every PR and are checked in review and in CI.
 
 ## 1. Our own files carry an SPDX header
 
@@ -8,12 +8,10 @@ Every source file we write (`*.go`, `*.py`, `*.sh`, `Makefile`, `Dockerfile`) st
 
 ```go
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 ```
 
 with the comment syntax of the language, and the year the file was created. Generated Go files get it from `hack/boilerplate.go.txt`. `make lint` (`hack/check-spdx.sh`) fails on a file without an SPDX identifier.
-
-Opening the repository then comes down to replacing `LicenseRef-Agaetis-Proprietary` with the chosen identifier and replacing `LICENSE`.
 
 ## 2. No third-party code without its provenance
 
@@ -25,7 +23,7 @@ Code, prompts, configuration or text copied or adapted from elsewhere (an open-s
 
 Copying without recording the provenance is not allowed, even for a few lines: it is what makes a codebase impossible to open later.
 
-The challenge POC (`sre-agents/demo/claude/poc`) belongs to Agaetis; code taken from it gets our header, and the PR names the POC file it comes from.
+The challenge POC, reference material kept outside this repository, belongs to Agaetis; code taken from it gets our header, and the PR names the POC file it comes from.
 
 ## 3. Dependencies
 
@@ -48,9 +46,9 @@ This rule applies from PR 4; it is written here so that it binds whoever writes 
 
 ## 5. Opening the repository
 
-When the decision is made, the opening PR:
+The repository was licensed under Apache-2.0 on 2026-11-03 by the PR `chore: license TakeCare Agents under Apache-2.0`, which:
 
-1. replaces `LICENSE` and the SPDX identifier in every header;
-2. checks that `make licenses` is green and that every copied file of section 2 is compatible with the chosen license;
-3. runs `gitleaks` over the whole history (`make gitleaks GITLEAKS_MODE=git`);
-4. reviews the history and the docs for customer names or internal information.
+- [x] replaced `LICENSE` with the Apache License 2.0 text and the SPDX identifier `LicenseRef-Agaetis-Proprietary` with `Apache-2.0` in every header;
+- [x] checked that `make licenses` is green and that every copied file of section 2 is compatible with Apache-2.0 (the HolmesGPT attribution of section 4, itself Apache-2.0, is kept);
+- [x] ran `gitleaks` over the whole history, every branch, tag and pull request ref, with the repository's rules and with extra rules for model, Slack, GitHub and kubeconfig credentials: no credential;
+- [x] reviewed the history and the docs for internal addresses and hosts.

@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Package usage measures what a run cost in model calls and tokens (spec 02
 // §5): the gateway's metrics in Prometheus, read when the run starts and

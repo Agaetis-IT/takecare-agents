@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Package alerts is the Doc's trigger (spec 02 §1, spec 06 §2): an
 // Alertmanager webhook that turns firing alerts in a Doc's scope into

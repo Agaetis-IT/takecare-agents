@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Package golden compares a test's output with a file under testdata/,
 // reviewed like code. Regenerate with `go test <package> -update` (the flag

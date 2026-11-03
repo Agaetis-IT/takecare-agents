@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Package investigation admits the Doc's records into its run queue (spec 02
 // §2): a new TakeCareInvestigation becomes Queued, a Queued one is held in

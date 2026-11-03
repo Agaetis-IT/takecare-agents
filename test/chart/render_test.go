@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Package chart checks what helm lint and kubeconform cannot: the rendered
 // profiles against the CRDs on an API server, and the installation

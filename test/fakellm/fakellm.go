@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
-// SPDX-License-Identifier: LicenseRef-Agaetis-Proprietary
+// SPDX-License-Identifier: Apache-2.0
 
 // Package fakellm is the fake model provider of the end-to-end tests
 // (spec 04): an OpenAI-compatible chat completions server, behind the real
