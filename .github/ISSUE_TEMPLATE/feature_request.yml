@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2026 Agaetis
+# SPDX-License-Identifier: Apache-2.0
+name: Feature request
+description: Propose a change or a new capability.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. A change of design is discussed before the code: it may lead to an ADR proposal (docs/adr/).
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do, and what stops you today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Your proposal
+      description: What you would like TakeCare Agents to do. Name the spec or ADR it touches, if you know it.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: What you considered or do today instead.
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I would like to work on this myself.

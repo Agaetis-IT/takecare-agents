@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 Agaetis
+# SPDX-License-Identifier: Apache-2.0
+name: Bug report
+description: Something in TakeCare Agents does not work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. For a vulnerability, do not open an issue: follow SECURITY.md.
+        Never paste a token, an API key, a kubeconfig or data from a production system.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The smallest steps, values or manifests that show the problem.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The TakeCare Agents release or commit, and the chart version.
+      placeholder: v0.1.0-rc.1
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Kubernetes distribution and version, the chart profile (demo or production), the model provider.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and status
+      description: The operator's logs, the resource's status and events (`kubectl describe`). Remove anything secret.
+      render: text

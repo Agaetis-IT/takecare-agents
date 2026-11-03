@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 Agaetis
+# SPDX-License-Identifier: Apache-2.0
+#
+# Weekly updates, minor and patch grouped per ecosystem. No docker entry:
+# the Dockerfile's base images come from hack/versions.env through build
+# arguments, which Dependabot cannot read; they are bumped there by hand.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      gomod-minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions-minor-and-patch:
+        update-types: [minor, patch]
