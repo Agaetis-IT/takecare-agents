@@ -88,7 +88,10 @@ jobs:
 
   dco:
     name: dco (every commit signed off)
-    if: github.event_name == 'pull_request'
+    # Pull requests opened by GitHub Apps (Dependabot) sign off with another
+    # address than their author's; GitHub sets the opener's type, a commit
+    # cannot. A skipped required check counts as passed.
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.type != 'Bot'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
