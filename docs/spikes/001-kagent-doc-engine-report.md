@@ -6,7 +6,7 @@
 | Date | 2026-10-28 |
 | Spike | [001-kagent-doc-engine.md](001-kagent-doc-engine.md) (timebox extended by the product owner) |
 | Decides | ADR 0007 (accepted on this evidence); ADR 0010 stays Proposed |
-| Code and raw data | `spikes/001/` on the archived branch `spike/001-kagent` (tag `spike-001-final`), **not on `main`**: `notes.md` is the dated log, `results/` holds one file per run. Every `spikes/001/…` path in this report refers to that branch. |
+| Code and raw data | `spikes/001/` on the archived branch `spike/001-kagent` (tag `spike-001-final`), **not on `main`**: `results/` holds one file per run. Every `spikes/001/…` path in this report refers to that branch. Before the repository was published, the archive was stripped of the raw task records (`results/runtime/`) and of the working documents (the dated log and the upstream drafts), which are working notes, not published. |
 
 ## 1. What to take away
 
@@ -220,7 +220,7 @@ At several roles, the `python` runtime's 313 Mi per agent is a sizing constraint
 
 ### 5.7 The kagent controller: authentication, authorization, ServiceAccount
 
-Measured on 0.10.3 with the chart defaults (bundled agents off). Detail in `spikes/001/notes.md`; the reproduction is deliberately not part of this report, it belongs to a private disclosure (§11).
+Measured on 0.10.3 with the chart defaults (bundled agents off). Detail in the spike's working notes, not published; the reproduction is deliberately not part of this report, it belongs to a private disclosure (§11).
 
 1. **Authentication** exists and works: `AUTH_MODE` is read and applied (`LoadFromEnv` maps it to `--auth-mode`); with `trusted-proxy` the controller answers 401 to an unauthenticated call. This corrects the reading of `kagent#2968` ("not read") for 0.10.3. Its other point holds: the proxy authenticator decodes the JWT payload without verifying signature or expiry, so `trusted-proxy` relies entirely on the proxy being the only way in.
 2. **Authorization is a hard-wired no-op** (`NoopAuthorizer`, no setting): the controller does not restrict what an authenticated or, in the default mode, unauthenticated caller of its API may do, including the creation of agents. Exercised once on the spike's throwaway cluster and removed; the details belong to the private disclosure (§11).
@@ -286,7 +286,7 @@ Proposals only: accepted ADRs are not edited here (ADR 0007's own update, and AD
 
 ## 11. Upstream follow-ups (prepared, none sent)
 
-Drafts in `spikes/001/upstream/`, for the product owner to validate text by text. A search validated on a known positive showed two of the four findings were already reported, so they become comments carrying our measurements: a backport of `kagent#2809` to `release/v0.10.x` (untested; to be applied from a fork, with a DCO sign-off by a person); a comment on `agentgateway#3500` (card URL rewrite, reproduced on v1.6.0); a comment on `kubernetes-mcp-server#1527` (stale discovery, the CRD case in HTTP mode); a comment supporting `adk-go#1634` / `#1635` (tool payloads in spans). The controller findings of §5.7 are **not** drafted here: they are a vulnerability, written and sent by the product owner through the project's private channel (an e-mail to the private list named in kagent's `SECURITY.md`; GitHub private reporting is disabled on that repository; the file announces no disclosure delay and no required content).
+Drafts kept in the spike's working notes, not published, for the product owner to validate text by text. A search validated on a known positive showed two of the four findings were already reported, so they become comments carrying our measurements: a backport of `kagent#2809` to `release/v0.10.x` (untested; to be applied from a fork, with a DCO sign-off by a person); a comment on `agentgateway#3500` (card URL rewrite, reproduced on v1.6.0); a comment on `kubernetes-mcp-server#1527` (stale discovery, the CRD case in HTTP mode); a comment supporting `adk-go#1634` / `#1635` (tool payloads in spans). The controller findings of §5.7 are **not** drafted here: they are a vulnerability, written and sent by the product owner through the project's private channel (an e-mail to the private list named in kagent's `SECURITY.md`; GitHub private reporting is disabled on that repository; the file announces no disclosure delay and no required content).
 
 ## 12. Open questions
 
