@@ -96,7 +96,7 @@ The thirteen roles, their natures and their milestones are in the concept → bu
 | Investigation | `TakeCareInvestigation` (resource, trace) | One alert handled by the Doc |
 | Agent | a `TakeCare<Role>` kind embedding `RoleCommonSpec`, with a record kind | A role that runs an AI agent on the engine (Doc, Kiné, Mécano…); spec 06 |
 | Guardrail | a `TakeCare<Role>` kind embedding `GuardrailCommonSpec` | A role that configures a control around the agents, with no agent of its own (Ranger, Kit, Psy); spec 06 |
-| Experience | no kind | A service led by Agaetis with the customer's teams (Check-up, Stress Test, Bootcamp, Sparring): tooling only; spec 06 |
+| Exercise | no kind | What the roles practise with (Check-up, Stress Test, Bootcamp, Sparring): a scenery, scenarios, scripts and reports, run with the customer's teams on a copy or without touching anything; tooling only; spec 06 |
 | Run status | `RunStatus` | The status every agent role's record shares: phase, times, engine, usage, trace, conditions; spec 06 §3 |
 
 Role names keep their French flavour (Doc, Kiné, Mécano, Nutri…): they are the brand. Everything else in this repository is in English.

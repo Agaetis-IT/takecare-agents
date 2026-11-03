@@ -10,9 +10,9 @@
 
 ---
 
-TakeCare Agents is a collection of specialised roles (AI agents and guardrails) that take care of a Kubernetes production alongside your teams: they frame every AI agent, prepare for the peaks and heal incidents down to their cause. It installs at the customer's site as a **Kubernetes operator**, on an open source stack (agentgateway, kagent, agentregistry, MCP), with the model of their choice. A built-in **demo mode** runs the same product on a local cluster, with a scenery and replayable incidents.
+TakeCare Agents is a collection of specialised roles (AI agents and guardrails) that take care of your production alongside your teams: Kubernetes and the managed cloud services around it. They frame every AI agent, prepare for the peaks and heal incidents down to their cause. It installs at the customer's site as a **Kubernetes operator**, on an open source stack (agentgateway, kagent, agentregistry, MCP), with the model of their choice. A built-in **demo mode** runs the same product on a local cluster, with a scenery and replayable incidents.
 
-> **Status: first prerelease.** The **Doc** works end to end: an alert in, a sourced diagnosis published, with its trace and its cost, on the demo or on your cluster. [`v0.1.0-rc.1`](CHANGELOG.md) is the first prerelease; its images and charts install from `ghcr.io/agaetis-it` once the packages are public. The eight other roles are specified, not coded yet.
+> **Status: first prerelease.** The **Doc** works end to end: an alert in, a sourced diagnosis published, with its trace and its cost, on the demo or on your cluster. [`v0.1.0-rc.1`](CHANGELOG.md) is the first prerelease: its images are public on `ghcr.io/agaetis-it`, the charts follow with `0.1.0`. To try it today, build the demo from this tree with `make demo-up DEMO_IMAGES=build`. The eight other roles are specified, not coded yet.
 
 ## The staff
 
@@ -36,23 +36,11 @@ Nine roles, each with its own job, in three pillars of three. Each role has a ni
 
 Agents: Intendant, Coach, Nutri, Guide, Doc, Kiné, Mécano. Guardrails, which are not agents and apply to every agent, vendors' agents included: Ranger and Psy.
 
-### Kick-off, then journeys
-
-Everything starts with the **Kick-off**, once per customer: an audit and framing workshop with the customer's teams, where the agentic foundation is set up at the **base camp** (the platform, the guardrails, the infra map). Every journey then leaves from the base camp: each agent packs its bag (its configuration), then goes on its Reco.
-
-| Journey | The challenge | Roles | Exercise |
-|---|---|---|---|
-| **TakeCare Crew** | Grow your teams on their own infra | Guide, Mécano | Passage de relais |
-| **TakeCare Resilience** | Master production incidents | Doc, Kiné, Mécano | Bootcamp |
-| **TakeCare Efficiency** | Find the right level: not too much, not too little | Coach, Nutri | Stress Test (working name) |
-
-**Stages** are led by the customer's teams with Agaetis; they are services, not Kubernetes resources: the Kick-off, the **Reco** (puts agents into service), the **Qualif** (qualifies an action, gesture by gesture), the **Ravito** (adapts maps and bags when the infra changes) and the **Sparring** (red teaming of every agent). **Exercises** are what roles practise together on the training ground: the Passage de relais, the Bootcamp and the Stress Test.
-
 Milestone 1 delivers the **Doc** (incident diagnosis): on every alert, it investigates read-only and posts a sourced diagnosis to Slack (the root cause, the ruled-out leads, who should act). You decide on the treatment.
 
 ## The principle: the level is declared
 
-Every role is a Kubernetes resource that carries its **intervention level**. The operator derives from it what the role is allowed to do. The Reco makes an apprentice a companion; the Qualif makes a companion a master, gesture by gesture. The API values keep their milestone 1 names.
+Every role is a Kubernetes resource that carries its **intervention level**. The operator derives from it what the role is allowed to do. A role is put into service as a companion once it has proven itself as an apprentice; it becomes a master gesture by gesture, only where you decided. The API values keep their milestone 1 names.
 
 | Level | Value | What the role does |
 |---|---|---|
@@ -103,7 +91,7 @@ every investigation = one OpenTelemetry trace (GenAI semantic conventions) ─�
 A2A calls, tool calls and model calls all go through agentgateway.
 
 - **`takecare-operator`** (Go, kubebuilder) translates TakeCare resources into building-block configuration and RBAC, triggers investigations and publishes their results. It installs nothing and does not reason itself.
-- **kagent** runs the agents ([ADR 0007](docs/adr/0007-agent-engine-kagent.md), to be confirmed by [spike 001](docs/spikes/001-kagent-doc-engine.md)). Agents talk to each other over **A2A** ([ADR 0009](docs/adr/0009-agents-talk-over-a2a.md)).
+- **kagent** runs the agents ([ADR 0007](docs/adr/0007-agent-engine-kagent.md), confirmed by [spike 001](docs/spikes/001-kagent-doc-engine.md)). Agents talk to each other over **A2A** ([ADR 0009](docs/adr/0009-agents-talk-over-a2a.md)).
 - **Connectors**: everything an agent reads or writes is an MCP server behind the gateway; the level decides which tools are allowed ([ADR 0008](docs/adr/0008-everything-is-an-mcp-connector.md)).
 - **The `takecare` chart** installs the operator, its CRDs and the third-party building blocks, with a `prod` or `demo` profile.
 - **agentgateway** is the single control point: every model call (provider key never exposed, cost measured), every tool call (authorized tool by tool), every agent-to-agent call.
@@ -139,7 +127,7 @@ Prerequisites: Docker with at least 4 GB of memory (the stack uses about 3.5 GiB
 | [`docs/specs/03-demo.md`](docs/specs/03-demo.md) | Demo mode and `TakeCareDemo`: the `proxy-timeout` scenario, `make demo-*` |
 | [`docs/specs/04-quality-ci.md`](docs/specs/04-quality-ci.md) | Layout, tests, accuracy bench, CI, definition of done |
 | [`docs/specs/05-connectors.md`](docs/specs/05-connectors.md) | `TakeCareConnector` and add-ons: MCP servers behind the gateway, tool classes |
-| [`docs/specs/06-role-model.md`](docs/specs/06-role-model.md) | The role model: agents, guardrails, experiences; triggers, records and `RunStatus`; concept → build mapping |
+| [`docs/specs/06-role-model.md`](docs/specs/06-role-model.md) | The role model: agents, guardrails, exercises; triggers, records and `RunStatus`; concept → build mapping |
 | [`docs/specs/07-role-sheets.md`](docs/specs/07-role-sheets.md) | One page per role of the concept |
 | [`docs/spikes/001-kagent-doc-engine.md`](docs/spikes/001-kagent-doc-engine.md) | Spike 001: can kagent run the Doc as well as HolmesGPT? |
 | [`docs/specs/90-agent-output-localization.md`](docs/specs/90-agent-output-localization.md) | Localized agent output (deferred) |

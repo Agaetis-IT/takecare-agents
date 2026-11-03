@@ -14,24 +14,22 @@ Template: nature · business name · the promise (recto of the card) · trigger 
 
 ## 01 Check-up — Operations clean-up
 
-- **Nature**: experience (Agaetis-led). **Pillar**: Prepare.
+- **Nature**: exercise. **Pillar**: Prepare.
 - **Promise**: put the operations in order once, before the agents arrive.
-- **Trigger**: an engagement. **Reads**: documentation, runbooks, the cluster (read-only), the code.
+- **Trigger**: on demand. **Reads**: documentation, runbooks, the cluster (read-only), the code.
 - **Produces**: a report and a backlog; feeds the Guide (documentation) and the Mécano (inventory).
-- **Tiers**: The full tour · The clean-up · Ready for what follows.
 - **Build**: tooling only: read-only inventory scripts (the Mécano's `trial` tools reused by hand), a report template. No kind.
-- **Partners**: Guide, Mécano, Kit. **Milestone**: with the Crew offer.
-- **Open**: QR code of the card; which Mécano scripts are reusable before the Mécano exists.
+- **Partners**: Guide, Mécano, Kit. **Milestone**: with the Guide and the Mécano.
+- **Open**: which Mécano scripts are reusable before the Mécano exists.
 
 ## 02 Stress Test — Load testing
 
-- **Nature**: experience. **Pillar**: Prepare.
+- **Nature**: exercise. **Pillar**: Prepare.
 - **Promise**: find the right level, neither too little nor too much.
-- **Trigger**: an engagement. **Reads**: metrics, quotas, the scenery of a copy.
+- **Trigger**: on demand. **Reads**: metrics, quotas, the scenery of a copy.
 - **Produces**: a load report; feeds the Coach (what held) and the Nutri (what is oversized).
-- **Tiers**: Dry run · Targeted test · Full scale.
 - **Build**: tooling: load scenarios on the demo scenery, a report. No kind.
-- **Partners**: Coach, Nutri, Bootcamp. **Milestone**: with the Efficiency offer.
+- **Partners**: Coach, Nutri, Bootcamp. **Milestone**: with the Coach and the Nutri.
 - **Open**: the "stress test" name clashes with banking in finance (concept note).
 
 ## 03 Coach — Peak readiness
@@ -69,13 +67,12 @@ Template: nature · business name · the promise (recto of the card) · trigger 
 
 ## 06 Bootcamp — Disaster recovery testing
 
-- **Nature**: experience. **Pillar**: Treat.
-- **Promise**: "Agaetis' experts simulate the outage and check that the recovery plan really works."
-- **Trigger**: an engagement. **Reads**: the recovery plan, a copy of the platform.
+- **Nature**: exercise. **Pillar**: Treat.
+- **Promise**: simulate the outage and check that the recovery plan really works.
+- **Trigger**: on demand. **Reads**: the recovery plan, a copy of the platform.
 - **Produces**: an exercise report and a retest; feeds the Doc (scenarios), the Coach, the Guide.
-- **Tiers**: Dry run (half a day, the scenario on paper) · Targeted exercise (a day, an injected outage off production, measured recovery, report and retest) · Full scale (several days, several scenarios, on-call to providers).
 - **Build**: tooling: the `TakeCareDemo` scenery and scenarios are the Bootcamp's instrument (an injected outage on a copy); no kind of its own. The demo's recovery scenario (a degrading cloud region, quotas never raised in the backup region) is a Bootcamp scenario.
-- **Partners**: Doc, Coach, Guide. **Milestone**: with the Resilience offer; the scenery exists from M1 (PR 5).
+- **Partners**: Doc, Coach, Guide. **Milestone**: the scenery exists from M1 (PR 5).
 - **Open**: none on the build side.
 
 ## 07 Doc — Incident diagnosis
@@ -108,18 +105,17 @@ Template: nature · business name · the promise (recto of the card) · trigger 
 - **Produces**: `TakeCareMaintenance`: the state of the fleet (versions behind, end of support, obsolete APIs, certificates, drift between code and cluster), an upgrade plan **tested on a copy**, as a pull request at `service`.
 - **Tiers**: `trial` "He takes stock" (inventory, without touching anything) · `service` "He prepares the work site" (upgrade plan tested on a copy: you approve) · `seasoned` "He does routine maintenance" (minor updates and renewals within the validated frame, reports).
 - **Build**: **the first writing role.** Its `service` output is a pull request: a `propose` tool on the `code` connector, which keeps ADR 0008's guarantee intact (a human merges). "Tested on a copy" needs a copy: the demo scenery, or the customer's staging, declared in the spec. `seasoned` `act` tools are the first live writes of the product: certificate renewals, minor version bumps, each listed in `actTools`.
-- **Partners**: Kiné, Nutri, Coach. Also in the Crew offer (its inventory feeds the Guide). **Milestone**: M4.
+- **Partners**: Kiné, Nutri, Coach, Guide (its inventory feeds the Guide). **Milestone**: M4.
 - **Open**: what "a copy" is at a customer (a namespace, a cluster, an ephemeral environment); the `code` connector's first implementation (GitLab, GitHub).
 
 ## 10 Sparring — AI agent red teaming
 
-- **Nature**: experience. **Pillar**: Protect.
-- **Promise**: "Agaetis' experts attack your agents on a copy, to fix before the real attackers do."
-- **Trigger**: an engagement. **Reads**: a copy of the platform with its agents.
+- **Nature**: exercise. **Pillar**: Protect.
+- **Promise**: attack your agents on a copy, to fix before the real attackers do.
+- **Trigger**: on demand. **Reads**: a copy of the platform with its agents.
 - **Produces**: findings (prompt injection, data leaks, tool abuse, rights bypass); they become Ranger rules and Kit entries **through a human**.
-- **Tiers**: Scouting · Targeted sparring · Red team.
 - **Build**: tooling: attack scenarios against the demo scenery (the Doc with trapped logs is one), a report. No kind. The spike's check-tools script (a refused tool exists upstream, a forged call is refused) is the seed of its toolbox.
-- **Partners**: Ranger, Doc (trapped logs), Kit. **Milestone**: with the Guardrails offer.
+- **Partners**: Ranger, Doc (trapped logs), Kit. **Milestone**: with the guardrails.
 - **Open**: none on the build side.
 
 ## 11 Ranger — AI agent governance
@@ -129,8 +125,8 @@ Template: nature · business name · the promise (recto of the card) · trigger 
 - **Trigger**: none (always on). **Acts on**: agentgateway policies (ADR 0004, 0008): masking, allowed models and tools, caps per role, alerts. Covers **every agent routed through the gateway, including the customer's vendors' agents** (concept, 2026-10-28).
 - **Produces**: no record; a journal (every request logged) and alerts. Its status reports what is enforced.
 - **Tiers**: `trial` audit (logs, nothing enforced; the replay) · `service` protection "He masks, filters, caps and alerts" · `seasoned` customisation "An identity and rights per agent, tool by tool, and extra guardrails".
-- **Build**: `TakeCareRanger`, cluster-scoped, `GuardrailCommonSpec` (level, no namespaces, no model). Its controller renders gateway policies; most of what it needs is what the spike measured (per-route identity, tool authorisation, usage per route). The deterministic nature is the selling point: "a prompt will never bend it". Not an agent: no `RoleCommonSpec`, no engine.
-- **Partners**: Kit, Psy, Sparring. **Milestone**: **M2** (in every starter pack).
+- **Build**: `TakeCareRanger`, cluster-scoped, `GuardrailCommonSpec` (level, no namespaces, no model). Its controller renders gateway policies; most of what it needs is what the spike measured (per-route identity, tool authorisation, usage per route). The deterministic nature is the point: "a prompt will never bend it". Not an agent: no `RoleCommonSpec`, no engine.
+- **Partners**: Kit, Psy, Sparring. **Milestone**: **M2**.
 - **Open**: masking at the gateway (what agentgateway 1.6 offers natively); routing the customer's own agents through our gateway (installation topology, ADR 0011).
 
 ## 12 Kit — AI agent inventory
