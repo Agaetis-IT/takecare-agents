@@ -9,7 +9,7 @@
 
 ## Purpose
 
-The concept settled on a collection of **thirteen roles** in three natures: six **agents**, three **guardrails**, four **experiences**. The build so far (API types, charts, platform, connectors) was written for the first agent, the Doc, with a deliberately small shared core. Before the Doc's controller fixes the shape every later role will inherit, this spec says **what the thirteen roles have in common, where they differ, and how each nature maps onto the operator**. One page per role follows in spec 07.
+The concept settled on a collection of **thirteen roles** in three natures: six **agents**, three **guardrails**, four **exercises**. The build so far (API types, charts, platform, connectors) was written for the first agent, the Doc, with a deliberately small shared core. Before the Doc's controller fixes the shape every later role will inherit, this spec says **what the thirteen roles have in common, where they differ, and how each nature maps onto the operator**. One page per role follows in spec 07.
 
 This spec replaces the roadmap of spec 00 (eleven roles, a "Checkpoint", a `TakeCareRanger` agent), which predates the collection.
 
@@ -19,7 +19,7 @@ This spec replaces the roadmap of spec 00 (eleven roles, a "Checkpoint", a `Take
 |---|---|---|---|
 | **Agent** | Coach, Nutri, Guide, Doc, Kiné, Mécano | An LLM loop (kagent, ADR 0007) with tools (connectors, ADR 0008) and instructions, run by the operator | One kind `TakeCare<Role>` embedding `RoleCommonSpec`, plus one **record kind** per role for the work it produces (§3) |
 | **Guardrail** | Ranger, Kit, Psy | A deterministic capability of the platform: gateway policies (Ranger), the agent catalogue (Kit), evaluation of traces (Psy). **No LLM loop of its own** (the Psy's judge model evaluates, it does not act) | One kind each (`TakeCareRanger`, `TakeCareKit`, `TakeCarePsy`) with a **lighter** common spec: level, no scope in namespaces, no model except the Psy's judge |
-| **Experience** | Check-up, Stress Test, Bootcamp, Sparring | A service led by Agaetis with the customer's teams, on a copy or without touching anything | **No kind.** Tooling only: scenery and scenarios (as `TakeCareDemo` does), scripts, reports. An experience may *use* agents and guardrails; it is not one |
+| **Exercise** | Check-up, Stress Test, Bootcamp, Sparring | What the roles practise with, run with the customer's teams on a copy or without touching anything | **No kind.** Tooling only: scenery and scenarios (as `TakeCareDemo` does), scripts, reports. An exercise may *use* agents and guardrails; it is not one |
 
 Consequence for the code: `RoleCommonSpec` stays what the agents need. Guardrails do not embed it; they get a `GuardrailCommonSpec` (level, suspend) when the first one is built (Ranger). The `LevelSupported` condition and the three-tier rule (§5) apply to both.
 
@@ -101,7 +101,7 @@ The concept's chains: Doc → Kiné → Mécano (an incident, its root cause, th
 - the **record** is the durable contract: a `TakeCareFinding` (ADR 0009) written by the upstream role's controller, or the upstream record itself reaching a phase; the downstream role watches it (§2, trigger "upstream record");
 - the **A2A call** is how one agent asks another a question during a run (the Kiné asking the Doc for details). Through the gateway, with the caller's trace context (ADR 0006), and the callee's tools restricted by **the callee's** level, never the caller's.
 
-Experiences hand nothing to the operator: a Sparring result becomes Ranger rules and Kit entries **through a human**.
+Exercises hand nothing to the operator: a Sparring result becomes Ranger rules and Kit entries **through a human**.
 
 ## 7. Memory and history
 
@@ -120,21 +120,21 @@ Already in place: `RoleCommonSpec.model`, the `takecare.role` and `takecare.leve
 
 | # | Role | Nature | Business name | Build shape | Record | Milestone |
 |---|---|---|---|---|---|---|
-| 01 | Check-up | experience | Operations clean-up | tooling | — | with the Crew offer |
-| 02 | Stress Test | experience | Load testing | tooling | — | with the Efficiency offer |
+| 01 | Check-up | exercise | Operations clean-up | tooling | — | with the Guide and the Mécano |
+| 02 | Stress Test | exercise | Load testing | tooling | — | with the Coach and the Nutri |
 | 03 | Coach | agent | Peak readiness | `TakeCareCoach` | `TakeCarePeakReview` | M6 |
 | 04 | Nutri | agent | FinOps | `TakeCareNutri` | `TakeCareCostReview` | M6 |
 | 05 | Guide | agent | Team upskilling | `TakeCareGuide` | `TakeCareConversation` | M5 |
-| 06 | Bootcamp | experience | Disaster recovery testing | tooling (scenery, scenarios) | — | with the Resilience offer |
+| 06 | Bootcamp | exercise | Disaster recovery testing | tooling (scenery, scenarios) | — | the scenery from **M1** |
 | 07 | Doc | agent | Incident diagnosis | `TakeCareDoc` | `TakeCareInvestigation` | **M1** |
 | 08 | Kiné | agent | Problem management | `TakeCareKine` | `TakeCareReview` | M3 |
 | 09 | Mécano | agent | Lifecycle management | `TakeCareMecano` | `TakeCareMaintenance` | M4 |
-| 10 | Sparring | experience | AI agent red teaming | tooling | — | with the Guardrails offer |
+| 10 | Sparring | exercise | AI agent red teaming | tooling | — | with the guardrails |
 | 11 | Ranger | guardrail | AI agent governance | `TakeCareRanger` (gateway policies) | — | **M2** |
 | 12 | Kit | guardrail | AI agent inventory | `TakeCareKit` (agentregistry) | — | M3 |
 | 13 | Psy | guardrail | AI agent evaluation | `TakeCarePsy` (Langfuse or traces) | `TakeCareEvaluation` | M4 |
 
-Milestones re-ordered by the starter packs (2026-10-28): **Resilience** (Doc, Kiné, Mécano) has the strongest market echo and the heaviest integration; **Guardrails** (Ranger, Kit, Psy) is included in every pack, so the Ranger comes right after the Doc; **Crew** (Guide, Mécano) is the lightest to integrate; **Efficiency** (Nutri, Coach) comes last. The experiences ship with their offer, as tooling, and do not block a milestone. Proposed, to confirm with the concept owner.
+Milestones ordered (2026-10-28): the incident chain (Doc, Kiné, Mécano) first, the heaviest integration and the one the product is built around; the guardrails (Ranger, Kit, Psy) apply to every agent, so the Ranger comes right after the Doc; the Guide and the Mécano are the lightest to integrate; the Nutri and the Coach come last. The exercises are tooling: they follow the roles they serve and do not block a milestone. Proposed, to confirm with the concept owner.
 
 ## 10. What this changes in the build, and when
 
