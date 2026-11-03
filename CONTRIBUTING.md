@@ -33,7 +33,7 @@ A pull request is ready when `make generate` changes nothing, and `make lint` an
 
 ## Developer Certificate of Origin
 
-Every commit must be signed off: `git commit -s` adds a `Signed-off-by` line, by which you certify the [Developer Certificate of Origin](https://developercertificate.org/), that you wrote the change or have the right to submit it under the project's license (Apache-2.0). A CI check refuses a pull request with a commit that is not signed off; `git rebase --signoff main` fixes older commits.
+Every commit must be signed off: `git commit -s` adds a `Signed-off-by` line, by which you certify the [Developer Certificate of Origin](https://developercertificate.org/), that you wrote the change or have the right to submit it under the project's license (Apache-2.0). A CI check refuses a pull request with a commit that is not signed off; `git rebase --signoff main` fixes older commits. Pull requests opened by GitHub Apps, such as Dependabot, are exempt.
 
 ## Review
 
