@@ -7,6 +7,8 @@
 | Updated | 2026-10-23 (outcome of spike 001, installation requirements, conditions) |
 | Supersedes | ADR 0005 |
 
+Redacted on 2026-11-03: the measured controller findings were withdrawn from this public text; the decision is unchanged.
+
 ## Context
 
 ADR 0005 kept HolmesGPT, the engine of the challenge POC, for the Doc. Designing the target architecture (ADR 0008: every tool is an MCP connector behind the gateway, the level is an allow-list of tools; ADR 0009: agents talk over A2A) kept running into Holmes' limits. A check against primary sources on HolmesGPT 0.45.0 (2026-10-14) found:
@@ -68,14 +70,14 @@ Requirements, not recommendations:
 _Topology: [ADR 0011](0011-separate-administration-cluster.md) (Proposed) proposes that these requirements apply on a dedicated administration cluster rather than inside the supervised cluster._
 
 1. **The kagent controller is reachable only through the gateway**: a NetworkPolicy admits only the gateway's pods to it. This depends on the customer's CNI enforcing NetworkPolicies, which the installation checks and states.
-2. **`rbac.namespaces` restricts the controller's RBAC to TakeCare's namespaces.** Measured: with the default chart the controller's ServiceAccount reads Secrets and writes core, apps and batch resources cluster-wide, `pods/exec` and service account tokens included (a ceiling equivalent to cluster-admin); with the value set, every cluster-wide and customer-namespace right disappears, write remains only inside TakeCare's own namespaces, agents still reconcile, tool discovery and the tool checks are unchanged.
-3. **`AUTH_MODE=trusted-proxy`, with the gateway as the only way in.** `ProxyAuthenticator` decodes the JWT without verifying its signature or expiry: everything rests on the gateway being the only path.
+2. **`rbac.namespaces` restricts the controller's RBAC to TakeCare's namespaces.** Measured: the controller's ServiceAccount has broad rights by default; with the value set, write remains only inside TakeCare's own namespaces, agents still reconcile, tool discovery and the tool checks are unchanged.
+3. **`AUTH_MODE=trusted-proxy`, with the gateway as the only way in.** `ProxyAuthenticator` decodes the JWT without verifying its signature or expiry (`kagent#2968`): the mode relies on the gateway being the only path.
 
-**Requirement 3 is not held at milestone 1.** The charts ship `AUTH_MODE=unsecure` (PR 3): `trusted-proxy` verifies no signature, and the operator's own ServiceAccount token was measured as accepted by it, so the mode adds authentication in name only; whether the agent pods' callbacks to the controller work under it is unverified until an investigation runs end to end (PR 4). What compensates: the NetworkPolicies that admit only the gateway's proxy pods and the agent pods to the controller, and `rbac.namespaces` limited to the engine's namespace, never the release namespace where the provider key lives.
+**Requirement 3 is not held at milestone 1.** The charts ship `AUTH_MODE=unsecure` (PR 3): the mode relies on the gateway being the only path, which milestone 1 enforces with NetworkPolicies instead; whether the agent pods' callbacks to the controller work under it is unverified until an investigation runs end to end (PR 4). What compensates: the NetworkPolicies that admit only the gateway's proxy pods and the agent pods to the controller, and `rbac.namespaces` limited to the engine's namespace, never the release namespace where the provider key lives.
 
 **Cancellation is not honored on the 0.10 line** (2026-10-30, PR 4b-2). A2A `CancelTask` on a running task answers `-32603 Cancellation is not supported`: the python runtime's executor raises `NotImplementedError` (`kagent-adk`, `A2aAgentExecutor.cancel`, v0.10.3), checked on a cluster. When an investigation reaches its timeout, the operator requests cancellation and records `TimedOut`, but the run and its model calls go on to their own end and the result is ignored. `takecare_run_cancels_total{result="unsupported"}` measures that cost. What lifts the gap: the 1.0 line (ADR 0010), or an upstream fix that implements cancellation in the 0.10 python executor, together with a per-run deadline the engine enforces itself; both are in the upstream lot, not sent.
 
-**None of these restores authorization.** The controller's authorizer is a hard-wired no-op (`NoopAuthorizer`): whoever reaches its API can list agents, run them and create agents, including agents that run an image of their choosing (exercised on the spike's throwaway cluster, then removed). Security rests entirely on who can reach the controller and on the ceiling of its ServiceAccount. The tier guarantee therefore rests on the connector's RBAC and the gateway's allow-list (ADR 0008), plus the controller's unreachability, not on authorization inside kagent.
+**The controller's own authorization is not relied upon:** the tier guarantee rests on the connector's RBAC and the gateway's allow-list (ADR 0008), plus the controller's unreachability (requirement 1). The measured details are withheld, reported upstream privately.
 
 ### Consequences (to hold from PR 4)
 

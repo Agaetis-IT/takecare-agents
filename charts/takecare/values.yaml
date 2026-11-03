@@ -289,24 +289,22 @@ kagent:
   namespaceOverride: kagent
   fullnameOverride: kagent
   # -- ADR 0007 requirement: Roles in this namespace instead of cluster-wide
-  # ClusterRoles. Without it the controller's ServiceAccount reads every
-  # Secret and writes core, apps and batch resources cluster-wide, pods/exec
-  # and service account tokens included: a ceiling equivalent to
-  # cluster-admin. The engine's namespace only: the controller authorizes
-  # nothing, so a right in the release namespace would let whoever reaches
-  # it run an agent next to the provider key Secret (ADR 0004).
+  # ClusterRoles. The controller's default ServiceAccount has broad rights;
+  # this bounds them. The engine's namespace only, never the release
+  # namespace, where the provider key Secret lives (ADR 0004): do not rely
+  # on the controller's own access control.
   rbac:
     namespaces: [kagent]
   controller:
     auth:
       # -- Who may call the controller's API, which the operator reaches through
       # the gateway (A2A). `unsecure` relies on the NetworkPolicy above and on
-      # rbac.namespaces: the controller authorizes nothing in any mode (ADR
-      # 0007). `trusted-proxy` makes the controller answer 401 to any call
-      # without a bearer JWT, decoded without signature check; measured on
-      # 0.10.3: the operator's own ServiceAccount token is accepted. It stays
-      # off until the agent pods' callbacks are verified under it (PR 4): a
-      # default that breaks investigations is worse than a written gap.
+      # rbac.namespaces: do not rely on the controller's own access control
+      # (ADR 0007). `trusted-proxy` makes the controller answer 401 to any
+      # call without a bearer JWT, which it does not verify (`kagent#2968`).
+      # It stays off until the agent pods' callbacks are verified under it
+      # (PR 4): a default that breaks investigations is worse than a written
+      # gap.
       mode: unsecure
     # -- The engine's model and tool calls carry the caller's trace context
     # (ADR 0006); the controller copies OTEL_* into the agent pods.
