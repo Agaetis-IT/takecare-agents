@@ -256,9 +256,12 @@ func TestDemoLifecycle(t *testing.T) {
 	if cm := f.corpus("runbooks"); len(cm.OwnerReferences) != 1 || cm.OwnerReferences[0].Name != demoName {
 		t.Errorf("corpus ConfigMap owners %v", cm.OwnerReferences)
 	}
-	if c := ready(f.demo()); c == nil || c.Status != metav1.ConditionFalse || c.Reason != ReasonSceneryNotReady {
-		t.Errorf("Ready before the app is available: %+v", c)
-	}
+	// The scenery is applied before the status is patched: wait for the
+	// status rather than read it once.
+	f.eventually("Ready false before the app is available", func() bool {
+		c := ready(f.demo())
+		return c != nil && c.Status == metav1.ConditionFalse && c.Reason == ReasonSceneryNotReady
+	})
 	f.rollOut(demoapp.ModeHealthy, "", time.Now())
 	f.eventually("phase Ready", func() bool {
 		d := f.demo()
@@ -274,9 +277,11 @@ func TestDemoLifecycle(t *testing.T) {
 		d := f.demo()
 		return v == 600 && f.corpusScenario("deployments") == "proxy-timeout" && d.Status.Phase == v1alpha1.DemoIncidentInProgress && d.Status.LastHandled.Incident == "1"
 	})
-	if d := f.demo(); d.Status.IncidentStartedAt != nil || d.Status.ExpectedAlertWindow != nil || ready(d).Reason != ReasonIncidentStarting {
-		t.Errorf("before the leaky pod: started %v window %v reason %s", d.Status.IncidentStartedAt, d.Status.ExpectedAlertWindow, ready(d).Reason)
-	}
+	f.eventually("the incident starting, no time before the leaky pod", func() bool {
+		d := f.demo()
+		c := ready(d)
+		return d.Status.IncidentStartedAt == nil && d.Status.ExpectedAlertWindow == nil && c != nil && c.Reason == ReasonIncidentStarting
+	})
 	podReady := time.Now().Truncate(time.Second).Add(7 * time.Second)
 	f.rollOut(demoapp.ModeLeaky, "1", podReady)
 	f.eventually("the incident started with the leaky pod", func() bool {
