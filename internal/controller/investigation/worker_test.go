@@ -212,7 +212,7 @@ func startWorker(t *testing.T, scripts map[string][]poll) *workerFixture {
 func (f *workerFixture) doc(t *testing.T, ready bool, mutate func(*v1alpha1.TakeCareDoc)) *v1alpha1.TakeCareDoc {
 	t.Helper()
 	d := &v1alpha1.TakeCareDoc{Name: docName, Namespace: ns}
-	d.Spec.Level = v1alpha1.LevelService
+	d.Spec.Level = v1alpha1.LevelPractitioner
 	d.Spec.Scope.Namespaces = []v1alpha1.Namespace{appsNS}
 	if mutate != nil {
 		mutate(d)
@@ -247,7 +247,7 @@ func (f *workerFixture) investigation(t *testing.T, name string, status *v1alpha
 	inv := &v1alpha1.TakeCareInvestigation{Name: name, Namespace: ns}
 	inv.Spec.RoleRef = v1alpha1.RoleRef{Kind: "TakeCareDoc", Name: docName}
 	inv.Spec.Alert = v1alpha1.AlertRecord{Name: alertName, Fingerprint: "3fa29c1b07e4d2aa", Service: "billing-api", Namespace: appsNS}
-	inv.Spec.Level = v1alpha1.LevelService
+	inv.Spec.Level = v1alpha1.LevelPractitioner
 	if err := f.c.Create(context.Background(), inv); err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +333,7 @@ func TestRunCompleted(t *testing.T) {
 	for k, want := range map[string]string{
 		semconv.GenAIOperationName: "invoke_agent", semconv.GenAIAgentName: docName, semconv.GenAIAgentID: string(d.UID),
 		semconv.GenAIConversationID: "doc-run-ok", semconv.GenAIProviderName: "openai-compatible", semconv.GenAIRequestModel: "gpt-x",
-		semconv.Role: docName, semconv.Level: "service", semconv.AlertName: alertName,
+		semconv.Role: docName, semconv.Level: string(v1alpha1.LevelPractitioner), semconv.AlertName: alertName,
 		semconv.AlertFingerprint: "3fa29c1b07e4d2aa", semconv.RunOutcome: "completed",
 	} {
 		if a[k] != want {

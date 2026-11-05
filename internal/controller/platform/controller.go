@@ -571,21 +571,21 @@ func samplingRatio(perMille *int32) float64 {
 // resourceGaps adds the gaps the roles and connectors give (spec 01):
 // role-without-report, report-log-enabled and connector-not-ready.
 func (r *Reconciler) resourceGaps(ctx context.Context, add func(id, detail string)) error {
-	// role-without-report (spec 01): a role at the service level, or at
-	// seasoned which behaves as service, without a report connector.
+	// role-without-report (spec 01): a role at the Practitioner level, or at
+	// Expert which behaves as Practitioner, without a report connector.
 	var docs v1alpha1.TakeCareDocList
 	if err := r.List(ctx, &docs, client.InNamespace(r.OperatorNamespace)); err != nil {
 		return fmt.Errorf("list TakeCareDocs in %s: %w", r.OperatorNamespace, err)
 	}
 	var unreported []string
 	for _, d := range docs.Items {
-		if (d.Spec.Level == v1alpha1.LevelService || d.Spec.Level == v1alpha1.LevelSeasoned) && d.Spec.Connectors.Report == "" {
+		if (d.Spec.Level == v1alpha1.LevelPractitioner || d.Spec.Level == v1alpha1.LevelExpert) && d.Spec.Connectors.Report == "" {
 			unreported = append(unreported, "TakeCareDoc "+d.Name)
 		}
 	}
 	if len(unreported) > 0 {
 		slices.Sort(unreported)
-		add(GapRoleWithoutReport, fmt.Sprintf("role(s) at the service level without a report connector, whose diagnoses reach no one: %s", strings.Join(unreported, ", ")))
+		add(GapRoleWithoutReport, fmt.Sprintf("role(s) at the Practitioner level without a report connector, whose diagnoses reach no one: %s", strings.Join(unreported, ", ")))
 	}
 
 	// connector-not-ready (spec 05): any connector of the operator namespace

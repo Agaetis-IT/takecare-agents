@@ -51,7 +51,7 @@ Go everywhere (current stable Go, kubebuilder v4 layout, controller-runtime), th
 
 ### The read-only guard
 
-A dedicated test renders the **connectors'** RBAC and every role's **tool allow-list** for every level and fails if it finds an `act` tool below the `seasoned` level, or a verb other than `get`, `list`, `watch`, the resources `secrets`, `pods/exec`, `pods/attach`, `pods/portforward`, or any `*`. It is the executable form of "never in your place"; it must not be weakened without an ADR. A second test snapshots the **operator's** ClusterRole and Roles from the chart (golden file), so that any widening of the operator's own rights shows up in review.
+A dedicated test renders the **connectors'** RBAC and every role's **tool allow-list** for every level and fails if it finds an `act` tool below the `Expert` level, or a verb other than `get`, `list`, `watch`, the resources `secrets`, `pods/exec`, `pods/attach`, `pods/portforward`, or any `*`. It is the executable form of "never in your place"; it must not be weakened without an ADR. A second test snapshots the **operator's** ClusterRole and Roles from the chart (golden file), so that any widening of the operator's own rights shows up in review.
 
 ### Fake LLM provider (`test/fakellm`)
 

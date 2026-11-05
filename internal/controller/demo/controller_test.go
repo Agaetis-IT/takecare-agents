@@ -182,7 +182,7 @@ func (f *fixture) investigation(name, alertNamespace string) {
 	inv.Spec = v1alpha1.TakeCareInvestigationSpec{
 		RoleRef: v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareDoc, Name: "doc"},
 		Alert:   v1alpha1.AlertRecord{Name: highErrorRate, Namespace: alertNamespace},
-		Level:   "service",
+		Level:   v1alpha1.LevelPractitioner,
 	}
 	if err := f.c.Create(f.ctx, inv); err != nil {
 		f.t.Fatal(err)

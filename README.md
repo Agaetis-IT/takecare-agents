@@ -40,13 +40,13 @@ Milestone 1 delivers the **Doc** (incident diagnosis): on every alert, it invest
 
 ## The principle: the level is declared
 
-Every role is a Kubernetes resource that carries its **intervention level**. The operator derives from it what the role is allowed to do. A role is put into service as a companion once it has proven itself as an apprentice; it becomes a master gesture by gesture, only where you decided. The API values keep their milestone 1 names.
+Every role is a Kubernetes resource that carries its **intervention level**. The operator derives from it what the role is allowed to do. A role is put into service as a Practitioner once it has proven itself as an Apprentice; it becomes an Expert action by action, only where you decided.
 
 | Level | Value | What the role does |
 |---|---|---|
-| Apprentice | `trial` | It observes, on your history or dry-run, touching nothing |
-| Companion | `service` | It works daily and proposes; you approve and launch |
-| Master | `seasoned` | It acts alone, gesture by gesture, only where you decided (after milestone 1) |
+| Apprentice | `Apprentice` | It observes, on your history or dry-run, touching nothing |
+| Practitioner | `Practitioner` | It works daily and proposes; you approve and launch |
+| Expert | `Expert` | It acts alone, action by action, only where you decided (after milestone 1) |
 
 ```yaml
 apiVersion: takecare.agaetis.fr/v1alpha1
@@ -55,7 +55,7 @@ metadata:
   name: doc
   namespace: takecare-system
 spec:
-  level: service              # trial | service | seasoned
+  level: Practitioner         # Apprentice | Practitioner | Expert
   scope:
     namespaces: [demo-apps]
   connectors:                 # MCP connectors behind the gateway, by type
@@ -64,8 +64,8 @@ spec:
     knowledge: [runbooks, incidents]
     report: report            # the report connector (here: Slack)
   report:
-    trial: review             # where diagnoses go at each level
-    service: on-call
+    apprentice: review        # where diagnoses go at each level
+    practitioner: on-call
 ```
 
 Changing level means changing this resource: a reviewed PR, a traced change. `kubectl get takecare -A` lists the whole staff, with each role's level and state.

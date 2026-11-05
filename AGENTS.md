@@ -21,7 +21,7 @@ Specs and ADRs are written and reviewed with the maintainers before the code. A 
 - **Never in your place**: read-only by default. Never add a write verb, `secrets`, `pods/exec`, `pods/attach`, `pods/portforward` or a wildcard to generated RBAC. The read-only guard test (spec 04) must stay green and must not be weakened.
 - **Thin operator** (ADR 0001): the operator configures third-party building blocks; it does not install them and does not investigate.
 - **Everything goes through agentgateway**: model calls (ADR 0004; no engine gets a provider key), MCP tool calls (ADR 0008), agent-to-agent calls (ADR 0009).
-- **Everything an agent touches is a connector** (ADR 0008). The level is an allow-list of tools, rendered on the kagent `Agent` and enforced again at the gateway. No `act` tool below `seasoned`.
+- **Everything an agent touches is a connector** (ADR 0008). The level is an allow-list of tools, rendered on the kagent `Agent` and enforced again at the gateway. No `act` tool below `Expert`.
 - **Publishing is deterministic**: the operator publishes results through the `report` connector; the model never decides where or whether to post.
 - **Telemetry from day one** (ADR 0006): every investigation is one trace following the OpenTelemetry GenAI semantic conventions. Attribute names live only in `internal/telemetry/semconv`. Message content is not captured unless `captureContent` is on.
 - **No demo-specific code in the roles**. The demo is scenery, scenarios and a values profile.

@@ -35,6 +35,7 @@ const (
 	colReady      = "Ready"
 	currencyUSD   = "USD"
 	wantNamespace = "namespaces"
+	wantLevel     = "level"
 	badNamespace  = "namespace not a DNS label"
 )
 

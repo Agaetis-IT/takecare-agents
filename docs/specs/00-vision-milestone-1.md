@@ -15,7 +15,7 @@ This repository takes TakeCare out of POC mode. We are building a product that i
 
 ## Non-negotiable principles
 
-1. **Never in your place.** Every role declares its intervention level in its resource (`trial`, `service`, `seasoned`). Read-only by default. Any write capability is explicit, declared, and visible in the generated RBAC. Changing level means changing a resource, hence a reviewed and traced PR.
+1. **Never in your place.** Every role declares its intervention level in its resource (`Apprentice`, `Practitioner`, `Expert`). Read-only by default. Any write capability is explicit, declared, and visible in the generated RBAC. Changing level means changing a resource, hence a reviewed and traced PR.
 2. **Open source, under control.** CNCF and Linux Foundation building blocks, on the customer's infrastructure, with the model of their choice. No data leaves the cluster, except towards the model the customer chose.
 3. **The demo mode is the product.** No demo-specific code path in the roles. The demo is a scenery, scenarios and a values profile.
 4. **Every model call goes through the gateway** (agentgateway), from milestone 1: traceability, cost per investigation, provider key never exposed to the agents.
@@ -58,14 +58,14 @@ takecare-demo   takecaredemo.takecare.agaetis.fr/demo   True    1h
   - receives Alertmanager alerts through a webhook;
   - investigates as a kagent agent, triggered over A2A, read-only, with the tools its level allows from its connectors (cluster, metrics, post-mortems, runbooks, deployment log, vendors, support);
   - posts its diagnosis to Slack: root cause, cited sources, ruled-out leads, who should act;
-  - levels `trial` and `service`.
+  - levels `Apprentice` and `Practitioner`.
 - **Telemetry**: one trace per investigation, GenAI semantic conventions, exported over OTLP (ADR 0006).
 - **The demo mode**: a `make demo-up` target creates a k3d cluster, installs the chart with the demo profile and applies a `TakeCareDemo` (`billing-api`, ACK `DBProxy` CRD, MCP corpus servers, `proxy-timeout` scenario). Targets `demo-incident`, `demo-reset`, `demo-down`, `demo-bench`.
 - **Quality**: unit tests, operator tests with envtest, end-to-end test on k3d, accuracy bench taken over from the POC's `check` (does the Doc point to the right root cause?), GitHub Actions CI.
 
 ### Out of scope
 
-- The `seasoned` level (actions executed by the Doc): the API schema accepts it, but the operator rejects it with an explicit condition until it is implemented.
+- The `Expert` level (actions executed by the Doc): the API schema accepts it, but the operator rejects it with an explicit condition until it is implemented.
 - The other roles: see the concept → build mapping of [spec 06, section 9](06-role-model.md#9-concept--build-mapping-replaces-the-roadmap-of-spec-00).
 - agentregistry, Langfuse: they come with the first role that needs them.
 - Agent-to-agent exchanges and `TakeCareFinding` (ADR 0009): with the Kiné, milestone 3. The Doc exposes its A2A endpoint from milestone 1.
@@ -76,8 +76,8 @@ takecare-demo   takecaredemo.takecare.agaetis.fr/demo   True    1h
 
 1. **Demo in one command.** On a clean Mac or Linux machine with the prerequisites, `make demo-up` makes the demo ready in at most 10 minutes.
 2. **Parity with the POC.** After `make demo-incident`, the Doc's diagnosis reaches Slack less than 3 minutes after the alert, naming the right root cause (the DBProxy `idleClientTimeout`). `make demo-bench N=5` gives at least 4 correct diagnoses out of 5, "correct" as defined in spec 04; the bench also reports how often the memory lead is mentioned.
-3. **Installation at a customer's site.** On an existing cluster (kind in CI, EKS or AKS for acceptance), the chart with the `prod` profile, with the `kubernetes`, `prometheus` and `report-slack` add-ons, then a `TakeCareDoc` in `trial`, are enough to get diagnoses. A test checks that the generated RBAC grants no write verb and that no `act` tool is reachable.
-4. **The level drives behaviour.** Moving the `TakeCareDoc` from `trial` to `service` with `kubectl apply` changes where diagnoses are posted (see the Doc spec), and shows in the resource status and events.
+3. **Installation at a customer's site.** On an existing cluster (kind in CI, EKS or AKS for acceptance), the chart with the `prod` profile, with the `kubernetes`, `prometheus` and `report-slack` add-ons, then a `TakeCareDoc` in `Apprentice`, are enough to get diagnoses. A test checks that the generated RBAC grants no write verb and that no `act` tool is reachable.
+4. **The level drives behaviour.** Moving the `TakeCareDoc` from `Apprentice` to `Practitioner` with `kubectl apply` changes where diagnoses are posted (see the Doc spec), and shows in the resource status and events.
 5. **Visible cost and traces.** Each investigation produces one trace with an `invoke_agent doc` root span, and exposes in its status its model calls, tokens and estimated cost. The gateway's `chat` spans join that trace if kagent continues the A2A call's trace context (checked by spike 001); otherwise they are correlated through the investigation id (ADR 0006, "To verify").
 6. **The challenge POC is left untouched.** We copy its code into this repository; we never modify the original.
 
@@ -89,9 +89,9 @@ The thirteen roles, their natures and their milestones are in the concept → bu
 
 | Concept | API name | Note |
 |---|---|---|
-| On trial | `trial` | On your history or dry-run, touching nothing |
-| In service | `service` | The role works daily and proposes; you approve and launch |
-| Seasoned | `seasoned` | Acts alone within the approved frame (after milestone 1) |
+| Apprentice | `Apprentice` | Read-only, on your history or dry-run, touching nothing |
+| Practitioner | `Practitioner` | Works daily and proposes; you approve and launch (default) |
+| Expert | `Expert` | Acts alone, action by action, within the validated frame (after milestone 1) |
 | Role | a `TakeCare<Role>` kind | No accents: `TakeCareKine`, `TakeCareMecano` |
 | Investigation | `TakeCareInvestigation` (resource, trace) | One alert handled by the Doc |
 | Agent | a `TakeCare<Role>` kind embedding `RoleCommonSpec`, with a record kind | A role that runs an AI agent on the engine (Doc, Kiné, Mécano…); spec 06 |

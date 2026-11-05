@@ -1,4 +1,4 @@
-# The demo's Doc (spec 03): level service, reading the scenery's namespace
+# The demo's Doc (spec 03): level Practitioner, reading the scenery's namespace
 # through the demo's connectors, publishing to the on-call destination of
 # the report connector (Slack, or the report server's log without a token).
 apiVersion: takecare.agaetis.fr/v1alpha1
@@ -7,7 +7,7 @@ metadata:
   name: doc
   namespace: takecare-system
 spec:
-  level: service
+  level: Practitioner
   scope:
     namespaces: [demo-apps]
   connectors:
@@ -18,4 +18,4 @@ spec:
     tickets: [support]
     report: report
   report:
-    service: on-call
+    practitioner: on-call

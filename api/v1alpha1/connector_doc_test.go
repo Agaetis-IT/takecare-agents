@@ -123,7 +123,7 @@ func docFixture() *v1alpha1.TakeCareDoc {
 		Name: uniqueName("doc"), Namespace: testNamespace,
 		Spec: v1alpha1.TakeCareDocSpec{
 			RoleCommonSpec: v1alpha1.RoleCommonSpec{
-				Level: v1alpha1.LevelService,
+				Level: v1alpha1.LevelPractitioner,
 				Scope: v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{nsDemoApps}},
 			},
 			Connectors: v1alpha1.DocConnectors{
@@ -132,7 +132,7 @@ func docFixture() *v1alpha1.TakeCareDoc {
 				Knowledge: []string{"incidents", "runbooks", "vendor"},
 				Report:    "report",
 			},
-			Report: v1alpha1.DocReport{Trial: "review", Service: destOnCall},
+			Report: v1alpha1.DocReport{Apprentice: "review", Practitioner: destOnCall},
 			Alerts: v1alpha1.AlertsSpec{Matchers: []v1alpha1.AlertMatcher{{Name: "severity", Value: critical}}},
 		},
 	}
@@ -148,10 +148,11 @@ func TestDocValidation(t *testing.T) {
 		{"minimal doc", func(d *v1alpha1.TakeCareDoc) {
 			d.Spec = v1alpha1.TakeCareDocSpec{Scope: d.Spec.Scope}
 		}, ""},
-		{"seasoned is accepted by the schema", func(d *v1alpha1.TakeCareDoc) { d.Spec.Level = v1alpha1.LevelSeasoned }, ""},
+		{"Expert is accepted by the schema", func(d *v1alpha1.TakeCareDoc) { d.Spec.Level = v1alpha1.LevelExpert }, ""},
 		{"model override", func(d *v1alpha1.TakeCareDoc) { d.Spec.Model = &v1alpha1.ModelRef{Name: "local"} }, ""},
 		{"suspended", func(d *v1alpha1.TakeCareDoc) { d.Spec.Suspend = true }, ""},
-		{"unknown level", func(d *v1alpha1.TakeCareDoc) { d.Spec.Level = "expert" }, "level"},
+		{"unknown level", func(d *v1alpha1.TakeCareDoc) { d.Spec.Level = "expert" }, wantLevel},
+		{"the old value trial is rejected", func(d *v1alpha1.TakeCareDoc) { d.Spec.Level = "trial" }, wantLevel},
 		{"empty scope", func(d *v1alpha1.TakeCareDoc) { d.Spec.Scope.Namespaces = nil }, wantNamespace},
 		{badNamespace, func(d *v1alpha1.TakeCareDoc) {
 			d.Spec.Scope.Namespaces = []v1alpha1.Namespace{"Demo_Apps"}
@@ -179,8 +180,8 @@ func TestDocDefaults(t *testing.T) {
 	if err := k8sClient.Get(context.Background(), client.ObjectKeyFromObject(d), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Spec.Level != v1alpha1.LevelTrial {
-		t.Errorf("level = %q, want trial", got.Spec.Level)
+	if got.Spec.Level != v1alpha1.LevelApprentice {
+		t.Errorf("level = %q, want Apprentice", got.Spec.Level)
 	}
 	inv := got.Spec.Investigation
 	if inv.Timeout == nil || inv.Timeout.Duration != 5*time.Minute {

@@ -29,25 +29,25 @@ func completed(level v1alpha1.Level) *v1alpha1.TakeCareInvestigation {
 
 func TestPublication(t *testing.T) {
 	now := time.Date(2026, 10, 16, 3, 0, 51, 0, time.UTC)
-	trial := completed(v1alpha1.LevelTrial)
-	grouped := completed(v1alpha1.LevelService)
+	apprentice := completed(v1alpha1.LevelApprentice)
+	grouped := completed(v1alpha1.LevelPractitioner)
 	grouped.Status.Alerts = []v1alpha1.GroupedAlert{
 		{Name: podNotReady, Fingerprint: "before", FiredAt: metav1.NewTime(now.Add(-50 * time.Second))},
 		{Name: podCrashLooping, Fingerprint: "after", FiredAt: metav1.NewTime(now.Add(-10 * time.Second))},
 	}
 	grouped.Status.Usage.Approximate = true
 	grouped.Status.Degraded = &v1alpha1.Degradation{Connectors: []string{"prometheus"}}
-	noUsage := completed(v1alpha1.LevelService)
+	noUsage := completed(v1alpha1.LevelPractitioner)
 	noUsage.Status.Usage = nil
 	for name, tc := range map[string]struct {
 		inv    *v1alpha1.TakeCareInvestigation
 		reason string
 		sent   map[string]bool
 	}{
-		"publication-service":  {inv: completed(v1alpha1.LevelService)},
-		"publication-trial":    {inv: trial},
-		"publication-grouped":  {inv: grouped, sent: map[string]bool{"before": true}},
-		"publication-no-usage": {inv: noUsage, reason: "Prometheus at http://prometheus is unreachable"},
+		"publication-practitioner": {inv: completed(v1alpha1.LevelPractitioner)},
+		"publication-apprentice":   {inv: apprentice},
+		"publication-grouped":      {inv: grouped, sent: map[string]bool{"before": true}},
+		"publication-no-usage":     {inv: noUsage, reason: "Prometheus at http://prometheus is unreachable"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			p := NewPublication(tc.inv, now, tc.reason, tc.sent)
@@ -64,7 +64,7 @@ func TestPublication(t *testing.T) {
 // A resumed run does not know which alerts its message carried: those that
 // fired after the run started are named.
 func TestPublicationLaterAlertsWithoutTheSentSet(t *testing.T) {
-	inv := completed(v1alpha1.LevelService)
+	inv := completed(v1alpha1.LevelPractitioner)
 	inv.Status.Alerts = []v1alpha1.GroupedAlert{
 		{Name: podNotReady, FiredAt: metav1.NewTime(inv.Status.StartedAt.Add(-time.Second))},
 		{Name: podCrashLooping, FiredAt: metav1.NewTime(inv.Status.StartedAt.Add(time.Second))},
@@ -76,9 +76,9 @@ func TestPublicationLaterAlertsWithoutTheSentSet(t *testing.T) {
 
 func TestDestination(t *testing.T) {
 	d := &v1alpha1.TakeCareDoc{}
-	d.Spec.Report = v1alpha1.DocReport{Trial: "review", Service: onCall}
-	noTrial := &v1alpha1.TakeCareDoc{}
-	noTrial.Spec.Report = v1alpha1.DocReport{Service: onCall}
+	d.Spec.Report = v1alpha1.DocReport{Apprentice: "review", Practitioner: onCall}
+	noApprentice := &v1alpha1.TakeCareDoc{}
+	noApprentice.Spec.Report = v1alpha1.DocReport{Practitioner: onCall}
 	for _, tc := range []struct {
 		name   string
 		doc    *v1alpha1.TakeCareDoc
@@ -87,11 +87,11 @@ func TestDestination(t *testing.T) {
 		want   string
 		ok     bool
 	}{
-		{"trial to review", d, v1alpha1.LevelTrial, false, "review", true},
-		{"trial without a trial destination: status only, never on-call", noTrial, v1alpha1.LevelTrial, false, "", false},
-		{"service to on-call", d, v1alpha1.LevelService, false, onCall, true},
-		{"seasoned as service", d, v1alpha1.LevelSeasoned, false, onCall, true},
-		{"silent: nowhere", d, v1alpha1.LevelService, true, "", false},
+		{"Apprentice to review", d, v1alpha1.LevelApprentice, false, "review", true},
+		{"Apprentice without an Apprentice destination: status only, never on-call", noApprentice, v1alpha1.LevelApprentice, false, "", false},
+		{"Practitioner to on-call", d, v1alpha1.LevelPractitioner, false, onCall, true},
+		{"Expert as Practitioner", d, v1alpha1.LevelExpert, false, onCall, true},
+		{"silent: nowhere", d, v1alpha1.LevelPractitioner, true, "", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			inv := investigation()

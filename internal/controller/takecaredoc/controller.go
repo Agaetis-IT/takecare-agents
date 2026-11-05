@@ -179,11 +179,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	st := &status{generation: d.Generation, pendingSince: d.Status.RenderPendingSince}
 	level := d.Spec.Level
 	if level == "" {
-		level = v1alpha1.LevelTrial
+		level = v1alpha1.LevelApprentice
 	}
-	if level == v1alpha1.LevelSeasoned {
-		st.set(v1alpha1.ConditionLevelSupported, false, ReasonNotImplemented, "The seasoned level is not available yet; the Doc behaves as in service.")
-		level = v1alpha1.LevelService
+	if level == v1alpha1.LevelExpert {
+		st.set(v1alpha1.ConditionLevelSupported, false, ReasonNotImplemented, "The Expert level is not available yet; the Doc behaves as a Practitioner.")
+		level = v1alpha1.LevelPractitioner
 	} else {
 		st.set(v1alpha1.ConditionLevelSupported, true, ReasonSupported, fmt.Sprintf("level %s", level))
 	}
@@ -533,8 +533,8 @@ func (r *Reconciler) connectors(ctx context.Context, d *v1alpha1.TakeCareDoc, st
 	if len(d.Spec.Connectors.Metrics) == 0 {
 		f.missingTypes = append(f.missingTypes, string(v1alpha1.ConnectorMetrics))
 	}
-	if st.level != v1alpha1.LevelTrial && d.Spec.Connectors.Report == "" {
-		f.missingTypes = append(f.missingTypes, string(v1alpha1.ConnectorReport)+" (required from the service level)")
+	if st.level != v1alpha1.LevelApprentice && d.Spec.Connectors.Report == "" {
+		f.missingTypes = append(f.missingTypes, string(v1alpha1.ConnectorReport)+" (required from the Practitioner level)")
 	}
 	for _, e := range typedNames(d) {
 		for _, name := range e.names {

@@ -126,7 +126,7 @@ status:
 | `single-replica` | the operator Deployment has 1 replica |
 | `gateway-metrics-not-scraped` | no `observability.metrics.prometheusURL`, or that Prometheus is unreachable, or it has no `up` series for the platform's Gateway (labels `namespace` and `gateway_networking_k8s_io_gateway_name`, which the demo relabeling and agentgateway's PodMonitor set), or its last answer is older than 3 minutes. The query runs outside the reconciliation, every 60 s with a 5 s timeout; the detail says which of the three it is |
 | `no-network-policies` | no NetworkPolicy of TakeCare's in the engine namespace. Presence, not enforcement: whether the CNI applies them is not checked |
-| `role-without-report` | a role at the `service` level has no `report` connector (spec 02; implemented with the Doc, PR 4) |
+| `role-without-report` | a role at the `Practitioner` level has no `report` connector (spec 02; implemented with the Doc, PR 4) |
 | `connector-not-ready` | any bound connector is not `Ready` (spec 05; implemented with the connectors, PR 3b) |
 
 In the demo, `ProductionReady` stays `False` with its list: useful in a meeting or at the start of a pilot to show the path to production.

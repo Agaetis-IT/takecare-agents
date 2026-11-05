@@ -56,8 +56,8 @@ spec:
               role (spec 02).
             properties:
               actTools:
-                description: Act tools, seasoned level only. Accepted and ignored
-                  in milestone 1.
+                description: Act tools, Expert level only. Accepted and ignored in
+                  milestone 1.
                 items:
                   type: string
                 type: array
@@ -86,7 +86,7 @@ spec:
               connectors:
                 description: |-
                   Connectors bound to the Doc, by type. cluster and metrics are required,
-                  report from the service level: the controller reports a missing one
+                  report from the Practitioner level: the controller reports a missing one
                   (MissingConnectorType) rather than the schema rejecting it.
                 properties:
                   changes:
@@ -138,12 +138,12 @@ spec:
                     type: string
                 type: object
               level:
-                default: trial
-                description: Intervention level. Defaults to trial.
+                default: Apprentice
+                description: Intervention level. Defaults to Apprentice.
                 enum:
-                - trial
-                - service
-                - seasoned
+                - Apprentice
+                - Practitioner
+                - Expert
                 type: string
               model:
                 description: Overrides the model declared in the TakeCarePlatform.
@@ -159,16 +159,16 @@ spec:
               report:
                 description: Destinations of the report connector, by level.
                 properties:
-                  service:
-                    description: Destination at the service level.
-                    type: string
-                  trial:
-                    description: 'Destination at the trial level. Unset: diagnoses
+                  apprentice:
+                    description: 'Destination at the Apprentice level. Unset: diagnoses
                       stay in status.'
+                    type: string
+                  practitioner:
+                    description: Destination at the Practitioner level.
                     type: string
                 type: object
               scope:
-                description: Namespaces the role may read (and, at the seasoned level,
+                description: Namespaces the role may read (and, at the Expert level,
                   modify).
                 properties:
                   namespaces:
@@ -261,9 +261,9 @@ spec:
                 description: Effective level, which differs from spec.level when the
                   requested one is not supported.
                 enum:
-                - trial
-                - service
-                - seasoned
+                - Apprentice
+                - Practitioner
+                - Expert
                 type: string
               observedGeneration:
                 format: int64

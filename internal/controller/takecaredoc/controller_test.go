@@ -186,7 +186,7 @@ func read(names ...string) []v1alpha1.ToolStatus {
 func (f *fixture) doc(t *testing.T, name string, mutate func(*v1alpha1.TakeCareDoc)) {
 	t.Helper()
 	d := &v1alpha1.TakeCareDoc{Name: name, Namespace: ns}
-	d.Spec.Level = v1alpha1.LevelService
+	d.Spec.Level = v1alpha1.LevelPractitioner
 	d.Spec.Scope.Namespaces = []v1alpha1.Namespace{scope}
 	d.Spec.Connectors = v1alpha1.DocConnectors{Cluster: []string{"kubernetes"}, Metrics: []string{"prometheus"}, Report: "report"}
 	if mutate != nil {
@@ -345,7 +345,7 @@ func TestRendering(t *testing.T) {
 	}
 	f.answer.Store(true)
 	d = f.waitCondition(t, "doc", v1alpha1.ConditionReady, metav1.ConditionTrue, "")
-	if d.Status.Level != v1alpha1.LevelService || len(d.Finalizers) != 1 {
+	if d.Status.Level != v1alpha1.LevelPractitioner || len(d.Finalizers) != 1 {
 		t.Errorf("level %s, finalizers %v", d.Status.Level, d.Finalizers)
 	}
 
@@ -367,7 +367,7 @@ func TestRendering(t *testing.T) {
 		inv := &v1alpha1.TakeCareInvestigation{Name: "doc-run", Namespace: ns}
 		inv.Spec.RoleRef = v1alpha1.RoleRef{Kind: "TakeCareDoc", Name: "doc"}
 		inv.Spec.Alert = v1alpha1.AlertRecord{Name: "HighErrorRate", Namespace: string(scope)}
-		inv.Spec.Level = v1alpha1.LevelService
+		inv.Spec.Level = v1alpha1.LevelPractitioner
 		if err := f.c.Create(context.Background(), inv); err != nil {
 			t.Fatal(err)
 		}
@@ -483,15 +483,15 @@ func TestConfigurationErrors(t *testing.T) {
 
 	d = f.getDoc(t, "doc")
 	d.Spec.Scope.Namespaces = []v1alpha1.Namespace{scope}
-	d.Spec.Level = v1alpha1.LevelSeasoned
+	d.Spec.Level = v1alpha1.LevelExpert
 	if err := f.c.Update(context.Background(), d); err != nil {
 		t.Fatal(err)
 	}
 	d = f.waitCondition(t, "doc", v1alpha1.ConditionLevelSupported, metav1.ConditionFalse, ReasonNotImplemented)
-	if d.Status.Level != v1alpha1.LevelService {
-		t.Errorf("seasoned behaves as service, effective level %s", d.Status.Level)
+	if d.Status.Level != v1alpha1.LevelPractitioner {
+		t.Errorf("Expert behaves as Practitioner, effective level %s", d.Status.Level)
 	}
-	eventually(t, "the seasoned Doc gets the service tools", func() (bool, string) {
+	eventually(t, "the Expert Doc gets the Practitioner tools", func() (bool, string) {
 		got := f.agentTools(t)
 		return len(got[agent+"-kubernetes"]) == 1, strings.Join(mapKeys(got), ",")
 	})

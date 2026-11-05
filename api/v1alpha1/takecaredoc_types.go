@@ -13,7 +13,7 @@ type TakeCareDocSpec struct {
 	RoleCommonSpec `json:",inline"`
 
 	// Connectors bound to the Doc, by type. cluster and metrics are required,
-	// report from the service level: the controller reports a missing one
+	// report from the Practitioner level: the controller reports a missing one
 	// (MissingConnectorType) rather than the schema rejecting it.
 	// +optional
 	Connectors DocConnectors `json:"connectors,omitempty"`
@@ -29,7 +29,7 @@ type TakeCareDocSpec struct {
 	// +optional
 	Investigation InvestigationSettings `json:"investigation,omitempty"`
 
-	// Act tools, seasoned level only. Accepted and ignored in milestone 1.
+	// Act tools, Expert level only. Accepted and ignored in milestone 1.
 	// +listType=set
 	// +optional
 	ActTools []string `json:"actTools,omitempty"`
@@ -59,12 +59,12 @@ type DocConnectors struct {
 
 // DocReport names the report connector destination used at each level.
 type DocReport struct {
-	// Destination at the trial level. Unset: diagnoses stay in status.
+	// Destination at the Apprentice level. Unset: diagnoses stay in status.
 	// +optional
-	Trial string `json:"trial,omitempty"`
-	// Destination at the service level.
+	Apprentice string `json:"apprentice,omitempty"`
+	// Destination at the Practitioner level.
 	// +optional
-	Service string `json:"service,omitempty"`
+	Practitioner string `json:"practitioner,omitempty"`
 }
 
 // AlertsSpec filters the alerts the Doc handles.

@@ -62,7 +62,7 @@ func start(t *testing.T) *fixture {
 		&v1alpha1.TakeCareDoc{
 			Name: "doc", Namespace: ns,
 			Spec: v1alpha1.TakeCareDocSpec{
-				RoleCommonSpec: v1alpha1.RoleCommonSpec{Level: v1alpha1.LevelService, Scope: v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{appNS}}},
+				RoleCommonSpec: v1alpha1.RoleCommonSpec{Level: v1alpha1.LevelPractitioner, Scope: v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{appNS}}},
 				Alerts:         v1alpha1.AlertsSpec{Matchers: []v1alpha1.AlertMatcher{{Name: sevLabel, Value: "critical"}}},
 			},
 		},
@@ -181,7 +181,7 @@ func intakeStep2(t *testing.T, f *fixture, t0 time.Time, crash Alert) {
 		t.Fatalf("%d investigations", len(items))
 	}
 	inv := items[0]
-	if inv.Name != InvestigationName("doc", crash.Fingerprint, t0) || inv.Spec.Alert.Workload != "notifications-worker" || inv.Spec.Level != v1alpha1.LevelService {
+	if inv.Name != InvestigationName("doc", crash.Fingerprint, t0) || inv.Spec.Alert.Workload != "notifications-worker" || inv.Spec.Level != v1alpha1.LevelPractitioner {
 		t.Errorf("investigation = %s, %+v", inv.Name, inv.Spec.Alert)
 	}
 	if inv.Labels[LabelIncident] != IncidentKey(appNS, "notifications-worker") || inv.Labels[v1alpha1.LabelFingerprint] != "3fa29c1b07e4d2aa" {
