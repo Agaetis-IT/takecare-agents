@@ -9,7 +9,7 @@
 
 ## What we are building
 
-TakeCare Agents is an AIOps staff that takes care of a customer's production: AI agents, exercises and guardrails, grouped in three pillars (prepare, heal, protect). Tagline: *Always there, never in your place.*
+TakeCare Agents is an AIOps staff that takes care of a customer's production: nine roles (seven AI agents and two guardrails) in three pillars, **Govern, Prepare, Heal**, and three exercises the roles practise with. Tagline: *Always there, never in your place.*
 
 This repository takes TakeCare out of POC mode. We are building a product that is **installable at a customer's site** as a **Kubernetes operator**, and that includes a **demo mode**. The demo mode is not a separate setup: it is the same product, installed with a demo profile that adds a scenery (the `billing-api` application), replayable incidents, fake data and a reset. What we show in a meeting is what we install.
 
@@ -48,6 +48,8 @@ takecare-demo   takecaredemo.takecare.agaetis.fr/demo   True    1h
 
 ## Scope of milestone 1
 
+Milestone 1 is step 1 of the concept → build mapping (spec 06 §9); later steps are numbered there.
+
 ### In scope
 
 - **The operator** `takecare-operator` (Go, kubebuilder), kept "thin": it translates TakeCare resources into third-party resources and RBAC, nothing more (ADR 0001).
@@ -68,7 +70,7 @@ takecare-demo   takecaredemo.takecare.agaetis.fr/demo   True    1h
 - The `Expert` level (actions executed by the Doc): the API schema accepts it, but the operator rejects it with an explicit condition until it is implemented.
 - The other roles: see the concept → build mapping of [spec 06, section 9](06-role-model.md#9-concept--build-mapping-replaces-the-roadmap-of-spec-00).
 - agentregistry, Langfuse: they come with the first role that needs them.
-- Agent-to-agent exchanges and `TakeCareFinding` (ADR 0009): with the Kiné, milestone 3. The Doc exposes its A2A endpoint from milestone 1.
+- Agent-to-agent exchanges and `TakeCareFinding` (ADR 0009): with the Kiné, step 2. The Doc exposes its A2A endpoint from milestone 1.
 - Localized agent output: English only in milestone 1 (see spec 90).
 - Microsoft Teams, a web UI, multi-cluster, distribution through OLM.
 
@@ -91,12 +93,15 @@ The nine roles, their natures and their steps are in the concept → build mappi
 |---|---|---|
 | Apprentice | `Apprentice` | Read-only, on your history or dry-run, touching nothing |
 | Practitioner | `Practitioner` | Works daily and proposes; you approve and launch (the level once the role has proven itself) |
-| Expert | `Expert` | Acts alone, action by action, within the validated frame (after milestone 1) |
+| Expert | `Expert` | Acts alone, action by action, within the validated frame (after step 1) |
 | Role | a `TakeCare<Role>` kind | No accents: `TakeCareKine`, `TakeCareMecano` |
 | Investigation | `TakeCareInvestigation` (resource, trace) | One alert handled by the Doc |
 | Agent | a `TakeCare<Role>` kind embedding `RoleCommonSpec`, with a record kind | A role that runs an AI agent on the engine (Doc, Kiné, Mécano, Intendant…); spec 06 |
 | Guardrail | a `TakeCare<Role>` kind embedding `GuardrailCommonSpec` | A role that configures a control around the agents, with no agent of its own (Ranger, Psy); spec 06 |
 | Exercise | no kind | What the roles practise with (Bootcamp, Stress Test, Handover): a scenery, scenarios, scripts and reports, run with the customer's teams on a copy or without touching anything; tooling only; spec 06 |
+| Pillar | no kind | A grouping of roles: Govern, Prepare, Heal |
+| Equipment | no kind | Names for things the product already has (Map, Bib, Markers, Logbook, Bag, Topo, First-aid kit, Rehab, Service log, Plan, Ration); spec 06 §11 |
+| Place | no kind | Base camp: `TakeCarePlatform` plus agentregistry. Training ground: the replay and simulation bench, of which the demo mode is the first version; spec 06 §11 |
 | Run status | `RunStatus` | The status every agent role's record shares: phase, times, engine, usage, trace, conditions; spec 06 §3 |
 
 Role names keep their French flavour (Doc, Kiné, Mécano, Nutri…): they are the brand. Everything else in this repository is in English.

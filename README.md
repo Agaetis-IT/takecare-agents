@@ -26,7 +26,7 @@ Nine roles, each with its own job, in three pillars of three. Each role has a ni
 |---|---|---|---|
 | **Govern**<br><sub>The agentic foundation</sub> | **Intendant** | Infra inventory and mapping | Agents and tools coming from everywhere? |
 | | **Ranger** | AI agent governance | Your agents tempted to go off-piste? |
-| | **Psy** | AI agent evaluation | Agents that make up paths or go round in circles? |
+| | **Psy** | AI agent quality control | Agents that make up paths or go round in circles? |
 | **Prepare**<br><sub>Incident anticipation</sub> | **Coach** | Peak readiness | A peak of activity ahead? |
 | | **Nutri** | FinOps | A cloud bill that climbs without warning? |
 | | **Guide** | Team upskilling | Your team needs to level up? |
@@ -95,7 +95,7 @@ A2A calls, tool calls and model calls all go through agentgateway.
 - **Connectors**: everything an agent reads or writes is an MCP server behind the gateway; the level decides which tools are allowed ([ADR 0008](docs/adr/0008-everything-is-an-mcp-connector.md)).
 - **The `takecare` chart** installs the operator, its CRDs and the third-party building blocks, with a `prod` or `demo` profile.
 - **agentgateway** is the single control point: every model call (provider key never exposed, cost measured), every tool call (authorized tool by tool), every agent-to-agent call.
-- **OpenTelemetry** from day one, following the [GenAI semantic conventions](https://github.com/open-telemetry/semantic-conventions-genai): the groundwork for the Psy, which will evaluate the agents.
+- **OpenTelemetry** from day one, following the [GenAI semantic conventions](https://github.com/open-telemetry/semantic-conventions-genai): the groundwork for the Psy, which will check the agents' answers.
 
 The choices and their reasons are in the [ADRs](docs/adr/).
 
