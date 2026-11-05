@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Proposed |
+| Status | Accepted |
 | Date | 2026-11-05 |
 | Relates to | ADR 0008, spec 02 (connector requirements), spec 05 (types, classes, read-only guard), spec 06 §1 and §4 |
 
