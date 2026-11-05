@@ -83,20 +83,20 @@ takecare-demo   takecaredemo.takecare.agaetis.fr/demo   True    1h
 
 ## Indicative roadmap
 
-The thirteen roles, their natures and their milestones are in the concept → build mapping of [spec 06, section 9](06-role-model.md#9-concept--build-mapping-replaces-the-roadmap-of-spec-00), which replaces the roadmap first written here.
+The nine roles, their natures and their steps are in the concept → build mapping of [spec 06, section 9](06-role-model.md#9-concept--build-mapping-replaces-the-roadmap-of-spec-00), which replaces the roadmap first written here.
 
 ## Glossary
 
 | Concept | API name | Note |
 |---|---|---|
 | Apprentice | `Apprentice` | Read-only, on your history or dry-run, touching nothing |
-| Practitioner | `Practitioner` | Works daily and proposes; you approve and launch (default) |
+| Practitioner | `Practitioner` | Works daily and proposes; you approve and launch (the level once the role has proven itself) |
 | Expert | `Expert` | Acts alone, action by action, within the validated frame (after milestone 1) |
 | Role | a `TakeCare<Role>` kind | No accents: `TakeCareKine`, `TakeCareMecano` |
 | Investigation | `TakeCareInvestigation` (resource, trace) | One alert handled by the Doc |
-| Agent | a `TakeCare<Role>` kind embedding `RoleCommonSpec`, with a record kind | A role that runs an AI agent on the engine (Doc, Kiné, Mécano…); spec 06 |
-| Guardrail | a `TakeCare<Role>` kind embedding `GuardrailCommonSpec` | A role that configures a control around the agents, with no agent of its own (Ranger, Kit, Psy); spec 06 |
-| Exercise | no kind | What the roles practise with (Check-up, Stress Test, Bootcamp, Sparring): a scenery, scenarios, scripts and reports, run with the customer's teams on a copy or without touching anything; tooling only; spec 06 |
+| Agent | a `TakeCare<Role>` kind embedding `RoleCommonSpec`, with a record kind | A role that runs an AI agent on the engine (Doc, Kiné, Mécano, Intendant…); spec 06 |
+| Guardrail | a `TakeCare<Role>` kind embedding `GuardrailCommonSpec` | A role that configures a control around the agents, with no agent of its own (Ranger, Psy); spec 06 |
+| Exercise | no kind | What the roles practise with (Bootcamp, Stress Test, Handover): a scenery, scenarios, scripts and reports, run with the customer's teams on a copy or without touching anything; tooling only; spec 06 |
 | Run status | `RunStatus` | The status every agent role's record shares: phase, times, engine, usage, trace, conditions; spec 06 §3 |
 
 Role names keep their French flavour (Doc, Kiné, Mécano, Nutri…): they are the brand. Everything else in this repository is in English.

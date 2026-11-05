@@ -10,7 +10,7 @@
 
 ---
 
-TakeCare Agents is a collection of specialised roles (AI agents and guardrails) that take care of your production alongside your teams: Kubernetes and the managed cloud services around it. They frame every AI agent, prepare for the peaks and heal incidents down to their cause. It installs at the customer's site as a **Kubernetes operator**, on an open source stack (agentgateway, kagent, agentregistry, MCP), with the model of their choice. A built-in **demo mode** runs the same product on a local cluster, with a scenery and replayable incidents.
+TakeCare Agents is a collection of specialised roles (AI agents and guardrails) that take care of your production alongside your teams: Kubernetes and the managed cloud services around it. They govern every AI agent, prepare for the peaks and heal incidents down to their cause. It installs at the customer's site as a **Kubernetes operator**, on an open source stack (agentgateway, kagent, agentregistry, MCP), with the model of their choice. A built-in **demo mode** runs the same product on a local cluster, with a scenery and replayable incidents.
 
 > **Status: first prerelease.** The **Doc** works end to end: an alert in, a sourced diagnosis published, with its trace and its cost, on the demo or on your cluster. [`v0.1.0-rc.1`](CHANGELOG.md) is the first prerelease: its images are public on `ghcr.io/agaetis-it`, the charts follow with `0.1.0`. To try it today, build the demo from this tree with `make demo-up DEMO_IMAGES=build`. The eight other roles are specified, not coded yet.
 
@@ -19,12 +19,12 @@ TakeCare Agents is a collection of specialised roles (AI agents and guardrails) 
 Nine roles, each with its own job, in three pillars of three. Each role has a nickname you remember and a job name that says what it does in operations. A role can run several agents, each with its own scope (one Doc per cloud, for instance). Every agent starts as an apprentice, touching nothing.
 
 <p align="center">
-  <img src="docs/assets/takecare-staff.jpg" alt="The TakeCare staff: nine role cards in three pillars (frame, prepare, heal)" width="100%">
+  <img src="docs/assets/takecare-staff.jpg" alt="The TakeCare staff: nine role cards in three pillars (govern, prepare, heal)" width="100%">
 </p>
 
 | Pillar | Role | Job name | The question it answers |
 |---|---|---|---|
-| **Frame**<br><sub>The agentic foundation</sub> | **Intendant** | Infra inventory and mapping | Agents and tools coming from everywhere? |
+| **Govern**<br><sub>The agentic foundation</sub> | **Intendant** | Infra inventory and mapping | Agents and tools coming from everywhere? |
 | | **Ranger** | AI agent governance | Your agents tempted to go off-piste? |
 | | **Psy** | AI agent evaluation | Agents that make up paths or go round in circles? |
 | **Prepare**<br><sub>Incident anticipation</sub> | **Coach** | Peak readiness | A peak of activity ahead? |

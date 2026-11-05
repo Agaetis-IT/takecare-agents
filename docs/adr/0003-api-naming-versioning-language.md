@@ -53,6 +53,8 @@ type RoleCommonSpec struct {
 And a shared status: `conditions` (standard types `Ready`, `Degraded`, plus `LevelSupported`), `observedGeneration`, effective `level`.
 
 > **Note (2026-10-30, spec 06 §3)**: `RoleCommonSpec` is the trunk of the **agent** roles. Guardrails (Ranger, Kit, Psy) embed a `GuardrailCommonSpec` (level, suspend) instead; experiences have no kind. Each agent role has a record kind (`TakeCare<Record>`, such as `TakeCareInvestigation`) whose status embeds the shared `RunStatus`.
+>
+> **Note (2026-11-05, concept of 2026-11-04 and ADR 0013)**: the guardrails are the Ranger and the Psy; the Intendant is an agent (`TakeCareIntendant`, `RoleCommonSpec`) and `TakeCareKit` is not built: the agent registry is a building block of the platform. The level values are `Apprentice`, `Practitioner`, `Expert` (ADR 0013). "Experiences" are exercises (Bootcamp, Stress Test, Handover) and still have no kind.
 
 ### Language
 
