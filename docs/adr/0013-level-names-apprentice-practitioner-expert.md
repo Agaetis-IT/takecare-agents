@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Proposed |
+| Status | Accepted |
 | Date | 2026-11-05 |
 | Supersedes | ADR 0003, for the level values only |
 
