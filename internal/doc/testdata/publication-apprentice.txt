@@ -1,5 +1,5 @@
 Doc · HighErrorRate on billing-api
-Trial: shadow diagnosis, no one was paged by TakeCare.
+Apprentice: shadow diagnosis, no one was paged by TakeCare.
 Observed: billing-api pod log, 504 from db-proxy at 03:00:05.
 Root cause: the proxy's idle timeout is shorter than the pool's.
 Action: the platform team aligns the proxy's idle timeout with the pool's.

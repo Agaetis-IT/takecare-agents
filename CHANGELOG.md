@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Breaking**: the intervention levels are `Apprentice`, `Practitioner` and `Expert` in the API, the status, the messages and the traces (ADR 0013); `spec.report.trial` and `spec.report.service` are `spec.report.apprentice` and `spec.report.practitioner`. Resources carrying the old values are rejected.
 - TakeCare Agents is licensed under the Apache License 2.0: `LICENSE`, the SPDX identifier `Apache-2.0` in every source file, and a `NOTICE` in the Apache form.
 - The contributor guide moved to `AGENTS.md`, for human contributors and coding agents alike; `CLAUDE.md` imports it.
 

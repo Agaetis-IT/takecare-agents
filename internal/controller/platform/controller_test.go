@@ -531,18 +531,18 @@ func TestProductionGaps(t *testing.T) {
 		h.waitGaps()
 	})
 
-	t.Run("a role at the service level without a report connector is a gap", func(t *testing.T) {
+	t.Run("a role at the Practitioner level without a report connector is a gap", func(t *testing.T) {
 		d := &v1alpha1.TakeCareDoc{Name: "doc", Namespace: operatorNS}
-		d.Spec.Level = v1alpha1.LevelService
+		d.Spec.Level = v1alpha1.LevelPractitioner
 		d.Spec.Scope.Namespaces = []v1alpha1.Namespace{"shop"}
 		h.must(h.c.Create(h.ctx, d))
 		h.waitGaps(GapRoleWithoutReport)
 		h.must(h.c.Get(h.ctx, client.ObjectKeyFromObject(d), d))
-		d.Spec.Level = v1alpha1.LevelTrial // trial may publish nowhere (spec 02 §4)
+		d.Spec.Level = v1alpha1.LevelApprentice // Apprentice may publish nowhere (spec 02 §4)
 		h.must(h.c.Update(h.ctx, d))
 		h.waitGaps()
 		h.must(h.c.Get(h.ctx, client.ObjectKeyFromObject(d), d))
-		d.Spec.Level = v1alpha1.LevelService
+		d.Spec.Level = v1alpha1.LevelPractitioner
 		d.Spec.Connectors.Report = "report"
 		h.must(h.c.Update(h.ctx, d))
 		h.waitGaps()

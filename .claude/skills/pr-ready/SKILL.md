@@ -17,7 +17,7 @@ description: Use before opening or updating a pull request on TakeCare Agents. R
 
    Fix every failure. Do not disable a linter rule or skip a test to get green; if a rule is wrong, say so in the PR.
 3. **Guardrails.** Confirm, with the relevant tests passing:
-   - the read-only guard (no write verb, `secrets`, `pods/exec|attach|portforward`, `*`, and no `act` tool below `seasoned`);
+   - the read-only guard (no write verb, `secrets`, `pods/exec|attach|portforward`, `*`, and no `act` tool below `Expert`);
    - no secret, token, prompt or model answer in logs, status, fixtures or golden files (`gitleaks detect --no-git` if available);
    - every new attribute name lives in `internal/telemetry/semconv`.
 4. **Docs.** README updated if a command changed; `CHANGELOG.md` "Unreleased" updated for user-visible changes; spec untouched unless the reviewer agreed; a new ADR if a decision changed (use the `new-adr` skill).

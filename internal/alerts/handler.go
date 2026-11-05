@@ -379,11 +379,11 @@ func (h *Handler) now() time.Time {
 	return time.Now()
 }
 
-// effectiveLevel is the level recorded at creation; seasoned behaves as
-// service in milestone 1 (spec 02 §7).
+// effectiveLevel is the level recorded at creation; Expert behaves as
+// Practitioner in milestone 1 (spec 02 §7).
 func effectiveLevel(l v1alpha1.Level) v1alpha1.Level {
 	if l == "" {
-		return v1alpha1.LevelTrial
+		return v1alpha1.LevelApprentice
 	}
 	return l
 }

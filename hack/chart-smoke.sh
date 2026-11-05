@@ -326,10 +326,10 @@ apiVersion: takecare.agaetis.fr/v1alpha1
 kind: TakeCareDoc
 metadata: { name: smoke-doc, namespace: ${NS} }
 spec:
-  level: service
+  level: Practitioner
   scope: { namespaces: [demo-apps] }
   connectors: { cluster: [kubernetes], metrics: [prometheus], report: report }
-  report: { service: on-call }
+  report: { practitioner: on-call }
 EOF
   local token now alerts_url="http://takecare-alerts.${NS}.svc:8080/v1/alerts"
   token="$(kubectl -n "$NS" get secret takecare-alerting -o jsonpath='{.data.token}' | base64 -d)"

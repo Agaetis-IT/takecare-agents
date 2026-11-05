@@ -24,7 +24,7 @@ func investigation() *v1alpha1.TakeCareInvestigation {
 				FiredAt: metav1.NewTime(time.Date(2026, 10, 16, 3, 0, 12, 0, time.UTC)),
 				Labels:  map[string]string{"severity": critical},
 			},
-			Level: v1alpha1.LevelService,
+			Level: v1alpha1.LevelPractitioner,
 		},
 	}
 }
@@ -39,7 +39,7 @@ func TestInvestigationValidation(t *testing.T) {
 		{"silent investigation", func(i *v1alpha1.TakeCareInvestigation) { i.Spec.Silent = true }, ""},
 		{"unknown role kind", func(i *v1alpha1.TakeCareInvestigation) { i.Spec.RoleRef.Kind = "TakeCareRanger" }, "kind"},
 		{"alert without name", func(i *v1alpha1.TakeCareInvestigation) { i.Spec.Alert.Name = "" }, "name"},
-		{"unknown level", func(i *v1alpha1.TakeCareInvestigation) { i.Spec.Level = "expert" }, "level"},
+		{"unknown level", func(i *v1alpha1.TakeCareInvestigation) { i.Spec.Level = "expert" }, wantLevel},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

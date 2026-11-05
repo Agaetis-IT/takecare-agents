@@ -96,9 +96,9 @@ spec:
               level:
                 description: Level of the role when the investigation was created.
                 enum:
-                - trial
-                - service
-                - seasoned
+                - Apprentice
+                - Practitioner
+                - Expert
                 type: string
               roleRef:
                 description: RoleRef names the role resource that owns an investigation.

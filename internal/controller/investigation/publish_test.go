@@ -129,15 +129,15 @@ func (f *workerFixture) waitPublished(t *testing.T, name string) *v1alpha1.TakeC
 	return nil
 }
 
-// AC 3: the destination follows the level the record was created at; trial
-// carries the banner and never reaches on-call.
+// AC 3: the destination follows the level the record was created at;
+// Apprentice carries the banner and never reaches on-call.
 func TestPublishByLevel(t *testing.T) {
 	poster := &fakePoster{}
-	f, duration := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Trial: "review", Service: onCall})
+	f, duration := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Apprentice: "review", Practitioner: onCall})
 	f.start()
 
-	f.investigationAt(t, "doc-service", v1alpha1.LevelService, false)
-	inv := f.waitPublished(t, "doc-service")
+	f.investigationAt(t, "doc-practitioner", v1alpha1.LevelPractitioner, false)
+	inv := f.waitPublished(t, "doc-practitioner")
 	if p := inv.Status.Published; !p.OK || p.Destination != onCall || p.Connector != reportConn {
 		t.Errorf("published = %+v", p)
 	}
@@ -154,27 +154,27 @@ func TestPublishByLevel(t *testing.T) {
 		t.Errorf("takecare_investigation_duration_seconds has %d series", got)
 	}
 
-	f.investigationAt(t, "doc-trial", v1alpha1.LevelTrial, false)
-	f.waitPublished(t, "doc-trial")
+	f.investigationAt(t, "doc-apprentice", v1alpha1.LevelApprentice, false)
+	f.waitPublished(t, "doc-apprentice")
 	if got := strings.Join(poster.destinations(), ","); got != "on-call,review" {
 		t.Fatalf("destinations = %s", got)
 	}
 	poster.mu.Lock()
-	trialText, serviceText := poster.calls[1]["text"].(string), poster.calls[0]["text"].(string)
-	trialBlocks, _ := json.Marshal(poster.calls[1]["blocks"])
+	apprenticeText, practitionerText := poster.calls[1]["text"].(string), poster.calls[0]["text"].(string)
+	apprenticeBlocks, _ := json.Marshal(poster.calls[1]["blocks"])
 	url := poster.urls[0]
 	poster.mu.Unlock()
-	if !strings.Contains(trialText, doc.TrialBanner) || !strings.Contains(string(trialBlocks), doc.TrialBanner) || strings.Contains(serviceText, doc.TrialBanner) {
-		t.Error("the trial banner opens trial messages only")
+	if !strings.Contains(apprenticeText, doc.ApprenticeBanner) || !strings.Contains(string(apprenticeBlocks), doc.ApprenticeBanner) || strings.Contains(practitionerText, doc.ApprenticeBanner) {
+		t.Error("the Apprentice banner opens Apprentice messages only")
 	}
-	if !strings.Contains(serviceText, diagnosis) || !strings.Contains(serviceText, "7 model calls") {
-		t.Errorf("service message = %s", serviceText)
+	if !strings.Contains(practitionerText, diagnosis) || !strings.Contains(practitionerText, "7 model calls") {
+		t.Errorf("Practitioner message = %s", practitionerText)
 	}
 	if url != reportURL {
 		t.Errorf("posted to %s", url)
 	}
 
-	f.investigationAt(t, "doc-silent", v1alpha1.LevelService, true)
+	f.investigationAt(t, "doc-silent", v1alpha1.LevelPractitioner, true)
 	inv = f.waitPublished(t, "doc-silent")
 	if got := len(poster.destinations()); got != 2 || !inv.Status.Published.OK || inv.Status.Published.Destination != "" ||
 		!strings.HasPrefix(inv.Status.Published.Reason, "status only: a silent") {
@@ -182,15 +182,15 @@ func TestPublishByLevel(t *testing.T) {
 	}
 }
 
-// AC 3: at trial without a trial destination, status only; nothing to
-// on-call.
-func TestTrialWithoutDestinationIsStatusOnly(t *testing.T) {
+// AC 3: at Apprentice without an Apprentice destination, status only;
+// nothing to on-call.
+func TestApprenticeWithoutDestinationIsStatusOnly(t *testing.T) {
 	poster := &fakePoster{}
-	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Service: onCall})
+	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Practitioner: onCall})
 	f.start()
-	f.investigationAt(t, "doc-trial-only", v1alpha1.LevelTrial, false)
-	inv := f.waitPublished(t, "doc-trial-only")
-	if p := inv.Status.Published; len(poster.destinations()) != 0 || !p.OK || p.Destination != "" || !strings.HasPrefix(p.Reason, "status only: the trial level") {
+	f.investigationAt(t, "doc-apprentice-only", v1alpha1.LevelApprentice, false)
+	inv := f.waitPublished(t, "doc-apprentice-only")
+	if p := inv.Status.Published; len(poster.destinations()) != 0 || !p.OK || p.Destination != "" || !strings.HasPrefix(p.Reason, "status only: the Apprentice level") {
 		t.Errorf("published %+v, posts %v", p, poster.destinations())
 	}
 }
@@ -200,7 +200,7 @@ func TestTrialWithoutDestinationIsStatusOnly(t *testing.T) {
 // touched.
 func TestResumePublishes(t *testing.T) {
 	poster := &fakePoster{}
-	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Service: onCall})
+	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Practitioner: onCall})
 	done := metav1.Now()
 	f.investigation(t, "doc-unpublished", &v1alpha1.TakeCareInvestigationStatus{
 		Phase: v1alpha1.PhaseCompleted, StartedAt: &done, CompletedAt: &done, TraceID: "6bf92f3577b34da6a3ce929d0e0e4736",
@@ -234,9 +234,9 @@ func TestResumePublishes(t *testing.T) {
 // with its reason.
 func TestPublicationFailure(t *testing.T) {
 	poster := &fakePoster{fail: true}
-	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Service: onCall})
+	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Practitioner: onCall})
 	f.start()
-	f.investigationAt(t, "doc-unposted", v1alpha1.LevelService, false)
+	f.investigationAt(t, "doc-unposted", v1alpha1.LevelPractitioner, false)
 	inv := f.waitPublished(t, "doc-unposted")
 	if p := inv.Status.Published; p.OK || !strings.Contains(p.Reason, "after 4 attempts") || !strings.Contains(p.Reason, "connection refused") {
 		t.Errorf("published = %+v", p)
@@ -250,9 +250,9 @@ func TestPublicationFailure(t *testing.T) {
 // say why, never a number.
 func TestUsageUnmeasured(t *testing.T) {
 	poster := &fakePoster{}
-	f, _ := publishing(t, &fakeUsage{err: errors.New("Prometheus at http://prometheus is unreachable")}, poster, v1alpha1.DocReport{Service: onCall})
+	f, _ := publishing(t, &fakeUsage{err: errors.New("Prometheus at http://prometheus is unreachable")}, poster, v1alpha1.DocReport{Practitioner: onCall})
 	f.start()
-	f.investigationAt(t, "doc-unmeasured", v1alpha1.LevelService, false)
+	f.investigationAt(t, "doc-unmeasured", v1alpha1.LevelPractitioner, false)
 	inv := f.waitPublished(t, "doc-unmeasured")
 	c := meta.FindStatusCondition(inv.Status.Conditions, ConditionUsageAttributed)
 	if inv.Status.Usage != nil || c == nil || c.Status != metav1.ConditionFalse || !strings.Contains(c.Message, "unreachable") {
@@ -267,7 +267,7 @@ func TestUsageUnmeasured(t *testing.T) {
 // publication; one the run's message carried is not.
 func TestPublicationNamesLaterAlerts(t *testing.T) {
 	poster := &fakePoster{}
-	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Service: onCall})
+	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Practitioner: onCall})
 	f.engine.beforeDone = func() {
 		var inv v1alpha1.TakeCareInvestigation
 		if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: "doc-grouped"}, &inv); err != nil {

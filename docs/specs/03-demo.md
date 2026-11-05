@@ -60,7 +60,7 @@ Annotations make actions declarative, idempotent and visible in `kubectl describ
 |---|---|
 | `TakeCarePlatform`; Prometheus with the demo alerting rules (`HighErrorRate`: 504 ratio > 2 % over 1 m, `for: 30s`; `HighLatencyP99`; `PodNotReady`; `PodCrashLooping`, scoped to the app namespace); Alertmanager routing to `/v1/alerts` with the webhook token; OpenTelemetry Collector; **Jaeger**; ACK `DBProxy` CRD; add-ons `kubernetes`, `prometheus`, `report-slack` (if a Slack token is given) and `demo-corpus` (five servers), with their `TakeCareConnector`s (spec 05) | Chart, `values-demo.yaml` |
 | `billing-api`, the `DBProxy` resource, the corpus content | `TakeCareDemo` controller |
-| `TakeCareDoc` (level `service`, bound to the demo connectors), `TakeCareDemo` | `make demo-up`, from `demo/manifests/*.yaml` |
+| `TakeCareDoc` (level `Practitioner`, bound to the demo connectors), `TakeCareDemo` | `make demo-up`, from `demo/manifests/*.yaml` |
 
 Without a Slack token, the demo `TakeCareDoc` has no `report` connector: it is then `Ready=False` (`MissingConnectorType`) by design of spec 02. To keep the demo usable without Slack, the demo profile enables a `report-log` add-on variant of the report server that writes messages to its log and to the investigation status instead of Slack; `make demo-verdict` reads them.
 
@@ -68,7 +68,7 @@ Without a Slack token, the demo `TakeCareDoc` has no `report` connector: it is t
 
 | Target | Behaviour |
 |---|---|
-| `make demo-up` | Checks prerequisites (Docker with ≥ 4 GB, k3d, kubectl, helm) and says what is missing. Creates the k3d cluster `takecare-demo` (pinned k3s image), installs `takecare-crds` and `takecare` with `values-demo.yaml` (which renders the `TakeCarePlatform` and the connectors), creates the Secrets from environment variables, applies the `TakeCareDoc` (level `service`) and the `TakeCareDemo`, waits until all are `Ready`. Re-runnable: does not reinstall what is in place. |
+| `make demo-up` | Checks prerequisites (Docker with ≥ 4 GB, k3d, kubectl, helm) and says what is missing. Creates the k3d cluster `takecare-demo` (pinned k3s image), installs `takecare-crds` and `takecare` with `values-demo.yaml` (which renders the `TakeCarePlatform` and the connectors), creates the Secrets from environment variables, applies the `TakeCareDoc` (level `Practitioner`) and the `TakeCareDemo`, waits until all are `Ready`. Re-runnable: does not reinstall what is in place. |
 | `make demo-incident` | Annotates the `TakeCareDemo`; prints the expected alert window. |
 | `make demo-verdict` | Waits for the next completed `TakeCareInvestigation` and prints the diagnosis and its usage. Works without Slack. |
 | `make demo-screens` | Port-forwards Prometheus (error rate and memory graphs with thresholds), Alertmanager and Jaeger, and prints the URLs. `make demo-screens-stop` stops them. |

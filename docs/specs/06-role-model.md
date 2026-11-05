@@ -51,10 +51,10 @@ What is shared is extracted from today's `TakeCareInvestigationStatus` into a **
 | Role | Record kind | Spec (what was asked) | Output (status) |
 |---|---|---|---|
 | Doc | `TakeCareInvestigation` (exists) | alert, level, silent | diagnosis, publication |
-| Kiné | `TakeCareReview` | the investigations reviewed, the period | problem statement, corrective actions, publication; at `seasoned` the changes made |
-| Mécano | `TakeCareMaintenance` | the inventory scope, the component targeted | state of the fleet, upgrade plan (a PR at `service`), changes applied at `seasoned` |
+| Kiné | `TakeCareReview` | the investigations reviewed, the period | problem statement, corrective actions, publication; at `Expert` the changes made |
+| Mécano | `TakeCareMaintenance` | the inventory scope, the component targeted | state of the fleet, upgrade plan (a PR at `Practitioner`), changes applied at `Expert` |
 | Coach | `TakeCarePeakReview` | the peak window, the past peaks replayed | what gave or would give, the preparation plan |
-| Nutri | `TakeCareCostReview` | the cost sources, the period | savings found, adjustments proposed (`service`), applied (`seasoned`) |
+| Nutri | `TakeCareCostReview` | the cost sources, the period | savings found, adjustments proposed (`Practitioner`), applied (`Expert`) |
 | Guide | `TakeCareConversation` | the channel, the question | the answers given, the runbook steps walked |
 
 `ProductionReady` gaps that depend on roles (`role-without-report`) apply to every role that publishes.
@@ -65,7 +65,7 @@ Everything an agent touches is a connector (ADR 0008). The seven types of spec 0
 
 | Type | Classes of tools | First role | Notes |
 |---|---|---|---|
-| `code` | `read` at `trial` (repositories, manifests, IaC), `propose` at `service` (open a pull request), `act` at `seasoned` (merge is **never** an agent's: a human merges) | Mécano, then Kiné | The first writing role writes **a pull request**, which is a `propose` tool: the three-layer guarantee of ADR 0008 holds unchanged |
+| `code` | `read` at `Apprentice` (repositories, manifests, IaC), `propose` at `Practitioner` (open a pull request), `act` at `Expert` (merge is **never** an agent's: a human merges) | Mécano, then Kiné | The first writing role writes **a pull request**, which is a `propose` tool: the three-layer guarantee of ADR 0008 holds unchanged |
 | `billing` | `read` (cloud and Kubernetes cost exports, quotas) | Nutri | Scope is cloud accounts, not namespaces |
 | `chat` | `read` (receive messages), `propose` (reply) | Guide | The `report` connector posts; a `chat` connector converses. Same Slack server, two surfaces |
 | `history` | `read` | Kiné | **TakeCare's own records** (investigations, reviews) exposed as an MCP server by the operator, so a role reads another role's history through the gateway with an allow-list, like any other source. No role reads the Kubernetes API for TakeCare objects |
@@ -74,9 +74,9 @@ Everything an agent touches is a connector (ADR 0008). The seven types of spec 0
 
 ## 5. The three tiers, role by role
 
-The rule of the concept (2026-10-14): tier 1 is the replay without touching anything, tier 2 is the default once the replay proved the role's worth, tier 3 is maturity. In the operator: `trial` / `service` / `seasoned` (ADR 0003). What changes between tiers is **which tool classes the role gets and where its output goes** (spec 02's table generalised):
+The rule of the concept (2026-10-14): tier 1 is the replay without touching anything, tier 2 is the default once the replay proved the role's worth, tier 3 is maturity. In the operator: `Apprentice` / `Practitioner` / `Expert` (ADR 0013). What changes between tiers is **which tool classes the role gets and where its output goes** (spec 02's table generalised):
 
-| Role | `trial` | `service` (default) | `seasoned` |
+| Role | `Apprentice` | `Practitioner` (default) | `Expert` |
 |---|---|---|---|
 | Doc | `read`; status or `review` destination | `read`; `on-call` destination | not implemented (M1) |
 | Kiné | `read`: recurrences and open actions on past incidents | `read`; proposes the post-mortem and corrective actions | `act`: carries out the validated actions (runbooks, alert rules) |
@@ -90,8 +90,8 @@ The rule of the concept (2026-10-14): tier 1 is the replay without touching anyt
 
 Three invariants that hold for all roles and must be enforced in the generic code, not role by role:
 
-1. **A human merges, launches or approves.** `propose` tools open a pull request or a ticket; nothing an agent does at `service` changes the cluster. `act` tools exist only at `seasoned`, listed explicitly (`actTools`), and show in the generated RBAC and gateway policy (spec 00 principle 1).
-2. **A role never pages anyone at `trial`** (spec 02 §4): the `service` destination is unreachable from `trial`, for every role.
+1. **A human merges, launches or approves.** `propose` tools open a pull request or a ticket; nothing an agent does at `Practitioner` changes the cluster. `act` tools exist only at `Expert`, listed explicitly (`actTools`), and show in the generated RBAC and gateway policy (spec 00 principle 1).
+2. **A role never pages anyone at `Apprentice`** (spec 02 §4): the `Practitioner` destination is unreachable from `Apprentice`, for every role.
 3. **The Psy can pause any role** (sets `suspend`), and only the Psy and a human can.
 
 ## 6. Hand-offs between roles (ADR 0009)

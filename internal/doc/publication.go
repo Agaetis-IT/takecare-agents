@@ -13,8 +13,8 @@ import (
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 )
 
-// TrialBanner opens every message at the trial level (spec 02 §4).
-const TrialBanner = "Trial: shadow diagnosis, no one was paged by TakeCare."
+// ApprenticeBanner opens every message at the Apprentice level (spec 02 §4).
+const ApprenticeBanner = "Apprentice: shadow diagnosis, no one was paged by TakeCare."
 
 // sectionLimit is Slack's limit on a section's text; keyText is Block
 // Kit's text field.
@@ -25,23 +25,24 @@ const (
 )
 
 // Destination is where a completed investigation is published (spec 02
-// §4), from the level it was created at: trial goes to the trial
-// destination or nowhere, never to service's; service and seasoned go to
-// the service destination; a silent investigation goes nowhere.
+// §4), from the level it was created at: Apprentice goes to the Apprentice
+// destination or nowhere, never to the Practitioner's; Practitioner and
+// Expert go to the Practitioner destination; a silent investigation goes
+// nowhere.
 func Destination(d *v1alpha1.TakeCareDoc, inv *v1alpha1.TakeCareInvestigation) (string, bool) {
 	if inv.Spec.Silent {
 		return "", false
 	}
-	if inv.Spec.Level == v1alpha1.LevelTrial || inv.Spec.Level == "" {
-		return d.Spec.Report.Trial, d.Spec.Report.Trial != ""
+	if inv.Spec.Level == v1alpha1.LevelApprentice || inv.Spec.Level == "" {
+		return d.Spec.Report.Apprentice, d.Spec.Report.Apprentice != ""
 	}
-	return d.Spec.Report.Service, d.Spec.Report.Service != ""
+	return d.Spec.Report.Practitioner, d.Spec.Report.Practitioner != ""
 }
 
 // Publication is the message of one completed investigation.
 type Publication struct {
 	Alert, Service string
-	Trial          bool
+	Apprentice     bool
 	Diagnosis      string
 	// Since is the time from the alert's acceptance to publication.
 	Since time.Duration
@@ -77,7 +78,7 @@ func NewPublication(inv *v1alpha1.TakeCareInvestigation, now time.Time, usageRea
 		}
 	}
 	return Publication{
-		Alert: a.Name, Service: service, Trial: inv.Spec.Level == v1alpha1.LevelTrial || inv.Spec.Level == "",
+		Alert: a.Name, Service: service, Apprentice: inv.Spec.Level == v1alpha1.LevelApprentice || inv.Spec.Level == "",
 		Diagnosis: inv.Status.Diagnosis, Since: now.Sub(inv.CreationTimestamp.Time).Round(time.Second),
 		Usage: inv.Status.Usage, UsageReason: usageReason, TraceID: inv.Status.TraceID,
 		Later: later, Degraded: inv.Status.Degraded,
@@ -140,8 +141,8 @@ func (p Publication) Blocks() []any {
 	text := func(kind, s string) map[string]any { return map[string]any{keyType: kind, keyText: s} }
 	var blocks []any
 	blocks = append(blocks, map[string]any{keyType: "header", keyText: text("plain_text", p.header())})
-	if p.Trial {
-		blocks = append(blocks, map[string]any{keyType: "context", "elements": []any{text("mrkdwn", ":warning: *"+TrialBanner+"*")}})
+	if p.Apprentice {
+		blocks = append(blocks, map[string]any{keyType: "context", "elements": []any{text("mrkdwn", ":warning: *"+ApprenticeBanner+"*")}})
 	}
 	body := p.Diagnosis
 	if len(body) > sectionLimit {
@@ -168,8 +169,8 @@ func (p Publication) Blocks() []any {
 func (p Publication) Text() string {
 	var b strings.Builder
 	b.WriteString(p.header() + "\n")
-	if p.Trial {
-		b.WriteString(TrialBanner + "\n")
+	if p.Apprentice {
+		b.WriteString(ApprenticeBanner + "\n")
 	}
 	b.WriteString(p.Diagnosis + "\n")
 	b.WriteString(p.context() + "\n")

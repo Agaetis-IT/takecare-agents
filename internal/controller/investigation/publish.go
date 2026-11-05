@@ -186,7 +186,7 @@ func (w *Worker) pricing(ctx context.Context, d *v1alpha1.TakeCareDoc) *v1alpha1
 func (w *Worker) publish(ctx context.Context, inv *v1alpha1.TakeCareInvestigation, d *v1alpha1.TakeCareDoc, span trace.Span, sent map[string]bool) {
 	destination, ok := doc.Destination(d, inv)
 	if !ok {
-		reason := "status only: the trial level has no destination"
+		reason := "status only: the Apprentice level has no destination"
 		if inv.Spec.Silent {
 			reason = "status only: a silent investigation is never published"
 		}

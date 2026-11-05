@@ -57,7 +57,7 @@ spec:
 3. `spec.tools[]` overrides a tool's class. **Relaxing** a class (for example `act` → `read`) is allowed but recorded with a warning event and listed in `status.overrides`, so that it is visible in review.
 4. Tools of `report` connectors are **never given to agents**: only the operator calls them, to publish (spec 02). They are not classified.
 
-Tools that appear later are classified the same way; a new `act` tool is never usable until a role lists it explicitly (seasoned level only).
+Tools that appear later are classified the same way; a new `act` tool is never usable until a role lists it explicitly (Expert level only).
 
 ## What the operator generates
 

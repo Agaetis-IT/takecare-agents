@@ -18,7 +18,7 @@ Template: nature · business name · the promise (recto of the card) · trigger 
 - **Promise**: put the operations in order once, before the agents arrive.
 - **Trigger**: on demand. **Reads**: documentation, runbooks, the cluster (read-only), the code.
 - **Produces**: a report and a backlog; feeds the Guide (documentation) and the Mécano (inventory).
-- **Build**: tooling only: read-only inventory scripts (the Mécano's `trial` tools reused by hand), a report template. No kind.
+- **Build**: tooling only: read-only inventory scripts (the Mécano's `Apprentice` tools reused by hand), a report template. No kind.
 - **Partners**: Guide, Mécano, Kit. **Milestone**: with the Guide and the Mécano.
 - **Open**: which Mécano scripts are reusable before the Mécano exists.
 
@@ -38,8 +38,8 @@ Template: nature · business name · the promise (recto of the card) · trigger 
 - **Promise**: "He checks what will hold at the peak and prepares the fixes."
 - **Trigger**: schedule (before a declared peak window) and on demand. **Reads**: `cluster`, `metrics`, `changes`, `history` (past peaks).
 - **Produces**: `TakeCarePeakReview`: what gave or would give, the preparation plan; published through `report`.
-- **Tiers**: `trial` "On your last peaks, he spots what gave or would have given, without touching anything" · `service` "He writes the programme" (the preparation plan, you approve) · `seasoned` **to confirm**: carries out the agreed preparations (capacity, quotas) within a validated frame.
-- **Build**: `TakeCareCoach` embeds `RoleCommonSpec` (namespaces required); spec adds `peaks[]` (windows), the metrics to watch. `act` tools at `seasoned` are capacity changes (`code` connector, pull request) rather than live changes: to decide in its spec.
+- **Tiers**: `Apprentice` "On your last peaks, he spots what gave or would have given, without touching anything" · `Practitioner` "He writes the programme" (the preparation plan, you approve) · `Expert` **to confirm**: carries out the agreed preparations (capacity, quotas) within a validated frame.
+- **Build**: `TakeCareCoach` embeds `RoleCommonSpec` (namespaces required); spec adds `peaks[]` (windows), the metrics to watch. `act` tools at `Expert` are capacity changes (`code` connector, pull request) rather than live changes: to decide in its spec.
 - **Partners**: Nutri (tension: margin before the peak vs hunting waste; never below the Coach's floor), Bootcamp, Mécano. **Milestone**: M6.
 - **Open**: what "peak" is declared as (a date, a traffic multiplier, a calendar connector).
 
@@ -49,8 +49,8 @@ Template: nature · business name · the promise (recto of the card) · trigger 
 - **Promise**: "He spots the superfluous and prices the savings, without weakening production."
 - **Trigger**: schedule (weekly, monthly). **Reads**: `billing` (cloud and Kubernetes cost exports), `metrics` (utilisation), `cluster` (requests, limits, idle resources), and **the agents' own cost from the gateway** (spike 001: usage per run from the gateway's spans).
 - **Produces**: `TakeCareCostReview`: savings found, priced adjustments; published through `report`.
-- **Tiers**: `trial` "He weighs every resource" (oversizing, forgotten resources, agents' cost) · `service` "He composes the menu" (priced adjustments: sizes, reservations, off-hours shutdowns; you approve) · `seasoned` "He adjusts the portions" (alone within the validated envelope, then reports).
-- **Build**: the first role whose scope is **not** namespaces only: cloud accounts and billing exports. Needs the `billing` connector type and the `scope` change of spec 06 §1. `seasoned` writes are resizes: `act` tools on `cluster`, bounded by an envelope in the spec.
+- **Tiers**: `Apprentice` "He weighs every resource" (oversizing, forgotten resources, agents' cost) · `Practitioner` "He composes the menu" (priced adjustments: sizes, reservations, off-hours shutdowns; you approve) · `Expert` "He adjusts the portions" (alone within the validated envelope, then reports).
+- **Build**: the first role whose scope is **not** namespaces only: cloud accounts and billing exports. Needs the `billing` connector type and the `scope` change of spec 06 §1. `Expert` writes are resizes: `act` tools on `cluster`, bounded by an envelope in the spec.
 - **Partners**: Coach, Mécano (extended support surcharge), Ranger (cost per agent). **Milestone**: M6.
 - **Open**: the perimeter (cloud, Kubernetes, model cost) is still open on the concept side; which billing exports are standard enough to connect (AWS CUR, Azure cost exports, OpenCost).
 
@@ -60,7 +60,7 @@ Template: nature · business name · the promise (recto of the card) · trigger 
 - **Promise**: "He answers the teams' questions and guides them step by step through the procedures."
 - **Trigger**: **conversation** (a human message in a channel). The only conversational role. **Reads**: `knowledge` (runbooks, documentation), `cluster` (read-only, to answer on the real infra), `history`.
 - **Produces**: `TakeCareConversation`: the answers, the runbook steps walked; replies through a `chat` connector (not `report`: the Guide converses, it does not publish).
-- **Tiers**: `trial` "He scouts" (answers questions, read-only) · `service` "He opens the way" (walks runbooks step by step, **the team executes every step**) · `seasoned` "He hands over" (the team leads, he belays, stages situations and debriefs). At `seasoned` the **team** becomes autonomous, not the agent: the Guide never gets `act` tools.
+- **Tiers**: `Apprentice` "He scouts" (answers questions, read-only) · `Practitioner` "He opens the way" (walks runbooks step by step, **the team executes every step**) · `Expert` "He hands over" (the team leads, he belays, stages situations and debriefs). At `Expert` the **team** becomes autonomous, not the agent: the Guide never gets `act` tools.
 - **Build**: the role that tests the model hardest: a session (one run per conversation, with memory within it) rather than one run per message; a `chat` connector that delivers inbound messages to the operator; a scope in teams or channels, not namespaces (spec 06 §1). The engine boundary must allow a multi-turn run.
 - **Partners**: Doc (each incident becomes a lesson), Bootcamp, Kiné. **Milestone**: M5.
 - **Open**: session model in `engine.Engine`; how a conversation is scoped (channel, thread); retention of conversations.
@@ -81,7 +81,7 @@ Template: nature · business name · the promise (recto of the card) · trigger 
 - **Promise**: "He investigates and presents the probable cause; on-call decides the action."
 - **Trigger**: alert (Alertmanager webhook). **Reads**: `cluster`, `metrics`, `logs`, `knowledge`, `changes`, `tickets`.
 - **Produces**: `TakeCareInvestigation`: a sourced diagnosis; published through `report` (destination by tier).
-- **Tiers**: `trial` shadow diagnosis, review destination or status only · `service` diagnosis to on-call · `seasoned` not implemented in M1 (behaves as `service`).
+- **Tiers**: `Apprentice` shadow diagnosis, review destination or status only · `Practitioner` diagnosis to on-call · `Expert` not implemented in M1 (behaves as `Practitioner`).
 - **Build**: spec 02, in full. The first role: it fixes `RoleCommonSpec`, `RunStatus`, the trigger contract and the publishing path for everyone. See spec 06 §10 for what PR 4 must build generically.
 - **Partners**: Kiné, Bootcamp, Psy. **Milestone**: **M1**.
 - **Open**: the open questions of spec 02 and of the spike report (alert grouping, ConfigMaps, tool result size).
@@ -91,9 +91,9 @@ Template: nature · business name · the promise (recto of the card) · trigger 
 - **Nature**: agent. **Pillar**: Treat.
 - **Promise**: "He traces the underlying cause and proposes what prevents the relapse."
 - **Trigger**: upstream record (a Doc investigation completed; a recurrence detected over a period) and schedule (the periodic review). **Reads**: `history` (investigations), `tickets`, `knowledge` (post-mortems, runbooks), `changes`, `cluster`.
-- **Produces**: `TakeCareReview`: the problem statement, corrective actions; published through `report`; at `seasoned`, the changes made (runbooks, alert rules) as pull requests.
-- **Tiers**: `trial` "He spots recurrences" (on past incidents: what repeats and what stayed undone) · `service` "He prescribes the rehabilitation" (post-mortem and corrective actions after each incident; you approve) · `seasoned` "He follows the sessions" (carries out the validated actions, updates runbooks and alerts, reports).
-- **Build**: the first **upstream-record trigger** and the first consumer of the `history` connector (spec 06 §4). The first A2A exchange between roles (asks the Doc for details, ADR 0009). `seasoned` writes are pull requests on the `code` connector (runbooks, alert rules), never live changes.
+- **Produces**: `TakeCareReview`: the problem statement, corrective actions; published through `report`; at `Expert`, the changes made (runbooks, alert rules) as pull requests.
+- **Tiers**: `Apprentice` "He spots recurrences" (on past incidents: what repeats and what stayed undone) · `Practitioner` "He prescribes the rehabilitation" (post-mortem and corrective actions after each incident; you approve) · `Expert` "He follows the sessions" (carries out the validated actions, updates runbooks and alerts, reports).
+- **Build**: the first **upstream-record trigger** and the first consumer of the `history` connector (spec 06 §4). The first A2A exchange between roles (asks the Doc for details, ADR 0009). `Expert` writes are pull requests on the `code` connector (runbooks, alert rules), never live changes.
 - **Partners**: Doc, Mécano, Guide. **Milestone**: M3.
 - **Open**: `TakeCareFinding` (ADR 0009) or the investigation itself as the hand-off record; retention of investigations long enough for recurrences (months, not 7 days).
 
@@ -102,9 +102,9 @@ Template: nature · business name · the promise (recto of the card) · trigger 
 - **Nature**: agent. **Pillar**: Treat.
 - **Promise**: "He prepares the version upgrade, tested first on a copy."
 - **Trigger**: schedule (the inventory) and upstream record (a Kiné review pointing at a component). **Reads**: `cluster`, `code` (manifests, IaC, charts), `changes`, `knowledge` (release notes, end-of-support dates), `history`.
-- **Produces**: `TakeCareMaintenance`: the state of the fleet (versions behind, end of support, obsolete APIs, certificates, drift between code and cluster), an upgrade plan **tested on a copy**, as a pull request at `service`.
-- **Tiers**: `trial` "He takes stock" (inventory, without touching anything) · `service` "He prepares the work site" (upgrade plan tested on a copy: you approve) · `seasoned` "He does routine maintenance" (minor updates and renewals within the validated frame, reports).
-- **Build**: **the first writing role.** Its `service` output is a pull request: a `propose` tool on the `code` connector, which keeps ADR 0008's guarantee intact (a human merges). "Tested on a copy" needs a copy: the demo scenery, or the customer's staging, declared in the spec. `seasoned` `act` tools are the first live writes of the product: certificate renewals, minor version bumps, each listed in `actTools`.
+- **Produces**: `TakeCareMaintenance`: the state of the fleet (versions behind, end of support, obsolete APIs, certificates, drift between code and cluster), an upgrade plan **tested on a copy**, as a pull request at `Practitioner`.
+- **Tiers**: `Apprentice` "He takes stock" (inventory, without touching anything) · `Practitioner` "He prepares the work site" (upgrade plan tested on a copy: you approve) · `Expert` "He does routine maintenance" (minor updates and renewals within the validated frame, reports).
+- **Build**: **the first writing role.** Its `Practitioner` output is a pull request: a `propose` tool on the `code` connector, which keeps ADR 0008's guarantee intact (a human merges). "Tested on a copy" needs a copy: the demo scenery, or the customer's staging, declared in the spec. `Expert` `act` tools are the first live writes of the product: certificate renewals, minor version bumps, each listed in `actTools`.
 - **Partners**: Kiné, Nutri, Coach, Guide (its inventory feeds the Guide). **Milestone**: M4.
 - **Open**: what "a copy" is at a customer (a namespace, a cluster, an ephemeral environment); the `code` connector's first implementation (GitLab, GitHub).
 
@@ -124,7 +124,7 @@ Template: nature · business name · the promise (recto of the card) · trigger 
 - **Promise**: "He applies the same rules to every agent: allowed tools, masked data, capped costs."
 - **Trigger**: none (always on). **Acts on**: agentgateway policies (ADR 0004, 0008): masking, allowed models and tools, caps per role, alerts. Covers **every agent routed through the gateway, including the customer's vendors' agents** (concept, 2026-10-28).
 - **Produces**: no record; a journal (every request logged) and alerts. Its status reports what is enforced.
-- **Tiers**: `trial` audit (logs, nothing enforced; the replay) · `service` protection "He masks, filters, caps and alerts" · `seasoned` customisation "An identity and rights per agent, tool by tool, and extra guardrails".
+- **Tiers**: `Apprentice` audit (logs, nothing enforced; the replay) · `Practitioner` protection "He masks, filters, caps and alerts" · `Expert` customisation "An identity and rights per agent, tool by tool, and extra guardrails".
 - **Build**: `TakeCareRanger`, cluster-scoped, `GuardrailCommonSpec` (level, no namespaces, no model). Its controller renders gateway policies; most of what it needs is what the spike measured (per-route identity, tool authorisation, usage per route). The deterministic nature is the point: "a prompt will never bend it". Not an agent: no `RoleCommonSpec`, no engine.
 - **Partners**: Kit, Psy, Sparring. **Milestone**: **M2**.
 - **Open**: masking at the gateway (what agentgateway 1.6 offers natively); routing the customer's own agents through our gateway (installation topology, ADR 0011).
@@ -135,8 +135,8 @@ Template: nature · business name · the promise (recto of the card) · trigger 
 - **Promise**: "He only lets validated agents and tools out."
 - **Trigger**: none (always on). **Acts on**: the catalogue of agents, MCP servers and skills (agentregistry): provenance, versions, rights.
 - **Produces**: no record; a catalogue and its status (what is known, validated, drifting).
-- **Tiers**: `trial` inventory · `service` validated catalogue (an unknown agent or tool is refused) · `seasoned` continuous control (provenance, versions, drift).
-- **Build**: `TakeCareKit`, `GuardrailCommonSpec`. At `service` its refusal must be **enforced by the Ranger's policies** (the gateway only routes to catalogued backends), not by the Kit alone: the two guardrails share one enforcement point. `TakeCareConnector` objects are Kit entries by construction.
+- **Tiers**: `Apprentice` inventory · `Practitioner` validated catalogue (an unknown agent or tool is refused) · `Expert` continuous control (provenance, versions, drift).
+- **Build**: `TakeCareKit`, `GuardrailCommonSpec`. At `Practitioner` its refusal must be **enforced by the Ranger's policies** (the gateway only routes to catalogued backends), not by the Kit alone: the two guardrails share one enforcement point. `TakeCareConnector` objects are Kit entries by construction.
 - **Partners**: Ranger, Sparring, Psy. **Milestone**: M3.
 - **Open**: agentregistry's maturity for the catalogue (not re-assessed since the demo platform); whether the Kit's catalogue is agentregistry or TakeCare's own connectors list at first.
 
@@ -145,8 +145,8 @@ Template: nature · business name · the promise (recto of the card) · trigger 
 - **Nature**: guardrail. **Pillar**: Protect.
 - **Promise**: "He re-reads the agents' answers and flags those that drift."
 - **Trigger**: every completed run (a record reaching `Completed`). **Reads**: the records' outputs and their traces (ADR 0006: that is what the traces were designed for).
-- **Produces**: `TakeCareEvaluation`: a score and a verdict per run; at `seasoned`, a `suspend` on a drifting role.
-- **Tiers**: `trial` samples and scores · `service` scores every run, flags drift · `seasoned` gates: pauses a drifting role with a human in the loop (**to confirm** with the concept).
+- **Produces**: `TakeCareEvaluation`: a score and a verdict per run; at `Expert`, a `suspend` on a drifting role.
+- **Tiers**: `Apprentice` samples and scores · `Practitioner` scores every run, flags drift · `Expert` gates: pauses a drifting role with a human in the loop (**to confirm** with the concept).
 - **Build**: `TakeCarePsy`, with a **judge model** that is never the model it judges (CEL rule, spec 06 §8). Langfuse (concept) or our own traces: to decide at M4. The only guardrail with a model and a record kind. Its scoring on the Doc reuses the bench's two columns (chain rule, decisive evidence read) from spike 001.
 - **Partners**: Ranger, Doc, Kit. **Milestone**: M4.
 - **Open**: Langfuse or traces; what "drift" is measured against (the bench's golden runs, a rolling baseline); who is paged when a role is paused.

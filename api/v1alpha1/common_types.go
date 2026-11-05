@@ -36,24 +36,24 @@ const (
 )
 
 // Level is the intervention level of a role.
-// +kubebuilder:validation:Enum=trial;service;seasoned
+// +kubebuilder:validation:Enum=Apprentice;Practitioner;Expert
 type Level string
 
 // Intervention levels.
 const (
-	LevelTrial    Level = "trial"
-	LevelService  Level = "service"
-	LevelSeasoned Level = "seasoned"
+	LevelApprentice   Level = "Apprentice"
+	LevelPractitioner Level = "Practitioner"
+	LevelExpert       Level = "Expert"
 )
 
 // RoleCommonSpec is shared by every TakeCare<Role> kind.
 type RoleCommonSpec struct {
-	// Intervention level. Defaults to trial.
-	// +kubebuilder:default=trial
+	// Intervention level. Defaults to Apprentice.
+	// +kubebuilder:default=Apprentice
 	// +optional
 	Level Level `json:"level,omitempty"`
 
-	// Namespaces the role may read (and, at the seasoned level, modify).
+	// Namespaces the role may read (and, at the Expert level, modify).
 	Scope Scope `json:"scope"`
 
 	// Overrides the model declared in the TakeCarePlatform.

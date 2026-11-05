@@ -94,7 +94,7 @@ func create(t *testing.T, c client.Client, name string) {
 		Spec: v1alpha1.TakeCareInvestigationSpec{
 			RoleRef: v1alpha1.RoleRef{Kind: "TakeCareDoc", Name: docName},
 			Alert:   v1alpha1.AlertRecord{Name: alertName, Namespace: "demo-apps"},
-			Level:   v1alpha1.LevelService,
+			Level:   v1alpha1.LevelPractitioner,
 		},
 	}
 	if err := c.Create(context.Background(), inv); err != nil {
