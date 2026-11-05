@@ -37,7 +37,7 @@ Already in `RoleCommonSpec` and to keep as is: `level`, `model` (per-role model,
 |---|---|---|---|
 | **Alert** | Doc | An Alertmanager webhook (spec 02 §1) | alert intake, in the operator binary |
 | **Schedule** | Mécano, Nutri, Coach, Intendant (the survey) | A cron in the role's spec | a scheduler in the operator (one per role resource) |
-| **Upstream record** | Kiné (after a Doc investigation), Mécano (after a Kiné finding), Intendant (a connector or an agent registered; to confirm in its sheet) | A record of another role reaching a phase (ADR 0009's `TakeCareFinding`) | a watch on the upstream record kind |
+| **Upstream record** | Kiné (after a Doc investigation), Mécano (after a Kiné finding), Intendant (a connector or an agent registered) | A record of another role reaching a phase (ADR 0009's `TakeCareFinding`) | a watch on the upstream record kind |
 | **Conversation** | Guide | A human message in a chat (Slack, Teams) | a `chat` connector that delivers messages to the operator |
 
 Contract shared by the four: a trigger **creates a record** (§3) with a deterministic name (deduplication is the create, as spec 02 does with the fingerprint), then the role's controller runs it. The engine (`engine.Engine`, PR 4) sees a run, never a trigger. Nothing in the engine boundary may assume an alert.
@@ -51,7 +51,7 @@ What is shared is extracted from today's `TakeCareInvestigationStatus` into a **
 | Role | Record kind | Spec (what was asked) | Output (status) |
 |---|---|---|---|
 | Doc | `TakeCareInvestigation` (exists) | alert, level, silent | diagnosis, publication |
-| Intendant | `TakeCareInventory` (name to confirm) | the ground surveyed, the registry entries to review | the inventory layer by layer with what could not be seen; proposals for the Map and the registry, in status; a human turns them into pull requests |
+| Intendant | `TakeCareSurvey` | the ground surveyed, the registry entries to review | the inventory layer by layer with what could not be seen; proposals for the Map and the registry, in status; a human turns them into pull requests |
 | Kiné | `TakeCareReview` | the investigations reviewed, the period | problem statement, corrective actions, publication; at `Expert` the changes made |
 | Mécano | `TakeCareMaintenance` | the inventory scope, the component targeted | state of the fleet, upgrade plan (a PR at `Practitioner`), changes applied at `Expert` |
 | Coach | `TakeCarePeakReview` | the peak window, the past peaks replayed | what gave or would give, the preparation plan |
@@ -82,19 +82,21 @@ The rule of the concept: the Apprentice replays without touching anything, the P
 | Doc | `read`; status or `review` destination | `read`; `on-call` destination | not implemented (step 1) |
 | Kiné | `read`: recurrences and open actions on past incidents | `read`; proposes the post-mortem and corrective actions | `act`: carries out the validated actions (runbooks, alert rules) |
 | Mécano | `read`: inventory (versions, end of support, certificates, drift) | `propose`: an upgrade plan **tested on a copy**, as a pull request | `act`: minor updates and renewals within the validated frame |
-| Coach | `read`: on past peaks, what gave or would have | `read`; the preparation programme | `act`: the agreed preparations (capacity, quotas) |
+| Coach | `read`: on past peaks, what gave or would have | `read`; the preparation programme | `act` or `propose` within the validated envelope: capacity and quota changes as pull requests pre-approved by policy, or `act` tools listed one by one; reviews before each peak |
 | Nutri | `read`: weighs every resource, agents' cost included | `read`; priced adjustments | `act`: resizes within the validated envelope |
 | Guide | `read`: answers questions on the infra | `read`; walks runbooks step by step, **the team executes** | `read`: the team leads, the Guide checks and debriefs. At this level the **team** grows, not the agent |
 | Ranger | audit mode (logs, no enforcement) | enforces: masking, allowed models and tools, caps, alerts | per-agent identity and rights, tool by tool |
-| Intendant | `read`: inventory of the agents, MCP servers and tools in circulation; a first Map, proposed | proposes each registry entry and each Map update through its record's status; the team validates | checks each new version (provenance, rights asked), removes what is no longer compliant, keeps the Map current: `act` tools listed one by one |
-| Psy | samples and scores | scores every run, flags drift | gates: a drifting role is paused (`suspend`) with a human in the loop |
+| Intendant | `read`: inventory of the agents, MCP servers and skills in circulation; a first Map, proposed | proposes each registry entry and each Map update through its record's status; the team validates | checks each new version (provenance, rights asked), removes what is no longer compliant, keeps the Map current: `act` tools listed one by one |
+| Psy | samples and scores | scores every run, flags drift | gates: holds an out-of-frame answer before its publication and tells a human; can still pause a drifting role (`suspend`) |
 
 Four invariants that hold for all roles and must be enforced in the generic code, not role by role:
 
 1. **A human merges, launches or approves.** `propose` tools open a pull request or a ticket; nothing an agent does at `Practitioner` changes the cluster. `act` tools exist only at `Expert`, listed explicitly (`actTools`), and show in the generated RBAC and gateway policy (spec 00 principle 1).
 2. **A role never pages anyone at `Apprentice`** (spec 02 §4): the `Practitioner` destination is unreachable from `Apprentice`, for every role.
-3. **The Psy can pause any role** (sets `suspend`), and only the Psy and a human can.
+3. **The Psy can pause any role** (sets `suspend`) **and hold any record's publication**; only the Psy and a human can. A held record keeps its result in status, is never published, and says why.
 4. **Proposals need no `propose` tool below Practitioner.** What an Apprentice proposes (an entry for the Map, an addition to its own configuration) is returned in its record's status, like a diagnosis; a human, with the tooling, turns it into a pull request. The guard of spec 04 holds unchanged.
+
+Holding a publication is a deterministic decision taken on the judge's score against validated thresholds, in the generic publishing path (spec 02 §4), never by the judged agent.
 
 Changing level is changing the resource: a reviewed pull request, a traced change.
 
@@ -124,9 +126,9 @@ Already in place: `RoleCommonSpec.model`, the `takecare.role` and `takecare.leve
 
 | # | Role | Nature | Business name | Build shape | Record | Step |
 |---|---|---|---|---|---|---|
-| 01 | Intendant | agent | Infra inventory and mapping | `TakeCareIntendant` | `TakeCareInventory` (to confirm) | **2** |
+| 01 | Intendant | agent | Infra inventory and mapping | `TakeCareIntendant` | `TakeCareSurvey` | **2** |
 | 02 | Ranger | guardrail | AI agent governance | `TakeCareRanger` (gateway policies, identities) | — | **2** |
-| 03 | Psy | guardrail | AI agent evaluation | `TakeCarePsy` (traces) | `TakeCareEvaluation` | **2** |
+| 03 | Psy | guardrail | AI agent quality control | `TakeCarePsy` (traces) | `TakeCareEvaluation` | **2** |
 | 04 | Coach | agent | Peak readiness | `TakeCareCoach` | `TakeCarePeakReview` | 3+ (last, with the Nutri) |
 | 05 | Nutri | agent | Cloud cost control (FinOps) | `TakeCareNutri` | `TakeCareCostReview` | 3+ (last, with the Coach) |
 | 06 | Guide | agent | Team upskilling | `TakeCareGuide` | `TakeCareConversation` | 3+ (after the Mécano) |
@@ -134,7 +136,7 @@ Already in place: `RoleCommonSpec.model`, the `takecare.role` and `takecare.leve
 | 08 | Kiné | agent | Problem management | `TakeCareKine` | `TakeCareReview` | **2** |
 | 09 | Mécano | agent | Lifecycle management | `TakeCareMecano` | `TakeCareMaintenance` | 3 |
 | 10 | Bootcamp | exercise | Disaster recovery testing | tooling (scenery, scenarios) | — | the scenery from step 1; with the Mécano |
-| 11 | Stress Test | exercise | Load testing | tooling | — | with the Coach and the Nutri |
+| 11 | Stress Test | exercise | Load testing and sizing | tooling | — | with the Coach and the Nutri |
 | 12 | Handover | exercise | Knowledge transfer | tooling | — | with the Guide and the Mécano |
 
 Steps ordered with the concept (2026-11-04). Step 1 is the Doc alone (v0.1). Step 2 makes the Govern pillar real, since its three roles serve every other role: the Ranger (policies and identities), the Intendant (a light Map and Kubernetes discovery) and the Psy (logbooks from the first day); it adds the Kiné, so that the incident chain starts and the Doc is commissioned on a mapped ground. Step 3 and later: the Mécano and the Bootcamp, then the Guide and the Handover, then the Coach, the Nutri and the Stress Test, with cloud grounds. A group of roles opens on a ground only when all of them can work there. Exercises follow the roles they serve and block no step.
@@ -151,6 +153,26 @@ Steps ordered with the concept (2026-11-04). Step 1 is the Doc alone (v0.1). Ste
 | `history` MCP server exposed by the operator | step 2 (replay at Apprentice; the Kiné) |
 | Spec 00 roadmap replaced by §9 | now, with this spec |
 | The Map as a connector, one internal alert format keyed by Map entity, readiness by ground coverage | two ADRs before step 2 |
+
+## 11. Equipment and places → build
+
+The cards name things the product already has; one vocabulary for labels, CRD descriptions and READMEs.
+
+| Card (French) | English | In the product | Owner |
+|---|---|---|---|
+| La Carte | Map | the infra mapping (spec 08) | Intendant |
+| Le Dossard | Bib | an agent's identity at the gateway: its route today (ADR 0008); an identity recorded at registration and checked at every call from step 2 | handed by the Intendant, checked by the Ranger |
+| Les Balises | Markers | agentgateway policies | Ranger |
+| Le Journal | Logbook | traces (OpenTelemetry, GenAI conventions) and their evaluations | Psy |
+| Le Sac | Bag | an agent's configuration: its role resource (scope, connectors, level tools, instructions, model, report destination) plus the Map and Topo entries it relies on; a view, not a kind | each agent |
+| Le Topo | Topo | runbooks and documentation: the `knowledge` connector | Guide, and all |
+| La Trousse de secours | First-aid kit | the Doc's `actTools`, listed one by one; empty before Expert | Doc |
+| La Rééduc | Rehab | corrective actions from post-mortems, tracked to the end | Kiné |
+| Le Carnet d'entretien | Service log | versions, end of support, planned upgrades, component by component | Mécano |
+| Le Plan | Plan | the capacity plan of a peak | Coach |
+| La Ration | Ration | the validated cost envelope, never exceeded at Expert | Nutri |
+| Le Camp de base | Base camp | `TakeCarePlatform` plus agentregistry; it records the validated equipment, each piece living in its own brick (Markers in agentgateway, Logbooks in the trace backend, the Map in the customer's Git). Never "Basecamp" in a public name (a 37signals trademark) | kept by the Intendant |
+| Le Terrain d'entraînement | Training ground | the replay and simulation bench; the demo mode is its first version; replaying the customer's history needs the `history` connector (step 2) | all |
 
 ## Open questions
 
