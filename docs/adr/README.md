@@ -16,5 +16,6 @@ One decision per file, numbered, never rewritten: a decision that changes gives 
 | [0010](0010-kagent-1-0-line.md) | The agent engine targets the kagent 1.0 line, pinned at v1.0.0-alpha14 | Proposed |
 | [0011](0011-separate-administration-cluster.md) | TakeCare runs on a separate administration cluster; connectors stay with the data | Proposed |
 | [0012](0012-public-repository-of-record.md) | The public repository is the source of truth; a private workspace holds what does not ship | Proposed |
+| [0013](0013-level-names-apprentice-practitioner-expert.md) | The levels are Apprentice, Practitioner and Expert, in the API too | Proposed |
 
 Format: Context, Decision, Consequences, Rejected alternatives. Statuses: Proposed, Accepted, Superseded.
