@@ -17,5 +17,6 @@ One decision per file, numbered, never rewritten: a decision that changes gives 
 | [0011](0011-separate-administration-cluster.md) | TakeCare runs on a separate administration cluster; connectors stay with the data | Proposed |
 | [0012](0012-public-repository-of-record.md) | The public repository is the source of truth; a private workspace holds what does not ship | Proposed |
 | [0013](0013-level-names-apprentice-practitioner-expert.md) | The levels are Apprentice, Practitioner and Expert, in the API too | Accepted |
+| [0014](0014-ready-when-the-ground-is-covered.md) | A role is ready when its ground is covered, not when mandatory access types are bound | Accepted |
 
 Format: Context, Decision, Consequences, Rejected alternatives. Statuses: Proposed, Accepted, Superseded.
