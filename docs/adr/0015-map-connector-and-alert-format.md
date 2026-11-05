@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Proposed |
+| Status | Accepted |
 | Date | 2026-11-05 |
 | Relates to | ADR 0008, ADR 0009, ADR 0014, spec 02 §1 (intake), spec 05, spec 06 §2 and §5, spec 08 (the Map) |
 

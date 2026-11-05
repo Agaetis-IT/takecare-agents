@@ -18,6 +18,6 @@ One decision per file, numbered, never rewritten: a decision that changes gives 
 | [0012](0012-public-repository-of-record.md) | The public repository is the source of truth; a private workspace holds what does not ship | Proposed |
 | [0013](0013-level-names-apprentice-practitioner-expert.md) | The levels are Apprentice, Practitioner and Expert, in the API too | Accepted |
 | [0014](0014-ready-when-the-ground-is-covered.md) | A role is ready when its ground is covered, not when mandatory access types are bound | Accepted |
-| [0015](0015-map-connector-and-alert-format.md) | The Map is a connector; alerts are one internal format keyed by Map entity | Proposed |
+| [0015](0015-map-connector-and-alert-format.md) | The Map is a connector; alerts are one internal format keyed by Map entity | Accepted |
 
 Format: Context, Decision, Consequences, Rejected alternatives. Statuses: Proposed, Accepted, Superseded.
