@@ -6,40 +6,44 @@ package mapserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"log/slog"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Config is where the Map is read from.
+// Config is where the Map is read from: exactly one of Dir and Git.
 type Config struct {
 	// Dir holds the map/ directory; it is read again when it changes.
-	Dir    string
+	Dir string
+	// Git is the customer's repository, polled.
+	Git    *GitConfig
 	Logger *slog.Logger
 	// Now is replaceable in tests.
 	Now func() time.Time
+}
+
+// source gives the Map to serve and says how it stands.
+type source interface {
+	// current returns the last valid Map, or why there is none.
+	current() (*Map, error)
+	// status is the source's part of /statusz.
+	status() map[string]any
+	// run keeps the Map current until ctx ends.
+	run(ctx context.Context) error
 }
 
 // Server serves one Map.
 type Server struct {
 	cfg Config
 	mcp *sdk.Server
-
-	mu        sync.Mutex
-	stamp     string
-	tried     bool
-	current   *Map
-	lastErr   error
-	lastErrAt time.Time
+	src source
 }
 
 // Limits of blast_radius.
@@ -49,14 +53,11 @@ const (
 	directionOut           = "out"
 	directionIn            = "in"
 	argKey                 = "key"
+	keyEntries             = "entries"
 )
 
-// New builds the server; the Map is loaded on the first call and loaded
-// again whenever the directory changed.
+// New builds the server over its source; Run keeps the Map current.
 func New(cfg Config) (*Server, error) {
-	if cfg.Dir == "" {
-		return nil, fmt.Errorf("a Map directory is required")
-	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
@@ -64,6 +65,18 @@ func New(cfg Config) (*Server, error) {
 		cfg.Now = time.Now
 	}
 	s := &Server{cfg: cfg}
+	switch {
+	case (cfg.Dir == "") == (cfg.Git == nil):
+		return nil, errors.New("set exactly one Map source: a directory or a Git repository")
+	case cfg.Dir != "":
+		s.src = &dirSource{dir: cfg.Dir, logger: cfg.Logger, now: cfg.Now}
+	default:
+		g, err := newGitSource(*cfg.Git, cfg.Logger, cfg.Now)
+		if err != nil {
+			return nil, err
+		}
+		s.src = g
+	}
 	s.mcp = sdk.NewServer(&sdk.Implementation{Name: "map", Version: "1"}, nil)
 	no := false
 	ro := &sdk.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: &no, IdempotentHint: true, OpenWorldHint: &no}
@@ -151,72 +164,17 @@ func (s *Server) Handler() http.Handler {
 	})
 	mux.HandleFunc("/statusz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = s.snapshot()
-		s.mu.Lock()
-		st := map[string]any{"source": "dir", "entries": 0}
-		if s.current != nil {
-			st["revision"], st["loadedAt"], st["entries"] = s.current.Revision, s.current.LoadedAt, len(s.current.Entries)
-		}
-		if s.lastErr != nil {
-			st["lastError"], st["lastErrorAt"] = s.lastErr.Error(), s.lastErrAt
-		}
-		s.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(st)
+		_ = json.NewEncoder(w).Encode(s.src.status())
 	})
 	return mux
 }
 
-// snapshot returns the current Map, loading the directory again when it
-// changed since the last attempt. A load that fails keeps the previous
-// Map and records the error. Every call walks and stats the directory:
-// cheap for a Map's few hundred files.
-func (s *Server) snapshot() (*Map, error) {
-	fsys := os.DirFS(s.cfg.Dir)
-	stamp, err := stampOf(fsys)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err == nil && (!s.tried || stamp != s.stamp) {
-		s.tried, s.stamp = true, stamp
-		m, lerr := Load(fsys)
-		if lerr != nil {
-			err = lerr
-		} else {
-			m.LoadedAt = s.cfg.Now()
-			s.current, s.lastErr = m, nil
-			s.cfg.Logger.Info("map loaded", "revision", m.Revision, "entries", len(m.Entries))
-		}
-	}
-	if err != nil {
-		s.lastErr, s.lastErrAt = err, s.cfg.Now()
-		s.cfg.Logger.Error("map not loaded", "error", err)
-	}
-	if s.current == nil {
-		return nil, fmt.Errorf("no valid Map loaded: %w", s.lastErr)
-	}
-	return s.current, nil
-}
+// Run keeps the Map current until ctx ends: it polls a Git source, and
+// returns at once for a directory, read on each call.
+func (s *Server) Run(ctx context.Context) error { return s.src.run(ctx) }
 
-// stampOf identifies a version of the directory: the names, sizes and
-// modification times of its files, as the corpus server does for its one
-// file (a mounted volume is updated by swapping a symlink).
-func stampOf(fsys fs.FS) (string, error) {
-	var b strings.Builder
-	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		info, err := fs.Stat(fsys, p)
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(&b, "%s %d %d\n", p, info.Size(), info.ModTime().UnixNano())
-		return nil
-	})
-	if err != nil {
-		return "", fmt.Errorf("read the Map directory: %w", err)
-	}
-	return b.String(), nil
-}
+func (s *Server) snapshot() (*Map, error) { return s.src.current() }
 
 func decode(raw json.RawMessage, v any) error {
 	if len(raw) == 0 {
@@ -460,5 +418,5 @@ func (s *Server) mapAt(m *Map, raw json.RawMessage) (any, error) {
 		entries = append(entries, item{k, e.Type(), e.Status})
 	}
 	slices.SortFunc(entries, func(a, b item) int { return strings.Compare(a.Key, b.Key) })
-	return map[string]any{"revision": m.Revision, "entries": entries}, nil
+	return map[string]any{"revision": m.Revision, keyEntries: entries}, nil
 }
