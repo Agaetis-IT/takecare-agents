@@ -181,7 +181,7 @@ func intakeStep2(t *testing.T, f *fixture, t0 time.Time, crash Alert) {
 		t.Fatalf("%d investigations", len(items))
 	}
 	inv := items[0]
-	if inv.Name != InvestigationName("doc", crash.Fingerprint, t0) || inv.Spec.Alert.Workload != "notifications-worker" || inv.Spec.Level != v1alpha1.LevelPractitioner {
+	if inv.Name != InvestigationName("doc", crash.Fingerprint, t0) || inv.Spec.Alert.Workload != "notifications-worker" || inv.Spec.Alert.Source != v1alpha1.SourceAlertmanager || inv.Spec.Level != v1alpha1.LevelPractitioner {
 		t.Errorf("investigation = %s, %+v", inv.Name, inv.Spec.Alert)
 	}
 	if inv.Labels[LabelIncident] != IncidentKey(appNS, "notifications-worker") || inv.Labels[v1alpha1.LabelFingerprint] != "3fa29c1b07e4d2aa" {

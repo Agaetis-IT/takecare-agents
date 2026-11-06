@@ -6,7 +6,7 @@ package v1alpha1
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // ConnectorType says what a connector gives access to (ADR 0008).
-// +kubebuilder:validation:Enum=cluster;metrics;logs;knowledge;changes;tickets;report
+// +kubebuilder:validation:Enum=cluster;metrics;logs;knowledge;changes;tickets;report;map
 type ConnectorType string
 
 // Connector types.
@@ -18,6 +18,8 @@ const (
 	ConnectorChanges   ConnectorType = "changes"
 	ConnectorTickets   ConnectorType = "tickets"
 	ConnectorReport    ConnectorType = "report"
+	// ConnectorMap is the Map (spec 08); its tools are read only.
+	ConnectorMap ConnectorType = "map"
 )
 
 // ToolClass classifies an MCP tool.
@@ -110,11 +112,16 @@ type ResourceRef struct {
 	Resource string `json:"resource"`
 }
 
-// ToolOverride sets the class of a tool by name.
+// ToolOverride sets the class of a tool by name. The class stays required
+// even when only content is set (ADR 0014 §5); this may be relaxed when content is enforced.
 type ToolOverride struct {
 	// +kubebuilder:validation:MinLength=1
 	Name  string    `json:"name"`
 	Class ToolClass `json:"class"`
+	// Marks the tool as content (its result carries payload); unset keeps
+	// the add-on's or the server's classification.
+	// +optional
+	Content *bool `json:"content,omitempty"`
 }
 
 // ReportSpec declares how a report connector publishes.
@@ -169,6 +176,10 @@ type TakeCareConnectorStatus struct {
 type ToolStatus struct {
 	Name  string    `json:"name"`
 	Class ToolClass `json:"class"`
+	// Content tools enter a role's allow-list only when the role lists
+	// them in spec.contentTools (ADR 0014 §5).
+	// +optional
+	Content bool `json:"content,omitempty"`
 	// +kubebuilder:validation:Enum=annotation;override
 	Source string `json:"source"`
 }

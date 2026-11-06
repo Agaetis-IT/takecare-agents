@@ -181,7 +181,9 @@ spec:
               tools:
                 description: Overrides of the default tool classification.
                 items:
-                  description: ToolOverride sets the class of a tool by name.
+                  description: |-
+                    ToolOverride sets the class of a tool by name. The class stays required
+                    even when only content is set (ADR 0014 §5); this may be relaxed when content is enforced.
                   properties:
                     class:
                       description: ToolClass classifies an MCP tool.
@@ -190,6 +192,11 @@ spec:
                       - propose
                       - act
                       type: string
+                    content:
+                      description: |-
+                        Marks the tool as content (its result carries payload); unset keeps
+                        the add-on's or the server's classification.
+                      type: boolean
                     name:
                       minLength: 1
                       type: string
@@ -213,6 +220,7 @@ spec:
                   - changes
                   - tickets
                   - report
+                  - map
                   type: string
                 minItems: 1
                 type: array
@@ -346,6 +354,11 @@ spec:
                       - propose
                       - act
                       type: string
+                    content:
+                      description: |-
+                        Content tools enter a role's allow-list only when the role lists
+                        them in spec.contentTools (ADR 0014 §5).
+                      type: boolean
                     name:
                       type: string
                     source:

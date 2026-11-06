@@ -27,7 +27,7 @@ Consequence for the code: `RoleCommonSpec` stays what the agents need. Guardrail
 
 Already in `RoleCommonSpec` and to keep as is: `level`, `model` (per-role model, ADR 0004), `suspend`, the shared status (`observedGeneration`, effective `level`, conditions `Ready`, `LevelSupported`, `ModelResolved`, `ConnectorsReady`, `EngineReady`).
 
-**`scope` must become nature-aware.** Today `scope.namespaces` is required (at least one). That is right for every role that reads a cluster (Doc, Kiné, Mécano, Coach, Intendant), wrong for the Guide (its scope is the teams it serves) and the Nutri (cloud accounts, billing exports, plus namespaces). Decision: `scope.namespaces` becomes **optional in the shared type** and **required by a CEL rule on each kind that reads a cluster**. The Doc keeps requiring it. This is an API change to make **before the second agent role**, not before the Doc.
+**`scope` is a set of selectors.** The shared `Scope` has two today, `scope.namespaces` and `scope.entities` (Map keys, spec 08; only validated entries count), both optional, with at least one required (ADR 0014 §4); selectors for other grounds (cloud accounts, teams), each with its access type, come with the roles that need them. Each kind says by a CEL rule which selectors it accepts or requires: the Doc requires `scope.namespaces` until its intake routes by Map entity (ADR 0015 §4), and accepts `scope.entities` meanwhile, without using them yet.
 
 **Every agent role has, in its own spec, the four things the Doc has:** the connectors it binds (by type), how it is triggered, what it produces and where it goes, and the tunables of a run (timeout, cooldown, concurrency). The field names are per role; the *shape* is the same so that a reader of `TakeCareKine` is not surprised by `TakeCareDoc`.
 
@@ -147,7 +147,7 @@ Steps ordered with the concept (2026-11-04). Step 1 is the Doc alone (v0.1). Ste
 |---|---|
 | `TakeCareInvestigation` built on a shared `RunStatus` | PR 4 (the Doc), from the start |
 | `engine.Engine` sees a run, not an alert | PR 4 |
-| `scope.namespaces` optional in the shared type, required per kind by CEL | before the second agent role (step 2) |
+| `scope.namespaces` optional in the shared type, `scope.entities` added, required per kind by CEL | step 2's foundations (done) |
 | Connector types `code`, `history`, `billing`, `chat` | each with its first role |
 | `GuardrailCommonSpec`, `TakeCareRanger` | step 2 |
 | `history` MCP server exposed by the operator | step 2 (replay at Apprentice; the Kiné) |

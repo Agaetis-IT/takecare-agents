@@ -35,6 +35,20 @@ const (
 	ConditionSceneryReady    = "SceneryReady"
 )
 
+// Condition reasons shared by the roles, set from step 2's foundations on.
+const (
+	// ReasonBlindSpots (Degraded=True): some entities of the scope have no
+	// access; they are listed in status.blindSpots (ADR 0014 §2).
+	ReasonBlindSpots = "BlindSpots"
+	// ReasonEmptyScope (Ready=False): the scope's selectors match nothing
+	// (ADR 0014 §1).
+	ReasonEmptyScope = "EmptyScope"
+	// ReasonScopeOverlap (Ready=False): another role of the same kind
+	// already covers an entity of this scope; the older one keeps it
+	// (ADR 0015 §5).
+	ReasonScopeOverlap = "ScopeOverlap"
+)
+
 // Level is the intervention level of a role.
 // +kubebuilder:validation:Enum=Apprentice;Practitioner;Expert
 type Level string
@@ -53,7 +67,8 @@ type RoleCommonSpec struct {
 	// +optional
 	Level Level `json:"level,omitempty"`
 
-	// Namespaces the role may read (and, at the Expert level, modify).
+	// What the role works on: namespaces, Map entries, or both. Each kind
+	// says which selectors it accepts (spec 06 §1).
 	Scope Scope `json:"scope"`
 
 	// Overrides the model declared in the TakeCarePlatform.
@@ -63,14 +78,39 @@ type RoleCommonSpec struct {
 	// Pause without deletion: the role stops handling anything.
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
+
+	// Tools classed content (their result carries payload: logs, object
+	// contents, ConfigMap data) the role may use, at every level; a
+	// content tool not listed here never enters the role's allow-list
+	// (ADR 0014 §5). Not enforced yet.
+	// +kubebuilder:validation:MaxItems=50
+	// +kubebuilder:validation:items:MinLength=1
+	// +listType=set
+	// +optional
+	ContentTools []string `json:"contentTools,omitempty"`
 }
 
-// Scope is the set of namespaces a role works on.
+// Scope selects what a role works on: namespaces, Map entries, or both.
+// +kubebuilder:validation:XValidation:rule="(has(self.namespaces) && size(self.namespaces) > 0) || (has(self.entities) && size(self.entities) > 0)",message="scope needs at least one selector: namespaces or entities"
 type Scope struct {
-	// +kubebuilder:validation:MinItems=1
+	// Namespaces the role may read (and, at the Expert level, modify).
 	// +listType=set
-	Namespaces []Namespace `json:"namespaces"`
+	// +optional
+	Namespaces []Namespace `json:"namespaces,omitempty"`
+
+	// Map entries in scope, by key (spec 08); only validated entries
+	// count. Routing by entity lands with ADR 0015's intake.
+	// +kubebuilder:validation:MaxItems=200
+	// +listType=set
+	// +optional
+	Entities []EntityKey `json:"entities,omitempty"`
 }
+
+// EntityKey is a Map entry's key, type/name, with one of spec 08's eleven
+// type prefixes.
+// +kubebuilder:validation:MaxLength=253
+// +kubebuilder:validation:Pattern=`^(service|compute|datastore|storage|network|identity|external|team|environment|observability|runbook)/[a-z0-9]([-a-z0-9.]*[a-z0-9])?$`
+type EntityKey string
 
 // Namespace is a Kubernetes namespace name.
 // +kubebuilder:validation:MinLength=1
@@ -109,6 +149,34 @@ type RoleStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// Entities of the scope the role cannot read, filled from coverage
+	// (ADR 0014 §2); empty until coverage is computed.
+	// +kubebuilder:validation:MaxItems=200
+	// +listType=map
+	// +listMapKey=entity
+	// +optional
+	BlindSpots []BlindSpot `json:"blindSpots,omitempty"`
+}
+
+// BlindSpotReason says why an entity is not covered.
+// +kubebuilder:validation:Enum=NoAccess;ConnectorNotReady
+type BlindSpotReason string
+
+// Blind spot reasons.
+const (
+	// BlindSpotNoAccess: no bound connector can read the entity.
+	BlindSpotNoAccess BlindSpotReason = "NoAccess"
+	// BlindSpotConnectorNotReady: the connector that reads it is not ready.
+	BlindSpotConnectorNotReady BlindSpotReason = "ConnectorNotReady"
+)
+
+// BlindSpot is an entity of the scope the role cannot read.
+type BlindSpot struct {
+	Entity EntityKey       `json:"entity"`
+	Reason BlindSpotReason `json:"reason"`
+	// +optional
+	Message string `json:"message,omitempty"`
 }
 
 // RunPhase is where a run of an agent role stands. The shared phases are

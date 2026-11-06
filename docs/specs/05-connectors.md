@@ -21,7 +21,7 @@ metadata:
   name: kubernetes
   namespace: takecare-system
 spec:
-  types: [cluster, logs]        # one or more of: cluster | metrics | logs | knowledge | changes | tickets | report
+  types: [cluster, logs]        # one or more of: cluster | metrics | logs | knowledge | changes | tickets | report | map
   description: Kubernetes state, events and pod logs (read-only)
   mcp:
     addon: kubernetes           # an add-on deployed by the chart, or:
@@ -34,8 +34,10 @@ spec:
     extraResources:
       - { group: rds.services.k8s.aws, resource: dbproxies }
   tools:                        # optional overrides of the default classification
-    - { name: pods_log, class: read }
+    - { name: pods_log, class: read }   # content: true marks it as content (below)
 ```
+
+The `map` type is the Map's connector (spec 08, ADR 0015): read tools only.
 
 A `report` connector also declares its **adapter** and **destinations**:
 
@@ -56,6 +58,7 @@ spec:
 2. Default class from the MCP annotations: `readOnlyHint: true` → `read`; anything else → `act`. A tool with no annotation is `act`.
 3. `spec.tools[]` overrides a tool's class. **Relaxing** a class (for example `act` → `read`) is allowed but recorded with a warning event and listed in `status.overrides`, so that it is visible in review.
 4. Tools of `report` connectors are **never given to agents**: only the operator calls them, to publish (spec 02). They are not classified.
+5. **Content** is a second mark, independent of the class (ADR 0014 §5): a content tool returns payload (logs, object contents, ConfigMap data), not only state. Add-ons ship the mark for their tools; `spec.tools[].content` overrides it, and `status.tools[].content` shows it. A content tool enters a role's allow-list only when the role lists it in `spec.contentTools`, at every level. The field and the mark are in the API; the enforcement lands with the add-ons' marks.
 
 Tools that appear later are classified the same way; a new `act` tool is never usable until a role lists it explicitly (Expert level only).
 

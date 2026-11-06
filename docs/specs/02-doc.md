@@ -27,6 +27,7 @@ spec:
   level: Practitioner            # Apprentice | Practitioner | Expert
   scope:
     namespaces: [demo-apps]      # must be covered by the bound cluster connector
+    # entities: [service/billing-api]   # Map keys: used from ADR 0015's intake
   # Doc-specific
   connectors:                    # TakeCareConnector names, by type
     cluster: [kubernetes]
@@ -48,7 +49,7 @@ spec:
   actTools: []                   # Expert level only (not implemented in milestone 1)
 ```
 
-**Connector requirements** (ADR 0008): `cluster` and `metrics` are **required**; `report` is **required from the `Practitioner` level** (at `Apprentice`, without a report connector, diagnoses stay in status); `knowledge` and `changes` are **recommended**. Missing required types give `Ready=False`, reason `MissingConnectorType`; missing recommended types give a warning event and a `Degraded` condition.
+**Connector requirements** (ADR 0008): `cluster` and `metrics` are **required**; `report` is **required from the `Practitioner` level** (at `Apprentice`, without a report connector, diagnoses stay in status); `knowledge` and `changes` are **recommended**. Missing required types give `Ready=False`, reason `MissingConnectorType`; missing recommended types give a warning event and a `Degraded` condition. Readiness moves to the coverage of the scope with ADR 0014.
 
 Milestone 1 supports **one `TakeCareDoc` per cluster**; a second one gets `Ready=False`, reason `SingleDocOnly`.
 

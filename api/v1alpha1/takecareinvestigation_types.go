@@ -60,7 +60,21 @@ type AlertRecord struct {
 	Labels map[string]string `json:"labels,omitempty"`
 	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
+	// The alert source the adapter received it from (ADR 0015 §4).
+	// +kubebuilder:validation:Enum=alertmanager
+	// +optional
+	Source AlertSource `json:"source,omitempty"`
+	// The Map entry the alert resolved to, when the Map knows it: the
+	// incident key once the intake resolves entities (ADR 0015 §4).
+	// +optional
+	Entity EntityKey `json:"entity,omitempty"`
 }
+
+// AlertSource names an alert source adapter.
+type AlertSource string
+
+// SourceAlertmanager is the Alertmanager webhook adapter.
+const SourceAlertmanager AlertSource = "alertmanager"
 
 // TakeCareInvestigationStatus is the investigation's record: the shared run
 // status, and what is the Doc's: the diagnosis, its publication, the other
