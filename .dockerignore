@@ -15,3 +15,4 @@
 !internal/doc/message.tmpl
 !internal/demo/corpus/pools.json
 !internal/demo/corpus/seed/*.json
+!api/map/entry.schema.json
