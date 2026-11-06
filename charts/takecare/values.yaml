@@ -267,6 +267,45 @@ addons:
     resources:
       requests: { cpu: 10m, memory: 32Mi }
       limits: { memory: 128Mi }
+  # -- The Map (spec 08, ADR 0015): our takecare-agents-mcp-map, five read
+  # tools over the customer's Map, read from their Git. One connector `map`.
+  # @default -- see the keys below
+  map:
+    enabled: false
+    image:
+      registry: ghcr.io/agaetis-it
+      repository: takecare-agents-mcp-map
+      # Empty: the chart's appVersion.
+      tag: ""
+      pullPolicy: IfNotPresent
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits: { memory: 128Mi }
+    # -- The repository holding the Map: one branch, read-only, polled.
+    git:
+      # -- REQUIRED unless demo: https://... or ssh://git@... (or git@host:path).
+      url: ""
+      ref: main
+      # -- The directory of the repository holding map/.
+      path: .
+      pollInterval: 60s
+      # -- An HTTPS token, mounted from this Secret (never inline). Exclusive
+      # with sshKeySecret.
+      credentialSecret: { name: "", key: token }
+      # -- The username sent with the token; GitLab wants oauth2.
+      credentialUsername: x-access-token
+      # -- Or an SSH deploy key, mounted from this Secret...
+      sshKeySecret: { name: "", key: id_ed25519 }
+      # -- ...with the known hosts it is checked against, required with SSH.
+      knownHostsConfigMap: { name: "", key: known_hosts }
+    # -- Egress to the Git host, like reportSlack.egress: DNS, then TCP 443
+    # (and 22 for an SSH URL) outside the cluster, or the proxy pods only.
+    egress:
+      excludedCIDRs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      proxy: null
+    # -- DEMO ONLY: serve the chart's demo Map from a ConfigMap instead of
+    # Git. Requires demo.enabled.
+    demo: false
 
 # ---------------------------------------------------------------------------
 # Subcharts. Keys below are the upstream charts' own values.

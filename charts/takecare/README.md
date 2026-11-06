@@ -108,6 +108,16 @@ Mirroring every image and installing without Internet access is tracked in issue
 | addons.kubernetes.extraResources | list | `[]` | Resources beyond the defaults, for example custom resources. ConfigMaps are read only when listed here: customers keep credentials in them. Secrets and pod exec/attach/portforward are refused by the API. |
 | addons.kubernetes.namespaces | list | `[]` | The namespaces the server may read (get, list, watch): workloads, events, logs. The connector's scope; a role's scope must be inside it. |
 | addons.kubernetes.tools | list | `[]` | Tool overrides (spec 05): a class, a content mark, or both, by name; recorded in the connector's status. |
+| addons.map | object | see the keys below | The Map (spec 08, ADR 0015): our takecare-agents-mcp-map, five read tools over the customer's Map, read from their Git. One connector `map`. |
+| addons.map.demo | bool | `false` | DEMO ONLY: serve the chart's demo Map from a ConfigMap instead of Git. Requires demo.enabled. |
+| addons.map.egress | object | `{"excludedCIDRs":["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16","169.254.0.0/16"],"proxy":null}` | Egress to the Git host, like reportSlack.egress: DNS, then TCP 443 (and 22 for an SSH URL) outside the cluster, or the proxy pods only. |
+| addons.map.git | object | `{"credentialSecret":{"key":"token","name":""},"credentialUsername":"x-access-token","knownHostsConfigMap":{"key":"known_hosts","name":""},"path":".","pollInterval":"60s","ref":"main","sshKeySecret":{"key":"id_ed25519","name":""},"url":""}` | The repository holding the Map: one branch, read-only, polled. |
+| addons.map.git.credentialSecret | object | `{"key":"token","name":""}` | An HTTPS token, mounted from this Secret (never inline). Exclusive with sshKeySecret. |
+| addons.map.git.credentialUsername | string | `"x-access-token"` | The username sent with the token; GitLab wants oauth2. |
+| addons.map.git.knownHostsConfigMap | object | `{"key":"known_hosts","name":""}` | ...with the known hosts it is checked against, required with SSH. |
+| addons.map.git.path | string | `"."` | The directory of the repository holding map/. |
+| addons.map.git.sshKeySecret | object | `{"key":"id_ed25519","name":""}` | Or an SSH deploy key, mounted from this Secret... |
+| addons.map.git.url | string | `""` | REQUIRED unless demo: https://... or ssh://git@... (or git@host:path). |
 | addons.prometheus | object | see the keys below | giantswarm/mcp-prometheus, read-only by design. |
 | addons.prometheus.contentTools | list | `[]` | Tools whose result carries payload (ADR 0014): none, metric values are state. |
 | addons.prometheus.egress | object | `{"namespace":"","otlp":null,"podSelector":{},"port":9090}` | Its egress, limited to that Prometheus (every tool accepts a caller's prometheus_url: the limit keeps a model from reaching anything else). |

@@ -81,7 +81,7 @@ images() {
   if [[ "$(cat "${STATE}/images" 2>/dev/null)" != "$tag" ]]; then
     log "building and importing the images (${tag})" >&2
     make docker-build VERSION="$tag" >/dev/null
-    k3d image import -c "$CLUSTER" "${IMAGE_REGISTRY}"/takecare-agents-{operator,mcp-report-slack,mcp-corpus,demo-app}:"$tag" >/dev/null
+    k3d image import -c "$CLUSTER" "${IMAGE_REGISTRY}"/takecare-agents-{operator,mcp-report-slack,mcp-corpus,mcp-map,demo-app}:"$tag" >/dev/null
     echo "$tag" >"${STATE}/images"
   fi
   echo "$tag"
@@ -113,7 +113,7 @@ install() {
     # The CRD chart's hook job runs the operator's image too.
     crds+=(--set "image.tag=${tag}")
     sets+=(--set "operator.image.tag=${tag}" --set "addons.report.image.tag=${tag}"
-      --set "addons.demoCorpus.image.tag=${tag}" --set "demo.app.image.tag=${tag}")
+      --set "addons.demoCorpus.image.tag=${tag}" --set "addons.map.image.tag=${tag}" --set "demo.app.image.tag=${tag}")
   fi
   if [[ -n "${TAKECARE_SLACK_BOT_TOKEN:-}" ]]; then
     sets+=(--set addons.reportSlack.enabled=true --set addons.reportLog.enabled=false

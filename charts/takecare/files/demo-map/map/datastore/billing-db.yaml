@@ -1,0 +1,7 @@
+key: datastore/billing-db
+provenance: declared
+status: validated
+created: 2026-11-05
+lastValidated: 2026-11-05
+owner: team/platform
+description: The billing database, behind its proxy.

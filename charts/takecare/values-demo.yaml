@@ -62,6 +62,10 @@ addons:
   # Five read-only servers over the corpus the TakeCareDemo controller writes.
   demoCorpus:
     enabled: true
+  # The demo's Map (spec 08), served from a ConfigMap the chart renders.
+  map:
+    enabled: true
+    demo: true
   prometheus:
     enabled: true
     url: http://prometheus-server.takecare-system.svc

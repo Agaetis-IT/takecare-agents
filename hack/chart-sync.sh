@@ -5,6 +5,9 @@
 # Syncs what the charts take from elsewhere in the repository, so that there
 # is one source of truth (spec 04):
 #   - config/crd/*.yaml -> charts/takecare-crds/templates/crds/, verbatim;
+#   - the demo's Map, internal/mapserver/testdata/demo/map/ ->
+#     charts/takecare/files/demo-map/map/, so that the Map server's tests
+#     and the demo serve one Map (spec 08);
 #   - every value marked `# pin: KEY` in Chart.yaml and values files, from
 #     hack/versions.env.
 # With --check, changes nothing and fails on any drift (CI).
@@ -47,6 +50,26 @@ for f in "$crd_dir"/*.yaml; do
     fi
   fi
 done
+
+# The demo's Map: the server's test fixture, file by file, stale files gone.
+map_src=internal/mapserver/testdata/demo/map
+map_dst=charts/takecare/files/demo-map/map
+while IFS= read -r f; do
+  mkdir -p "$map_dst/$(dirname "$f")"
+  sync_file "$map_src/$f" "$map_dst/$f"
+done < <(cd "$map_src" && find . -type f -name '*.yaml' | sed 's|^\./||' | sort)
+if [[ -d "$map_dst" ]]; then
+  while IFS= read -r f; do
+    if [[ ! -f "$map_src/$f" ]]; then
+      if [[ $check -eq 1 ]]; then
+        echo "stale: $map_dst/$f has no counterpart in $map_src (run make chart-sync)"
+        status=1
+      else
+        rm "$map_dst/$f"
+      fi
+    fi
+  done < <(cd "$map_dst" && find . -type f | sed 's|^\./||' | sort)
+fi
 
 # The operator's rights, generated from the controllers' RBAC markers
 # (config/rbac/role.yaml: Roles per namespace and one ClusterRole for the
