@@ -71,8 +71,9 @@ type gitSource struct {
 	// retry is how soon a failed clone is tried again.
 	retry time.Duration
 
-	// repoMu guards repo, whose storage is not safe for concurrent use:
-	// the run loop fetches, map_at reads the history.
+	// repoMu guards repo and cache: go-git's in-memory storage is not safe
+	// for concurrent use; the run loop fetches, map_at reads the history,
+	// and a map_at call waits while a fetch runs (bounded by gitTimeout).
 	repoMu sync.Mutex
 	repo   *git.Repository
 	// cache holds the revisions map_at loaded, by commit, the oldest
@@ -303,11 +304,12 @@ func (g *gitSource) lastValid(commit *object.Commit) *Map {
 }
 
 // serve makes m the served Map; a head that did not validate stays the
-// last error.
+// last error. Called by the run loop, under repoMu.
 func (g *gitSource) serve(m *Map, headErr error) {
 	if m == nil {
 		return
 	}
+	g.remember(m) // map_at on the served revision reads no tree again
 	g.mu.Lock()
 	g.valid = m
 	if headErr == nil {
@@ -393,10 +395,14 @@ func (g *gitSource) at(t time.Time) (*Map, error) {
 	return m, nil
 }
 
-// remember caches a revision, evicting the oldest beyond cacheSize.
+// remember caches a revision, evicting the oldest beyond cacheSize; the
+// caller holds repoMu.
 func (g *gitSource) remember(m *Map) {
 	if g.cache == nil {
 		g.cache = map[string]*Map{}
+	}
+	if _, ok := g.cache[m.Revision]; ok {
+		return
 	}
 	g.cache[m.Revision] = m
 	g.cacheOrder = append(g.cacheOrder, m.Revision)

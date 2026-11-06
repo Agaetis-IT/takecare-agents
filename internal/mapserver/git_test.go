@@ -179,8 +179,8 @@ func TestGitSource(t *testing.T) {
 				t.Errorf("at %s: revision %v, dependsOn %s (%v)", tc.at, m, got, err)
 			}
 		}
-		if len(g.cache) != 2 {
-			t.Errorf("%d revisions cached, want commits 1 and 2", len(g.cache))
+		if len(g.cache) != 2 || g.cache[c1] == nil || g.cache[c2] == nil {
+			t.Errorf("%d revisions cached, want commits 1 and 2 (commit 2 from the start)", len(g.cache))
 		}
 	})
 
