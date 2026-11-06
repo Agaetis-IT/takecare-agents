@@ -150,6 +150,8 @@ func Load(fsys fs.FS) (*Map, error) {
 		keys = append(keys, k)
 	}
 	slices.Sort(keys)
+	// A file that failed above is not an entry: the entries pointing to it
+	// also report "no such entry", two faults for one cause.
 	for _, k := range keys {
 		errs = append(errs, m.link(m.Entries[k], files[k])...)
 	}
