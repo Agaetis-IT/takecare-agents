@@ -14,6 +14,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -37,7 +38,9 @@ const (
 	agent    = "takecare-doc-doc"
 	gwURL    = "http://agentgateway-proxy.takecare-system.svc"
 	podsLog  = "pods_log"
-	scope    = v1alpha1.Namespace("shop")
+	// podsListLog is the kubernetes connector's allow-list with its log tool.
+	podsListLog = "pods_list,pods_log"
+	scope       = v1alpha1.Namespace("shop")
 )
 
 var (
@@ -272,9 +275,9 @@ func (f *fixture) agentTools(t *testing.T) map[string][]string {
 	return out
 }
 
-func (f *fixture) policy(t *testing.T, connector string) string {
+func (f *fixture) policy(t *testing.T) string {
 	t.Helper()
-	obj, err := f.get(routes.PolicyGVK, ns, "role-doc-doc-mcp-"+connector)
+	obj, err := f.get(routes.PolicyGVK, ns, "role-doc-doc-mcp-kubernetes")
 	if err != nil {
 		return ""
 	}
@@ -284,6 +287,83 @@ func (f *fixture) policy(t *testing.T, connector string) string {
 	}
 	s, _ := list[0].(string)
 	return s
+}
+
+// events returns the notes of the events with a reason, each repeated as
+// many times as it occurred (the recorder folds repeats into a series).
+func (f *fixture) events(t *testing.T, reason string) []string {
+	t.Helper()
+	var list eventsv1.EventList
+	if err := f.c.List(context.Background(), &list, client.InNamespace(ns)); err != nil {
+		t.Fatal(err)
+	}
+	var notes []string
+	for _, e := range list.Items {
+		if e.Reason != reason {
+			continue
+		}
+		n := 1
+		if e.Series != nil {
+			n = int(e.Series.Count)
+		}
+		for range n {
+			notes = append(notes, e.Note)
+		}
+	}
+	return notes
+}
+
+// A content tool reaches the agent and the gateway only when the Doc lists
+// it (ADR 0014 §5); what is withheld or unknown is said once per generation.
+func TestContentTools(t *testing.T) {
+	f := start(t)
+	f.platform(t)
+	content := func(name string) v1alpha1.ToolStatus {
+		tool := read(name)[0]
+		tool.Content = true
+		return tool
+	}
+	f.connector(t, "kubernetes", []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, append(read("pods_list"), content(podsLog), content("nodes_log")), true)
+	f.connector(t, "prometheus", []v1alpha1.ConnectorType{v1alpha1.ConnectorMetrics}, read("execute_query"), true)
+	f.connector(t, "report", []v1alpha1.ConnectorType{v1alpha1.ConnectorReport}, nil, true)
+	f.doc(t, "doc", func(d *v1alpha1.TakeCareDoc) { d.Spec.ContentTools = []string{podsLog, "audit_log"} })
+
+	eventually(t, "the listed content tool is given, the other withheld", func() (bool, string) {
+		got := strings.Join(f.agentTools(t)[agent+"-kubernetes"], ",")
+		return got == podsListLog, got
+	})
+	if got := f.policy(t); got != `mcp.tool.name in ["pods_list", "pods_log"]` {
+		t.Errorf("gateway policy = %s", got)
+	}
+	eventually(t, "the withheld and the unknown tools are named", func() (bool, string) {
+		w, u := f.events(t, ReasonContentToolsWithheld), f.events(t, ReasonContentToolUnknown)
+		return len(w) == 1 && len(u) == 1 && strings.Contains(w[0], "connector kubernetes: nodes_log (not in spec.contentTools)") && strings.Contains(u[0], "audit_log"), strings.Join(append(w, u...), " | ")
+	})
+
+	// Reconciles of the same generation say nothing again.
+	f.setConnector(t, "prometheus", read("execute_query", "list_label_names"), true)
+	eventually(t, "the change is reconciled", func() (bool, string) {
+		got := strings.Join(f.agentTools(t)[agent+"-prometheus"], ",")
+		return got == "execute_query,list_label_names", got
+	})
+	if w := f.events(t, ReasonContentToolsWithheld); len(w) != 1 {
+		t.Errorf("withheld said %d times in one generation", len(w))
+	}
+
+	// Unlisted, pods_log leaves the agent and the gateway alike.
+	d := f.getDoc(t, "doc")
+	d.Spec.ContentTools = nil
+	if err := f.c.Update(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "pods_log is withheld everywhere", func() (bool, string) {
+		got := strings.Join(f.agentTools(t)[agent+"-kubernetes"], ",") + " " + f.policy(t)
+		return got == `pods_list mcp.tool.name in ["pods_list"]`, got
+	})
+	eventually(t, "the new generation names both withheld tools", func() (bool, string) {
+		w := f.events(t, ReasonContentToolsWithheld)
+		return len(w) == 2 && slices.ContainsFunc(w, func(n string) bool { return strings.Contains(n, "nodes_log, pods_log") }), strings.Join(w, " | ")
+	})
 }
 
 // agentReady writes the conditions kagent sets once the pod runs.
@@ -318,9 +398,9 @@ func TestRendering(t *testing.T) {
 	eventually(t, "the agent lists the read tools only", func() (bool, string) {
 		got := f.agentTools(t)
 		k := strings.Join(got[agent+"-kubernetes"], ",")
-		return k == "pods_list,pods_log" && len(got) == 2, "agent tools " + strings.Join(mapKeys(got), ",") + " kubernetes=" + k + "; " + describe(f.getDoc(t, "doc"))
+		return k == podsListLog && len(got) == 2, "agent tools " + strings.Join(mapKeys(got), ",") + " kubernetes=" + k + "; " + describe(f.getDoc(t, "doc"))
 	})
-	if got := f.policy(t, "kubernetes"); got != `mcp.tool.name in ["pods_list", "pods_log"]` {
+	if got := f.policy(t); got != `mcp.tool.name in ["pods_list", "pods_log"]` {
 		t.Errorf("gateway policy = %s", got)
 	}
 	if _, err := f.get(routes.HTTPRouteGVK, ns, "role-doc-doc-a2a"); err != nil {
@@ -380,14 +460,14 @@ func TestRendering(t *testing.T) {
 		// pods_log is no longer allowed: reclassified act.
 		f.setConnector(t, "kubernetes", append(read("pods_list"), v1alpha1.ToolStatus{Name: podsLog, Class: v1alpha1.ToolAct, Source: "override"}), true)
 		eventually(t, "the gateway refuses pods_log at once", func() (bool, string) {
-			got := f.policy(t, "kubernetes")
+			got := f.policy(t)
 			return got == `mcp.tool.name in ["pods_list"]`, got
 		})
 		d := f.waitCondition(t, "doc", v1alpha1.ConditionEngineReady, metav1.ConditionTrue, ReasonRenderPending)
 		if d.Status.RenderPendingSince == nil {
 			t.Error("renderPendingSince is not set")
 		}
-		if got := strings.Join(f.agentTools(t)[agent+"-kubernetes"], ","); got != "pods_list,pods_log" {
+		if got := strings.Join(f.agentTools(t)[agent+"-kubernetes"], ","); got != podsListLog {
 			t.Errorf("the agent was re-rendered during the investigation: %s", got)
 		}
 		// Past the investigation's timeout, the rendering applies anyway.

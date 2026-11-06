@@ -468,6 +468,42 @@ func TestAlertIntakeIsExposed(t *testing.T) {
 
 // The report server: one add-on at most, the operator alone may reach it,
 // its connector declares the adapter and the destinations the server got.
+// The kubernetes add-on ships its log tools as content (ADR 0014 §5): one
+// spec.tools entry per name, the user's entry of the same name merged in
+// (its fields win), the user's other entries after.
+func TestAddonContentTools(t *testing.T) {
+	for name, tc := range map[string]struct {
+		sets []string
+		want string
+	}{
+		"as shipped": {want: `[{"content":true,"name":"pods_log"},{"content":true,"name":"nodes_log"}]`},
+		"merged with the user's overrides": {
+			sets: []string{
+				flagSet, "addons.kubernetes.tools[0].name=nodes_log", flagSet, "addons.kubernetes.tools[0].class=act",
+				flagSet, "addons.kubernetes.tools[1].name=pods_log", flagSet, "addons.kubernetes.tools[1].content=false",
+				flagSet, "addons.kubernetes.tools[2].name=pods_list", flagSet, "addons.kubernetes.tools[2].class=read",
+			},
+			want: `[{"content":false,"name":"pods_log"},{"class":"act","content":true,"name":"nodes_log"},{"class":"read","name":"pods_list"}]`,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			objs := render(t, releaseName, append(profileArgs("demo"), tc.sets...)...)
+			got := map[string]string{}
+			for _, o := range ofKind(objs, "TakeCareConnector") {
+				tools, _, _ := unstructured.NestedSlice(o.Object, "spec", "tools")
+				raw, _ := json.Marshal(tools)
+				got[o.GetName()] = string(raw)
+			}
+			if got["kubernetes"] != tc.want {
+				t.Errorf("kubernetes tools = %s, want %s", got["kubernetes"], tc.want)
+			}
+			if got["prometheus"] != "null" {
+				t.Errorf("prometheus ships no content tool, got %s", got["prometheus"])
+			}
+		})
+	}
+}
+
 func TestReportAddon(t *testing.T) {
 	demo := render(t, releaseName, profileArgs("demo")...)
 	var report *unstructured.Unstructured

@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - The API of step 2's foundations (ADR 0014, 0015): `scope.entities` (Map keys) next to `scope.namespaces`, now optional in the shared type with at least one selector required (the Doc still requires namespaces); `spec.contentTools`; `status.blindSpots`; the condition reasons `BlindSpots`, `EmptyScope` and `ScopeOverlap`; the connector type `map` and the `content` mark on tools; `source` and `entity` on alert records, the intake setting `source: alertmanager`. No behaviour changes yet.
+- Content tools (ADR 0014): the `kubernetes` add-on marks `pods_log` and `nodes_log` as content (`addons.<name>.contentTools`); a role reads a content tool only when it lists it in `spec.contentTools`, enforced on the agent and at the gateway, and the withheld ones are named in a `ContentToolsWithheld` event; a tool override may set the content mark without a class; the demo Doc lists `pods_log`. **Breaking for a Doc that reads logs**: add `contentTools: [pods_log]` to its spec, or its diagnoses lose the logs.
 
 ### Fixed
 

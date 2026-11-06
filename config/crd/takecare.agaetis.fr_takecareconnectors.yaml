@@ -182,8 +182,8 @@ spec:
                 description: Overrides of the default tool classification.
                 items:
                   description: |-
-                    ToolOverride sets the class of a tool by name. The class stays required
-                    even when only content is set (ADR 0014 §5); this may be relaxed when content is enforced.
+                    ToolOverride sets the class of a tool, its content mark, or both, by
+                    name; an unset field keeps the discovered value (ADR 0014 §5).
                   properties:
                     class:
                       description: ToolClass classifies an MCP tool.
@@ -201,9 +201,11 @@ spec:
                       minLength: 1
                       type: string
                   required:
-                  - class
                   - name
                   type: object
+                  x-kubernetes-validations:
+                  - message: a tool override sets a class, a content mark, or both
+                    rule: has(self.class) || has(self.content)
                 type: array
                 x-kubernetes-list-map-keys:
                 - name

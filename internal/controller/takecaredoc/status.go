@@ -16,6 +16,12 @@ type status struct {
 	level        v1alpha1.Level
 	pendingSince *metav1.Time
 	conditions   []metav1.Condition
+	// withheld names, per connector, the content tools the Doc does not
+	// list; unknownContent the listed names no bound connector exposes as
+	// content (ADR 0014 §5). Both become events, once per generation and
+	// message.
+	withheld       []string
+	unknownContent []string
 }
 
 func (s *status) set(condType string, ok bool, reason, message string) {

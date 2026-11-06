@@ -162,7 +162,11 @@ addons:
     #  - group: rds.services.k8s.aws
     #    resource: dbproxies
     #  - resource: configmaps
-    # -- Tool class overrides (spec 05), recorded in the connector's status.
+    # -- Tools whose result carries payload (ADR 0014): a role reads them only
+    # when it lists them in spec.contentTools.
+    contentTools: [pods_log, nodes_log]
+    # -- Tool overrides (spec 05): a class, a content mark, or both, by name;
+    # recorded in the connector's status.
     tools: []
     resources:
       requests: { cpu: 20m, memory: 64Mi }
@@ -185,6 +189,8 @@ addons:
       #  namespace: ""
       #  podSelector: { app.kubernetes.io/name: opentelemetry-collector }
       #  port: 4317
+    # -- Tools whose result carries payload (ADR 0014): none, metric values are state.
+    contentTools: []
     tools: []
     resources:
       requests: { cpu: 10m, memory: 32Mi }

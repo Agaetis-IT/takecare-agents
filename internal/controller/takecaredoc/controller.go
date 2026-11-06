@@ -76,6 +76,9 @@ const (
 	ReasonAgentStarting          = "AgentStarting"
 	ReasonA2AUnreachable         = "A2AUnreachable"
 	ReasonLevelChanged           = "LevelChanged"
+	// Event reasons of the content tools (ADR 0014 §5).
+	ReasonContentToolsWithheld = "ContentToolsWithheld"
+	ReasonContentToolUnknown   = "ContentToolUnknown"
 )
 
 // ConditionDegraded reports what the Doc works without: a recommended
@@ -121,6 +124,44 @@ type Reconciler struct {
 	// unanswered records when each agent was first seen ready but not
 	// answering, for the start grace.
 	unanswered map[types.NamespacedName]time.Time
+	// said records, per Doc and event reason, the generation and message
+	// last emitted, so that an event is said once per generation: the
+	// status' observedGeneration, like the Doc itself, may be read stale
+	// from the cache.
+	said map[string]said
+}
+
+// said is what an event last said, and for which generation.
+type said struct {
+	generation int64
+	message    string
+}
+
+// sayOnce reports whether this message is new for the generation the
+// reconcile computed it from (not d's, which a status patch refreshes),
+// and records it; an older generation than the last one said is never said again.
+func (r *Reconciler) sayOnce(d *v1alpha1.TakeCareDoc, generation int64, reason, message string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := string(d.UID) + "/" + reason
+	last, ok := r.said[key]
+	if ok && (generation < last.generation || generation == last.generation && message == last.message) {
+		return false
+	}
+	if r.said == nil {
+		r.said = map[string]said{}
+	}
+	r.said[key] = said{generation: generation, message: message}
+	return true
+}
+
+// unsay drops what was said about a deleted Doc.
+func (r *Reconciler) unsay(d *v1alpha1.TakeCareDoc) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, reason := range []string{ReasonContentToolsWithheld, ReasonContentToolUnknown} {
+		delete(r.said, string(d.UID)+"/"+reason)
+	}
 }
 
 // HTTPCardProbe probes with a shared client; the caller bounds the time.
@@ -160,6 +201,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 	role := r.role(&d)
 	if !d.DeletionTimestamp.IsZero() {
+		r.unsay(&d)
 		if err := r.removeAll(ctx, &d, role); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -497,6 +539,10 @@ type binding struct {
 
 // findings are what the checks of the bound connectors found.
 type findings struct {
+	// content are the content tools the bound connectors expose; unknown
+	// is set when one of them is missing or never discovered.
+	content                             map[string]bool
+	unknown                             bool
 	missingTypes, problems, unavailable []string
 	covered                             map[v1alpha1.Namespace]bool
 	seen                                map[string]bool
@@ -523,10 +569,11 @@ func typedNames(d *v1alpha1.TakeCareDoc) []struct {
 // agent: a connector whose tools are known, even unavailable now (the
 // agent degrades and says so), never one that was never discovered (what
 // it exposes is unknown), and only its read tools (every level of
-// milestone 1, spec 02 §2).
+// milestone 1, spec 02 §2), content tools only when the Doc lists them in
+// spec.contentTools (ADR 0014 §5).
 func (r *Reconciler) connectors(ctx context.Context, d *v1alpha1.TakeCareDoc, st *status) (binding, error) {
 	b := binding{types: map[v1alpha1.ConnectorType]bool{}}
-	f := findings{covered: map[v1alpha1.Namespace]bool{}, seen: map[string]bool{}}
+	f := findings{covered: map[v1alpha1.Namespace]bool{}, seen: map[string]bool{}, content: map[string]bool{}}
 	if len(d.Spec.Connectors.Cluster) == 0 {
 		f.missingTypes = append(f.missingTypes, string(v1alpha1.ConnectorCluster))
 	}
@@ -538,9 +585,14 @@ func (r *Reconciler) connectors(ctx context.Context, d *v1alpha1.TakeCareDoc, st
 	}
 	for _, e := range typedNames(d) {
 		for _, name := range e.names {
-			if err := r.inspect(ctx, d.Namespace, e.t, name, &b, &f); err != nil {
+			if err := r.inspect(ctx, d, e.t, name, &b, &f, st); err != nil {
 				return b, err
 			}
+		}
+	}
+	for _, name := range d.Spec.ContentTools {
+		if !f.unknown && !f.content[name] {
+			st.unknownContent = append(st.unknownContent, name)
 		}
 	}
 	if err := r.inspectReport(ctx, d, &f); err != nil {
@@ -552,13 +604,14 @@ func (r *Reconciler) connectors(ctx context.Context, d *v1alpha1.TakeCareDoc, st
 
 // inspect checks one bound connector and gives it to the agent when its
 // read tools are known.
-func (r *Reconciler) inspect(ctx context.Context, namespace string, t v1alpha1.ConnectorType, name string, b *binding, f *findings) error {
-	c, err := r.connector(ctx, namespace, name)
+func (r *Reconciler) inspect(ctx context.Context, d *v1alpha1.TakeCareDoc, t v1alpha1.ConnectorType, name string, b *binding, f *findings, st *status) error {
+	c, err := r.connector(ctx, d.Namespace, name)
 	switch {
 	case err != nil:
 		return err
 	case c == nil:
 		f.problems = append(f.problems, fmt.Sprintf("connector %s does not exist", name))
+		f.unknown = true
 		return nil
 	case !slices.Contains(c.Spec.Types, t):
 		f.problems = append(f.problems, fmt.Sprintf("connector %s is bound as %s but does not declare that type", name, t))
@@ -579,15 +632,27 @@ func (r *Reconciler) inspect(ctx context.Context, namespace string, t v1alpha1.C
 		return nil
 	}
 	f.seen[name] = true
-	var read []string
+	var read, withheld []string
 	for _, tool := range c.Status.Tools {
-		if tool.Class == v1alpha1.ToolRead {
+		if tool.Content {
+			f.content[tool.Name] = true
+		}
+		switch {
+		case tool.Class != v1alpha1.ToolRead:
+		case tool.Content && !slices.Contains(d.Spec.ContentTools, tool.Name):
+			withheld = append(withheld, tool.Name)
+		default:
 			read = append(read, tool.Name)
 		}
 	}
 	slices.Sort(read)
+	if len(withheld) > 0 {
+		slices.Sort(withheld)
+		st.withheld = append(st.withheld, fmt.Sprintf("connector %s: %s", name, strings.Join(withheld, ", ")))
+	}
 	switch {
 	case len(c.Status.Tools) == 0:
+		f.unknown = true
 		f.unavailable = append(f.unavailable, fmt.Sprintf("%s was never discovered: what it exposes is unknown, it is not given to the agent", name))
 	case len(read) == 0:
 		f.unavailable = append(f.unavailable, fmt.Sprintf("%s has no read tool: it is not given to the agent", name))
@@ -687,6 +752,12 @@ func (r *Reconciler) writeStatus(ctx context.Context, d *v1alpha1.TakeCareDoc, s
 	}
 	if err := r.Status().Patch(ctx, d, client.MergeFrom(before)); err != nil {
 		return fmt.Errorf("update status of %s: %w", d.Name, err)
+	}
+	if msg := strings.Join(st.withheld, "; ") + " (not in spec.contentTools)"; len(st.withheld) > 0 && r.sayOnce(d, st.generation, ReasonContentToolsWithheld, msg) {
+		r.Recorder.Eventf(d, nil, corev1.EventTypeNormal, ReasonContentToolsWithheld, "Reconcile", "%s", msg)
+	}
+	if names := strings.Join(st.unknownContent, ", "); names != "" && r.sayOnce(d, st.generation, ReasonContentToolUnknown, names) {
+		r.Recorder.Eventf(d, nil, corev1.EventTypeWarning, ReasonContentToolUnknown, "Reconcile", "spec.contentTools lists %s, which no bound connector exposes as a content tool", names)
 	}
 	if previousLevel != "" && previousLevel != st.level {
 		r.Recorder.Eventf(d, nil, corev1.EventTypeNormal, ReasonLevelChanged, "Reconcile", "the Doc works at the %s level (was %s)", st.level, previousLevel)

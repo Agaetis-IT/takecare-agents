@@ -104,10 +104,12 @@ Mirroring every image and installing without Internet access is tracked in issue
 | addons.demoCorpus | object | see the keys below | The demo's corpus, DEMO ONLY (spec 03, spec 05): one read-only MCP server and one TakeCareConnector per source, over a corpus the TakeCareDemo controller writes into the ConfigMap `takecare-demo-corpus-<name>` (key `data.json`). Requires demo.enabled. |
 | addons.demoCorpus.sources | list | `[{"domain":"Post-mortems of incidents resolved by the SRE team","name":"incidents","type":"knowledge"},{"domain":"Operational runbooks of the SRE team","name":"runbooks","type":"knowledge"},{"domain":"Deployment log of the continuous delivery pipeline","name":"deployments","type":"changes"},{"domain":"Status bulletins of the cloud vendor (AWS)","name":"vendor","type":"knowledge"},{"domain":"Business support tickets raised by customers","name":"support","type":"tickets"}]` | The sources: the name prefixes the tools (`<name>_search`, `<name>_get`, `<name>_recent`) and names the connector; domain describes the source in the tools' descriptions. |
 | addons.kubernetes | object | see the keys below | containers/kubernetes-mcp-server, read-only, core toolset. |
+| addons.kubernetes.contentTools | list | `["pods_log","nodes_log"]` | Tools whose result carries payload (ADR 0014): a role reads them only when it lists them in spec.contentTools. |
 | addons.kubernetes.extraResources | list | `[]` | Resources beyond the defaults, for example custom resources. ConfigMaps are read only when listed here: customers keep credentials in them. Secrets and pod exec/attach/portforward are refused by the API. |
 | addons.kubernetes.namespaces | list | `[]` | The namespaces the server may read (get, list, watch): workloads, events, logs. The connector's scope; a role's scope must be inside it. |
-| addons.kubernetes.tools | list | `[]` | Tool class overrides (spec 05), recorded in the connector's status. |
+| addons.kubernetes.tools | list | `[]` | Tool overrides (spec 05): a class, a content mark, or both, by name; recorded in the connector's status. |
 | addons.prometheus | object | see the keys below | giantswarm/mcp-prometheus, read-only by design. |
+| addons.prometheus.contentTools | list | `[]` | Tools whose result carries payload (ADR 0014): none, metric values are state. |
 | addons.prometheus.egress | object | `{"namespace":"","otlp":null,"podSelector":{},"port":9090}` | Its egress, limited to that Prometheus (every tool accepts a caller's prometheus_url: the limit keeps a model from reaching anything else). |
 | addons.prometheus.egress.otlp | string | `nil` | The collector the server sends its own spans to, when OTLP is set. |
 | addons.prometheus.url | string | `""` | The Prometheus the server queries. |

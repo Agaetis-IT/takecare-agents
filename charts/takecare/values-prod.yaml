@@ -57,6 +57,7 @@ addons:
     enabled: true
     namespaces: []         # REQUIRED: the namespaces the Doc may read (workloads, events, logs)
     extraResources: []     # custom resources the Doc must see; add {resource: configmaps} only if none holds credentials
+    # contentTools: [pods_log, nodes_log]   # the default: log tools reach a role only when it lists them (ADR 0014)
   reportSlack:
     enabled: true
     tokenSecret:

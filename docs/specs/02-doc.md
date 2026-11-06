@@ -28,6 +28,7 @@ spec:
   scope:
     namespaces: [demo-apps]      # must be covered by the bound cluster connector
     # entities: [service/billing-api]   # Map keys: used from ADR 0015's intake
+  contentTools: [pods_log]       # content tools the Doc may read (ADR 0014)
   # Doc-specific
   connectors:                    # TakeCareConnector names, by type
     cluster: [kubernetes]
@@ -49,7 +50,7 @@ spec:
   actTools: []                   # Expert level only (not implemented in milestone 1)
 ```
 
-**Connector requirements** (ADR 0008): `cluster` and `metrics` are **required**; `report` is **required from the `Practitioner` level** (at `Apprentice`, without a report connector, diagnoses stay in status); `knowledge` and `changes` are **recommended**. Missing required types give `Ready=False`, reason `MissingConnectorType`; missing recommended types give a warning event and a `Degraded` condition. Readiness moves to the coverage of the scope with ADR 0014.
+**Connector requirements** (ADR 0008): `cluster` and `metrics` are **required**; `report` is **required from the `Practitioner` level** (at `Apprentice`, without a report connector, diagnoses stay in status); `knowledge` and `changes` are **recommended**. Missing required types give `Ready=False`, reason `MissingConnectorType`; missing recommended types give a warning event and a `Degraded` condition. Readiness moves to the coverage of the scope with ADR 0014. The Doc lists its log tools in `spec.contentTools`: a content tool it does not list stays out of its allow-list, on the agent and at the gateway, and the withheld content tools are named in a `ContentToolsWithheld` event (a listed name no bound connector exposes as content gives a `ContentToolUnknown` warning).
 
 Milestone 1 supports **one `TakeCareDoc` per cluster**; a second one gets `Ready=False`, reason `SingleDocOnly`.
 

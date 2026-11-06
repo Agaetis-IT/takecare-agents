@@ -325,7 +325,8 @@ func (r *Reconciler) applyBackend(ctx context.Context, c *v1alpha1.TakeCareConne
 
 // discover lists the tools and classifies them (spec 05): readOnlyHint true
 // is read, anything else, a missing annotation included, is act;
-// spec.tools[] overrides, a relaxation being recorded for review.
+// spec.tools[] overrides the class, a relaxation being recorded for review,
+// and sets the content mark (ADR 0014 §5), which is not a class.
 func (r *Reconciler) discover(ctx context.Context, c *v1alpha1.TakeCareConnector, st *status, ep mcp.Endpoint) {
 	tools, err := r.MCP.ListTools(ctx, ep)
 	if err != nil {
@@ -341,9 +342,9 @@ func (r *Reconciler) discover(ctx context.Context, c *v1alpha1.TakeCareConnector
 		st.set(v1alpha1.ConditionToolsDiscovered, true, ReasonDiscovered, fmt.Sprintf("%d tool(s) listed; report tools are not classified", len(tools)))
 		return
 	}
-	overrides := map[string]v1alpha1.ToolClass{}
+	overrides := map[string]v1alpha1.ToolOverride{}
 	for _, o := range c.Spec.Tools {
-		overrides[o.Name] = o.Class
+		overrides[o.Name] = o
 	}
 	var statuses []v1alpha1.ToolStatus
 	var changes []v1alpha1.ToolClassChange
@@ -353,9 +354,13 @@ func (r *Reconciler) discover(ctx context.Context, c *v1alpha1.TakeCareConnector
 			class = v1alpha1.ToolRead
 		}
 		ts := v1alpha1.ToolStatus{Name: t.Name, Class: class, Source: "annotation"}
-		if want, ok := overrides[t.Name]; ok && want != class {
-			changes = append(changes, v1alpha1.ToolClassChange{Name: t.Name, From: class, To: want})
-			ts.Class, ts.Source = want, "override"
+		o := overrides[t.Name]
+		if o.Class != "" && o.Class != class {
+			changes = append(changes, v1alpha1.ToolClassChange{Name: t.Name, From: class, To: o.Class})
+			ts.Class, ts.Source = o.Class, "override"
+		}
+		if o.Content != nil {
+			ts.Content = *o.Content
 		}
 		statuses = append(statuses, ts)
 	}

@@ -113,6 +113,13 @@ func TestConnectorValidation(t *testing.T) {
 			content := true
 			c.Spec.Tools = []v1alpha1.ToolOverride{{Name: toolPodsLog, Class: v1alpha1.ToolRead, Content: &content}}
 		}, ""},
+		{"tool marked content without a class", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
+			content := true
+			c.Spec.Tools = []v1alpha1.ToolOverride{{Name: toolPodsLog, Content: &content}}
+		}, ""},
+		{"tool override setting nothing", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
+			c.Spec.Tools = []v1alpha1.ToolOverride{{Name: toolPodsLog}}
+		}, "sets a class, a content mark, or both"},
 		{"unknown tool class", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
 			c.Spec.Tools = []v1alpha1.ToolOverride{{Name: toolPodsLog, Class: "write"}}
 		}, "class"},
