@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The Map's entry schema `api/map/entry.schema.json` (spec 08, ADR 0015) and its loader: a Map directory validated against the schema and the relation rules, every fault reported at once, the relations kept both ways. The server follows.
 - The Map server `takecare-agents-mcp-map` (spec 08, ADR 0015): the five read-only tools `entry`, `neighbours`, `blast_radius`, `path` and `map_at` over a Map directory, loaded again when it changes; a reload that fails keeps the previous Map and is reported in `/statusz`. The Git source, the add-on and the demo's Map follow.
 - The Map server reads the customer's Git: one repository and branch with a read-only token or deploy key from a Secret, polled on an interval; an invalid revision is reported and the last valid one keeps serving; `map_at` answers from the history: the last commit at or before the date.
+- The `map` add-on (spec 08): the Map server deployed by the chart, reading the customer's Git with a token or a deploy key from a Secret, or the demo's Map from a ConfigMap; one connector `map` with its five read tools. The `takecare-agents-mcp-map` image joins the release.
 
 ### Fixed
 

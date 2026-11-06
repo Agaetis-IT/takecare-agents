@@ -1,0 +1,5 @@
+key: runbook/proxy-timeout
+provenance: declared
+status: validated
+created: 2026-11-05
+description: RB-014, connections reset by the database proxy.

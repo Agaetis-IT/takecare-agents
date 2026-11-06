@@ -1,0 +1,11 @@
+key: network/billing-db-proxy
+provenance: declared
+status: validated
+created: 2026-11-05
+lastValidated: 2026-11-05
+owner: team/platform
+sources:
+  - kubernetes: ack-system/DBProxy/billing-db-proxy
+relations:
+  deployedIn: [environment/ack-system]
+  dependsOn: [datastore/billing-db]

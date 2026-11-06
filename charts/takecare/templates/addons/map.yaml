@@ -1,0 +1,274 @@
+{{- $a := .Values.addons.map }}
+{{- if $a.enabled }}
+{{- $ctx := dict "root" . "name" "map" "port" 8080 }}
+{{- $image := printf "%s/%s:%s" (.Values.global.imageRegistry | default $a.image.registry) $a.image.repository ($a.image.tag | default .Chart.AppVersion) }}
+{{- $ssh := or (hasPrefix "ssh://" $a.git.url) (regexMatch "^[^/:]+@[^/:]+:" $a.git.url) }}
+{{- $ca := or .Values.global.caBundle.configMapName .Values.global.caBundle.secretName }}
+# Add-on map: takecare-agents-mcp-map (ours), five read tools over the
+# customer's Map (spec 08, ADR 0015), read from one branch of their Git with
+# a read-only credential mounted from a Secret, or, in the demo, the chart's
+# demo Map from a ConfigMap.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: takecare-addon-map
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+automountServiceAccountToken: false
+{{- if $a.demo }}
+---
+# The demo's Map: charts/takecare/files/demo-map, a copy of the Map server's
+# test fixture kept in step by make chart-sync. One key per file, the path's
+# slashes as "__"; the volume below puts each back at map/<type>/<name>.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: takecare-demo-map
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+data:
+  {{- range $path, $_ := .Files.Glob "files/demo-map/map/**.yaml" }}
+  {{ trimPrefix "files/demo-map/" $path | replace "/" "__" }}: |
+    {{- $.Files.Get $path | nindent 4 }}
+  {{- end }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: takecare-addon-map
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "takecare.addon.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "takecare.addon.labels" $ctx | nindent 8 }}
+    spec:
+      serviceAccountName: takecare-addon-map
+      automountServiceAccountToken: false
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: {{ include "takecare.addon.image" (dict "image" $image "root" .) | quote }}
+          imagePullPolicy: {{ $a.image.pullPolicy }}
+          args:
+            - --listen=:8080
+            {{- if $a.demo }}
+            - --dir=/map
+            {{- else }}
+            - --git-url={{ $a.git.url }}
+            - --git-ref={{ $a.git.ref }}
+            - --git-path={{ $a.git.path }}
+            - --poll-interval={{ $a.git.pollInterval }}
+            {{- if $a.git.credentialSecret.name }}
+            - --credential-file=/etc/takecare/map/{{ $a.git.credentialSecret.key }}
+            - --credential-username={{ $a.git.credentialUsername }}
+            {{- end }}
+            {{- if $a.git.sshKeySecret.name }}
+            - --ssh-key-file=/etc/takecare/map-ssh/{{ $a.git.sshKeySecret.key }}
+            - --known-hosts-file=/etc/takecare/map-known-hosts/{{ $a.git.knownHostsConfigMap.key }}
+            {{- end }}
+            {{- end }}
+          {{- if not $a.demo }}
+          env:
+            {{- with .Values.global.egressProxy }}
+            {{- if .httpsProxy }}
+            - name: HTTPS_PROXY
+              value: {{ .httpsProxy | quote }}
+            {{- end }}
+            {{- if .noProxy }}
+            - name: NO_PROXY
+              value: {{ .noProxy | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if $ca }}
+            - name: SSL_CERT_FILE
+              value: /etc/takecare/ca/{{ .Values.global.caBundle.key }}
+            {{- end }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            {{- toYaml $a.resources | nindent 12 }}
+          volumeMounts:
+            {{- if $a.demo }}
+            - name: map
+              mountPath: /map
+              readOnly: true
+            {{- end }}
+            {{- if and (not $a.demo) $a.git.credentialSecret.name }}
+            - name: credential
+              mountPath: /etc/takecare/map
+              readOnly: true
+            {{- end }}
+            {{- if and (not $a.demo) $a.git.sshKeySecret.name }}
+            - name: ssh-key
+              mountPath: /etc/takecare/map-ssh
+              readOnly: true
+            - name: known-hosts
+              mountPath: /etc/takecare/map-known-hosts
+              readOnly: true
+            {{- end }}
+            {{- if and (not $a.demo) $ca }}
+            - name: ca-bundle
+              mountPath: /etc/takecare/ca
+              readOnly: true
+            {{- end }}
+      volumes:
+        {{- if $a.demo }}
+        - name: map
+          configMap:
+            name: takecare-demo-map
+            items:
+              {{- range $path, $_ := .Files.Glob "files/demo-map/map/**.yaml" }}
+              {{- $p := trimPrefix "files/demo-map/" $path }}
+              - key: {{ $p | replace "/" "__" }}
+                path: {{ $p }}
+              {{- end }}
+        {{- end }}
+        {{- if and (not $a.demo) $a.git.credentialSecret.name }}
+        - name: credential
+          secret:
+            secretName: {{ $a.git.credentialSecret.name }}
+        {{- end }}
+        {{- if and (not $a.demo) $a.git.sshKeySecret.name }}
+        - name: ssh-key
+          secret:
+            secretName: {{ $a.git.sshKeySecret.name }}
+        - name: known-hosts
+          configMap:
+            name: {{ $a.git.knownHostsConfigMap.name }}
+        {{- end }}
+        {{- if and (not $a.demo) $ca }}
+        - name: ca-bundle
+          {{- if .Values.global.caBundle.secretName }}
+          secret:
+            secretName: {{ .Values.global.caBundle.secretName }}
+          {{- else }}
+          configMap:
+            name: {{ .Values.global.caBundle.configMapName }}
+          {{- end }}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: takecare-addon-map
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    {{- include "takecare.addon.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+{{- if .Values.networkPolicies.enabled }}
+---
+{{ include "takecare.addon.ingressPolicy" $ctx }}
+---
+# Egress. The demo's Map is a mounted file: none. Git: DNS plus TCP 443 (and
+# 22 for an SSH URL) to addresses outside the cluster, the private ranges
+# excluded, or the declared proxy pods only. A NetworkPolicy cannot name the
+# Git host.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: takecare-addon-map-egress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "takecare.addon.selectorLabels" $ctx | nindent 6 }}
+  policyTypes: [Egress]
+  {{- if $a.demo }}
+  egress: []
+  {{- else }}
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- if $a.egress.proxy }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $a.egress.proxy.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml $a.egress.proxy.podSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ $a.egress.proxy.port }}
+    {{- else }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              {{- toYaml $a.egress.excludedCIDRs | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 443
+        {{- if $ssh }}
+        - protocol: TCP
+          port: 22
+        {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+---
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareConnector
+metadata:
+  name: map
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+spec:
+  types: [map]
+  description: "The Map: entries, relations, blast radius, path, history (read-only)"
+  mcp:
+    addon: map
+{{- end }}

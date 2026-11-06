@@ -34,7 +34,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=8
+CHECKS_EXPECTED=9
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -107,6 +107,8 @@ run() {
       sleep 5
     done
   fi
+  check "connector map is Ready with its five read tools, none content (spec 08 §5)" \
+    bash -c "[[ \$(kubectl -n $NS get takecareconnector map -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}') == True && \$(kubectl -n $NS get takecareconnector map -o jsonpath='{range .status.tools[*]}{.name}={.class}{.content} {end}') == 'blast_radius=read entry=read map_at=read neighbours=read path=read ' ]]"
   check "one investigation of demo-apps, Completed, for HighErrorRate" \
     bash -c "[[ \$(kubectl -n $NS get takecareinvestigations -l takecare.agaetis.fr/alert-namespace=demo-apps -o name | wc -l) -eq 1 && \$($get='{.status.phase} {.spec.alert.name}') == 'Completed HighErrorRate' ]]"
   check "completed less than 3 minutes after the alert fired (spec 02 AC 1)" \

@@ -118,7 +118,13 @@ var prodSets = []string{
 	flagSet, "addons.kubernetes.namespaces={apps}", flagSet, "addons.prometheus.url=http://prometheus.monitoring.svc",
 	flagSet, "addons.prometheus.egress.namespace=monitoring", flagSet, "addons.prometheus.egress.podSelector.app=prometheus",
 	flagSet, "addons.reportSlack.destinations[0].name=on-call", flagSet, "addons.reportSlack.destinations[0].target=C0123456789",
+	flagSet, mapURL,
 }
+
+const (
+	mapURL    = "addons.map.git.url=https://git.example.com/ops/map.git"
+	mapSSHKey = "addons.map.git.sshKeySecret.name=map-key"
+)
 
 // The TakeCarePlatform each profile renders must pass the CRD's validation,
 // CEL rules included: values-prod.yaml with its REQUIRED values left empty
@@ -499,6 +505,65 @@ func TestAddonContentTools(t *testing.T) {
 			}
 			if got["prometheus"] != "null" {
 				t.Errorf("prometheus ships no content tool, got %s", got["prometheus"])
+			}
+		})
+	}
+}
+
+// The map add-on (spec 08 §5): the demo's Map from a ConfigMap and no
+// egress; a Git source with its credential and the ports it needs.
+func TestMapAddon(t *testing.T) {
+	deployment := func(objs []*unstructured.Unstructured) (args string, egress string, cm *unstructured.Unstructured) {
+		for _, o := range objs {
+			switch {
+			case o.GetKind() == "Deployment" && o.GetName() == "takecare-addon-map":
+				c, _, _ := unstructured.NestedSlice(o.Object, "spec", "template", "spec", "containers")
+				raw, _ := json.Marshal(c[0].(map[string]any)["args"])
+				args = string(raw)
+			case o.GetKind() == "NetworkPolicy" && o.GetName() == "takecare-addon-map-egress":
+				raw, _ := json.Marshal(o.Object["spec"].(map[string]any)["egress"])
+				egress = string(raw)
+			case o.GetKind() == "ConfigMap" && o.GetName() == "takecare-demo-map":
+				cm = o
+			}
+		}
+		return args, egress, cm
+	}
+	t.Run("the demo's Map", func(t *testing.T) {
+		args, egress, cm := deployment(render(t, releaseName, profileArgs("demo")...))
+		data, _, _ := unstructured.NestedStringMap(cm.Object, "data")
+		if len(data) != 10 || data["map__service__billing-api.yaml"] == "" || !strings.Contains(args, "--dir=/map") || egress != "[]" {
+			t.Errorf("%d files, args %s, egress %s", len(data), args, egress)
+		}
+	})
+	for name, tc := range map[string]struct {
+		sets       []string
+		arg, ports string
+	}{
+		"an HTTPS token": {[]string{flagSet, "addons.map.git.credentialSecret.name=map-token"}, "--credential-file=/etc/takecare/map/token", `"ports":[{"port":443,"protocol":"TCP"}]`},
+		"an SSH deploy key": {[]string{flagSet, "addons.map.git.url=ssh://git@git.example.com/ops/map.git", flagSet, mapSSHKey, flagSet, "addons.map.git.knownHostsConfigMap.name=git-hosts"},
+			"--known-hosts-file=/etc/takecare/map-known-hosts/known_hosts", `"ports":[{"port":443,"protocol":"TCP"},{"port":22,"protocol":"TCP"}]`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			args, egress, cm := deployment(render(t, releaseName, append(append(profileArgs("prod"), prodSets...), tc.sets...)...))
+			if cm != nil || !strings.Contains(args, tc.arg) || !strings.Contains(egress, tc.ports) {
+				t.Errorf("args %s, egress %s, demo ConfigMap %v", args, egress, cm != nil)
+			}
+		})
+	}
+	for name, tc := range map[string]struct {
+		sets []string
+		want string
+	}{
+		"an SSH key without known hosts": {[]string{flagSet, mapSSHKey}, "knownHostsConfigMap is REQUIRED"},
+		"two credentials":                {[]string{flagSet, mapSSHKey, flagSet, "addons.map.git.knownHostsConfigMap.name=h", flagSet, "addons.map.git.credentialSecret.name=t"}, "are exclusive"},
+		"no URL":                         {[]string{flagSet, "addons.map.git.url="}, "addons.map.git.url is REQUIRED"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			args := append(append(profileArgs("prod"), prodSets...), tc.sets...)
+			out, err := helmTemplate(t, releaseName, releaseNamespace, args...).CombinedOutput()
+			if err == nil || !strings.Contains(string(out), tc.want) {
+				t.Errorf("err %v, output does not say %q:\n%s", err, tc.want, out)
 			}
 		})
 	}

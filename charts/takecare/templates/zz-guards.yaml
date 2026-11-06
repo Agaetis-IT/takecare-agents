@@ -37,6 +37,22 @@ reverse path order, so this file, last by name, is evaluated first.
 {{- if and .Values.addons.demoCorpus.enabled (not .Values.demo.enabled) }}
 {{- fail "addons.demoCorpus is DEMO ONLY: it needs demo.enabled (the TakeCareDemo controller writes its corpus)" }}
 {{- end }}
+{{- with .Values.addons.map }}
+{{- if .enabled }}
+{{- if and .demo (not $.Values.demo.enabled) }}
+{{- fail "addons.map.demo is DEMO ONLY: it needs demo.enabled" }}
+{{- end }}
+{{- if and (not .demo) (not .git.url) }}
+{{- fail "addons.map.git.url is REQUIRED: the repository holding the customer's Map (or addons.map.demo in the demo)" }}
+{{- end }}
+{{- if and .git.credentialSecret.name .git.sshKeySecret.name }}
+{{- fail "addons.map.git.credentialSecret and addons.map.git.sshKeySecret are exclusive: one credential" }}
+{{- end }}
+{{- if and .git.sshKeySecret.name (not .git.knownHostsConfigMap.name) }}
+{{- fail "addons.map.git.knownHostsConfigMap is REQUIRED with an SSH key: the Git host's key is always checked" }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- if and .Values.addons.reportSlack.enabled .Values.addons.reportLog.enabled }}
 {{- fail "addons.reportSlack and addons.reportLog are exclusive: one report connector" }}
 {{- end }}

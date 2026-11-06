@@ -133,6 +133,7 @@ chart-template: chart-deps kubeconform ## Render both profiles and validate them
 		--set 'addons.kubernetes.namespaces={apps}' --set addons.prometheus.url=http://prometheus.monitoring.svc \
 		--set addons.prometheus.egress.namespace=monitoring --set addons.prometheus.egress.podSelector.app=prometheus \
 		--set 'addons.reportSlack.destinations[0].name=on-call' --set 'addons.reportSlack.destinations[0].target=C0123456789' \
+		--set addons.map.git.url=https://git.example.internal/ops/map.git --set addons.map.git.credentialSecret.name=map-token \
 		> "$(CHART_OUT)/takecare-prod.yaml"
 	$(HELM_RUN) template takecare charts/takecare -n takecare-system -f charts/takecare/values-demo.yaml > "$(CHART_OUT)/takecare-demo.yaml"
 	# The branch rendered on a cluster that runs Prometheus Operator: the

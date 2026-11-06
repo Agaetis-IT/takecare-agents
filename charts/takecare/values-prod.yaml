@@ -68,6 +68,16 @@ addons:
       proxy: null          # set when Slack is reached through a proxy: {namespace, podSelector, port}; otherwise DNS + 443 to the outside
   reportLog:
     enabled: false         # demo only: writes diagnoses to the server's log, which would reach your log aggregation
+  map:
+    enabled: true
+    git:
+      url: ""              # REQUIRED: the repository holding your Map (spec 08), https://... or ssh://git@...
+      ref: main
+      credentialSecret: { name: "", key: token }          # an HTTPS token in a Secret of takecare-system, read-only on the repository...
+      sshKeySecret: { name: "", key: id_ed25519 }         # ...or a deploy key, with the Git host's known_hosts below
+      knownHostsConfigMap: { name: "", key: known_hosts }
+    egress:
+      proxy: null          # set when Git is reached through a proxy: {namespace, podSelector, port}; otherwise DNS + 443 (and 22 for SSH)
   prometheus:
     enabled: true
     url: ""                # REQUIRED: your Prometheus, e.g. http://prometheus-server.monitoring.svc

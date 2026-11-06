@@ -1,0 +1,6 @@
+key: observability/prometheus
+provenance: declared
+status: validated
+created: 2026-11-05
+sources:
+  - url: http://prometheus.monitoring.svc:9090

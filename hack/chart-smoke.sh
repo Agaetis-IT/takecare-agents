@@ -27,6 +27,7 @@ IMAGE_TAG="${IMAGE_TAG:-smoke-$(date +%s)}"
 IMAGE="${IMAGE_REGISTRY}/takecare-agents-operator:${IMAGE_TAG}"
 REPORT_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-report-slack:${IMAGE_TAG}"
 CORPUS_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-corpus:${IMAGE_TAG}"
+MAP_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-map:${IMAGE_TAG}"
 DEMO_APP_IMAGE="${IMAGE_REGISTRY}/takecare-agents-demo-app:${IMAGE_TAG}"
 # The demo corpus sources (values.yaml addons.demoCorpus.sources).
 CORPUS_SOURCES=(incidents runbooks deployments vendor support)
@@ -44,9 +45,9 @@ up() {
       --kubeconfig-update-default=false --kubeconfig-switch-context=false --wait
   fi
   k3d kubeconfig write "$CLUSTER" --output "$KUBECONFIG" >/dev/null
-  log "building and importing ${IMAGE}, ${REPORT_IMAGE}, ${CORPUS_IMAGE} and ${DEMO_APP_IMAGE}"
-  make docker-build OPERATOR_IMG="$IMAGE" REPORT_SLACK_IMG="$REPORT_IMAGE" MCP_CORPUS_IMG="$CORPUS_IMAGE" DEMO_APP_IMG="$DEMO_APP_IMAGE" >/dev/null
-  k3d image import "$IMAGE" "$REPORT_IMAGE" "$CORPUS_IMAGE" "$DEMO_APP_IMAGE" -c "$CLUSTER" >/dev/null
+  log "building and importing ${IMAGE}, ${REPORT_IMAGE}, ${CORPUS_IMAGE}, ${MAP_IMAGE} and ${DEMO_APP_IMAGE}"
+  make docker-build OPERATOR_IMG="$IMAGE" REPORT_SLACK_IMG="$REPORT_IMAGE" MCP_CORPUS_IMG="$CORPUS_IMAGE" MCP_MAP_IMG="$MAP_IMAGE" DEMO_APP_IMG="$DEMO_APP_IMAGE" >/dev/null
+  k3d image import "$IMAGE" "$REPORT_IMAGE" "$CORPUS_IMAGE" "$MAP_IMAGE" "$DEMO_APP_IMAGE" -c "$CLUSTER" >/dev/null
   make chart-deps >/dev/null
 }
 
@@ -88,7 +89,7 @@ install() {
   empty_corpora
   "$HELM" upgrade --install takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
-    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --wait --timeout 10m
+    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --wait --timeout 10m
   kubectl -n kagent rollout status deploy/kagent-controller --timeout=180s >/dev/null
   verify
 }
@@ -113,6 +114,13 @@ empty_corpora() {
 corpus_ready() {
   connector_ready "$1" || return 1
   [[ "$(kubectl -n "$NS" get takecareconnector "$1" -o jsonpath='{range .status.tools[*]}{.name}={.class}{"\n"}{end}' | sort | tr '\n' ' ')" == "$1_get=read $1_recent=read $1_search=read " ]]
+}
+
+# map_ready: the map connector is Ready with its five tools, all read, none
+# content (spec 08 §5, ADR 0014).
+map_ready() {
+  connector_ready map || return 1
+  [[ "$(kubectl -n "$NS" get takecareconnector map -o jsonpath='{range .status.tools[*]}{.name}={.class}{.content}{"\n"}{end}' | sort | tr '\n' ' ')" == "blast_radius=read entry=read map_at=read neighbours=read path=read " ]]
 }
 
 # wait_condition KIND NAME TYPE STATUS waits up to two minutes for a
@@ -212,7 +220,7 @@ upgrade() {
     --set image.tag="$IMAGE_TAG" --set demo.enabled=true --wait --timeout 5m
   "$HELM" upgrade takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
-    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set operator.extraArgs[0]=--zap-log-level=debug --wait --timeout 10m
+    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set operator.extraArgs[0]=--zap-log-level=debug --wait --timeout 10m
   check "helm upgrade of both charts succeeded without a field manager conflict" true
   check "operator rolled out with the new argument" \
     kubectl -n "$NS" rollout status deploy/takecare-operator --timeout=120s
@@ -268,6 +276,8 @@ verify() {
   for src in "${CORPUS_SOURCES[@]}"; do
     check "connector ${src} reaches Ready=True with its three read tools" corpus_ready "$src"
   done
+  log "the demo's Map (spec 08): the map add-on over its ConfigMap"
+  check "connector map reaches Ready=True with its five read tools, none content" map_ready
   log "the demo controller (spec 03): scenery, incident and reset under the demo Roles"
   kubectl -n "$NS" apply -f - >/dev/null <<'YAML'
 apiVersion: takecare.agaetis.fr/v1alpha1

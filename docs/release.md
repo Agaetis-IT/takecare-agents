@@ -2,7 +2,7 @@
 
 A release is a tag `v<SemVer>` on `main`. The `release` workflow then publishes, from that commit:
 
-- the four images, for `linux/amd64` and `linux/arm64`: `ghcr.io/agaetis-it/takecare-agents-operator`, `-mcp-report-slack`, `-demo-app` and `-mcp-corpus`, tagged with the version without its `v`; the end-to-end fakes are never released;
+- the five images, for `linux/amd64` and `linux/arm64`: `ghcr.io/agaetis-it/takecare-agents-operator`, `-mcp-report-slack`, `-mcp-map`, `-demo-app` and `-mcp-corpus`, tagged with the version without its `v`; the end-to-end fakes are never released;
 - both charts as OCI artifacts, `oci://ghcr.io/agaetis-it/charts/takecare-crds` and `oci://ghcr.io/agaetis-it/charts/takecare`, with chart version = app version = the release's version (spec 04); the `Chart.yaml` files keep their development version;
 - the GitHub release: the tag's `CHANGELOG.md` section, the image and chart references, and both chart packages attached.
 
@@ -25,7 +25,7 @@ The workflow refuses a tag that is not `v<major>.<minor>.<patch>` with an option
    - `make demo-up` without `DEMO_IMAGES=build` installs the released images;
    - the release page lists the notes, the images and the two charts.
 
-**The first release of a milestone goes through a prerelease** (`v0.1.0-rc.1`, with its own `## [0.1.0-rc.1]` section): it rehearses the whole chain (registry login, four images on two architectures, two charts, the release page), which cannot be proven otherwise. The GitHub release is then marked as a prerelease.
+**The first release of a milestone goes through a prerelease** (`v0.1.0-rc.1`, with its own `## [0.1.0-rc.1]` section): it rehearses the whole chain (registry login, five images on two architectures, two charts, the release page), which cannot be proven otherwise. The GitHub release is then marked as a prerelease.
 
 ## When a release fails
 
