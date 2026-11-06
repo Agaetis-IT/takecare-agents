@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -133,7 +134,7 @@ func gitServer(t *testing.T, cfg GitConfig) (*Server, *gitSource) {
 
 func TestGitSource(t *testing.T) {
 	r := newRemote(t, ".")
-	_, c2, c3 := r.history(".")
+	c1, c2, c3 := r.history(".")
 	s, g := gitServer(t, GitConfig{URL: r.url()})
 	ctx := context.Background()
 
@@ -152,6 +153,36 @@ func TestGitSource(t *testing.T) {
 	if got, _ := json.Marshal(m.Entries["service/billing-api"].Relations["dependsOn"]); string(got) != `["network/billing-db-proxy"]` {
 		t.Errorf("commit 2's billing-api depends on %s", got)
 	}
+
+	t.Run("map_at reads the history", func(t *testing.T) {
+		day := func(d int) time.Time { return time.Date(2026, 11, d, 23, 59, 59, 0, time.UTC) }
+		for _, tc := range []struct {
+			at        time.Time
+			revision  string
+			dependsOn string
+			err       string
+		}{
+			{at: day(2), revision: c1, dependsOn: `["datastore/billing-db","network/billing-db-proxy"]`},
+			{at: day(4), revision: c2, dependsOn: `["network/billing-db-proxy"]`},
+			{at: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), err: "date before the first revision"},
+			{at: day(5), err: "revision " + c3 + " at 2026-11-05T12:00:00Z does not validate: map/runbook/broken.yaml: dependsOn service/none: no such entry"},
+		} {
+			m, err := g.at(tc.at)
+			if tc.err != "" {
+				if err == nil || err.Error() != tc.err {
+					t.Errorf("at %s: %v, want %q", tc.at, err, tc.err)
+				}
+				continue
+			}
+			got, _ := json.Marshal(m.Entries["service/billing-api"].Relations["dependsOn"])
+			if err != nil || m.Revision != tc.revision || string(got) != tc.dependsOn {
+				t.Errorf("at %s: revision %v, dependsOn %s (%v)", tc.at, m, got, err)
+			}
+		}
+		if len(g.cache) != 2 || g.cache[c1] == nil || g.cache[c2] == nil {
+			t.Errorf("%d revisions cached, want commits 1 and 2 (commit 2 from the start)", len(g.cache))
+		}
+	})
 
 	t.Run("the next poll picks up a fix", func(t *testing.T) {
 		if err := os.Remove(filepath.Join(r.dir, "map/runbook/broken.yaml")); err != nil {
@@ -257,5 +288,16 @@ func TestRedact(t *testing.T) {
 		if got := redact(in); got != want {
 			t.Errorf("redact(%s) = %s, want %s", in, got, want)
 		}
+	}
+}
+
+// map_at keeps cacheSize revisions, the oldest evicted first.
+func TestCacheEviction(t *testing.T) {
+	var g gitSource
+	for i := range cacheSize + 1 {
+		g.remember(&Map{Revision: fmt.Sprint(i)})
+	}
+	if _, ok := g.cache["0"]; ok || len(g.cache) != cacheSize || g.cache[fmt.Sprint(cacheSize)] == nil {
+		t.Errorf("cache holds %d revisions, the first one %v", len(g.cache), g.cache["0"])
 	}
 }

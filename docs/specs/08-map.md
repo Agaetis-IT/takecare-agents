@@ -99,7 +99,7 @@ The server is configured with the repository's URL (HTTPS or SSH), the branch, t
 | `path` | `from`, `to` | `{found, steps: [{from, relation, direction, to}]}`, the shortest chain in either direction |
 | `map_at` | `key?`, `date` (YYYY-MM-DD or RFC 3339) | the entry, or the list of entries (key, type, status), as the Map was at that date, with its revision |
 
-Blast radius follows the reverse of `dependsOn`, `runsAs` and `deployedIn`: what depends on the entry, runs as it, or is deployed in it. For `map_at`, a date without a time means the end of that day.
+Blast radius follows the reverse of `dependsOn`, `runsAs` and `deployedIn`: what depends on the entry, runs as it, or is deployed in it. For `map_at`, a date without a time means the end of that day; over Git, it reads the last commit of the branch at or before that time, by committer date, and a revision that does not validate is an error, never a fall-back to another one (the last 16 revisions read are kept loaded).
 
 All five are `read`, none `content` (ADR 0014). Errors: unknown key, invalid reference, date before the first commit.
 
