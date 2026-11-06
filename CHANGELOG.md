@@ -14,7 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- The first stable release: everything of `0.1.0-rc.1` plus the changes below. Milestone 1 (the Doc) is delivered: spec 00's exit criteria are met, and the accuracy bench of 2026-11-06 on a real model scores 5 correct diagnoses out of 5 (`test/bench/report-2026-11-06T0909Z.json`).
+- The first stable release: everything of `0.1.0-rc.1` plus the changes in this section. Milestone 1 (the Doc) is delivered: spec 00's exit criteria are met, and the accuracy bench of 2026-11-06 on a real model scores 5 correct diagnoses out of 5 (`test/bench/report-2026-11-06T0909Z.json`).
 - **Breaking**: the intervention levels are `Apprentice`, `Practitioner` and `Expert` in the API, the status, the messages and the traces (ADR 0013); `spec.report.trial` and `spec.report.service` are `spec.report.apprentice` and `spec.report.practitioner`. Resources carrying the old values are rejected.
 - TakeCare Agents is licensed under the Apache License 2.0: `LICENSE`, the SPDX identifier `Apache-2.0` in every source file, and a `NOTICE` in the Apache form.
 - The contributor guide moved to `AGENTS.md`, for human contributors and coding agents alike; `CLAUDE.md` imports it.
