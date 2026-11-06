@@ -10,8 +10,18 @@ title = "TakeCare Agents"
 [extend]
 useDefault = true
 
-[allowlist]
+[[allowlists]]
 description = "release checksums pinned in hack/versions.env"
+condition = "AND"
 paths = ['''^hack/versions\.env$''']
 regexTarget = "line"
 regexes = ['''^[A-Z0-9_]*SHA256[A-Z0-9_]*=[0-9a-f]{64}$''']
+
+# Map entries (spec 08) start with `key: <type>/<name>`, which the generic
+# API key rule reads as a key. Only that line, in a Map file, is allowed.
+[[allowlists]]
+description = "the key line of a Map entry"
+condition = "AND"
+paths = ['''(^|/)map/[a-z]+/[a-z0-9][-a-z0-9.]*\.yaml$''']
+regexTarget = "line"
+regexes = ['''^key: (service|compute|datastore|storage|network|identity|external|team|environment|observability|runbook)/[a-z0-9]([-a-z0-9.]*[a-z0-9])?$''']
