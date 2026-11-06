@@ -36,6 +36,9 @@ const (
 	currencyUSD   = "USD"
 	wantNamespace = "namespaces"
 	wantLevel     = "level"
+	wantEntities  = "entities"
+	entityBilling = "service/billing-api"
+	toolPodsLog   = "pods_log"
 	badNamespace  = "namespace not a DNS label"
 )
 

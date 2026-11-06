@@ -247,6 +247,7 @@ func (h *Handler) handle(ctx context.Context, a Alert, seen map[string]*v1alpha1
 				Name: a.Labels[labelAlertName], Fingerprint: a.Fingerprint,
 				Service: a.Labels[labelService], Namespace: ns, Workload: workload,
 				FiredAt: metav1.NewTime(a.StartsAt), Labels: a.Labels, Annotations: a.Annotations,
+				Source: v1alpha1.SourceAlertmanager,
 			},
 			Level:  effectiveLevel(doc.Spec.Level),
 			Silent: a.Labels[labelSilent] == "true",

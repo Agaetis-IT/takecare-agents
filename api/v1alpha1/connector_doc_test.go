@@ -62,7 +62,7 @@ func TestConnectorValidation(t *testing.T) {
 			}
 		}, ""},
 		{"tool class overrides", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
-			c.Spec.Tools = []v1alpha1.ToolOverride{{Name: "pods_log", Class: v1alpha1.ToolRead}}
+			c.Spec.Tools = []v1alpha1.ToolOverride{{Name: toolPodsLog, Class: v1alpha1.ToolRead}}
 		}, ""},
 		{"no type", clusterConnector, func(c *v1alpha1.TakeCareConnector) { c.Spec.Types = nil }, "types"},
 		{"unknown type", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
@@ -105,8 +105,16 @@ func TestConnectorValidation(t *testing.T) {
 		{"pods/exec as an extra resource", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
 			c.Spec.Kubernetes.ExtraResources = []v1alpha1.ResourceRef{{Resource: "pods/exec"}}
 		}, "read-only guard"},
+		{"map connector", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
+			c.Spec.Types = []v1alpha1.ConnectorType{v1alpha1.ConnectorMap}
+			c.Spec.Kubernetes = nil
+		}, ""},
+		{"tool marked content", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
+			content := true
+			c.Spec.Tools = []v1alpha1.ToolOverride{{Name: toolPodsLog, Class: v1alpha1.ToolRead, Content: &content}}
+		}, ""},
 		{"unknown tool class", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
-			c.Spec.Tools = []v1alpha1.ToolOverride{{Name: "pods_log", Class: "write"}}
+			c.Spec.Tools = []v1alpha1.ToolOverride{{Name: toolPodsLog, Class: "write"}}
 		}, "class"},
 	}
 	for _, tt := range tests {
@@ -153,7 +161,17 @@ func TestDocValidation(t *testing.T) {
 		{"suspended", func(d *v1alpha1.TakeCareDoc) { d.Spec.Suspend = true }, ""},
 		{"unknown level", func(d *v1alpha1.TakeCareDoc) { d.Spec.Level = "expert" }, wantLevel},
 		{"the old value trial is rejected", func(d *v1alpha1.TakeCareDoc) { d.Spec.Level = "trial" }, wantLevel},
-		{"empty scope", func(d *v1alpha1.TakeCareDoc) { d.Spec.Scope.Namespaces = nil }, wantNamespace},
+		{"empty scope", func(d *v1alpha1.TakeCareDoc) { d.Spec.Scope.Namespaces = nil }, "at least one selector"},
+		{"entities without namespaces", func(d *v1alpha1.TakeCareDoc) {
+			d.Spec.Scope = v1alpha1.Scope{Entities: []v1alpha1.EntityKey{entityBilling}}
+		}, "scope.namespaces is required"},
+		{"namespaces and entities", func(d *v1alpha1.TakeCareDoc) {
+			d.Spec.Scope.Entities = []v1alpha1.EntityKey{entityBilling, "datastore/billing-db"}
+		}, ""},
+		{"entity key with capitals", func(d *v1alpha1.TakeCareDoc) { d.Spec.Scope.Entities = []v1alpha1.EntityKey{"Service/Billing"} }, wantEntities},
+		{"entity key with an unknown type", func(d *v1alpha1.TakeCareDoc) { d.Spec.Scope.Entities = []v1alpha1.EntityKey{"pod/x"} }, wantEntities},
+		{"entity key without a name", func(d *v1alpha1.TakeCareDoc) { d.Spec.Scope.Entities = []v1alpha1.EntityKey{"service/"} }, wantEntities},
+		{"content tools", func(d *v1alpha1.TakeCareDoc) { d.Spec.ContentTools = []string{toolPodsLog} }, ""},
 		{badNamespace, func(d *v1alpha1.TakeCareDoc) {
 			d.Spec.Scope.Namespaces = []v1alpha1.Namespace{"Demo_Apps"}
 		}, wantNamespace},

@@ -52,8 +52,9 @@ spec:
           metadata:
             type: object
           spec:
-            description: TakeCareDocSpec configures the Doc, the incident diagnosis
-              role (spec 02).
+            description: |-
+              TakeCareDocSpec configures the Doc, the incident diagnosis role (spec 02).
+              The namespaces rule goes when the intake routes by entity (ADR 0015 §4).
             properties:
               actTools:
                 description: Act tools, Expert level only. Accepted and ignored in
@@ -119,6 +120,18 @@ spec:
                     type: array
                     x-kubernetes-list-type: set
                 type: object
+              contentTools:
+                description: |-
+                  Tools classed content (their result carries payload: logs, object
+                  contents, ConfigMap data) the role may use, at every level; a
+                  content tool not listed here never enters the role's allow-list
+                  (ADR 0014 §5). Not enforced yet.
+                items:
+                  minLength: 1
+                  type: string
+                maxItems: 50
+                type: array
+                x-kubernetes-list-type: set
               investigation:
                 default: {}
                 description: InvestigationSettings bounds how investigations run.
@@ -168,31 +181,85 @@ spec:
                     type: string
                 type: object
               scope:
-                description: Namespaces the role may read (and, at the Expert level,
-                  modify).
+                description: |-
+                  What the role works on: namespaces, Map entries, or both. Each kind
+                  says which selectors it accepts (spec 06 §1).
                 properties:
+                  entities:
+                    description: |-
+                      Map entries in scope, by key (spec 08); only validated entries
+                      count. Routing by entity lands with ADR 0015's intake.
+                    items:
+                      description: |-
+                        EntityKey is a Map entry's key, type/name, with one of spec 08's eleven
+                        type prefixes.
+                      maxLength: 253
+                      pattern: ^(service|compute|datastore|storage|network|identity|external|team|environment|observability|runbook)/[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                      type: string
+                    maxItems: 200
+                    type: array
+                    x-kubernetes-list-type: set
                   namespaces:
+                    description: Namespaces the role may read (and, at the Expert
+                      level, modify).
                     items:
                       description: Namespace is a Kubernetes namespace name.
                       maxLength: 63
                       minLength: 1
                       pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                       type: string
-                    minItems: 1
                     type: array
                     x-kubernetes-list-type: set
-                required:
-                - namespaces
                 type: object
+                x-kubernetes-validations:
+                - message: 'scope needs at least one selector: namespaces or entities'
+                  rule: (has(self.namespaces) && size(self.namespaces) > 0) || (has(self.entities)
+                    && size(self.entities) > 0)
               suspend:
                 description: 'Pause without deletion: the role stops handling anything.'
                 type: boolean
             required:
             - scope
             type: object
+            x-kubernetes-validations:
+            - message: the Doc routes by namespace until the Map intake lands (ADR
+                0015); scope.namespaces is required
+              rule: has(self.scope.namespaces) && size(self.scope.namespaces) > 0
           status:
             description: TakeCareDocStatus is the observed state of the Doc.
             properties:
+              blindSpots:
+                description: |-
+                  Entities of the scope the role cannot read, filled from coverage
+                  (ADR 0014 §2); empty until coverage is computed.
+                items:
+                  description: BlindSpot is an entity of the scope the role cannot
+                    read.
+                  properties:
+                    entity:
+                      description: |-
+                        EntityKey is a Map entry's key, type/name, with one of spec 08's eleven
+                        type prefixes.
+                      maxLength: 253
+                      pattern: ^(service|compute|datastore|storage|network|identity|external|team|environment|observability|runbook)/[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                      type: string
+                    message:
+                      type: string
+                    reason:
+                      description: BlindSpotReason says why an entity is not covered.
+                      enum:
+                      - NoAccess
+                      - ConnectorNotReady
+                      type: string
+                  required:
+                  - entity
+                  - reason
+                  type: object
+                maxItems: 200
+                type: array
+                x-kubernetes-list-map-keys:
+                - entity
+                x-kubernetes-list-type: map
               conditions:
                 items:
                   description: Condition contains details for one aspect of the current

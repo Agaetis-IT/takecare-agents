@@ -9,6 +9,8 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 const KindTakeCareDoc = "TakeCareDoc"
 
 // TakeCareDocSpec configures the Doc, the incident diagnosis role (spec 02).
+// The namespaces rule goes when the intake routes by entity (ADR 0015 §4).
+// +kubebuilder:validation:XValidation:rule="has(self.scope.namespaces) && size(self.scope.namespaces) > 0",message="the Doc routes by namespace until the Map intake lands (ADR 0015); scope.namespaces is required"
 type TakeCareDocSpec struct {
 	RoleCommonSpec `json:",inline"`
 

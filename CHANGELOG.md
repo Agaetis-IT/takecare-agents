@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The API of step 2's foundations (ADR 0014, 0015): `scope.entities` (Map keys) next to `scope.namespaces`, now optional in the shared type with at least one selector required (the Doc still requires namespaces); `spec.contentTools`; `status.blindSpots`; the condition reasons `BlindSpots`, `EmptyScope` and `ScopeOverlap`; the connector type `map` and the `content` mark on tools; `source` and `entity` on alert records, the intake setting `source: alertmanager`. No behaviour changes yet.
+
 ### Fixed
 
 - `make demo-up` works with the bash 3.2 that macOS ships when it pulls the released images without a Slack token: an empty list of Helm options stopped the script with `sets[@]: unbound variable`. `hack/bench.sh` had the same flaw in its cleanup.

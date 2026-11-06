@@ -68,6 +68,13 @@ spec:
                     additionalProperties:
                       type: string
                     type: object
+                  entity:
+                    description: |-
+                      The Map entry the alert resolved to, when the Map knows it: the
+                      incident key once the intake resolves entities (ADR 0015 §4).
+                    maxLength: 253
+                    pattern: ^(service|compute|datastore|storage|network|identity|external|team|environment|observability|runbook)/[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                    type: string
                   fingerprint:
                     description: Alertmanager's fingerprint of the alert.
                     type: string
@@ -84,6 +91,12 @@ spec:
                   namespace:
                     type: string
                   service:
+                    type: string
+                  source:
+                    description: The alert source the adapter received it from (ADR
+                      0015 §4).
+                    enum:
+                    - alertmanager
                     type: string
                   workload:
                     description: |-

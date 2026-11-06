@@ -40,6 +40,11 @@ func TestInvestigationValidation(t *testing.T) {
 		{"unknown role kind", func(i *v1alpha1.TakeCareInvestigation) { i.Spec.RoleRef.Kind = "TakeCareRanger" }, "kind"},
 		{"alert without name", func(i *v1alpha1.TakeCareInvestigation) { i.Spec.Alert.Name = "" }, "name"},
 		{"unknown level", func(i *v1alpha1.TakeCareInvestigation) { i.Spec.Level = "expert" }, wantLevel},
+		{"source and entity", func(i *v1alpha1.TakeCareInvestigation) {
+			i.Spec.Alert.Source = v1alpha1.SourceAlertmanager
+			i.Spec.Alert.Entity = entityBilling
+		}, ""},
+		{"unknown source", func(i *v1alpha1.TakeCareInvestigation) { i.Spec.Alert.Source = "other" }, "source"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
