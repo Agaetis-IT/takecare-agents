@@ -5,6 +5,7 @@ package doc
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,6 +40,8 @@ func TestPublication(t *testing.T) {
 	grouped.Status.Degraded = &v1alpha1.Degradation{Connectors: []string{"prometheus"}}
 	noUsage := completed(v1alpha1.LevelPractitioner)
 	noUsage.Status.Usage = nil
+	markdown := completed(v1alpha1.LevelPractitioner)
+	markdown.Status.Diagnosis = markdownDiagnosis
 	for name, tc := range map[string]struct {
 		inv    *v1alpha1.TakeCareInvestigation
 		reason string
@@ -48,6 +51,7 @@ func TestPublication(t *testing.T) {
 		"publication-apprentice":   {inv: apprentice},
 		"publication-grouped":      {inv: grouped, sent: map[string]bool{"before": true}},
 		"publication-no-usage":     {inv: noUsage, reason: "Prometheus at http://prometheus is unreachable"},
+		"publication-markdown":     {inv: markdown},
 	} {
 		t.Run(name, func(t *testing.T) {
 			p := NewPublication(tc.inv, now, tc.reason, tc.sent)
@@ -57,6 +61,74 @@ func TestPublication(t *testing.T) {
 			}
 			golden.Assert(t, name+".json", append(blocks, '\n'))
 			golden.Assert(t, name+".txt", []byte(p.Text()))
+		})
+	}
+}
+
+// markdownDiagnosis is a diagnosis a model wrote in Markdown, as published
+// to a real Slack with v0.1.0-rc.1 (shortened).
+const markdownDiagnosis = `### Observations
+1. In the logs of Pod billing-api-587f5c97c4-9cvzt, the application repeatedly logs **WARN db connection reset by peer**, retrying.
+2. Deployment billing-api defines DB_POOL_IDLE_TIMEOUT_SECONDS as 900, whereas DBProxy billing-db-proxy configures idleClientTimeout: 600.
+
+### Ruled-out leads
+- Application memory saturation: heap at 212 MB of 512 MB, 0 OOMKills (RB-014).
+
+### Root cause
+The pool idle timeout (900 s) exceeds the DBProxy idleClientTimeout (600 s) -> disconnections on idle connections (RB-014).
+
+### Recommended action
+The billing team sets DB_POOL_IDLE_TIMEOUT_SECONDS to a value < 600 seconds.`
+
+func TestMrkdwn(t *testing.T) {
+	for name, tc := range map[string]struct{ in, want string }{
+		"escapes":                    {"a < b && c > d", "a &lt; b &amp;&amp; c &gt; d"},
+		"escapes an escape again":    {"&amp;", "&amp;amp;"},
+		"escapes inside code":        {"`a<b`", "`a&lt;b`"},
+		"heading first line":         {"## Root cause ##\nx", "*Root cause*\nx"},
+		"heading after a line":       {"x\n### Action", "x\n\n*Action*"},
+		"heading after a blank line": {"x\n\n# Action", "x\n\n*Action*"},
+		"bold heading":               {"### **Action**", "*Action*"},
+		"bold":                       {"a **b c** and __d__, **e** **f**", "a *b c* and *d*, *e* *f*"},
+		"lone bold marker kept":      {"a ** b", "a ** b"},
+		"intraword underscores kept": {"A__B__C and __a__ __b__", "A__B__C and *a* *b*"},
+		"italic unchanged":           {"*a* _b_", "*a* _b_"},
+		"bullets":                    {"- a\n  * b\n1. c", "• a\n  • b\n1. c"},
+		"link":                       {"see [RB-014](https://runbooks.example/rb-014?a=1&b=2)", "see <https://runbooks.example/rb-014?a=1&amp;b=2|RB-014>"},
+		"fenced code only escaped":   {"```\n# not a heading\n- x <y>\n```\n# Next", "```\n# not a heading\n- x &lt;y&gt;\n```\n\n*Next*"},
+		"trailing whitespace":        {"a  \nb\t", "a\nb"},
+		"already mrkdwn unchanged":   {"*Root cause*\n• a `x` _y_", "*Root cause*\n• a `x` _y_"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := mrkdwn(tc.in); got != tc.want {
+				t.Errorf("mrkdwn(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// The section is cut after the conversion, never inside an escape.
+func TestBlocksCutAfterConversion(t *testing.T) {
+	p := Publication{Diagnosis: strings.Repeat("a", 2995) + "<<<"}
+	section := p.Blocks()[1].(map[string]any)[keyText].(map[string]any)[keyText]
+	if want := strings.Repeat("a", 2995) + "…"; section != want {
+		t.Errorf("section ends with %q, want the a's and an ellipsis", section.(string)[2990:])
+	}
+}
+
+func TestPlain(t *testing.T) {
+	for name, tc := range map[string]struct{ in, want string }{
+		"heading":                    {"x\n### **Root cause** #\ny", "x\nRoot cause\ny"},
+		"bold":                       {"a **b** __c__", "a b c"},
+		"intraword underscores kept": {"A__B__C", "A__B__C"},
+		"link":                       {"see [RB-014](https://x.example/a)", "see RB-014 (https://x.example/a)"},
+		"no escaping":                {"a < b & c", "a < b & c"},
+		"lists and code kept":        {"- a\n```\n# x **y**\n```", "- a\n```\n# x **y**\n```"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := plain(tc.in); got != tc.want {
+				t.Errorf("plain(%q) = %q, want %q", tc.in, got, tc.want)
+			}
 		})
 	}
 }

@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- The Doc's diagnosis is rendered as Slack mrkdwn when published: Markdown headings become bold lines, `**bold**` becomes `*bold*`, dashes become bullets, links become Slack links, and `&`, `<`, `>` are escaped as Slack requires. The plain-text fallback and the log adapter's message drop the markers. The diagnosis in `status.diagnosis` is unchanged.
 - The operator's HTTP trace export posts to `/v1/traces` when `observability.otlp.endpoint` has no path, with OpenTelemetry 1.47 as with 1.44; a declared path is kept.
 
 ## [0.1.0-rc.1] - 2026-11-01

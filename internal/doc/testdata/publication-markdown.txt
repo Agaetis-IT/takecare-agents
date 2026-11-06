@@ -1,0 +1,14 @@
+Doc · HighErrorRate on billing-api
+Observations
+1. In the logs of Pod billing-api-587f5c97c4-9cvzt, the application repeatedly logs WARN db connection reset by peer, retrying.
+2. Deployment billing-api defines DB_POOL_IDLE_TIMEOUT_SECONDS as 900, whereas DBProxy billing-db-proxy configures idleClientTimeout: 600.
+
+Ruled-out leads
+- Application memory saturation: heap at 212 MB of 512 MB, 0 OOMKills (RB-014).
+
+Root cause
+The pool idle timeout (900 s) exceeds the DBProxy idleClientTimeout (600 s) -> disconnections on idle connections (RB-014).
+
+Recommended action
+The billing team sets DB_POOL_IDLE_TIMEOUT_SECONDS to a value < 600 seconds.
+39s after the alert · 7 model calls · 42,560 tokens · 0.0075 USD · trace 4bf92f3577b34da6a3ce929d0e0e4736
