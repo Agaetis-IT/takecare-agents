@@ -168,7 +168,8 @@ func (s *Server) Handler() http.Handler {
 
 // snapshot returns the current Map, loading the directory again when it
 // changed since the last attempt. A load that fails keeps the previous
-// Map and records the error.
+// Map and records the error. Every call walks and stats the directory:
+// cheap for a Map's few hundred files.
 func (s *Server) snapshot() (*Map, error) {
 	fsys := os.DirFS(s.cfg.Dir)
 	stamp, err := stampOf(fsys)
