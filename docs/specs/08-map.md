@@ -63,7 +63,7 @@ Only validated entries are used for routing and scope.
 - Files in the customer's Git, UTF-8 YAML, **one file per entity** at `map/<type>/<name>.yaml`, validated by pull request.
 - A relation is declared on the entry it starts from (the "from" side of the table above).
 - A `map/README.md`, written by the Map tooling, says how the directory is organised.
-- A schema (JSON Schema, shipped in this repository under `api/map/`) validates the files in the customer's CI. The Map server refuses a Git reference that does not validate and keeps serving the last valid one.
+- A schema (JSON Schema 2020-12, shipped in this repository as `api/map/entry.schema.json`) validates the files in the customer's CI; the server also checks what the schema cannot express: the key matches the file's place, every relation target exists, the types at each end of a relation follow §2, the dates exist. It reports every fault at once. The Map server refuses a Git reference that does not validate and keeps serving the last valid one.
 - Git history is the Map's history: `map_at(date)` reads the last commit at or before that date.
 
 ```yaml

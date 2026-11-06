@@ -1,0 +1,11 @@
+key: compute/billing-api
+provenance: declared
+status: validated
+created: 2026-11-05
+lastValidated: 2026-11-05
+owner: team/platform
+sources:
+  - kubernetes: demo-apps/Deployment/billing-api
+relations:
+  deployedIn: [environment/demo-apps]
+  dependsOn: [network/billing-db-proxy]
