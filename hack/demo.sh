@@ -121,7 +121,7 @@ install() {
       --set addons.reportSlack.destinations[1].name=review --set "addons.reportSlack.destinations[1].target=${TAKECARE_SLACK_REVIEW_CHANNEL:-$TAKECARE_SLACK_ONCALL_CHANNEL}")
   fi
   local stamp
-  stamp="$( (find charts ${DEMO_VALUES:+"$DEMO_VALUES"} -type f | sort | xargs shasum; printf '%s\n' "${crds[@]}" "${sets[@]}") | shasum | cut -c1-40)"
+  stamp="$( (find charts ${DEMO_VALUES:+"$DEMO_VALUES"} -type f | sort | xargs shasum; printf '%s\n' "${crds[@]}" ${sets[@]+"${sets[@]}"}) | shasum | cut -c1-40)"
   if [[ "$(cat "${STATE}/helm" 2>/dev/null)" == "$stamp" ]] && "$HELM" status takecare -n "$NS" >/dev/null 2>&1; then
     log "charts and values unchanged: the releases stay as they are"
     return 0
@@ -131,7 +131,7 @@ install() {
   # The TakeCareDemo before the operator: its controller writes the corpora
   # the corpus servers need to be ready, which the install below waits for.
   kubectl apply -f demo/manifests/demo.yaml >/dev/null
-  "$HELM" upgrade --install takecare charts/takecare -n "$NS" "${values[@]}" "${sets[@]}" \
+  "$HELM" upgrade --install takecare charts/takecare -n "$NS" "${values[@]}" ${sets[@]+"${sets[@]}"} \
     --wait --timeout 10m >/dev/null
   echo "$stamp" >"${STATE}/helm"
 }

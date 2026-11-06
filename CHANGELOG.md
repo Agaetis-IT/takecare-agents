@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- `make demo-up` works with the bash 3.2 that macOS ships when it pulls the released images without a Slack token: an empty list of Helm options stopped the script with `sets[@]: unbound variable`. `hack/bench.sh` had the same flaw in its cleanup.
+
 ## [0.1.0] - 2026-11-06
 
 ### Added
