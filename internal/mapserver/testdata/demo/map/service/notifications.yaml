@@ -1,0 +1,7 @@
+key: service/notifications
+provenance: discovered
+status: proposed
+created: 2026-11-06
+lastSeen: 2026-11-06
+sources:
+  - kubernetes: demo-apps/Deployment/notifications-worker

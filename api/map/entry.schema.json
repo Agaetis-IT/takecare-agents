@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/agaetis-it/takecare-agents/api/map/entry.schema.json",
+  "title": "TakeCare Map entry",
+  "description": "One entry of the Map, one file per entity at map/<type>/<name>.yaml (spec 08 §3-4).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["key", "provenance", "status", "created"],
+  "properties": {
+    "key": { "$ref": "#/$defs/key" },
+    "provenance": {
+      "description": "declared: written by a human; discovered: found by the deterministic discovery; proposed: suggested by an agent.",
+      "enum": ["declared", "discovered", "proposed"]
+    },
+    "status": {
+      "description": "Only validated entries are used for routing and scope.",
+      "enum": ["proposed", "validated"]
+    },
+    "created": { "$ref": "#/$defs/date" },
+    "lastValidated": { "$ref": "#/$defs/date" },
+    "lastSeen": { "$ref": "#/$defs/date" },
+    "owner": {
+      "description": "The team that answers for the entry, a team key.",
+      "type": "string",
+      "pattern": "^team/[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "description": { "type": "string", "maxLength": 500 },
+    "sources": {
+      "description": "The cloud or cluster identifiers the entry maps to, one kind per item.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "maxProperties": 1,
+        "properties": {
+          "kubernetes": { "type": "string", "minLength": 1 },
+          "azure": { "type": "string", "minLength": 1 },
+          "aws": { "type": "string", "minLength": 1 },
+          "vsphere": { "type": "string", "minLength": 1 },
+          "url": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "relations": {
+      "description": "Relations declared on the entry they start from (spec 08 §2).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dependsOn": { "$ref": "#/$defs/keys" },
+        "runsAs": { "$ref": "#/$defs/keys" },
+        "belongsTo": { "$ref": "#/$defs/keys" },
+        "deployedIn": { "$ref": "#/$defs/keys" },
+        "observedBy": { "$ref": "#/$defs/keys" },
+        "documentedBy": { "$ref": "#/$defs/keys" },
+        "alertedBy": {
+          "description": "Alert names, as the alert source names them.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "key": {
+      "description": "type/name, with one of the eleven entity types.",
+      "type": "string",
+      "maxLength": 253,
+      "pattern": "^(service|compute|datastore|storage|network|identity|external|team|environment|observability|runbook)/[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"
+    },
+    "keys": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/key" }
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+key: environment/ack-system
+provenance: declared
+status: validated
+created: 2026-11-05
+sources:
+  - kubernetes: ack-system
