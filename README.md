@@ -58,6 +58,7 @@ spec:
   level: Practitioner         # Apprentice | Practitioner | Expert
   scope:
     namespaces: [demo-apps]
+  contentTools: [pods_log]    # tools whose result carries payload the Doc may read (ADR 0014)
   connectors:                 # MCP connectors behind the gateway, by type
     cluster: [kubernetes]
     metrics: [prometheus]

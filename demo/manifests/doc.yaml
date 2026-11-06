@@ -10,6 +10,7 @@ spec:
   level: Practitioner
   scope:
     namespaces: [demo-apps]
+  contentTools: [pods_log]
   connectors:
     cluster: [kubernetes]
     metrics: [prometheus]

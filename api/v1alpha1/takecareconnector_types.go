@@ -112,12 +112,14 @@ type ResourceRef struct {
 	Resource string `json:"resource"`
 }
 
-// ToolOverride sets the class of a tool by name. The class stays required
-// even when only content is set (ADR 0014 §5); this may be relaxed when content is enforced.
+// ToolOverride sets the class of a tool, its content mark, or both, by
+// name; an unset field keeps the discovered value (ADR 0014 §5).
+// +kubebuilder:validation:XValidation:rule="has(self.class) || has(self.content)",message="a tool override sets a class, a content mark, or both"
 type ToolOverride struct {
 	// +kubebuilder:validation:MinLength=1
-	Name  string    `json:"name"`
-	Class ToolClass `json:"class"`
+	Name string `json:"name"`
+	// +optional
+	Class ToolClass `json:"class,omitempty"`
 	// Marks the tool as content (its result carries payload); unset keeps
 	// the add-on's or the server's classification.
 	// +optional

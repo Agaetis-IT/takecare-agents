@@ -328,6 +328,7 @@ metadata: { name: smoke-doc, namespace: ${NS} }
 spec:
   level: Practitioner
   scope: { namespaces: [demo-apps] }
+  contentTools: [pods_log]
   connectors: { cluster: [kubernetes], metrics: [prometheus], report: report }
   report: { practitioner: on-call }
 EOF

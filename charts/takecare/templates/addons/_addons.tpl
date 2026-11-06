@@ -21,6 +21,29 @@ app.kubernetes.io/instance: {{ .root.Release.Name }}
 takecare.agaetis.fr/addon: {{ .name }}
 {{- end -}}
 
+{{/*
+takecare.addon.tools: a connector's spec.tools, one entry per tool name. Each
+name of contentTools gives {name, content: true}, merged with the user's tools
+entry of the same name (the user's fields win: its class is kept, and an
+explicit content: false too); then the user's other entries. The API keys the
+list by name: a name appears once.
+*/}}
+{{- define "takecare.addon.tools" -}}
+{{- $out := list }}
+{{- $marked := dict }}
+{{- range .contentTools }}
+{{- $entry := dict "name" . "content" true }}
+{{- range $.tools }}{{- if eq .name $entry.name }}{{- $entry = deepCopy . }}{{- if not (hasKey $entry "content") }}{{- $_ := set $entry "content" true }}{{- end }}{{- end }}{{- end }}
+{{- $out = append $out $entry }}
+{{- $_ := set $marked . true }}
+{{- end }}
+{{- range .tools }}{{- if not (hasKey $marked .name) }}{{- $out = append $out . }}{{- end }}{{- end }}
+{{- with $out }}
+tools:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end -}}
+
 {{/* takecare.addon.image: an add-on image with the global registry override. */}}
 {{- define "takecare.addon.image" -}}
 {{ include "takecare.demoImage" (dict "image" .image "global" .root.Values.global) }}

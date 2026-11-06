@@ -44,6 +44,7 @@ const (
 	rbacGroup    = "rbac.authorization.k8s.io"
 	kindSA       = "ServiceAccount"
 	toolPodsLog  = "pods_log"
+	toolPodsList = "pods_list"
 	driftName    = "drift"
 	driftStar    = "drift-star"
 	bearer       = "Bearer t"
@@ -249,7 +250,7 @@ func clusterSpec(extra ...v1alpha1.ResourceRef) v1alpha1.TakeCareConnectorSpec {
 
 func TestClusterConnectorBecomesReady(t *testing.T) {
 	srv := mcptest.Start(t,
-		mcptest.ToolSpec{Name: "pods_list", ReadOnly: true},
+		mcptest.ToolSpec{Name: toolPodsList, ReadOnly: true},
 		mcptest.ToolSpec{Name: toolPodsLog, ReadOnly: false},
 		mcptest.ToolSpec{Name: "resources_delete", ReadOnly: false},
 		mcptest.ToolSpec{Name: "mystery", Unannotated: true},
@@ -258,7 +259,10 @@ func TestClusterConnectorBecomesReady(t *testing.T) {
 	h := start(t, srv)
 	h.addon()
 	spec := clusterSpec(v1alpha1.ResourceRef{Resource: "configmaps"})
-	spec.Tools = []v1alpha1.ToolOverride{{Name: toolPodsLog, Class: v1alpha1.ToolRead}}
+	// pods_log: class and content; pods_list: content only, its class kept
+	// and no relaxation recorded (ADR 0014 §5).
+	content := true
+	spec.Tools = []v1alpha1.ToolOverride{{Name: toolPodsLog, Class: v1alpha1.ToolRead, Content: &content}, {Name: toolPodsList, Content: &content}}
 	h.connector("kubernetes", spec)
 	h.acceptBackend("kubernetes")
 	h.waitCondition("kubernetes", v1alpha1.ConditionReady, metav1.ConditionTrue, ReasonReady)
@@ -267,8 +271,11 @@ func TestClusterConnectorBecomesReady(t *testing.T) {
 	classes := map[string]string{}
 	for _, tool := range c.Status.Tools {
 		classes[tool.Name] = string(tool.Class) + "/" + tool.Source
+		if tool.Content {
+			classes[tool.Name] += "/content"
+		}
 	}
-	want := map[string]string{"pods_list": "read/annotation", toolPodsLog: "read/override", "resources_delete": "act/annotation", "mystery": "act/annotation", mcp.ProbeTool: "read/annotation"}
+	want := map[string]string{toolPodsList: "read/annotation/content", toolPodsLog: "read/override/content", "resources_delete": "act/annotation", "mystery": "act/annotation", mcp.ProbeTool: "read/annotation"}
 	for name, w := range want {
 		if classes[name] != w {
 			t.Errorf("tool %s = %s, want %s", name, classes[name], w)

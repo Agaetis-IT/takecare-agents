@@ -215,8 +215,5 @@ spec:
     extraResources:
       {{- toYaml . | nindent 6 }}
     {{- end }}
-  {{- with $a.tools }}
-  tools:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
+  {{- with include "takecare.addon.tools" (dict "contentTools" $a.contentTools "tools" $a.tools) | trim }}{{ . | nindent 2 }}{{ end }}
 {{- end }}
