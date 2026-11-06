@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Content tools (ADR 0014): the `kubernetes` add-on marks `pods_log` and `nodes_log` as content (`addons.<name>.contentTools`); a role reads a content tool only when it lists it in `spec.contentTools`, enforced on the agent and at the gateway, and the withheld ones are named in a `ContentToolsWithheld` event; a tool override may set the content mark without a class; the demo Doc lists `pods_log`. **Breaking for a Doc that reads logs**: add `contentTools: [pods_log]` to its spec, or its diagnoses lose the logs.
 - The Map's entry schema `api/map/entry.schema.json` (spec 08, ADR 0015) and its loader: a Map directory validated against the schema and the relation rules, every fault reported at once, the relations kept both ways. The server follows.
 - The Map server `takecare-agents-mcp-map` (spec 08, ADR 0015): the five read-only tools `entry`, `neighbours`, `blast_radius`, `path` and `map_at` over a Map directory, loaded again when it changes; a reload that fails keeps the previous Map and is reported in `/statusz`. The Git source, the add-on and the demo's Map follow.
+- The Map server reads the customer's Git: one repository and branch with a read-only token or deploy key from a Secret, polled on an interval; an invalid revision is reported and the last valid one keeps serving. `map_at` over the history follows.
 
 ### Fixed
 

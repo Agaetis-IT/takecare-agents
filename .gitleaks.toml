@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Agaetis
 # SPDX-License-Identifier: Apache-2.0
 #
-# gitleaks: the default rules, plus one allowlist. hack/versions.env pins
+# gitleaks: the default rules, plus two allowlists. hack/versions.env pins
 # release checksums (64 hexadecimal characters under *_SHA256* keys); a key
 # that also contains "API" (GATEWAY_API_INSTALL_SHA256) trips the generic
 # API key rule. Only that shape, in that file, is allowed.
@@ -13,7 +13,7 @@ useDefault = true
 [[allowlists]]
 description = "release checksums pinned in hack/versions.env"
 condition = "AND"
-paths = ['''^hack/versions\.env$''']
+paths = ['''(^|/)hack/versions\.env$''']
 regexTarget = "line"
 regexes = ['''^[A-Z0-9_]*SHA256[A-Z0-9_]*=[0-9a-f]{64}$''']
 

@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"path"
 	"slices"
 	"strings"
@@ -110,10 +111,7 @@ func mustResolve(raw []byte) *jsonschema.Resolved {
 // in one pass. A key must match its file's place, so no two files can
 // declare the same key.
 func Load(fsys fs.FS) (*Map, error) {
-	m := &Map{Entries: map[string]*Entry{}, out: map[string][]edge{}, in: map[string][]edge{}}
-	files := map[string]string{} // key -> its file
-	var errs []error
-	h := sha256.New()
+	files := map[string][]byte{}
 	err := fs.WalkDir(fsys, "map", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -124,41 +122,58 @@ func Load(fsys fs.FS) (*Map, error) {
 			}
 			return nil
 		}
-		if d.IsDir() || p == "map/README.md" {
+		if d.IsDir() {
 			return nil
 		}
 		raw, err := fs.ReadFile(fsys, p)
 		if err != nil {
 			return err
 		}
-		_, _ = fmt.Fprintf(h, "%s\x00%d\x00", p, len(raw))
-		_, _ = h.Write(raw)
-		e, err := parse(p, raw)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", p, err))
-			return nil
-		}
-		files[e.Key] = p
-		m.Entries[e.Key] = e
+		files[p] = raw
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("read the Map: %w", err)
 	}
-	keys := make([]string, 0, len(m.Entries))
-	for k := range m.Entries {
-		keys = append(keys, k)
+	m, err := build(files)
+	if err != nil {
+		return nil, err
 	}
-	slices.Sort(keys)
+	h := sha256.New()
+	for _, p := range slices.Sorted(maps.Keys(files)) {
+		_, _ = fmt.Fprintf(h, "%s\x00%d\x00", p, len(files[p]))
+		_, _ = h.Write(files[p])
+	}
+	m.Revision = hex.EncodeToString(h.Sum(nil))[:12]
+	return m, nil
+}
+
+// build checks a Map's files, by path under map/ (dotfiles already left
+// out), whatever they were read from: a directory or a Git tree.
+func build(files map[string][]byte) (*Map, error) {
+	m := &Map{Entries: map[string]*Entry{}, out: map[string][]edge{}, in: map[string][]edge{}}
+	where := map[string]string{} // key -> its file
+	var errs []error
+	for _, p := range slices.Sorted(maps.Keys(files)) {
+		if p == "map/README.md" {
+			continue
+		}
+		e, err := parse(p, files[p])
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", p, err))
+			continue
+		}
+		where[e.Key] = p
+		m.Entries[e.Key] = e
+	}
 	// A file that failed above is not an entry: the entries pointing to it
 	// also report "no such entry", two faults for one cause.
-	for _, k := range keys {
-		errs = append(errs, m.link(m.Entries[k], files[k])...)
+	for _, k := range slices.Sorted(maps.Keys(m.Entries)) {
+		errs = append(errs, m.link(m.Entries[k], where[k])...)
 	}
 	if len(errs) > 0 {
 		return nil, errors.Join(errs...)
 	}
-	m.Revision = hex.EncodeToString(h.Sum(nil))[:12]
 	return m, nil
 }
 

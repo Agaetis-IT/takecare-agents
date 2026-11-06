@@ -87,7 +87,9 @@ relations:
 
 ## 5. The connector
 
-Type `map`, server `takecare-agents-mcp-map`, an add-on like `report-slack` (spec 05). It reads one repository and one branch, with a read-only deploy key or token from a Secret (spec 05's rules), and polls on an interval and on a webhook.
+Type `map`, server `takecare-agents-mcp-map`, an add-on like `report-slack` (spec 05). It reads one repository and one branch, with a read-only deploy key or token from a Secret (spec 05's rules), and polls on an interval; the webhook comes when the open question on its secret is settled.
+
+The server is configured with the repository's URL (HTTPS or SSH), the branch, the directory holding `map/` and the poll interval (one minute by default, ten seconds at least). The credential is a file mounted from a Secret, read at every fetch: an HTTPS token with its username, or an SSH deploy key with a `known_hosts` file, required (a host key is always checked). HTTPS goes through the CA bundle and the proxy of the environment. The clone is kept in memory. A revision that does not validate is reported in `/statusz` and the last valid one keeps serving; a server that starts on an invalid head serves the newest valid revision before it.
 
 | Tool | Input | Output |
 |---|---|---|
