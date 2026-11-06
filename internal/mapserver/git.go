@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/url"
 	"os"
@@ -55,6 +56,8 @@ const (
 	// walkBack bounds the search for a valid revision when none is loaded
 	// yet and the head does not validate.
 	walkBack = 16
+	// cacheSize bounds the revisions map_at keeps loaded.
+	cacheSize = 16
 )
 
 // gitSource keeps a clone in memory (a Map is small, and the history is
@@ -68,8 +71,14 @@ type gitSource struct {
 	// retry is how soon a failed clone is tried again.
 	retry time.Duration
 
-	// repo is the run loop's alone.
-	repo *git.Repository
+	// repoMu guards repo, whose storage is not safe for concurrent use:
+	// the run loop fetches, map_at reads the history.
+	repoMu sync.Mutex
+	repo   *git.Repository
+	// cache holds the revisions map_at loaded, by commit, the oldest
+	// evicted first.
+	cache      map[string]*Map
+	cacheOrder []string
 
 	mu         sync.Mutex
 	valid      *Map
@@ -189,6 +198,8 @@ func (g *gitSource) run(ctx context.Context) error {
 
 // sync fetches the branch and loads its head when it moved.
 func (g *gitSource) sync(ctx context.Context) {
+	g.repoMu.Lock()
+	defer g.repoMu.Unlock()
 	err := g.fetch(ctx)
 	g.mu.Lock()
 	g.lastFetch = g.now()
@@ -343,6 +354,56 @@ func treeMap(commit *object.Commit, path string) (*Map, error) {
 		return nil, fmt.Errorf("no map/ directory under %s", path)
 	}
 	return build(files)
+}
+
+// at returns the Map of the last commit of the branch at or before t, in
+// committer-time order; a revision that does not validate is an error,
+// never a fall-back to another.
+func (g *gitSource) at(t time.Time) (*Map, error) {
+	g.repoMu.Lock()
+	defer g.repoMu.Unlock()
+	if g.repo == nil {
+		return g.current()
+	}
+	ref, err := g.repo.Reference(plumbing.NewRemoteReferenceName("origin", g.cfg.Ref), true)
+	if err != nil {
+		return nil, fmt.Errorf("branch %s: %w", g.cfg.Ref, err)
+	}
+	iter, err := g.repo.Log(&git.LogOptions{From: ref.Hash(), Until: &t, Order: git.LogOrderCommitterTime})
+	if err != nil {
+		return nil, fmt.Errorf("history of %s: %w", g.cfg.Ref, err)
+	}
+	defer iter.Close()
+	commit, err := iter.Next()
+	if errors.Is(err, io.EOF) {
+		return nil, errors.New("date before the first revision")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("history of %s: %w", g.cfg.Ref, err)
+	}
+	if m, ok := g.cache[commit.Hash.String()]; ok {
+		return m, nil
+	}
+	m, err := revision(commit, g.cfg.Path)
+	if err != nil {
+		first, _, _ := strings.Cut(err.Error(), "\n")
+		return nil, fmt.Errorf("revision %s at %s does not validate: %s", commit.Hash, commit.Committer.When.UTC().Format(time.RFC3339), first)
+	}
+	g.remember(m)
+	return m, nil
+}
+
+// remember caches a revision, evicting the oldest beyond cacheSize.
+func (g *gitSource) remember(m *Map) {
+	if g.cache == nil {
+		g.cache = map[string]*Map{}
+	}
+	g.cache[m.Revision] = m
+	g.cacheOrder = append(g.cacheOrder, m.Revision)
+	if len(g.cacheOrder) > cacheSize {
+		delete(g.cache, g.cacheOrder[0])
+		g.cacheOrder = g.cacheOrder[1:]
+	}
 }
 
 func (g *gitSource) current() (*Map, error) {

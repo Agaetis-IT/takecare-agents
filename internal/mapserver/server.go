@@ -33,6 +33,9 @@ type Config struct {
 type source interface {
 	// current returns the last valid Map, or why there is none.
 	current() (*Map, error)
+	// at returns the Map as it was at a time: the source's history, or its
+	// one snapshot.
+	at(t time.Time) (*Map, error)
 	// status is the source's part of /statusz.
 	status() map[string]any
 	// run keeps the Map current until ctx ends.
@@ -379,9 +382,9 @@ func pathTool(m *Map, raw json.RawMessage) (any, error) {
 	return map[string]any{"found": true, "steps": steps}, nil
 }
 
-// mapAt answers from the one snapshot a directory gives: a date at or
-// after its load, never before.
-func (s *Server) mapAt(m *Map, raw json.RawMessage) (any, error) {
+// mapAt answers from the source's history: a Git branch's commits, or
+// the one snapshot of a directory.
+func (s *Server) mapAt(_ *Map, raw json.RawMessage) (any, error) {
 	var args struct {
 		Key  string `json:"key"`
 		Date string `json:"date"`
@@ -397,8 +400,9 @@ func (s *Server) mapAt(m *Map, raw json.RawMessage) (any, error) {
 		}
 		at = day.Add(24*time.Hour - time.Nanosecond) // the whole day
 	}
-	if at.Before(m.LoadedAt) {
-		return nil, fmt.Errorf("date before the first revision: the Map is known from %s", m.LoadedAt.UTC().Format(time.RFC3339))
+	m, err := s.src.at(at)
+	if err != nil {
+		return nil, err
 	}
 	if args.Key != "" {
 		e, err := m.describe(args.Key)

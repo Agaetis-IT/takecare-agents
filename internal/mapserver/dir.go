@@ -30,6 +30,20 @@ type dirSource struct {
 
 func (s *dirSource) run(context.Context) error { return nil }
 
+// at answers from the one snapshot a directory gives: a time at or after
+// its load, never before.
+func (s *dirSource) at(t time.Time) (*Map, error) {
+	m, err := s.current()
+	if err == nil && t.Before(m.LoadedAt) {
+		return nil, errBeforeFirst(m.LoadedAt)
+	}
+	return m, err
+}
+
+func errBeforeFirst(first time.Time) error {
+	return fmt.Errorf("date before the first revision: the Map is known from %s", first.UTC().Format(time.RFC3339))
+}
+
 func (s *dirSource) status() map[string]any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
