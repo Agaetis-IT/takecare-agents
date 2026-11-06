@@ -42,6 +42,8 @@ linters:
               desc: use the slices package
     misspell:
       locale: US
+      # The Map's tool is named neighbours (spec 08 §5).
+      ignore-rules: [neighbour, neighbours]
     revive:
       rules:
         - name: comment-spacings

@@ -15,6 +15,8 @@ FAKE_SLACK_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-fake-slack:$(VERSION)
 # The demo's images (spec 03): the application and the corpus MCP server.
 DEMO_APP_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-demo-app:$(VERSION)
 MCP_CORPUS_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-mcp-corpus:$(VERSION)
+# The Map server (spec 08).
+MCP_MAP_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-mcp-map:$(VERSION)
 # docker-buildx pushes only when PUSH=true (the release workflow, from PR 6).
 PUSH ?= false
 
@@ -220,11 +222,12 @@ DOCKER_BUILD_ARGS := --build-arg GO_BUILD_IMAGE=$(GO_BUILD_IMAGE) --build-arg RU
 	--build-arg GO_LICENSES_VERSION=$(GO_LICENSES_VERSION)
 
 .PHONY: docker-build
-docker-build: ## Build every image (operator, report server, demo app, corpus server) for the local platform.
+docker-build: ## Build every image (operator, report server, demo app, corpus server, Map server) for the local platform.
 	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=operator -t $(OPERATOR_IMG) .
 	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-report-slack -t $(REPORT_SLACK_IMG) .
 	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=demo-app -t $(DEMO_APP_IMG) .
 	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-corpus -t $(MCP_CORPUS_IMG) .
+	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-map -t $(MCP_MAP_IMG) .
 
 .PHONY: docker-build-e2e
 docker-build-e2e: ## Build the end-to-end tests' fakes (model provider, Slack) for the local platform.
@@ -240,6 +243,8 @@ docker-buildx: ## Build every image for amd64 and arm64 (pushed only with PUSH=t
 	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=demo-app -t $(DEMO_APP_IMG) \
 		$(if $(filter true,$(PUSH)),--push,) .
 	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-corpus -t $(MCP_CORPUS_IMG) \
+		$(if $(filter true,$(PUSH)),--push,) .
+	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-map -t $(MCP_MAP_IMG) \
 		$(if $(filter true,$(PUSH)),--push,) .
 
 
