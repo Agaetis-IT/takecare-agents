@@ -43,7 +43,7 @@ prev_cooldown=""
 cooldown_set=false
 restore() {
   # The token file first: it must not outlive a failed restore.
-  for p in "${pf_pids[@]}"; do kill "$p" 2>/dev/null || true; done
+  for p in ${pf_pids[@]+"${pf_pids[@]}"}; do kill "$p" 2>/dev/null || true; done
   rm -rf "$WORK"
   if $cooldown_set; then
     local patch='[{"op":"remove","path":"/spec/investigation/cooldown"}]'
