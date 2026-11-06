@@ -1,0 +1,146 @@
+[
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "The entries that depend on this one, transitively (what depends on it, runs as it or is deployed in it): [{key, type, status, depth, via}], nearest first.",
+    "inputSchema": {
+      "properties": {
+        "key": {
+          "description": "An entry's key, type/name, for example service/billing-api.",
+          "type": "string"
+        },
+        "maxDepth": {
+          "description": "How many hops to follow, 5 by default, 20 at most.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "type": "object"
+    },
+    "name": "blast_radius"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "The Map entry with this key, as declared, plus `inbound`: the entries whose relations point to it, by relation.",
+    "inputSchema": {
+      "properties": {
+        "key": {
+          "description": "An entry's key, type/name, for example service/billing-api.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "type": "object"
+    },
+    "name": "entry"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "The entry (or, without key, the list of entries: key, type, status) as the Map was at a date, with the revision it comes from.",
+    "inputSchema": {
+      "properties": {
+        "date": {
+          "description": "YYYY-MM-DD or an RFC 3339 time.",
+          "type": "string"
+        },
+        "key": {
+          "description": "An entry's key, type/name, for example service/billing-api.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "date"
+      ],
+      "type": "object"
+    },
+    "name": "map_at"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "The entries one relation away from this one: [{key, type, status, relation, direction}], direction out for the entry's own relations, in for those pointing to it.",
+    "inputSchema": {
+      "properties": {
+        "direction": {
+          "description": "out, in or both (default).",
+          "enum": [
+            "out",
+            "in",
+            "both"
+          ],
+          "type": "string"
+        },
+        "key": {
+          "description": "An entry's key, type/name, for example service/billing-api.",
+          "type": "string"
+        },
+        "relation": {
+          "description": "Only this relation.",
+          "enum": [
+            "dependsOn",
+            "runsAs",
+            "belongsTo",
+            "deployedIn",
+            "observedBy",
+            "documentedBy"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "type": "object"
+    },
+    "name": "neighbours"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "The shortest chain of relations between two entries, in either direction: {found, steps: [{from, relation, direction, to}]}.",
+    "inputSchema": {
+      "properties": {
+        "from": {
+          "description": "An entry's key, type/name, for example service/billing-api.",
+          "type": "string"
+        },
+        "to": {
+          "description": "An entry's key, type/name, for example service/billing-api.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ],
+      "type": "object"
+    },
+    "name": "path"
+  }
+]

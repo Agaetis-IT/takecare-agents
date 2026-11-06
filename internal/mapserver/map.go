@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
 // SPDX-License-Identifier: Apache-2.0
 
-// Package mapserver is the Map (spec 08, ADR 0015) behind its connector: it
-// loads the entries of a Map directory, validates them against the entry
-// schema of api/map and the relation rules of spec 08 §2, and keeps their
-// relations both ways for the graph tools.
+// Package mapserver serves the Map (spec 08, ADR 0015) as a read-only MCP
+// server: it loads the entries of a Map directory, validates them against
+// the entry schema of api/map and the relation rules of spec 08 §2, and
+// answers the five graph tools over them.
 package mapserver
 
 import (

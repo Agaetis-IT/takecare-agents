@@ -91,11 +91,13 @@ Type `map`, server `takecare-agents-mcp-map`, an add-on like `report-slack` (spe
 
 | Tool | Input | Output |
 |---|---|---|
-| `entry` | `key` | the entry, with its relations |
-| `neighbours` | `key`, `relation?`, `direction?` (`out`, `in`, both by default) | the entries one hop away, with the relation |
-| `blast_radius` | `key`, `maxDepth?` | the entries that depend on it, transitively, with their depth |
-| `path` | `from`, `to` | the shortest chain of relations between the two entries, or none |
-| `map_at` | `key?`, `date` | the entry (or the whole Map) as it was at that date |
+| `entry` | `key` | the entry as declared, plus `inbound`: the entries whose relations point to it, by relation |
+| `neighbours` | `key`, `relation?`, `direction?` (`out`, `in`, both by default) | `[{key, type, status, relation, direction}]` |
+| `blast_radius` | `key`, `maxDepth?` (5 by default, 20 at most) | `[{key, type, status, depth, via}]`, nearest first |
+| `path` | `from`, `to` | `{found, steps: [{from, relation, direction, to}]}`, the shortest chain in either direction |
+| `map_at` | `key?`, `date` (YYYY-MM-DD or RFC 3339) | the entry, or the list of entries (key, type, status), as the Map was at that date, with its revision |
+
+Blast radius follows the reverse of `dependsOn`, `runsAs` and `deployedIn`: what depends on the entry, runs as it, or is deployed in it. For `map_at`, a date without a time means the end of that day.
 
 All five are `read`, none `content` (ADR 0014). Errors: unknown key, invalid reference, date before the first commit.
 
