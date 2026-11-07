@@ -9,7 +9,8 @@
 # the kagent controller's RBAC stays inside its namespace and the controller
 # is reachable through the gateway only. Never touches the user's kube
 # context: the cluster's kubeconfig is written under ./bin.
-# Usage: hack/chart-smoke.sh [up|install|upgrade|status|down|all]
+# Then installs the workload-cluster chart (ADR 0016) and reads its front.
+# Usage: hack/chart-smoke.sh [up|install|upgrade|cluster|status|down|all]
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -29,6 +30,7 @@ REPORT_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-report-slack:${IMAGE_TAG}"
 CORPUS_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-corpus:${IMAGE_TAG}"
 MAP_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-map:${IMAGE_TAG}"
 DEMO_APP_IMAGE="${IMAGE_REGISTRY}/takecare-agents-demo-app:${IMAGE_TAG}"
+FRONT_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-front:${IMAGE_TAG}"
 # The demo corpus sources (values.yaml addons.demoCorpus.sources).
 CORPUS_SOURCES=(incidents runbooks deployments vendor support)
 HELM="${HELM:-bin/helm-${HELM_VERSION}}"
@@ -45,9 +47,9 @@ up() {
       --kubeconfig-update-default=false --kubeconfig-switch-context=false --wait
   fi
   k3d kubeconfig write "$CLUSTER" --output "$KUBECONFIG" >/dev/null
-  log "building and importing ${IMAGE}, ${REPORT_IMAGE}, ${CORPUS_IMAGE}, ${MAP_IMAGE} and ${DEMO_APP_IMAGE}"
-  make docker-build OPERATOR_IMG="$IMAGE" REPORT_SLACK_IMG="$REPORT_IMAGE" MCP_CORPUS_IMG="$CORPUS_IMAGE" MCP_MAP_IMG="$MAP_IMAGE" DEMO_APP_IMG="$DEMO_APP_IMAGE" >/dev/null
-  k3d image import "$IMAGE" "$REPORT_IMAGE" "$CORPUS_IMAGE" "$MAP_IMAGE" "$DEMO_APP_IMAGE" -c "$CLUSTER" >/dev/null
+  log "building and importing ${IMAGE}, ${REPORT_IMAGE}, ${CORPUS_IMAGE}, ${MAP_IMAGE}, ${DEMO_APP_IMAGE} and ${FRONT_IMAGE}"
+  make docker-build OPERATOR_IMG="$IMAGE" REPORT_SLACK_IMG="$REPORT_IMAGE" MCP_CORPUS_IMG="$CORPUS_IMAGE" MCP_MAP_IMG="$MAP_IMAGE" DEMO_APP_IMG="$DEMO_APP_IMAGE" MCP_FRONT_IMG="$FRONT_IMAGE" >/dev/null
+  k3d image import "$IMAGE" "$REPORT_IMAGE" "$CORPUS_IMAGE" "$MAP_IMAGE" "$DEMO_APP_IMAGE" "$FRONT_IMAGE" -c "$CLUSTER" >/dev/null
   make chart-deps >/dev/null
 }
 
@@ -518,6 +520,55 @@ EOF
   assert_checks "$CHECKS_EXPECTED"
 }
 
+# cluster_chart installs the workload-cluster package (ADR 0016) beside
+# the demo, with a CA and two client certificates made here (in a temporary
+# directory, never kept), and reads its front through a port-forward: the
+# guard's self-check, a call without a certificate, an unknown name, and
+# the MCP server's tools behind the front.
+cluster_chart() {
+  checks=0 failed=0
+  local cns=takecare-cluster host=takecare-cluster.takecare-cluster.svc dir pf
+  dir="$(mktemp -d)"
+  log "takecare-cluster with certificates from ${dir}"
+  (
+    cd "$dir"
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 -subj /CN=smoke-ca -keyout ca.key -out ca.crt
+    leaf() { # NAME SAN USAGE
+      openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj "/CN=$1" -keyout "$1.key" -out "$1.csr"
+      printf 'subjectAltName=DNS:%s\nextendedKeyUsage=%s\n' "$2" "$3" >"$1.ext"
+      openssl x509 -req -in "$1.csr" -CA ca.crt -CAkey ca.key -CAcreateserial -days 1 -extfile "$1.ext" -out "$1.crt"
+    }
+    leaf front "$host" serverAuth
+    leaf admin admin.smoke.internal clientAuth
+    leaf stranger stranger.smoke.internal clientAuth
+  ) >/dev/null 2>&1
+  kubectl create namespace "$cns" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  kubectl -n "$cns" create secret tls front-tls --cert="$dir/front.crt" --key="$dir/front.key" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  kubectl -n "$cns" create secret generic front-client-ca --from-file=ca.crt="$dir/ca.crt" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  # k3s serves the API on 6443, the port the egress policy must admit.
+  "$HELM" upgrade --install takecare-cluster charts/takecare-cluster -n "$cns" \
+    --set cluster.name=smoke --set 'cluster.namespaces={demo-apps}' --set service.type=ClusterIP --set apiServer.port=6443 \
+    --set tls.secretName=front-tls --set tls.clientCASecretName=front-client-ca --set 'tls.clientNames={admin.smoke.internal}' \
+    --set front.image.registry="$IMAGE_REGISTRY" --set front.image.tag="$IMAGE_TAG" --wait --timeout 3m >/dev/null
+  kubectl -n "$cns" port-forward svc/takecare-cluster 18443:8443 >/dev/null 2>&1 &
+  pf=$!
+  sleep 3
+  local tls=(curl -s -m 10 --cacert "$dir/ca.crt" --resolve "${host}:18443:127.0.0.1")
+  local admin=("${tls[@]}" --cert "$dir/admin.crt" --key "$dir/admin.key")
+  check "/guardz: the front's ServiceAccount holds nothing forbidden and reads demo-apps" \
+    bash -c "\"\$@\" https://${host}:18443/guardz | grep -q '\"violations\":\[\],\"missing\":\[\]' " _ "${admin[@]}"
+  check_not "without a client certificate, the front refuses the handshake" "${tls[@]}" -f "https://${host}:18443/mcp"
+  check "a client certificate with another name is 403" \
+    test "$("${tls[@]}" --cert "$dir/stranger.crt" --key "$dir/stranger.key" -o /dev/null -w '%{http_code}' "https://${host}:18443/mcp")" = 403
+  check "tools/list through the front answers the read tools (pods_list)" \
+    bash -c "\"\$@\" -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+      -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}' https://${host}:18443/mcp | grep -q '\"pods_list\"'" _ "${admin[@]}"
+  kill "$pf" 2>/dev/null || true
+  wait "$pf" 2>/dev/null || true
+  rm -rf "$dir"
+  assert_checks "$CHECKS_EXPECTED"
+}
+
 status() {
   "$HELM" list -n "$NS"
   kubectl get pods -n "$NS" -o wide
@@ -546,6 +597,7 @@ case "${1:-all}" in
   upgrade) CHECKS_EXPECTED=71 upgrade ;;
   status) status ;;
   down) down ;;
-  all) up; CHECKS_EXPECTED=71 install; CHECKS_EXPECTED=71 upgrade ;;
-  *) echo "usage: $0 [up|install|upgrade|status|down|all]"; exit 2 ;;
+  cluster) CHECKS_EXPECTED=4 cluster_chart ;;
+  all) up; CHECKS_EXPECTED=71 install; CHECKS_EXPECTED=71 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
+  *) echo "usage: $0 [up|install|upgrade|cluster|status|down|all]"; exit 2 ;;
 esac

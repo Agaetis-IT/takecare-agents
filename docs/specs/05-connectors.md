@@ -87,6 +87,16 @@ Enabling an add-on deploys the server and creates its `TakeCareConnector`. A cus
 
 Why our own Slack server: MCP does not standardize "post a message", and the adapter needs Block Kit, a fake-Slack-friendly endpoint and a minimal surface (one tool, no read access to the workspace). Existing Slack MCP servers expose far more (reading channels, users), which a reporter does not need.
 
+## The workload-cluster package
+
+A cluster that a TakeCare administration cluster supervises (ADR 0011, ADR 0016) runs the `takecare-cluster` chart, and nothing else of TakeCare: no operator, no CRD.
+
+- **What it installs**: one pod with two containers, the `kubernetes` MCP server (the `kubernetes` add-on's image and configuration: read-only, destructive tools disabled, core toolset) bound to the loopback, and the front `takecare-agents-mcp-front` (ours, Go: `cmd/mcp-front`, `internal/front`), the cluster's one inbound endpoint; a ServiceAccount with the add-on's read-only rules in each declared namespace (one template, `_kubernetes-rules.tpl`, kept in sync by `make chart-sync`) and the namespaces list cluster-wide; a Service on the front's port only (`LoadBalancer`, or `ClusterIP` behind an ingress in TLS passthrough); NetworkPolicies admitting the front's port only, egress to DNS and the API server's port.
+- **Values**: the cluster's name (a DNS label, under which the administration cluster registers it), the namespaces the ServiceAccount reads and extra resources (the read-only guard's refusals apply), the Secret of the front's server certificate, the Secret of the CA bundle the client certificate must chain to, the accepted client names, the Service's type and port, the API server's port, the probe port. The chart refuses to render without the required ones.
+- **The front**: TLS 1.3, a client certificate required and verified against the bundle, the accepted identities by name (a DNS name of the certificate, or its common name), certificates read again when they change. `/mcp` is forwarded to the server without the client's `Authorization` header; `/guardz` answers the read-only guard's check of the pod's own ServiceAccount (`SelfSubjectAccessReview`s, the probes of the operator's `ReadOnlyGuard`): `200` with the verdict (violations, namespaces where pods cannot be listed), `503` only when no verdict could be computed; `/healthz` and `/readyz` (the server answers) are also served in plain HTTP on the probe port for the kubelet, which is never in the Service.
+- **Registration**: the chart prints the `TakeCareConnector` to apply on the administration cluster: type `cluster`, `mcp.url` on the front, the `cluster` block (name, TLS references), `kubernetes.namespaces` (ADR 0016 §3; the operator side is the next step).
+- **The guard is proven at the data** (ADR 0016 §4): by the chart's render test (every rule passes the read-only guard) and by `/guardz` at run time.
+
 ## Status
 
 ```yaml

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # The release (spec 04), on a tag v<SemVer> pushed by a maintainer
-# (docs/release.md): the six images for amd64 and arm64, both charts as
+# (docs/release.md): the six images for amd64 and arm64, the three charts as
 # OCI artifacts, and the GitHub release with the tag's CHANGELOG section. A
 # prerelease tag (v0.1.0-rc.1) runs the same chain, marked prerelease.
 # Nothing published is ever replaced: a version already in the registry
@@ -112,7 +112,7 @@ jobs:
           for image in operator mcp-report-slack demo-app mcp-corpus mcp-map mcp-front; do
             absent "image takecare-agents-${image}" docker buildx imagetools inspect "${REGISTRY}/takecare-agents-${image}:${VERSION}"
           done
-          for chart in takecare-crds takecare; do
+          for chart in takecare-crds takecare takecare-cluster; do
             absent "chart ${chart}" "bin/helm-${HELM_VERSION}" show chart "oci://${REGISTRY}/charts/${chart}" --version "$VERSION"
           done
       - name: images (amd64 + arm64)
@@ -122,7 +122,7 @@ jobs:
           set -euo pipefail
           make chart-package RELEASE_VERSION="$VERSION"
           source hack/versions.env
-          for chart in takecare-crds takecare; do
+          for chart in takecare-crds takecare takecare-cluster; do
             "bin/helm-${HELM_VERSION}" push "bin/charts/${chart}-${VERSION}.tgz" "oci://${REGISTRY}/charts"
           done
       - name: GitHub release
@@ -138,11 +138,12 @@ jobs:
               printf -- "- \`%s/takecare-agents-%s:%s\`\n" "$REGISTRY" "$image" "$VERSION"
             done
             printf '\nCharts:\n\n'
-            for chart in takecare-crds takecare; do
+            for chart in takecare-crds takecare takecare-cluster; do
               printf -- "- \`oci://%s/charts/%s --version %s\`\n" "$REGISTRY" "$chart" "$VERSION"
             done
           } >"$RUNNER_TEMP/release.md"
           prerelease=()
           [[ "$VERSION" == *-* ]] && prerelease=(--prerelease)
           gh release create "$TAG" "${prerelease[@]}" --verify-tag --title "TakeCare Agents ${VERSION}" \
-            --notes-file "$RUNNER_TEMP/release.md" "bin/charts/takecare-crds-${VERSION}.tgz" "bin/charts/takecare-${VERSION}.tgz"
+            --notes-file "$RUNNER_TEMP/release.md" "bin/charts/takecare-crds-${VERSION}.tgz" "bin/charts/takecare-${VERSION}.tgz" \
+            "bin/charts/takecare-cluster-${VERSION}.tgz"
