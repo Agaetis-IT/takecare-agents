@@ -226,8 +226,13 @@ func (f *workerFixture) doc(t *testing.T, ready bool, mutate func(*v1alpha1.Take
 
 func (f *workerFixture) setReady(t *testing.T, ready bool) {
 	t.Helper()
+	f.setDocReady(t, docName, ready)
+}
+
+func (f *workerFixture) setDocReady(t *testing.T, name string, ready bool) {
+	t.Helper()
 	var d v1alpha1.TakeCareDoc
-	if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: docName}, &d); err != nil {
+	if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: name}, &d); err != nil {
 		t.Fatal(err)
 	}
 	status := metav1.ConditionFalse
@@ -244,8 +249,13 @@ func (f *workerFixture) setReady(t *testing.T, ready bool) {
 
 func (f *workerFixture) investigation(t *testing.T, name string, status *v1alpha1.TakeCareInvestigationStatus) {
 	t.Helper()
+	f.investigationOf(t, docName, name, status)
+}
+
+func (f *workerFixture) investigationOf(t *testing.T, doc, name string, status *v1alpha1.TakeCareInvestigationStatus) {
+	t.Helper()
 	inv := &v1alpha1.TakeCareInvestigation{Name: name, Namespace: ns}
-	inv.Spec.RoleRef = v1alpha1.RoleRef{Kind: "TakeCareDoc", Name: docName}
+	inv.Spec.RoleRef = v1alpha1.RoleRef{Kind: "TakeCareDoc", Name: doc}
 	inv.Spec.Alert = v1alpha1.AlertRecord{Name: alertName, Fingerprint: "3fa29c1b07e4d2aa", Service: "billing-api", Namespace: appsNS}
 	inv.Spec.Level = v1alpha1.LevelPractitioner
 	if err := f.c.Create(context.Background(), inv); err != nil {
@@ -431,6 +441,36 @@ func TestRunWaitsForTheDoc(t *testing.T) {
 	}
 	f.setReady(t, true)
 	f.waitPhase(t, "doc-waits", v1alpha1.PhaseCompleted)
+}
+
+// A Doc that cannot run holds only its own records, in their order (spec
+// 02 §2): the first Doc at maxConcurrent does not hold the second Doc's
+// record, and its own older record starts first once its slot frees.
+func TestABlockedDocHoldsOnlyItsOwnRecords(t *testing.T) {
+	script := make([]poll, 60, 61) // task-1 answers after 60 polls of 5 ms
+	f := startWorker(t, map[string][]poll{task1: append(script, completed)})
+	f.doc(t, true, nil)
+	other := &v1alpha1.TakeCareDoc{Name: "other", Namespace: ns}
+	other.Spec.Scope.Namespaces = []v1alpha1.Namespace{"ops"}
+	if err := f.c.Create(context.Background(), other); err != nil {
+		t.Fatal(err)
+	}
+	f.setDocReady(t, other.Name, true)
+	f.start()
+	f.investigation(t, "a-1", nil)
+	f.waitPhase(t, "a-1", v1alpha1.PhaseRunning)
+	f.investigation(t, "a-2", nil)
+	f.investigation(t, "a-3", nil)
+	f.investigationOf(t, other.Name, "b-1", nil)
+	f.waitPhase(t, "b-1", v1alpha1.PhaseRunning)
+	if p := f.get(t, "a-2").Status.Phase; p != v1alpha1.PhaseQueued {
+		t.Fatalf("a-2 is %s while its Doc is at maxConcurrent", p)
+	}
+	f.waitPhase(t, "a-1", v1alpha1.PhaseCompleted)
+	f.waitPhase(t, "a-2", v1alpha1.PhaseRunning)
+	if p := f.get(t, "a-3").Status.Phase; p != v1alpha1.PhaseQueued {
+		t.Errorf("a-3 is %s: the Doc's order is a-2 first, one at a time", p)
+	}
 }
 
 func TestSuspendedDocRunsNothing(t *testing.T) {

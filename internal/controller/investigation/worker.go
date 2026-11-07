@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -67,10 +68,11 @@ const (
 // suspended, Ready and EngineReady; otherwise the record waits Queued, as
 // long as it takes, without failing.
 //
-// The queue is served oldest first and the worker waits when the oldest
-// record's Doc cannot run: with one Doc per cluster (spec 02, SingleDocOnly)
-// that is the right order. A second role, or a second Doc, needs one queue
-// per role resource, or admission that skips a blocked Doc's records.
+// The queue is served oldest first, skipping the records of a Doc that
+// cannot run in this pass (not runnable, or at maxConcurrent): a blocked
+// Doc holds only its own records, in their order. The worker waits (a
+// freed slot or GateRetry) only when every queued record is held back; the
+// blocked Docs are forgotten when a slot frees and after each wait.
 type Worker struct {
 	Client   client.Client
 	Recorder recorder.EventRecorder
@@ -97,6 +99,9 @@ type Worker struct {
 	// of the intake reconciles it), and a record must never run twice.
 	inFlightRecords map[types.NamespacedName]bool
 	freed           chan struct{}
+	// docOf remembers the Doc of the records put back because their Doc
+	// was blocked; the admission loop alone reads and writes it.
+	docOf map[types.NamespacedName]types.NamespacedName
 }
 
 // NeedLeaderElection implements manager.LeaderElectionRunnable: the queue
@@ -117,6 +122,7 @@ func (w *Worker) Start(ctx context.Context) error {
 	w.running = map[types.NamespacedName]int{}
 	w.inFlightRecords = map[types.NamespacedName]bool{}
 	w.freed = make(chan struct{}, 1)
+	w.docOf = map[types.NamespacedName]types.NamespacedName{}
 	if w.GateRetry <= 0 {
 		w.GateRetry = defaultGateRetry
 	}
@@ -124,19 +130,46 @@ func (w *Worker) Start(ctx context.Context) error {
 	if err := w.resume(ctx); err != nil {
 		log.FromContext(ctx).Error(err, "resume the running investigations")
 	}
+	blocked := map[types.NamespacedName]bool{}
+	held := func(k types.NamespacedName) bool {
+		d, ok := w.docOf[k]
+		return ok && blocked[d]
+	}
 	for {
-		key, err := w.Queue.Next(ctx)
+		select {
+		case <-w.freed:
+			clear(blocked)
+		default:
+		}
+		key, ok, err := w.Queue.NextExcept(ctx, held)
 		if err != nil {
 			return nil //nolint:nilerr // ctx ended: the manager stops
 		}
-		if wait := w.admit(ctx, key); wait {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-w.freed:
-			case <-w.clock().After(w.GateRetry):
+		if ok {
+			docKey, wait := w.admit(ctx, key)
+			if !wait {
+				continue
+			}
+			if docKey != (types.NamespacedName{}) {
+				blocked[docKey] = true
+				continue
 			}
 		}
+		// The records this pass put back signaled the queue: only an
+		// addition from now on may be a record that can run.
+		select {
+		case <-w.Queue.Added():
+		default:
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-w.freed:
+		case <-w.Queue.Added():
+		case <-w.clock().After(w.GateRetry):
+		}
+		clear(blocked)
+		maps.DeleteFunc(w.docOf, func(k, _ types.NamespacedName) bool { return !w.Queue.Contains(k) })
 	}
 }
 
@@ -148,44 +181,48 @@ type run struct {
 }
 
 // admit reads the record and its Doc again and starts the run, or puts the
-// record back in the queue; it returns true when the caller should wait
-// before taking the next record.
-func (w *Worker) admit(ctx context.Context, key types.NamespacedName) bool {
+// record back in the queue; it returns true when the record was put back,
+// with its Doc when that Doc is blocked, without one when the caller should
+// wait before taking any record (a read error).
+func (w *Worker) admit(ctx context.Context, key types.NamespacedName) (types.NamespacedName, bool) {
 	logger := log.FromContext(ctx).WithValues("investigation", key.Name)
+	delete(w.docOf, key)
+	none := types.NamespacedName{}
 	if w.recordInFlight(key) {
-		return false // already being run: the queue held a stale copy
+		return none, false // already being run: the queue held a stale copy
 	}
 	var inv v1alpha1.TakeCareInvestigation
 	if err := w.Client.Get(ctx, key, &inv); err != nil {
 		if apierrors.IsNotFound(err) {
-			return false
+			return none, false
 		}
 		// A transient read error must not take the record out of the
 		// queue: nothing else would put it back before a resync.
 		logger.Error(err, "read the investigation")
 		w.Queue.Add(key, time.Time{})
-		return true
+		return none, true
 	}
 	if inv.Status.Phase != v1alpha1.PhaseQueued {
-		return false
+		return none, false
 	}
 	d, err := w.doc(ctx, &inv)
 	if err != nil {
 		logger.Error(err, "read the Doc")
 		w.Queue.Add(key, inv.CreationTimestamp.Time)
-		return true
+		return none, true
 	}
 	if d == nil {
 		w.fail(ctx, &inv, nil, v1alpha1.PhaseFailed, ReasonDocMissing, "the Doc "+inv.Spec.RoleRef.Name+" no longer exists", "")
-		return false
+		return none, false
 	}
 	docKey := client.ObjectKeyFromObject(d)
 	if !runnable(d) || w.inFlight(docKey) >= maxConcurrent(d) {
 		w.Queue.Add(key, inv.CreationTimestamp.Time)
-		return true
+		w.docOf[key] = docKey
+		return docKey, true
 	}
 	w.startRun(ctx, run{key: key, docKey: docKey})
-	return false
+	return none, false
 }
 
 // runnable: the Doc handles nothing while suspended, and runs nothing while

@@ -54,6 +54,10 @@ func (q *Queue) Add(key types.NamespacedName, created time.Time) bool {
 	return true
 }
 
+// Added is signaled when a run is added: a caller held back by
+// NextExcept waits on it for a run that may not be.
+func (q *Queue) Added() <-chan struct{} { return q.signal }
+
 // Remove forgets a run (started, finished, deleted).
 func (q *Queue) Remove(key types.NamespacedName) {
 	q.mu.Lock()
@@ -79,25 +83,41 @@ func (q *Queue) Len() int {
 // Next blocks until a run is pending or ctx ends, then removes and returns
 // the oldest one.
 func (q *Queue) Next(ctx context.Context) (types.NamespacedName, error) {
+	key, _, err := q.NextExcept(ctx, nil)
+	return key, err
+}
+
+// NextExcept is Next over the runs skip does not hold back: it blocks
+// while nothing is pending, and returns false at once when every pending
+// run is held back, so that the caller decides how to wait.
+func (q *Queue) NextExcept(ctx context.Context, skip func(types.NamespacedName) bool) (types.NamespacedName, bool, error) {
 	for {
 		q.mu.Lock()
 		var oldest types.NamespacedName
 		var at time.Time
 		found := false
 		for k, t := range q.pending {
+			if skip != nil && skip(k) {
+				continue
+			}
 			if !found || t.Before(at) || (t.Equal(at) && k.String() < oldest.String()) {
 				oldest, at, found = k, t, true
 			}
 		}
+		held := len(q.pending) > 0
 		if found {
 			delete(q.pending, oldest)
-			q.mu.Unlock()
-			return oldest, nil
 		}
 		q.mu.Unlock()
+		switch {
+		case found:
+			return oldest, true, nil
+		case held:
+			return types.NamespacedName{}, false, nil
+		}
 		select {
 		case <-ctx.Done():
-			return types.NamespacedName{}, ctx.Err()
+			return types.NamespacedName{}, false, ctx.Err()
 		case <-q.signal:
 		}
 	}
