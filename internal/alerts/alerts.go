@@ -1,10 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
 // SPDX-License-Identifier: Apache-2.0
 
-// Package alerts is the Doc's trigger (spec 02 §1, spec 06 §2): an
-// Alertmanager webhook that turns firing alerts in a Doc's scope into
+// Package alerts is the Doc's trigger (spec 02 §1, spec 06 §2): alert
+// sources' adapters (Alertmanager's webhook) turn alerts into one internal
+// record, v1alpha1.AlertRecord, resolved to a Map entry when the Map knows
+// it; the intake turns firing records in a Doc's scope into
 // TakeCareInvestigation records. Creating the record is the deduplication;
-// alerts of one incident (same namespace and workload, within the cooldown)
+// alerts of one incident (same Map entry, or else same namespace and
+// workload, within the cooldown)
 // are folded into the first one's record. The package creates records and
 // nothing else: the run on the engine is the Doc controller's.
 package alerts
@@ -12,72 +15,19 @@ package alerts
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"regexp"
 	"strings"
 	"time"
+
+	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 )
 
-// Payload is Alertmanager's webhook body, version 4.
-type Payload struct {
-	Version string  `json:"version"`
-	Status  string  `json:"status"`
-	Alerts  []Alert `json:"alerts"`
-}
-
-// Alert is one alert of a webhook.
-type Alert struct {
-	Status      string            `json:"status"`
-	Labels      map[string]string `json:"labels"`
-	Annotations map[string]string `json:"annotations"`
-	StartsAt    time.Time         `json:"startsAt"`
-	Fingerprint string            `json:"fingerprint"`
-}
-
-// Labels the intake reads.
-const (
-	labelAlertName   = "alertname"
-	labelNamespace   = "namespace"
-	labelService     = "service"
-	labelPod         = "pod"
-	labelSilent      = "takecare_silent"
-	labelDeployment  = "deployment"
-	labelStatefulSet = "statefulset"
-	labelDaemonSet   = "daemonset"
-	labelJob         = "job_name"
-)
-
-// podSuffix matches the generated suffixes of a pod name: a Deployment's
-// "-<replicaset hash>-<pod hash>", or a StatefulSet's or Job's "-<ordinal>"
-// or "-<pod hash>".
-var podSuffix = regexp.MustCompile(`(-[a-z0-9]{8,10})?-[a-z0-9]{5}$|-[0-9]+$`)
-
-// Workload is the incident key of an alert with its namespace (spec 02 §1),
-// from the alert's labels only: the operator reads nothing in the
-// customer's namespaces. A Deployment, StatefulSet, DaemonSet or Job label
-// wins; then the pod name without its generated suffixes; then the
-// service; then the alert name, so that unrelated alerts never merge on an
-// empty key.
-func Workload(labels map[string]string) string {
-	for _, key := range []string{labelDeployment, labelStatefulSet, labelDaemonSet, labelJob} {
-		if v := labels[key]; v != "" {
-			return v
-		}
+// IncidentKey is a label-safe digest of the alert's Map entry when it
+// resolved to one, of its namespace and workload otherwise (spec 02 §1).
+func IncidentKey(r v1alpha1.AlertRecord) string {
+	if r.Entity != "" {
+		return digest("entity:"+string(r.Entity), 16)
 	}
-	if pod := labels[labelPod]; pod != "" {
-		if base := podSuffix.ReplaceAllString(pod, ""); base != "" {
-			return base
-		}
-		return pod
-	}
-	if svc := labels[labelService]; svc != "" {
-		return svc
-	}
-	return "alert:" + labels[labelAlertName]
-}
-
-// IncidentKey is a label-safe digest of namespace and workload.
-func IncidentKey(namespace, workload string) string {
-	return digest(namespace+"/"+workload, 16)
+	return digest(r.Namespace+"/"+r.Workload, 16)
 }
 
 // InvestigationName is deterministic per alert occurrence: the same alert

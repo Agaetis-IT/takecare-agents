@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The Doc binds the Map (`connectors.map`, spec 08): its five read tools reach the agent at every level, and the instructions name the Map; the demo Doc reads the demo's Map. On the bench (proxy-timeout, 5 runs, same day) the diagnoses stay 5/5 and the Map adds about 33 s and 260 output tokens per diagnosis (median 53 s against 20 s), spent in the model's calls, not in its tools.
 - The Doc covers `scope.entities` through the Map (spec 08 §7): an entity with state on a ground is covered when it is validated and one of its Kubernetes sources is in a namespace the Doc reads; otherwise it is a blind spot (`NotInMap`, `NotValidated`, `NoAccess` or `ConnectorNotReady`). The `map` connector reports the revision it serves in `status.mapRevision`, and the Doc asks the Map again only when it changes.
 - The `map` connector carries a `MapCurrent` condition read from the Map server's status: the served revision, or the invalid revision reported while the last valid one keeps serving.
+- One internal alert format (ADR 0015): the Alertmanager webhook is an adapter producing alert records; a firing alert is resolved to a validated Map entry at intake through the Map server's `/resolve` (`spec.alert.entity`, the `takecare.agaetis.fr/alert-entity` label, `takecare_alerts_resolved_total{result}`: `hit`, `miss`, `unavailable`, `none`), and the incident key is that entry when known, the namespace and workload otherwise. Nothing the agent sees changes.
 
 ### Changed
 

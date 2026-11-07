@@ -66,7 +66,7 @@ func (r *Reconciler) mapCurrent(ctx context.Context, c *v1alpha1.TakeCareConnect
 		st.set(ConditionMapCurrent, false, ReasonStatusUnavailable, "not probed: the server is not reachable")
 		return
 	}
-	ms, err := r.statusz(ctx, addonURL(c.Spec.MCP.Addon, r.OperatorNamespace, "/statusz"))
+	ms, err := r.statusz(ctx, AddonURL(c.Spec.MCP.Addon, r.OperatorNamespace, "/statusz"))
 	if err == nil {
 		st.mapRevision = ms.Revision
 	}

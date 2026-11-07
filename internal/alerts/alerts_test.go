@@ -6,6 +6,8 @@ package alerts
 import (
 	"testing"
 	"time"
+
+	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 )
 
 const (
@@ -41,7 +43,7 @@ func TestWorkloadFromLabelsOnly(t *testing.T) {
 	// The two alerts of missing-secret-key (spike 001) share their incident.
 	crash := map[string]string{labelAlertName: "PodCrashLooping", labelNamespace: demoApps, labelPod: notifPod}
 	notReady := map[string]string{labelAlertName: alertNotReady, labelNamespace: demoApps, labelPod: notifPod}
-	if IncidentKey(demoApps, Workload(crash)) != IncidentKey(demoApps, Workload(notReady)) {
+	if IncidentKey(v1alpha1.AlertRecord{Namespace: demoApps, Workload: Workload(crash)}) != IncidentKey(v1alpha1.AlertRecord{Namespace: demoApps, Workload: Workload(notReady)}) {
 		t.Error("the two alerts of one pod must share an incident key")
 	}
 }

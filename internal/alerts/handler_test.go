@@ -40,6 +40,16 @@ type fixture struct {
 	srv     *httptest.Server
 	metrics *Metrics
 	now     time.Time
+	// entities resolves an alert by name to a Map entry; absent is a miss.
+	entities map[string]v1alpha1.EntityKey
+}
+
+// Resolve implements Resolver over f.entities.
+func (f *fixture) Resolve(_ context.Context, a v1alpha1.AlertRecord) (v1alpha1.EntityKey, string) {
+	if k, ok := f.entities[a.Name]; ok {
+		return k, ResolvedHit
+	}
+	return "", ResolvedMiss
 }
 
 func start(t *testing.T) *fixture {
@@ -76,7 +86,7 @@ func start(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	f := &fixture{t: t, c: c, metrics: metrics, now: time.Now()}
-	f.srv = httptest.NewServer(&Handler{Client: c, Namespace: ns, Metrics: metrics, Now: func() time.Time { return f.now }})
+	f.srv = httptest.NewServer(&Handler{Client: c, Namespace: ns, Metrics: metrics, Resolver: f, Now: func() time.Time { return f.now }})
 	t.Cleanup(f.srv.Close)
 	return f
 }
@@ -184,7 +194,7 @@ func intakeStep2(t *testing.T, f *fixture, t0 time.Time, crash Alert) {
 	if inv.Name != InvestigationName("doc", crash.Fingerprint, t0) || inv.Spec.Alert.Workload != "notifications-worker" || inv.Spec.Alert.Source != v1alpha1.SourceAlertmanager || inv.Spec.Level != v1alpha1.LevelPractitioner {
 		t.Errorf("investigation = %s, %+v", inv.Name, inv.Spec.Alert)
 	}
-	if inv.Labels[LabelIncident] != IncidentKey(appNS, "notifications-worker") || inv.Labels[v1alpha1.LabelFingerprint] != "3fa29c1b07e4d2aa" {
+	if inv.Labels[LabelIncident] != IncidentKey(v1alpha1.AlertRecord{Namespace: appNS, Workload: notifWorker}) || inv.Labels[v1alpha1.LabelFingerprint] != "3fa29c1b07e4d2aa" {
 		t.Errorf("labels = %v", inv.Labels)
 	}
 }

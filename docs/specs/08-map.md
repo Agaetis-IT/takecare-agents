@@ -103,6 +103,8 @@ Blast radius follows the reverse of `dependsOn`, `runsAs` and `deployedIn`: what
 
 All five are `read`, none `content` (ADR 0014). Errors: unknown key, invalid reference, date before the first commit.
 
+The server also answers **`GET /resolve`** for the operator's alert intake (spec 02 §1), with the query `namespace`, `alert` (the alert name), `workload` and `service` (optional): `200 {key, revision}` on a hit, `404 {reason, revision}` on a miss (`reason` is `none` or `ambiguous`), `503` while no Map is loaded. It is not an MCP tool: agents never call it and the gateway does not route it; the add-on's ingress policy admits the operator. The rule is in §7.
+
 ## 6. Who writes
 
 Never an agent. The Intendant's discovery (operator code) writes proposals as files on a branch, which the Map tooling turns into a pull request. Agents' proposals come from their records' status (spec 06 §5, invariant 4). A human merges.
@@ -110,7 +112,7 @@ Never an agent. The Intendant's discovery (operator code) writes proposals as fi
 ## 7. What the Map is used for
 
 - **Scope by entities** (ADR 0014 §4).
-- **Routing and the incident key** (ADR 0015 §4 and §5).
+- **Routing and the incident key** (ADR 0015 §4 and §5). The intake resolves a firing alert to an entry with `/resolve` (§5): among the `validated` entries, those with a `kubernetes` source `<namespace>/<Kind>/<name>` in the alert's namespace whose `<name>` is the alert's workload or, when none is, its `service` label; one candidate is a hit; with several, the one whose `alertedBy` lists the alert's name is the hit; anything else is a miss, `none` without a candidate, `ambiguous` with several left. A `proposed` entry never resolves. The demo's `HighErrorRate` on `billing-api` resolves to `service/billing-api`: `compute/billing-api` has the same source, the service's `alertedBy` decides.
 - **Readiness by coverage** (ADR 0014 §1). A role's `scope.entities` are read through its Map connector's `entry` tool. An entity is checked when its type has state on a ground: `service`, `compute`, `datastore`, `storage`, `network`, `identity`. It is covered when it is `validated` and one of its `sources` is `kubernetes: <namespace>/...` in a namespace a cluster connector given to the role reads. Otherwise it is a blind spot:
   - `NotInMap`: the key is not in the Map;
   - `NotValidated`: the entry is `proposed`;

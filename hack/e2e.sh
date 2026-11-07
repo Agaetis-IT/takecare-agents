@@ -34,7 +34,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=12
+CHECKS_EXPECTED=13
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -117,6 +117,8 @@ run() {
     bash -c "[[ -z \$(kubectl -n $NS get takecaredoc doc -o jsonpath='{.status.blindSpots}') && \$(kubectl -n $NS get takecaredoc doc -o jsonpath='{.spec.scope.entities[0]} {.status.conditions[?(@.type==\"ConnectorsReady\")].status}') == 'service/billing-api True' ]]"
   check "one investigation of demo-apps, Completed, for HighErrorRate" \
     bash -c "[[ \$(kubectl -n $NS get takecareinvestigations -l takecare.agaetis.fr/alert-namespace=demo-apps -o name | wc -l) -eq 1 && \$($get='{.status.phase} {.spec.alert.name}') == 'Completed HighErrorRate' ]]"
+  check "the alert resolved to its Map entry at intake: spec.alert.entity and its label (ADR 0015 §4)" \
+    bash -c "[[ \$($get='{.spec.alert.entity} {.metadata.labels.takecare\\.agaetis\\.fr/alert-entity}') == 'service/billing-api service.billing-api' ]]"
   check "completed less than 3 minutes after the alert fired (spec 02 AC 1)" \
     bash -c "f=\$($get='{.spec.alert.firedAt}'); c=\$($get='{.status.completedAt}'); (( \$(date -d \"\$c\" +%s 2>/dev/null || date -j -f %Y-%m-%dT%H:%M:%SZ \"\$c\" +%s) - \$(date -d \"\$f\" +%s 2>/dev/null || date -j -f %Y-%m-%dT%H:%M:%SZ \"\$f\" +%s) < 180 ))"
   check "published to the on-call destination" \

@@ -1,0 +1,9 @@
+key: service/orders
+provenance: declared
+status: validated
+created: 2026-11-07
+lastValidated: 2026-11-07
+sources:
+  - kubernetes: shop/Deployment/orders
+relations:
+  runsAs: [compute/orders]

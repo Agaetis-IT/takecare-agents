@@ -49,7 +49,7 @@ func (s *dirSource) status() map[string]any {
 	defer s.mu.Unlock()
 	st := map[string]any{"source": "dir", keyEntries: 0}
 	if s.loaded != nil {
-		st["revision"], st["loadedAt"], st[keyEntries] = s.loaded.Revision, s.loaded.LoadedAt, len(s.loaded.Entries)
+		st[keyRevision], st["loadedAt"], st[keyEntries] = s.loaded.Revision, s.loaded.LoadedAt, len(s.loaded.Entries)
 	}
 	if s.lastErr != nil {
 		st["lastError"] = map[string]any{keyError: s.lastErr.Error(), "at": s.lastErrAt}
