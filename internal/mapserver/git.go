@@ -211,7 +211,7 @@ func (g *gitSource) sync(ctx context.Context) {
 	}
 	g.mu.Unlock()
 	if err != nil {
-		g.logger.Error("map fetch failed", "error", err)
+		g.logger.Error("map fetch failed", keyError, err)
 		return
 	}
 	g.load()
@@ -323,7 +323,7 @@ func (g *gitSource) invalid(commit string, err error) {
 	g.mu.Lock()
 	g.badCommit, g.lastErr, g.lastErrAt = commit, err, g.now()
 	g.mu.Unlock()
-	g.logger.Error("map revision refused", "revision", commit, "error", err)
+	g.logger.Error("map revision refused", "revision", commit, keyError, err)
 }
 
 // treeMap reads map/ under path in a commit's tree.
@@ -439,10 +439,10 @@ func (g *gitSource) status() map[string]any {
 		st["lastFetch"] = g.lastFetch
 	}
 	if g.fetchErr != nil {
-		st["fetchError"] = map[string]any{"error": g.fetchErr.Error(), "at": g.fetchErrAt}
+		st["fetchError"] = map[string]any{keyError: g.fetchErr.Error(), "at": g.fetchErrAt}
 	}
 	if g.lastErr != nil {
-		st["lastError"] = map[string]any{"commit": g.badCommit, "error": g.lastErr.Error(), "at": g.lastErrAt}
+		st["lastError"] = map[string]any{"commit": g.badCommit, keyError: g.lastErr.Error(), "at": g.lastErrAt}
 	}
 	return st
 }
