@@ -168,7 +168,7 @@ Be brief: at most three observations and two ruled-out leads, one sentence each;
 
 This is the English translation of the POC prompt, without its example identifiers. Accuracy is checked with the bench before merging (spec 04).
 
-At most `maxConcurrent` investigations run at once; others wait in a queue held by the leader replica and rebuilt from `Queued` investigations after a failover (bounded at 20; overflow sets the phase to `Dropped` with a reason, a warning event and a metric).
+At most `maxConcurrent` investigations run at once; others wait in a queue held by the leader replica and rebuilt from `Queued` investigations after a failover (bounded at 20; overflow sets the phase to `Dropped` with a reason, a warning event and a metric). The queue is served oldest first, and a Doc that cannot run (not ready, suspended, or at its `maxConcurrent`) holds only its own records, in their order: another Doc's records go past them.
 
 ### 3. Scope and read-only
 

@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- The run queue no longer lets one Doc hold another's investigations: a Doc that cannot run (not ready, or at its `maxConcurrent`) holds only its own records, and the worker takes the oldest record of a Doc that can. Until now the oldest record's Doc made every other record wait.
 - `make demo-up` works with the bash 3.2 that macOS ships when it pulls the released images without a Slack token: an empty list of Helm options stopped the script with `sets[@]: unbound variable`. `hack/bench.sh` had the same flaw in its cleanup.
 
 ## [0.1.0] - 2026-11-06

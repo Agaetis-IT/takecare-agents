@@ -45,6 +45,30 @@ func TestQueueIsBoundedAndOldestFirst(t *testing.T) {
 	}
 }
 
+func TestNextExceptSkipsHeldRuns(t *testing.T) {
+	q := NewQueue(0)
+	t0 := time.Now()
+	q.Add(key("a-1"), t0)
+	q.Add(key("b-1"), t0.Add(time.Second))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	heldA := func(k types.NamespacedName) bool { return k.Name[0] == 'a' }
+	if k, ok, err := q.NextExcept(ctx, heldA); err != nil || !ok || k.Name != "b-1" {
+		t.Fatalf("NextExcept = %v, %v, %v; want b-1, the oldest not held", k, ok, err)
+	}
+	if _, ok, err := q.NextExcept(ctx, heldA); err != nil || ok {
+		t.Fatalf("every pending run held: want false at once, got %v, %v", ok, err)
+	}
+	if !q.Contains(key("a-1")) {
+		t.Error("a held run stays queued")
+	}
+	select {
+	case <-q.Added():
+	default:
+		t.Error("Added was not signaled")
+	}
+}
+
 func TestNextWakesOnAdd(t *testing.T) {
 	q := NewQueue(0)
 	got := make(chan string, 1)
