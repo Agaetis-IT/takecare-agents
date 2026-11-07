@@ -4,6 +4,25 @@ Chart version {{ template "chart.version" . }}, application version {{ template 
 
 The workload-cluster package of TakeCare Agents ([ADR 0016](../../docs/adr/0016-workload-cluster-front-and-registration.md)): installed in each cluster a TakeCare administration cluster supervises, with no operator and no CRD. One pod runs the read-only `kubernetes` MCP server, bound to the loopback, and its mTLS front, `takecare-agents-mcp-front`, the cluster's one inbound endpoint. The front requires a client certificate that chains to `tls.clientCASecretName` and names one of `tls.clientNames`, forwards `/mcp` to the server, and serves `/guardz`, the read-only guard's check of the pod's ServiceAccount.
 
-The chart refuses to render without its REQUIRED values. The install steps (certificates, exposure, registration) come with the release of this chart.
+## Install
+
+1. **Certificates.** The front's server certificate (its DNS name is the one the administration cluster dials) and the CA bundle the administration cluster's client certificate chains to are the customer's. [cert-manager](https://cert-manager.io) is the documented way: a `Certificate` for the front in this namespace (its Secret holds `tls.crt` and `tls.key`), and a Secret holding `ca.crt`, the CA of the client certificate, which the administration cluster's own issuer signs. Rotation needs no restart: the front reads the files again when they change.
+2. **Exposure.** `service.type: LoadBalancer` gives the endpoint an address; or `ClusterIP` behind the customer's ingress in **TLS passthrough** (the front terminates TLS itself and checks the client certificate: an ingress that terminates TLS would hide it). No Ingress is rendered.
+3. **Install**, in its own namespace:
+
+   ```bash
+   helm install takecare-cluster oci://ghcr.io/agaetis-it/charts/takecare-cluster -n takecare-cluster --create-namespace \
+     --set cluster.name=paris-1 --set 'cluster.namespaces={apps,billing}' \
+     --set tls.secretName=front-tls --set tls.clientCASecretName=front-client-ca \
+     --set 'tls.clientNames={takecare-admin.example.internal}'
+   ```
+
+   The chart refuses to render without these values. `apiServer.port` is 6443 on k3s.
+4. **Register** the cluster on the administration cluster with the `TakeCareConnector` the install prints (it needs the operator version that ships the `cluster` block).
+
+## Security requirements
+
+- **NetworkPolicies must be enforced** by the cluster's CNI: they admit the front's mTLS port only and bound the egress to DNS and the API server. The server itself listens on the loopback, so it is never on the pod network; the probe port (`front.probePort`, plain HTTP, `/healthz` and `/readyz` only) is never in the Service, and the kubelet's probes are exempt from the policies on the CNIs TakeCare targets.
+- **The ServiceAccount reads only**: the rules are those of the `takecare` chart's `kubernetes` add-on; `cluster.extraResources` refuses Secrets, `pods/exec`, `pods/attach`, `pods/portforward`, `serviceaccounts/token` and wildcards. `/guardz` checks it at run time.
 
 {{ template "chart.valuesSection" . }}
