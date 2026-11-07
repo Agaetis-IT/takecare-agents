@@ -114,6 +114,8 @@ type Reconciler struct {
 	Recorder          recorder.EventRecorder
 	OperatorNamespace string
 	MCP               Lister
+	// HTTP reads the map add-on's /statusz.
+	HTTP *http.Client
 	// Now is replaceable in tests.
 	Now func() time.Time
 }
@@ -127,6 +129,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	st := &status{generation: c.Generation, conditions: c.Status.Conditions}
+	mapBefore := meta.FindStatusCondition(c.Status.Conditions, ConditionMapCurrent).DeepCopy()
 
 	ep, err := r.endpoint(ctx, &c, st)
 	if err != nil {
@@ -149,6 +152,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			st.set(ConditionResourcesListable, true, ReasonNotApplicable, "not a cluster connector")
 		}
 	}
+	r.mapCurrent(ctx, &c, st)
 	for _, t := range []string{v1alpha1.ConditionReachable, v1alpha1.ConditionToolsDiscovered, ConditionBackendAccepted, ConditionReadOnlyGuard, ConditionResourcesListable} {
 		if _, found := st.get(t); !found {
 			st.set(t, false, ReasonNotReady, "not evaluated: the connector's endpoint is not usable")
@@ -171,6 +175,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 		r.Recorder.Eventf(&c, nil, kind, st.readyReason(), "Reconcile", "%s", st.readyMessage())
 	}
+	r.mapEvent(&c, mapBefore, st)
 	logger.V(1).Info("reconciled", "ready", ready, "tools", len(st.tools))
 	if !ready {
 		return ctrl.Result{RequeueAfter: requeueNotReady}, nil
@@ -205,7 +210,7 @@ func (r *Reconciler) endpoint(ctx context.Context, c *v1alpha1.TakeCareConnector
 			st.set(v1alpha1.ConditionReachable, false, ReasonNoReadyEndpoint, fmt.Sprintf("no ready endpoint for Service %s/%s: check the pod's readiness (for a report server, the Slack token: auth.test failed or the Secret is missing)", r.OperatorNamespace, name))
 			return nil, nil
 		}
-		ep.URL = addonURL(c.Spec.MCP.Addon, r.OperatorNamespace)
+		ep.URL = addonURL(c.Spec.MCP.Addon, r.OperatorNamespace, addonPath)
 	default:
 		ep.URL = c.Spec.MCP.URL
 		headers, problem, err := headerValues(ctx, r.Client, c)
@@ -221,9 +226,10 @@ func (r *Reconciler) endpoint(ctx context.Context, c *v1alpha1.TakeCareConnector
 	return ep, nil
 }
 
-// addonURL is the MCP endpoint of an add-on's Service.
-func addonURL(addon, namespace string) string {
-	return fmt.Sprintf("http://%s%s.%s.svc:%d%s", addonNamePrefix, addon, namespace, addonPort, addonPath)
+// addonURL is a path on an add-on's Service: its MCP endpoint, or the map
+// server's /statusz.
+func addonURL(addon, namespace, path string) string {
+	return fmt.Sprintf("http://%s%s.%s.svc:%d%s", addonNamePrefix, addon, namespace, addonPort, path)
 }
 
 // headerValues reads a URL connector's headers from their Secrets. A Secret
@@ -645,6 +651,10 @@ func (s *status) set(condType string, ok bool, reason, message string) {
 	if ok {
 		st = metav1.ConditionTrue
 	}
+	s.setStatus(condType, st, reason, message)
+}
+
+func (s *status) setStatus(condType string, st metav1.ConditionStatus, reason, message string) {
 	meta.SetStatusCondition(&s.conditions, metav1.Condition{Type: condType, Status: st, Reason: reason, Message: message, ObservedGeneration: s.generation})
 }
 
@@ -769,7 +779,7 @@ func ReportEndpoint(ctx context.Context, c client.Reader, conn *v1alpha1.TakeCar
 		return ep, fmt.Errorf("connector %s is not a report connector", conn.Name)
 	}
 	if conn.Spec.MCP.Addon != "" {
-		ep.URL = addonURL(conn.Spec.MCP.Addon, conn.Namespace)
+		ep.URL = addonURL(conn.Spec.MCP.Addon, conn.Namespace, addonPath)
 		return ep, nil
 	}
 	ep.URL = conn.Spec.MCP.URL

@@ -52,7 +52,7 @@ func (s *dirSource) status() map[string]any {
 		st["revision"], st["loadedAt"], st[keyEntries] = s.loaded.Revision, s.loaded.LoadedAt, len(s.loaded.Entries)
 	}
 	if s.lastErr != nil {
-		st["lastError"], st["lastErrorAt"] = s.lastErr.Error(), s.lastErrAt
+		st["lastError"] = map[string]any{keyError: s.lastErr.Error(), "at": s.lastErrAt}
 	}
 	return st
 }
@@ -79,7 +79,7 @@ func (s *dirSource) current() (*Map, error) {
 	}
 	if err != nil {
 		s.lastErr, s.lastErrAt = err, s.now()
-		s.logger.Error("map not loaded", "error", err)
+		s.logger.Error("map not loaded", keyError, err)
 	}
 	if s.loaded == nil {
 		return nil, fmt.Errorf("no valid Map loaded: %w", s.lastErr)

@@ -79,12 +79,13 @@ func (f *fakeLister) Call(_ context.Context, ep mcp.Endpoint, tool string, _ map
 }
 
 type harness struct {
-	t      *testing.T
-	c      client.Client
-	ctx    context.Context
-	lister *fakeLister
-	r      *Reconciler
-	now    time.Time
+	t       *testing.T
+	c       client.Client
+	ctx     context.Context
+	lister  *fakeLister
+	r       *Reconciler
+	now     time.Time
+	statusz *fakeStatusz
 }
 
 func start(t *testing.T, srv *mcptest.Server) *harness {
@@ -108,7 +109,8 @@ func start(t *testing.T, srv *mcptest.Server) *harness {
 	}
 	h := &harness{t: t, now: time.Now()}
 	h.lister = &fakeLister{client: &mcp.Client{HTTP: &http.Client{Timeout: 5 * time.Second}}, url: srv.URL, probeReply: "[]"}
-	h.r = &Reconciler{Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("test"), OperatorNamespace: operatorNS, MCP: h.lister, Now: func() time.Time { return h.now }}
+	h.statusz = startStatusz(t)
+	h.r = &Reconciler{Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("test"), OperatorNamespace: operatorNS, MCP: h.lister, HTTP: h.statusz.client, Now: func() time.Time { return h.now }}
 	if err := h.r.SetupWithManager(mgr); err != nil {
 		t.Fatal(err)
 	}

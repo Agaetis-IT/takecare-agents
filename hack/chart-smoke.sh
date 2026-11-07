@@ -116,6 +116,11 @@ corpus_ready() {
   [[ "$(kubectl -n "$NS" get takecareconnector "$1" -o jsonpath='{range .status.tools[*]}{.name}={.class}{"\n"}{end}' | sort | tr '\n' ' ')" == "$1_get=read $1_recent=read $1_search=read " ]]
 }
 
+# map_current: MapCurrent is True and names the served revision.
+map_current() {
+  [[ "$(kubectl -n "$NS" get takecareconnector map -o jsonpath='{.status.conditions[?(@.type=="MapCurrent")].status} {.status.conditions[?(@.type=="MapCurrent")].message}')" =~ ^True\ serving\ revision\ [0-9a-f]+ ]]
+}
+
 # map_ready: the map connector is Ready with its five tools, all read, none
 # content (spec 08 §5, ADR 0014).
 map_ready() {
@@ -278,6 +283,7 @@ verify() {
   done
   log "the demo's Map (spec 08): the map add-on over its ConfigMap"
   check "connector map reaches Ready=True with its five read tools, none content" map_ready
+  check "connector map has MapCurrent=True with a revision, read from the server's /statusz" map_current
   log "the demo controller (spec 03): scenery, incident and reset under the demo Roles"
   kubectl -n "$NS" apply -f - >/dev/null <<'YAML'
 apiVersion: takecare.agaetis.fr/v1alpha1
@@ -532,10 +538,10 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=68 install ;;
-  upgrade) CHECKS_EXPECTED=68 upgrade ;;
+  install) CHECKS_EXPECTED=69 install ;;
+  upgrade) CHECKS_EXPECTED=69 upgrade ;;
   status) status ;;
   down) down ;;
-  all) up; CHECKS_EXPECTED=68 install; CHECKS_EXPECTED=68 upgrade ;;
+  all) up; CHECKS_EXPECTED=69 install; CHECKS_EXPECTED=69 upgrade ;;
   *) echo "usage: $0 [up|install|upgrade|status|down|all]"; exit 2 ;;
 esac

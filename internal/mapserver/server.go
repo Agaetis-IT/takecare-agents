@@ -57,6 +57,7 @@ const (
 	directionIn            = "in"
 	argKey                 = "key"
 	keyEntries             = "entries"
+	keyError               = "error"
 )
 
 // New builds the server over its source; Run keeps the Map current.

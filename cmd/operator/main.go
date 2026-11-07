@@ -302,6 +302,7 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		Recorder:          mgr.GetEventRecorder("takecare-operator"),
 		OperatorNamespace: cfg.operatorNamespace,
 		MCP:               &mcp.Client{HTTP: mcpClient},
+		HTTP:              mcpClient,
 	}
 	if err := connectorReconciler.SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up the connector controller: %w", err)
