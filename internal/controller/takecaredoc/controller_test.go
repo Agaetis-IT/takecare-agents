@@ -550,7 +550,7 @@ func mapKeys(m map[string][]string) []string {
 	return out
 }
 
-// AC 6 and 8, and the single Doc of milestone 1.
+// AC 6 and 8, and a second Doc on the same namespace (ScopeOverlap).
 func TestConfigurationErrors(t *testing.T) {
 	f := start(t)
 	f.platform(t)
@@ -581,9 +581,12 @@ func TestConfigurationErrors(t *testing.T) {
 
 	f.clock.Advance(time.Second)
 	f.doc(t, "second", nil)
-	f.waitCondition(t, "second", v1alpha1.ConditionReady, metav1.ConditionFalse, ReasonSingleDocOnly)
+	second := f.waitCondition(t, "second", v1alpha1.ConditionReady, metav1.ConditionFalse, v1alpha1.ReasonScopeOverlap)
+	if msg := meta.FindStatusCondition(second.Status.Conditions, v1alpha1.ConditionReady).Message; !strings.Contains(msg, "TakeCareDoc doc, which came first (namespace shop)") {
+		t.Errorf("message = %q", msg)
+	}
 	if _, err := f.get(agentGVK, engineNS, "takecare-doc-second"); err == nil {
-		t.Error("a second Doc gets an agent")
+		t.Error("a Doc whose scope overlaps an earlier one gets an agent")
 	}
 }
 

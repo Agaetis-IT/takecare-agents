@@ -169,9 +169,9 @@ func TestDocValidation(t *testing.T) {
 		{"unknown level", func(d *v1alpha1.TakeCareDoc) { d.Spec.Level = "expert" }, wantLevel},
 		{"the old value trial is rejected", func(d *v1alpha1.TakeCareDoc) { d.Spec.Level = "trial" }, wantLevel},
 		{"empty scope", func(d *v1alpha1.TakeCareDoc) { d.Spec.Scope.Namespaces = nil }, "at least one selector"},
-		{"entities without namespaces", func(d *v1alpha1.TakeCareDoc) {
+		{"entities without namespaces: routed by entity", func(d *v1alpha1.TakeCareDoc) {
 			d.Spec.Scope = v1alpha1.Scope{Entities: []v1alpha1.EntityKey{entityBilling}}
-		}, "scope.namespaces is required"},
+		}, ""},
 		{"namespaces and entities", func(d *v1alpha1.TakeCareDoc) {
 			d.Spec.Scope.Entities = []v1alpha1.EntityKey{entityBilling, "datastore/billing-db"}
 		}, ""},

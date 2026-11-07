@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Breaking for status readers** (ADR 0015 §5): `SingleDocOnly` is gone; several Docs run when their scopes are disjoint, an alert going to the Doc that covers its Map entity or its namespace; overlapping scopes give `ScopeOverlap` on the later Doc, which runs nothing, with a warning event. A Doc with `scope.entities` only is now valid.
 - **Breaking for status readers** (ADR 0014): a Doc is ready when its scope is covered, not when connector types are bound. `MissingConnectorType` and `ScopeNotCovered` are gone; a scope namespace no connector reads is a blind spot in `status.blindSpots` (`environment/<ns>`), `Degraded` with reason `BlindSpots`, named in the Doc's instructions under "What you cannot check", and its alerts are ignored with `reason="outside_ground"`; a Doc with nothing covered is `Ready=False` (`BlindSpots`); `metrics` is recommended, no longer required. A missing report connector from the `Practitioner` level is reported as `ConnectorMissing`.
 
 ### Fixed

@@ -405,3 +405,43 @@ func TestOutsideGround(t *testing.T) {
 		t.Errorf("outside ground %v, out of scope %v", f.ignored(ReasonOutsideGround), f.ignored(ReasonOutOfScope))
 	}
 }
+
+// A Doc takes an alert when its entity is in scope.entities or its
+// namespace in scope.namespaces (ADR 0015 §5); the earlier Doc wins an
+// overlap; an entity among the Doc's blind spots is outside_ground.
+const (
+	entityOrders = v1alpha1.EntityKey("service/orders")
+	nsElsewhere  = "elsewhere"
+)
+
+func TestRoutingByScope(t *testing.T) {
+	f := start(t)
+	ctx := context.Background()
+	byEntity := &v1alpha1.TakeCareDoc{Name: "entities", Namespace: ns}
+	byEntity.Spec.Scope.Entities = []v1alpha1.EntityKey{"service/billing-api", "service/ledger", entityOrders}
+	if err := f.c.Create(ctx, byEntity); err != nil {
+		t.Fatal(err)
+	}
+	byEntity.Status.BlindSpots = []v1alpha1.BlindSpot{{Entity: entityOrders, Reason: v1alpha1.BlindSpotNotInMap}}
+	if err := f.c.Status().Update(ctx, byEntity); err != nil {
+		t.Fatal(err)
+	}
+	f.entities = map[string]v1alpha1.EntityKey{"BillingDown": "service/billing-api", "LedgerSlow": "service/ledger", "OrdersDown": entityOrders}
+	t0 := time.Now().Add(-time.Minute).Truncate(time.Second)
+	payments := map[string]string{labelNamespace: "payments"}
+	f.post(token,
+		alert("BillingDown", "8182838485868788", "billing-api-1", t0, payments),
+		alert("LedgerSlow", "9192939495969798", "ledger-1", t0, nil),
+		alert("OrdersDown", "a1a2a3a4a5a6a7a8", "orders-1", t0, payments),
+		alert("Elsewhere", "b1b2b3b4b5b6b7b8", "x-1", t0, map[string]string{labelNamespace: nsElsewhere}))
+	got := map[string]string{}
+	for _, inv := range f.investigations() {
+		got[inv.Spec.Alert.Name] = inv.Spec.RoleRef.Name
+	}
+	if want := map[string]string{"BillingDown": "entities", "LedgerSlow": roleDoc}; !maps.Equal(got, want) {
+		t.Errorf("routed %v, want %v", got, want)
+	}
+	if f.ignored(ReasonOutsideGround) != 1 || f.ignored(ReasonOutOfScope) != 1 {
+		t.Errorf("outside ground %v, out of scope %v", f.ignored(ReasonOutsideGround), f.ignored(ReasonOutOfScope))
+	}
+}
