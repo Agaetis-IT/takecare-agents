@@ -24,7 +24,6 @@ import (
 // Reasons of a remote cluster connector (ADR 0016).
 const (
 	ReasonTLSMaterialMissing = "TLSMaterialMissing"
-	ReasonGuardPending       = "GuardPending"
 )
 
 // Keys of the TLS Secrets of a remote cluster connector.
@@ -55,7 +54,7 @@ func (r *Reconciler) clusterClient(ctx context.Context, c *v1alpha1.TakeCareConn
 	key := fmt.Sprintf("%s|%s|%s|%s", c.UID, ca.ResourceVersion, cert.ResourceVersion, tlsSpec.ServerName)
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if hc, ok := r.clients[c.UID]; ok && hc.key == key {
+	if hc, ok := r.clients[client.ObjectKeyFromObject(c)]; ok && hc.key == key {
 		return hc.client, "", nil
 	}
 	pool := x509.NewCertPool()
@@ -73,9 +72,9 @@ func (r *Reconciler) clusterClient(ctx context.Context, c *v1alpha1.TakeCareConn
 		return nil, "", fmt.Errorf("client of connector %s: %w", c.Name, err)
 	}
 	if r.clients == nil {
-		r.clients = map[types.UID]cachedClient{}
+		r.clients = map[types.NamespacedName]cachedClient{}
 	}
-	r.clients[c.UID] = cachedClient{key: key, client: hc}
+	r.clients[client.ObjectKeyFromObject(c)] = cachedClient{key: key, client: hc}
 	return hc, "", nil
 }
 
