@@ -1,0 +1,70 @@
+# Values of the takecare-cluster chart (ADR 0016): installed in each
+# workload cluster that a TakeCare administration cluster supervises.
+
+cluster:
+  # -- REQUIRED: the name the administration cluster registers this cluster
+  # under (a DNS label), printed in the connector manifest.
+  name: ""
+  # -- REQUIRED, at least one: the namespaces the ServiceAccount may read
+  # (get, list, watch): workloads, events, logs.
+  namespaces: []
+  # -- Resources beyond the defaults, as {group, resource}, for example
+  # custom resources. ConfigMaps are read only when listed here: customers
+  # keep credentials in them. Secrets, pods/exec, pods/attach,
+  # pods/portforward, serviceaccounts/token and wildcards are refused.
+  extraResources: []
+
+tls:
+  # -- REQUIRED: the Secret holding the front's server certificate (tls.crt,
+  # tls.key); cert-manager is the documented way to issue it.
+  secretName: ""
+  # -- REQUIRED: the Secret holding ca.crt, the CA bundle the administration
+  # cluster's client certificate must chain to.
+  clientCASecretName: ""
+  # -- REQUIRED, at least one: the administration cluster's identities, a DNS
+  # name of its client certificate (or its common name when it has none).
+  clientNames: []
+
+service:
+  # -- LoadBalancer, or ClusterIP behind the customer's ingress in TLS
+  # passthrough (no Ingress is rendered).
+  type: LoadBalancer
+  # -- The port of the front's mTLS endpoint.
+  port: 8443
+  annotations: {}
+
+apiServer:
+  # -- The API server's port, which bounds the pod's egress (a NetworkPolicy
+  # cannot name the API server): 443 on most managed clusters, 6443 on k3s.
+  port: 443
+
+networkPolicies:
+  # -- Ingress to the front's port only, egress to DNS and the API server.
+  enabled: true
+
+mcpServer:
+  image: quay.io/containers/kubernetes_mcp_server:v0.0.67@sha256:e47f6ccc5347e1ea6be495d8d9ab55ac8a995fe87800fb984fa770cebe14ad44 # pin: KUBERNETES_MCP_SERVER_IMAGE
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits: { memory: 256Mi }
+
+front:
+  image:
+    registry: ghcr.io/agaetis-it
+    repository: takecare-agents-mcp-front
+    # -- Empty: the chart's appVersion.
+    tag: ""
+    pullPolicy: IfNotPresent
+  # -- The plain-HTTP port of /healthz and /readyz for the kubelet, whose
+  # probes present no client certificate; never in the Service.
+  probePort: 8081
+  # -- How long /guardz serves a verdict before checking again.
+  guardInterval: 10m
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { memory: 128Mi }
+
+global:
+  # -- Replaces the registry of every image (a mirror).
+  imageRegistry: ""
+  imagePullSecrets: []

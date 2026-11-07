@@ -34,6 +34,10 @@ HOST_OS := $(shell go env GOOS)
 HOST_ARCH := $(shell go env GOARCH)
 HOST_KEY := $(shell echo $(HOST_OS)_$(HOST_ARCH) | tr a-z A-Z)
 CHART_OUT ?= $(CURDIR)/.chart-out
+# The workload-cluster chart refuses to render without its REQUIRED values.
+CLUSTER_CHART_SETS = --set cluster.name=example --set 'cluster.namespaces={apps}' \
+	--set tls.secretName=front-tls --set tls.clientCASecretName=front-client-ca \
+	--set 'tls.clientNames={admin.example.internal}'
 # Helm runs with its own repository config and cache under ./bin: the
 # developer's repositories are never read or touched, and dependency
 # resolution by URL is not confused by the same URL registered under several
@@ -113,18 +117,19 @@ chart-docs-check: chart-docs ## Fail if a chart's README.md drifted from its val
 		git --no-pager diff charts/*/README.md; echo "run make chart-docs and commit the README"; exit 1; fi
 
 .PHONY: chart-lint
-chart-lint: chart-check chart-docs-check chart-deps ## Drift checks, then helm lint, both charts, both profiles.
+chart-lint: chart-check chart-docs-check chart-deps ## Drift checks, then helm lint, the three charts, both profiles.
 	$(HELM_RUN) lint charts/takecare-crds
 	$(HELM_RUN) lint charts/takecare-crds --set demo.enabled=true
 	$(HELM_RUN) lint charts/takecare -f charts/takecare/values-prod.yaml
 	$(HELM_RUN) lint charts/takecare -f charts/takecare/values-demo.yaml
+	$(HELM_RUN) lint charts/takecare-cluster $(CLUSTER_CHART_SETS)
 
 .PHONY: chart-smoke
 chart-smoke: helm ## Install and upgrade both charts for real on a k3d cluster (hack/chart-smoke.sh).
 	hack/chart-smoke.sh all
 
 .PHONY: chart-template
-chart-template: chart-deps kubeconform ## Render both profiles and validate them with kubeconform.
+chart-template: chart-deps kubeconform ## Render both profiles and the workload-cluster chart, and validate them with kubeconform.
 	rm -rf "$(CHART_OUT)" && mkdir -p "$(CHART_OUT)"
 	$(HELM_RUN) template takecare-crds charts/takecare-crds -n takecare-system --set demo.enabled=true > "$(CHART_OUT)/takecare-crds.yaml"
 	# values-prod.yaml refuses to render until its REQUIRED values are set.
@@ -138,6 +143,7 @@ chart-template: chart-deps kubeconform ## Render both profiles and validate them
 		--set addons.map.git.url=https://git.example.internal/ops/map.git --set addons.map.git.credentialSecret.name=map-token \
 		> "$(CHART_OUT)/takecare-prod.yaml"
 	$(HELM_RUN) template takecare charts/takecare -n takecare-system -f charts/takecare/values-demo.yaml > "$(CHART_OUT)/takecare-demo.yaml"
+	$(HELM_RUN) template takecare-cluster charts/takecare-cluster -n takecare-cluster $(CLUSTER_CHART_SETS) > "$(CHART_OUT)/takecare-cluster.yaml"
 	# The branch rendered on a cluster that runs Prometheus Operator: the
 	# AlertmanagerConfig (spec 02 §1).
 	$(HELM_RUN) template takecare charts/takecare -n takecare-system -f charts/takecare/values-demo.yaml \

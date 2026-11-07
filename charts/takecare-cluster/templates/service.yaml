@@ -1,0 +1,21 @@
+# The cluster's one inbound endpoint: the front's mTLS port, never the
+# probe port nor the server.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "takecare-cluster.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare-cluster.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "takecare-cluster.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: mtls
+      port: {{ .Values.service.port }}
+      targetPort: mtls

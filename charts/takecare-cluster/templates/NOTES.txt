@@ -1,0 +1,23 @@
+The read-only kubernetes MCP server of {{ .Values.cluster.name }} runs behind its mTLS front
+on the Service {{ include "takecare-cluster.name" . }} ({{ .Values.service.type }}, port {{ .Values.service.port }}).
+
+Register it on the administration cluster with this connector (it needs the
+operator version that ships the cluster block):
+
+  apiVersion: takecare.agaetis.fr/v1alpha1
+  kind: TakeCareConnector
+  metadata:
+    name: {{ .Values.cluster.name }}
+    namespace: takecare-system
+  spec:
+    types: [cluster]
+    mcp:
+      url: https://<the front's address>:{{ .Values.service.port }}/mcp
+    cluster:
+      name: {{ .Values.cluster.name }}
+      tls:
+        caSecretRef: { name: <the Secret holding the CA of this front's certificate> }
+        clientCertSecretRef: { name: <the Secret holding the client certificate, one of {{ join ", " .Values.tls.clientNames }}> }
+        serverName: <the DNS name of this front's certificate>
+    kubernetes:
+      namespaces: [{{ join ", " .Values.cluster.namespaces }}]

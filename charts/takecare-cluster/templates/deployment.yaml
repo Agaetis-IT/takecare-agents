@@ -1,0 +1,121 @@
+{{- $name := include "takecare-cluster.name" . }}
+# The read-only kubernetes MCP server (core toolset) bound to the loopback
+# (bind_address), reachable only through the front in the same pod. It has
+# no probe of its own: the kubelet cannot reach the loopback; the front's
+# /readyz answers only once the server does.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare-cluster.labels" . | nindent 4 }}
+data:
+  config.toml: |
+    bind_address = "127.0.0.1"
+    port = "8080"
+    stateless = true
+    read_only = true
+    disable_destructive = true
+    toolsets = ["core"]
+---
+# One pod, two containers: the front is the only listener on the pod's
+# network (8443 mTLS; the probe port, plain HTTP, for the kubelet only).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare-cluster.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "takecare-cluster.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "takecare-cluster.labels" . | nindent 8 }}
+      annotations:
+        # A changed configuration restarts the server (it caches its API
+        # discovery at startup).
+        checksum/config: {{ toYaml .Values.cluster | sha256sum | trunc 16 }}
+    spec:
+      serviceAccountName: {{ $name }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: {{ include "takecare-cluster.serverImage" . | quote }}
+          args: ["--config", "/etc/kubernetes-mcp-server/config.toml"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            {{- toYaml .Values.mcpServer.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/kubernetes-mcp-server
+              readOnly: true
+        - name: front
+          image: {{ include "takecare-cluster.frontImage" . | quote }}
+          imagePullPolicy: {{ .Values.front.image.pullPolicy }}
+          args:
+            - --listen=:8443
+            - --probe-listen=:{{ .Values.front.probePort }}
+            - --upstream=http://127.0.0.1:8080
+            - --tls-cert-file=/etc/takecare-front/tls/tls.crt
+            - --tls-key-file=/etc/takecare-front/tls/tls.key
+            - --client-ca-file=/etc/takecare-front/client-ca/ca.crt
+            - --client-names={{ join "," .Values.tls.clientNames }}
+            - --guard-namespaces={{ join "," .Values.cluster.namespaces }}
+            - --guard-interval={{ .Values.front.guardInterval }}
+          ports:
+            - name: mtls
+              containerPort: 8443
+            - name: probes
+              containerPort: {{ .Values.front.probePort }}
+          # The front is ready when the server behind it answers.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: probes
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: probes
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            {{- toYaml .Values.front.resources | nindent 12 }}
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/takecare-front/tls
+              readOnly: true
+            - name: client-ca
+              mountPath: /etc/takecare-front/client-ca
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $name }}
+        - name: tls
+          secret:
+            secretName: {{ .Values.tls.secretName }}
+        - name: client-ca
+          secret:
+            secretName: {{ .Values.tls.clientCASecretName }}

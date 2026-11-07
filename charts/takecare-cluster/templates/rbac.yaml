@@ -1,0 +1,68 @@
+# The ServiceAccount of the pod: the MCP server reads with it, the front
+# checks it on /guardz (SelfSubjectAccessReviews need no RBAC). It may get,
+# list and watch in the declared namespaces only, with the rules of the
+# takecare chart's kubernetes add-on (_kubernetes-rules.tpl, kept in sync
+# by make chart-sync).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "takecare-cluster.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare-cluster.labels" . | nindent 4 }}
+automountServiceAccountToken: true
+{{- range $ns := .Values.cluster.namespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "takecare-cluster.name" $ }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "takecare-cluster.labels" $ | nindent 4 }}
+rules:
+  {{- include "takecare.kubernetes.rules" $.Values.cluster.extraResources | nindent 2 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "takecare-cluster.name" $ }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "takecare-cluster.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "takecare-cluster.name" $ }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "takecare-cluster.name" $ }}
+    namespace: {{ $.Release.Namespace }}
+{{- end }}
+---
+# The server lists namespaces at startup: the namespace list only.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-namespaces
+  labels:
+    {{- include "takecare-cluster.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-namespaces
+  labels:
+    {{- include "takecare-cluster.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Name }}-namespaces
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "takecare-cluster.name" . }}
+    namespace: {{ .Release.Namespace }}
