@@ -14,9 +14,10 @@ const KindTakeCareDoc = "TakeCareDoc"
 type TakeCareDocSpec struct {
 	RoleCommonSpec `json:",inline"`
 
-	// Connectors bound to the Doc, by type. cluster and metrics are required,
-	// report from the Practitioner level: the controller reports a missing one
-	// (MissingConnectorType) rather than the schema rejecting it.
+	// Connectors bound to the Doc, by type. The Doc is ready when its scope
+	// is covered by the cluster connectors (a namespace nothing reads is a
+	// blind spot); report is required from the Practitioner level, which the
+	// controller reports (ConnectorMissing) rather than the schema rejecting it.
 	// +optional
 	Connectors DocConnectors `json:"connectors,omitempty"`
 

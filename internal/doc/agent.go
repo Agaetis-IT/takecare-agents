@@ -56,8 +56,9 @@ var sources = []struct {
 }
 
 // Instructions renders the Doc's system message for the namespaces it can
-// read and the types of the connectors it is given.
-func Instructions(readable []v1alpha1.Namespace, types map[v1alpha1.ConnectorType]bool) (string, error) {
+// read, the types of the connectors it is given and its blind spots (ADR
+// 0014 §2), one sentence each.
+func Instructions(readable []v1alpha1.Namespace, types map[v1alpha1.ConnectorType]bool, blindSpots []string) (string, error) {
 	namespaces := make([]string, len(readable))
 	for i, n := range readable {
 		namespaces[i] = "`" + string(n) + "`"
@@ -69,7 +70,7 @@ func Instructions(readable []v1alpha1.Namespace, types map[v1alpha1.ConnectorTyp
 		}
 	}
 	var out bytes.Buffer
-	if err := instructions.Execute(&out, map[string]any{"Sources": lines}); err != nil {
+	if err := instructions.Execute(&out, map[string]any{"Sources": lines, "BlindSpots": blindSpots}); err != nil {
 		return "", fmt.Errorf("render the Doc's instructions: %w", err)
 	}
 	return out.String(), nil
@@ -90,6 +91,8 @@ type Agent struct {
 	// the Doc's scope (spec 02): a dependency of an alerting workload may
 	// live in another of them. Empty means the scope.
 	Readable []v1alpha1.Namespace
+	// BlindSpots are what the Doc cannot check, one sentence each.
+	BlindSpots []string
 	// CaptureContent follows the platform (ADR 0006).
 	CaptureContent bool
 }
@@ -100,7 +103,7 @@ func (a Agent) Render() (engine.Agent, error) {
 	if len(readable) == 0 {
 		readable = a.Doc.Spec.Scope.Namespaces
 	}
-	text, err := Instructions(readable, a.Types)
+	text, err := Instructions(readable, a.Types, a.BlindSpots)
 	if err != nil {
 		return engine.Agent{}, err
 	}

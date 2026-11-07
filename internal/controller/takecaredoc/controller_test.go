@@ -41,6 +41,9 @@ const (
 	// podsListLog is the kubernetes connector's allow-list with its log tool.
 	podsListLog = "pods_list,pods_log"
 	scope       = v1alpha1.Namespace("shop")
+	// k8sConnector is the cluster connector's name in these tests.
+	k8sConnector  = "kubernetes"
+	kindConfigMap = "ConfigMap"
 )
 
 var (
@@ -191,7 +194,7 @@ func (f *fixture) doc(t *testing.T, name string, mutate func(*v1alpha1.TakeCareD
 	d := &v1alpha1.TakeCareDoc{Name: name, Namespace: ns}
 	d.Spec.Level = v1alpha1.LevelPractitioner
 	d.Spec.Scope.Namespaces = []v1alpha1.Namespace{scope}
-	d.Spec.Connectors = v1alpha1.DocConnectors{Cluster: []string{"kubernetes"}, Metrics: []string{"prometheus"}, Report: "report"}
+	d.Spec.Connectors = v1alpha1.DocConnectors{Cluster: []string{k8sConnector}, Metrics: []string{"prometheus"}, Report: "report"}
 	if mutate != nil {
 		mutate(d)
 	}
@@ -323,7 +326,7 @@ func TestContentTools(t *testing.T) {
 		tool.Content = true
 		return tool
 	}
-	f.connector(t, "kubernetes", []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, append(read("pods_list"), content(podsLog), content("nodes_log")), true)
+	f.connector(t, k8sConnector, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, append(read("pods_list"), content(podsLog), content("nodes_log")), true)
 	f.connector(t, "prometheus", []v1alpha1.ConnectorType{v1alpha1.ConnectorMetrics}, read("execute_query"), true)
 	f.connector(t, "report", []v1alpha1.ConnectorType{v1alpha1.ConnectorReport}, nil, true)
 	f.doc(t, "doc", func(d *v1alpha1.TakeCareDoc) { d.Spec.ContentTools = []string{podsLog, "audit_log"} })
@@ -389,7 +392,7 @@ func TestRendering(t *testing.T) {
 	f := start(t)
 	f.platform(t)
 	k8sTools := append(read("pods_list", podsLog), v1alpha1.ToolStatus{Name: "resources_delete", Class: v1alpha1.ToolAct, Source: "annotation"})
-	f.connector(t, "kubernetes", []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, k8sTools, true)
+	f.connector(t, k8sConnector, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, k8sTools, true)
 	f.connector(t, "prometheus", []v1alpha1.ConnectorType{v1alpha1.ConnectorMetrics}, read("execute_query"), true)
 	f.connector(t, "report", []v1alpha1.ConnectorType{v1alpha1.ConnectorReport}, nil, true)
 	f.connector(t, "runbooks", []v1alpha1.ConnectorType{v1alpha1.ConnectorKnowledge}, nil, false)
@@ -458,7 +461,7 @@ func TestRendering(t *testing.T) {
 			t.Fatal(err)
 		}
 		// pods_log is no longer allowed: reclassified act.
-		f.setConnector(t, "kubernetes", append(read("pods_list"), v1alpha1.ToolStatus{Name: podsLog, Class: v1alpha1.ToolAct, Source: "override"}), true)
+		f.setConnector(t, k8sConnector, append(read("pods_list"), v1alpha1.ToolStatus{Name: podsLog, Class: v1alpha1.ToolAct, Source: "override"}), true)
 		eventually(t, "the gateway refuses pods_log at once", func() (bool, string) {
 			got := f.policy(t)
 			return got == `mcp.tool.name in ["pods_list"]`, got
@@ -486,7 +489,7 @@ func TestRendering(t *testing.T) {
 	// cluster connector reads: the instructions must not deny it.
 	t.Run("the instructions name every namespace the cluster connector reads", func(t *testing.T) {
 		var c v1alpha1.TakeCareConnector
-		if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: "kubernetes"}, &c); err != nil {
+		if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: k8sConnector}, &c); err != nil {
 			t.Fatal(err)
 		}
 		c.Spec.Kubernetes.Namespaces = []v1alpha1.Namespace{scope, "platform"}
@@ -494,7 +497,7 @@ func TestRendering(t *testing.T) {
 			t.Fatal(err)
 		}
 		eventually(t, "the instructions name the connector's second namespace", func() (bool, string) {
-			cm, err := f.get(schema.GroupVersionKind{Version: "v1", Kind: "ConfigMap"}, engineNS, agent+"-instructions")
+			cm, err := f.get(schema.GroupVersionKind{Version: "v1", Kind: kindConfigMap}, engineNS, agent+"-instructions")
 			if err != nil {
 				return false, err.Error()
 			}
@@ -518,7 +521,7 @@ func TestRendering(t *testing.T) {
 		}{
 			{agentGVK, engineNS, agent},
 			{serverGVK, engineNS, agent + "-kubernetes"},
-			{schema.GroupVersionKind{Version: "v1", Kind: "ConfigMap"}, engineNS, agent + "-instructions"},
+			{schema.GroupVersionKind{Version: "v1", Kind: kindConfigMap}, engineNS, agent + "-instructions"},
 			{routes.HTTPRouteGVK, ns, "role-doc-doc-a2a"},
 			{routes.HTTPRouteGVK, ns, "role-doc-doc-mcp-kubernetes"},
 			{routes.PolicyGVK, ns, "role-doc-doc-mcp-kubernetes"},
@@ -543,26 +546,18 @@ func mapKeys(m map[string][]string) []string {
 func TestConfigurationErrors(t *testing.T) {
 	f := start(t)
 	f.platform(t)
-	f.connector(t, "kubernetes", []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, read("pods_list"), true)
+	f.connector(t, k8sConnector, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, read("pods_list"), true)
 	f.connector(t, "prometheus", []v1alpha1.ConnectorType{v1alpha1.ConnectorMetrics}, read("execute_query"), true)
 	f.connector(t, "report", []v1alpha1.ConnectorType{v1alpha1.ConnectorReport}, nil, true)
 
-	f.doc(t, "doc", func(d *v1alpha1.TakeCareDoc) { d.Spec.Connectors.Metrics = nil })
-	f.waitCondition(t, "doc", v1alpha1.ConditionConnectorsReady, metav1.ConditionFalse, ReasonMissingConnectorType)
+	f.doc(t, "doc", func(d *v1alpha1.TakeCareDoc) { d.Spec.Connectors.Report = "" })
+	f.waitCondition(t, "doc", v1alpha1.ConditionConnectorsReady, metav1.ConditionFalse, ReasonConnectorMissing)
 	d := f.waitCondition(t, "doc", v1alpha1.ConditionReady, metav1.ConditionFalse, "")
 	if _, err := f.get(agentGVK, engineNS, agent); err == nil {
-		t.Error("an agent is rendered for a Doc without a metrics connector")
+		t.Error("an agent is rendered for a Practitioner Doc without a report connector")
 	}
 
-	d.Spec.Connectors.Metrics = []string{"prometheus"}
-	d.Spec.Scope.Namespaces = []v1alpha1.Namespace{scope, "billing"}
-	if err := f.c.Update(context.Background(), d); err != nil {
-		t.Fatal(err)
-	}
-	f.waitCondition(t, "doc", v1alpha1.ConditionConnectorsReady, metav1.ConditionFalse, ReasonScopeNotCovered)
-
-	d = f.getDoc(t, "doc")
-	d.Spec.Scope.Namespaces = []v1alpha1.Namespace{scope}
+	d.Spec.Connectors.Report = "report"
 	d.Spec.Level = v1alpha1.LevelExpert
 	if err := f.c.Update(context.Background(), d); err != nil {
 		t.Fatal(err)

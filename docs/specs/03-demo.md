@@ -63,7 +63,7 @@ Annotations make actions declarative, idempotent and visible in `kubectl describ
 | `billing-api`, the `DBProxy` resource, the corpus content | `TakeCareDemo` controller |
 | `TakeCareDoc` (level `Practitioner`, bound to the demo connectors), `TakeCareDemo` | `make demo-up`, from `demo/manifests/*.yaml` |
 
-Without a Slack token, the demo `TakeCareDoc` has no `report` connector: it is then `Ready=False` (`MissingConnectorType`) by design of spec 02. To keep the demo usable without Slack, the demo profile enables a `report-log` add-on variant of the report server that writes messages to its log and to the investigation status instead of Slack; `make demo-verdict` reads them.
+Without a Slack token, the demo `TakeCareDoc` has no `report` connector: it is then `Ready=False` (`ConnectorMissing`) by design of spec 02. To keep the demo usable without Slack, the demo profile enables a `report-log` add-on variant of the report server that writes messages to its log and to the investigation status instead of Slack; `make demo-verdict` reads them.
 
 ## Make targets
 
