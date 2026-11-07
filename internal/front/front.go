@@ -42,6 +42,9 @@ type Config struct {
 	Logger      *slog.Logger
 	// HTTP probes the upstream for /readyz; it is given a timeout.
 	HTTP *http.Client
+	// Guard serves /guardz on the mTLS endpoint only (it tells the RBAC
+	// state, for the administration cluster alone); nil serves none.
+	Guard http.Handler
 }
 
 // Front serves the workload cluster's one inbound endpoint.
@@ -93,13 +96,17 @@ func New(cfg Config) (*Front, error) {
 // verified, the certificates read again when their files change.
 func (f *Front) TLSConfig() *tls.Config { return f.certs.tlsConfig() }
 
-// Handler serves /mcp to an accepted client, and /healthz and /readyz;
+// Handler serves /mcp and /guardz to an accepted client, and /healthz and
+// /readyz;
 // everything else is 404.
 func (f *Front) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mcp := f.accepted(f.proxy)
 	mux.Handle("/mcp", mcp)
 	mux.Handle("/mcp/", mcp)
+	if f.cfg.Guard != nil {
+		mux.Handle("/guardz", f.accepted(f.cfg.Guard))
+	}
 	f.probes(mux)
 	return mux
 }
