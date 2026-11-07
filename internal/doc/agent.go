@@ -53,6 +53,9 @@ var sources = []struct {
 	}},
 	{v1alpha1.ConnectorChanges, func([]string) string { return "The change log: recent deployments and configuration changes." }},
 	{v1alpha1.ConnectorTickets, func([]string) string { return "Customer support tickets." }},
+	{v1alpha1.ConnectorMap, func([]string) string {
+		return "The Map of the ground: the entries (services, workloads, data stores, network elements, environments, teams, runbooks), their relations, what depends on what (`blast_radius`) and how two entries connect (`path`). Start from the alerting workload's entry when one exists."
+	}},
 }
 
 // Instructions renders the Doc's system message for the namespaces it can

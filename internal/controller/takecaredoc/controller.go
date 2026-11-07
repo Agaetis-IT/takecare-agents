@@ -595,6 +595,7 @@ func typedNames(d *v1alpha1.TakeCareDoc) []struct {
 		{v1alpha1.ConnectorKnowledge, d.Spec.Connectors.Knowledge},
 		{v1alpha1.ConnectorChanges, d.Spec.Connectors.Changes},
 		{v1alpha1.ConnectorTickets, d.Spec.Connectors.Tickets},
+		{v1alpha1.ConnectorMap, d.Spec.Connectors.Map},
 	}
 }
 

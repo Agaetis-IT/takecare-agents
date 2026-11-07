@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The Map server `takecare-agents-mcp-map` (spec 08, ADR 0015): the five read-only tools `entry`, `neighbours`, `blast_radius`, `path` and `map_at` over a Map directory, loaded again when it changes; a reload that fails keeps the previous Map and is reported in `/statusz`. The Git source, the add-on and the demo's Map follow.
 - The Map server reads the customer's Git: one repository and branch with a read-only token or deploy key from a Secret, polled on an interval; an invalid revision is reported and the last valid one keeps serving; `map_at` answers from the history: the last commit at or before the date.
 - The `map` add-on (spec 08): the Map server deployed by the chart, reading the customer's Git with a token or a deploy key from a Secret, or the demo's Map from a ConfigMap; one connector `map` with its five read tools. The `takecare-agents-mcp-map` image joins the release. **Upgrading with `values-prod.yaml`**: the profile enables the add-on, so set `addons.map.git.url` (and its credential), or `addons.map.enabled=false`.
+- The Doc binds the Map (`connectors.map`, spec 08): its five read tools reach the agent at every level, and the instructions name the Map; the demo Doc reads the demo's Map.
 - The `map` connector carries a `MapCurrent` condition read from the Map server's status: the served revision, or the invalid revision reported while the last valid one keeps serving.
 
 ### Changed

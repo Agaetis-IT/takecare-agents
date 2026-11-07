@@ -345,7 +345,7 @@ spec:
   level: Practitioner
   scope: { namespaces: [demo-apps] }
   contentTools: [pods_log]
-  connectors: { cluster: [kubernetes], metrics: [prometheus], report: report }
+  connectors: { cluster: [kubernetes], metrics: [prometheus], map: [map], report: report }
   report: { practitioner: on-call }
 EOF
   local token now alerts_url="http://takecare-alerts.${NS}.svc:8080/v1/alerts"
@@ -369,8 +369,10 @@ EOF
 
   log "the Doc's rendering (spec 02 §2, ADR 0008, 0009)"
   local agent=takecare-doc-smoke-doc gw="http://agentgateway-proxy.${NS}.svc"
-  check "the Doc's Agent lists the read tools of its two connectors, every reference with toolNames" \
-    bash -c "for _ in \$(seq 30); do kubectl -n kagent get agent ${agent} >/dev/null 2>&1 && break; sleep 2; done; t=\$(kubectl -n kagent get agent ${agent} -o jsonpath='{range .spec.declarative.tools[*]}{.mcpServer.name}={.mcpServer.toolNames}{\"\\n\"}{end}'); [[ \$(grep -c '=\\[\"' <<<\"\$t\") == 2 && \"\$t\" == *pods_list* && \"\$t\" == *execute_query* ]]"
+  check "the Doc's Agent lists the read tools of its three connectors, every reference with toolNames" \
+    bash -c "for _ in \$(seq 30); do kubectl -n kagent get agent ${agent} >/dev/null 2>&1 && break; sleep 2; done; t=\$(kubectl -n kagent get agent ${agent} -o jsonpath='{range .spec.declarative.tools[*]}{.mcpServer.name}={.mcpServer.toolNames}{\"\\n\"}{end}'); [[ \$(grep -c '=\\[\"' <<<\"\$t\") == 3 && \"\$t\" == *pods_list* && \"\$t\" == *execute_query* && \"\$t\" == *blast_radius* ]]"
+  check "the Doc's gateway policy for the map connector lets its five read tools through (spec 08 §9)" \
+    test "$(kubectl -n "$NS" get agentgatewaypolicy role-doc-smoke-doc-mcp-map -o jsonpath='{.spec.backend.mcp.authorization.policy.matchExpressions[0]}')" = 'mcp.tool.name in ["blast_radius", "entry", "map_at", "neighbours", "path"]'
   check "the Agent's content-capture switches follow the platform" \
     bash -c "want=\$(kubectl get takecareplatform main -o jsonpath='{.spec.observability.captureContent}'); for v in ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS TRACELOOP_TRACE_CONTENT; do [[ \$(kubectl -n kagent get agent ${agent} -o jsonpath=\"{.spec.declarative.deployment.env[?(@.name=='\$v')].value}\") == \"\${want:-false}\" ]] || exit 1; done"
   check "EngineReady=True: the agent's card answers through the gateway's A2A route" \
@@ -538,10 +540,10 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=69 install ;;
-  upgrade) CHECKS_EXPECTED=69 upgrade ;;
+  install) CHECKS_EXPECTED=70 install ;;
+  upgrade) CHECKS_EXPECTED=70 upgrade ;;
   status) status ;;
   down) down ;;
-  all) up; CHECKS_EXPECTED=69 install; CHECKS_EXPECTED=69 upgrade ;;
+  all) up; CHECKS_EXPECTED=70 install; CHECKS_EXPECTED=70 upgrade ;;
   *) echo "usage: $0 [up|install|upgrade|status|down|all]"; exit 2 ;;
 esac

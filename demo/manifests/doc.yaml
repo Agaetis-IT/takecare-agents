@@ -17,6 +17,7 @@ spec:
     knowledge: [incidents, runbooks, vendor]
     changes: [deployments]
     tickets: [support]
+    map: [map]
     report: report
   report:
     practitioner: on-call

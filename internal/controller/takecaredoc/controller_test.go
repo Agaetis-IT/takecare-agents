@@ -578,3 +578,28 @@ func TestConfigurationErrors(t *testing.T) {
 		t.Error("a second Doc gets an agent")
 	}
 }
+
+// ADR 0015 §1, spec 08 §9 (1): the Map's read tools reach the agent at
+// every level, and the instructions name the Map.
+func TestMapIsGivenAtEveryLevel(t *testing.T) {
+	f := start(t)
+	f.platform(t)
+	f.connector(t, k8sConnector, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, read("pods_list"), true)
+	f.connector(t, "map", []v1alpha1.ConnectorType{v1alpha1.ConnectorMap}, read("blast_radius", "entry", "map_at", "neighbours", "path"), true)
+	f.doc(t, "doc", func(d *v1alpha1.TakeCareDoc) {
+		d.Spec.Level = v1alpha1.LevelApprentice
+		d.Spec.Connectors = v1alpha1.DocConnectors{Cluster: []string{k8sConnector}, Map: []string{"map"}}
+	})
+	eventually(t, "the Apprentice agent gets the Map's five read tools", func() (bool, string) {
+		got := strings.Join(f.agentTools(t)[agent+"-map"], ",")
+		return got == "blast_radius,entry,map_at,neighbours,path", got
+	})
+	eventually(t, "the instructions name the Map", func() (bool, string) {
+		cm, err := f.get(schema.GroupVersionKind{Version: "v1", Kind: kindConfigMap}, engineNS, agent+"-instructions")
+		if err != nil {
+			return false, err.Error()
+		}
+		text, _, _ := unstructured.NestedString(cm.Object, "data", "instructions.md")
+		return strings.Contains(text, "The Map of the ground"), text
+	})
+}
