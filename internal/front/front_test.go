@@ -107,6 +107,7 @@ func write(t *testing.T, path string, data []byte) {
 type fixture struct {
 	ca       *authority
 	dir      string
+	front    *Front
 	srv      *httptest.Server
 	upstream *httptest.Server
 	// auth is the path and the Authorization header the upstream received.
@@ -114,7 +115,10 @@ type fixture struct {
 }
 
 // start runs the front over TLS in front of a fake MCP server.
-func start(t *testing.T) *fixture {
+func start(t *testing.T) *fixture { return startWith(t, nil) }
+
+// startWith runs the front with a /guardz handler.
+func startWith(t *testing.T, guardz http.Handler) *fixture {
 	t.Helper()
 	f := &fixture{ca: newAuthority(t, "takecare test CA"), dir: t.TempDir(), auth: make(chan string, 4)}
 	f.upstream = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -126,10 +130,11 @@ func start(t *testing.T) *fixture {
 	write(t, f.path("ca.crt"), f.ca.pem)
 	up, _ := url.Parse(f.upstream.URL)
 	fr, err := New(Config{Upstream: up, CertFile: f.path("tls.crt"), KeyFile: f.path("tls.key"), CAFile: f.path("ca.crt"),
-		ClientNames: []string{adminName}, Logger: slog.New(slog.DiscardHandler)})
+		ClientNames: []string{adminName}, Logger: slog.New(slog.DiscardHandler), Guard: guardz})
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.front = fr
 	f.srv = httptest.NewUnstartedServer(fr.Handler())
 	f.srv.TLS = fr.TLSConfig()
 	f.srv.StartTLS()

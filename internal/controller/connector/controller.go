@@ -40,6 +40,7 @@ import (
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/apply"
+	"github.com/agaetis-it/takecare-agents/internal/guard"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
 )
 
@@ -404,38 +405,6 @@ func rank(c v1alpha1.ToolClass) int {
 	}
 }
 
-// forbiddenProbe is one question the read-only guard asks the authorization
-// API about the add-on's ServiceAccount.
-type forbiddenProbe struct {
-	group, resource, subresource, verb, name string
-	what                                     string
-}
-
-const (
-	verbCreate   = "create"
-	resourcePods = "pods"
-)
-
-// forbiddenProbes samples what the read-only guard forbids (spec 04): a
-// detection of drift at run time, by sampling. The proof, for the add-ons
-// the chart renders, is the render test on their Roles.
-var forbiddenProbes = []forbiddenProbe{
-	{"", "secrets", "", "get", "", "read Secrets"},
-	{"", "secrets", "", "list", "", "list Secrets"},
-	{"", resourcePods, "exec", verbCreate, "", "exec into pods"},
-	{"", resourcePods, "attach", verbCreate, "", "attach to pods"},
-	{"", resourcePods, "portforward", verbCreate, "", "port-forward to pods"},
-	{"", resourcePods, "", "delete", "", "delete pods"},
-	{"", resourcePods, "", "update", "", "update pods"},
-	{"", "configmaps", "", verbCreate, "", "create ConfigMaps"},
-	{"apps", "deployments", "", "patch", "", "patch Deployments"},
-	{"", "serviceaccounts", "token", verbCreate, "", "mint ServiceAccount tokens"},
-	{"", "users", "", "impersonate", "", "impersonate users"},
-	// A wildcard shows as a yes on a resource and a verb that do not exist.
-	{"takecare.agaetis.fr", "takecare-guard-probe", "", "get", "", "a wildcard on resources"},
-	{"", resourcePods, "", "takecare-guard-probe", "", "a wildcard on verbs"},
-}
-
 // readOnlyGuard asks the authorization API, for the add-on's ServiceAccount
 // (spec.mcp.addon) in every declared namespace and at the cluster scope,
 // whether it may do what the read-only guard forbids, and whether it may
@@ -446,48 +415,26 @@ func (r *Reconciler) readOnlyGuard(ctx context.Context, c *v1alpha1.TakeCareConn
 		return nil
 	}
 	sa := fmt.Sprintf("system:serviceaccount:%s:%s%s", r.OperatorNamespace, addonNamePrefix, c.Spec.MCP.Addon)
-	namespaces := []string{""} // cluster scope first: a ClusterRoleBinding
+	namespaces := make([]string, 0, len(c.Spec.Kubernetes.Namespaces))
 	for _, ns := range c.Spec.Kubernetes.Namespaces {
 		namespaces = append(namespaces, string(ns))
 	}
-	var violations, missing []string
-	for _, ns := range namespaces {
-		for _, p := range forbiddenProbes {
-			allowed, err := r.can(ctx, sa, ns, p.group, p.resource, p.subresource, p.verb)
-			if err != nil {
-				return err
-			}
-			if allowed {
-				violations = append(violations, where(p.what, ns))
-			}
-		}
-		if ns == "" {
-			continue
-		}
-		allowed, err := r.can(ctx, sa, ns, "", resourcePods, "", "list")
-		if err != nil {
-			return err
-		}
-		if !allowed {
-			missing = append(missing, fmt.Sprintf("list pods in %s", ns))
-		}
+	v, err := guard.Check(ctx, func(ctx context.Context, ns, group, resource, subresource, verb string) (bool, error) {
+		return r.can(ctx, sa, ns, group, resource, subresource, verb)
+	}, namespaces)
+	if err != nil {
+		return err
 	}
+	violations, missing := v.Violations, v.Missing
 	switch {
 	case len(violations) > 0:
 		st.set(ConditionReadOnlyGuard, false, ReasonReadOnlyGuardViolated, fmt.Sprintf("the ServiceAccount %s may %s: the read-only guard forbids it (spec 04)", sa, strings.Join(violations, ", ")))
 	case len(missing) > 0:
 		st.set(ConditionReadOnlyGuard, false, ReasonRBACMissing, fmt.Sprintf("the ServiceAccount %s cannot %s: the add-on's Roles do not cover spec.kubernetes.namespaces", sa, strings.Join(missing, ", ")))
 	default:
-		st.set(ConditionReadOnlyGuard, true, ReasonReady, fmt.Sprintf("%s holds nothing the read-only guard forbids in %d namespace(s) and at the cluster scope (sampled)", sa, len(namespaces)-1))
+		st.set(ConditionReadOnlyGuard, true, ReasonReady, fmt.Sprintf("%s holds nothing the read-only guard forbids in %d namespace(s) and at the cluster scope (sampled)", sa, len(namespaces)))
 	}
 	return nil
-}
-
-func where(what, ns string) string {
-	if ns == "" {
-		return what + " cluster-wide"
-	}
-	return what + " in " + ns
 }
 
 func (r *Reconciler) can(ctx context.Context, user, namespace, group, resource, subresource, verb string) (bool, error) {
