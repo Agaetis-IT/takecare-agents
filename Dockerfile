@@ -5,7 +5,7 @@
 # Base images are pinned in hack/versions.env and passed by the Makefile
 # (make docker-build, make docker-buildx); there is no default on purpose.
 # COMPONENT names the binary under cmd/ (operator, mcp-report-slack, demo-app,
-# mcp-corpus, mcp-map): one Dockerfile, one image per component.
+# mcp-corpus, mcp-map, mcp-front): one Dockerfile, one image per component.
 ARG GO_BUILD_IMAGE
 ARG RUNTIME_IMAGE
 ARG GO_LICENSES_VERSION
