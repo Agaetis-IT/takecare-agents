@@ -19,8 +19,12 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/guard"
 )
 
-// guardTimeout bounds one run of the check.
-const guardTimeout = 10 * time.Second
+// guardTimeout bounds one run of the check; errorKeep, how long a check
+// that failed is served.
+const (
+	guardTimeout = 10 * time.Second
+	errorKeep    = time.Minute
+)
 
 // Guard is /guardz (ADR 0016 §4): the read-only guard's check of the pod's
 // own ServiceAccount with SelfSubjectAccessReviews, which every
@@ -60,7 +64,7 @@ func (g *Guard) now() time.Time {
 // answered the reviews.
 func (g *Guard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	g.mu.Lock()
-	if g.last == nil || g.now().Sub(g.last.CheckedAt) >= g.Interval {
+	if g.last == nil || g.now().Sub(g.last.CheckedAt) >= g.keep() {
 		g.refresh(r.Context())
 	}
 	body := *g.last
@@ -70,6 +74,16 @@ func (g *Guard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		code = http.StatusServiceUnavailable
 	}
 	writeJSON(w, code, body)
+}
+
+// keep is how long the last verdict is served: Interval, or at most a
+// minute when it is an error, so that one API blip does not read as an
+// unavailable guard for the whole interval. The caller holds mu.
+func (g *Guard) keep() time.Duration {
+	if g.last.Error != "" {
+		return min(g.Interval, errorKeep)
+	}
+	return g.Interval
 }
 
 // refresh runs the check; the caller holds mu.

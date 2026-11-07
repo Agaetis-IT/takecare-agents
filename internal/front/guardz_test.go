@@ -89,6 +89,11 @@ func TestGuardz(t *testing.T) {
 	if code, body = read(); code != http.StatusServiceUnavailable || body.Error == "" {
 		t.Errorf("without a verdict: %d %+v", code, body)
 	}
+	// After an error, the next request a minute later asks again.
+	g.Client, now = fakeAPI(&allowed, &reviews), now.Add(time.Minute)
+	if code, body = read(); code != http.StatusOK || body.Error != "" {
+		t.Errorf("a minute after an error: %d %+v", code, body)
+	}
 }
 
 // /guardz is on the mTLS endpoint, for an accepted client, never on the
