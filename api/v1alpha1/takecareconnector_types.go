@@ -39,6 +39,7 @@ const (
 // +kubebuilder:validation:XValidation:rule="!has(self.report) || 'report' in self.types",message="spec.report is only valid for a connector of type report"
 // +kubebuilder:validation:XValidation:rule="!('cluster' in self.types) || has(self.kubernetes)",message="a connector of type cluster must declare spec.kubernetes"
 // +kubebuilder:validation:XValidation:rule="!has(self.kubernetes) || 'cluster' in self.types",message="spec.kubernetes is only valid for a connector of type cluster"
+// +kubebuilder:validation:XValidation:rule="!has(self.cluster) || (has(self.mcp.url) && !has(self.mcp.addon) && self.mcp.url.startsWith('https://') && 'cluster' in self.types)",message="cluster needs an https mcp.url, no addon, and the cluster type"
 type TakeCareConnectorSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	// +listType=set
@@ -52,6 +53,11 @@ type TakeCareConnectorSpec struct {
 	// What the server's ServiceAccount may read. Type cluster only.
 	// +optional
 	Kubernetes *KubernetesSpec `json:"kubernetes,omitempty"`
+
+	// A workload cluster read through its front (ADR 0016): type cluster by
+	// mcp.url only, reached with mTLS.
+	// +optional
+	Cluster *ClusterSpec `json:"cluster,omitempty"`
 
 	// Overrides of the default tool classification.
 	// +listType=map
@@ -88,6 +94,37 @@ type HeaderFrom struct {
 	// +kubebuilder:validation:MinLength=1
 	Name         string       `json:"name"`
 	SecretKeyRef SecretKeyRef `json:"secretKeyRef"`
+}
+
+// ClusterSpec names a workload cluster and the TLS material that reaches
+// its front, from Secrets in the connector's namespace.
+type ClusterSpec struct {
+	// The name the cluster is registered under, unique among the
+	// connectors; it qualifies the cluster's namespaces.
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	Name string `json:"name"`
+
+	TLS ClusterTLS `json:"tls"`
+}
+
+// ClusterTLS is the mTLS material of a cluster connector.
+type ClusterTLS struct {
+	// The Secret holding ca.crt, the CA the front's certificate chains to.
+	CASecretRef SecretRef `json:"caSecretRef"`
+	// The Secret holding tls.crt and tls.key, the client certificate the
+	// gateway and the operator present.
+	ClientCertSecretRef SecretRef `json:"clientCertSecretRef"`
+	// The name sent as SNI and verified in the front's certificate; the
+	// URL's host by default.
+	// +optional
+	ServerName string `json:"serverName,omitempty"`
+}
+
+// SecretRef names a Secret in the referring object's namespace.
+type SecretRef struct {
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
 }
 
 // KubernetesSpec bounds the read-only RBAC generated for a cluster connector.

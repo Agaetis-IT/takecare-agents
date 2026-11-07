@@ -34,6 +34,13 @@ type Config struct {
 	NoProxy    string
 	// Timeout bounds every request of the client.
 	Timeout time.Duration
+	// RootCAs, when set, is the only trust: a remote cluster's front is
+	// trusted by its own CA, never by the system roots (ADR 0016).
+	RootCAs *x509.CertPool
+	// ClientCertificate is presented to the server (mTLS); ServerName is
+	// the name sent and verified, the URL's host when empty.
+	ClientCertificate *tls.Certificate
+	ServerName        string
 }
 
 // FromEnv reads the configuration the chart passes through the environment.
@@ -59,6 +66,13 @@ func firstEnv(keys ...string) string {
 // TLSConfig returns a TLS configuration trusting the system roots and, when
 // set, the CA bundle.
 func (c Config) TLSConfig() (*tls.Config, error) {
+	if c.RootCAs != nil {
+		cfg := &tls.Config{RootCAs: c.RootCAs, ServerName: c.ServerName, MinVersion: tls.VersionTLS12}
+		if c.ClientCertificate != nil {
+			cfg.Certificates = []tls.Certificate{*c.ClientCertificate}
+		}
+		return cfg, nil
+	}
 	pool, err := x509.SystemCertPool()
 	if err != nil || pool == nil {
 		pool = x509.NewCertPool()

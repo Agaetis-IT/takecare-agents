@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -29,6 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -119,6 +121,10 @@ type Reconciler struct {
 	HTTP *http.Client
 	// Now is replaceable in tests.
 	Now func() time.Time
+
+	mu sync.Mutex
+	// clients holds each remote cluster connector's client (ADR 0016).
+	clients map[types.UID]cachedClient
 }
 
 // Reconcile computes the connector's state from its spec and the server it
@@ -223,6 +229,17 @@ func (r *Reconciler) endpoint(ctx context.Context, c *v1alpha1.TakeCareConnector
 			return nil, nil
 		}
 		ep.Headers = headers
+		if c.Spec.Cluster != nil {
+			hc, problem, err := r.clusterClient(ctx, c)
+			if err != nil {
+				return nil, err
+			}
+			if problem != "" {
+				st.set(v1alpha1.ConditionReachable, false, ReasonTLSMaterialMissing, problem)
+				return nil, nil
+			}
+			ep.HTTP = hc
+		}
 	}
 	return ep, nil
 }
@@ -294,7 +311,7 @@ func (r *Reconciler) applyBackend(ctx context.Context, c *v1alpha1.TakeCareConne
 		"takecare.agaetis.fr/connector": c.Name,
 	})
 	obj.SetOwnerReferences([]metav1.OwnerReference{*metav1.NewControllerRef(c, v1alpha1.GroupVersion.WithKind("TakeCareConnector"))})
-	target := map[string]any{"name": c.Name}
+	target := map[string]any{keyName: c.Name}
 	if c.Spec.MCP.Addon != "" {
 		target["static"] = map[string]any{
 			"host": fmt.Sprintf("%s%s.%s.svc.cluster.local", addonNamePrefix, c.Spec.MCP.Addon, r.OperatorNamespace),
@@ -303,10 +320,13 @@ func (r *Reconciler) applyBackend(ctx context.Context, c *v1alpha1.TakeCareConne
 	} else {
 		host, port, path, tls := splitURL(c.Spec.MCP.URL)
 		static := map[string]any{"host": host, "port": port, "path": path, "protocol": "StreamableHTTP"}
-		_ = tls // TLS to a customer's server is the gateway's backend policy, PR 4
+		_ = tls // TLS to a customer's own server: its backend policy is a later step
 		target["static"] = static
 	}
 	obj.Object["spec"] = map[string]any{"mcp": map[string]any{"targets": []any{target}}}
+	if c.Spec.Cluster != nil {
+		obj.Object["spec"].(map[string]any)["policies"] = map[string]any{"tls": backendTLS(c)}
+	}
 	if err := apply.Strict(ctx, r.Client, obj); err != nil {
 		return err
 	}
@@ -410,6 +430,10 @@ func rank(c v1alpha1.ToolClass) int {
 // whether it may do what the read-only guard forbids, and whether it may
 // read pods at all.
 func (r *Reconciler) readOnlyGuard(ctx context.Context, c *v1alpha1.TakeCareConnector, st *status) error {
+	if c.Spec.Cluster != nil {
+		st.set(ConditionReadOnlyGuard, false, ReasonGuardPending, "the read-only guard of a remote cluster is read from its front's /guardz: not implemented yet")
+		return nil
+	}
 	if c.Spec.MCP.Addon == "" {
 		st.set(ConditionReadOnlyGuard, true, ReasonNotApplicable, "a connector by url has no ServiceAccount to check")
 		return nil
@@ -661,9 +685,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return r.connectorsMatching(ctx, func(c v1alpha1.TakeCareConnector) bool { return c.Spec.MCP.Addon == addon })
 	})
 	toConnectorsWithSecret := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
-		return r.connectorsMatching(ctx, func(c v1alpha1.TakeCareConnector) bool {
-			return slices.ContainsFunc(c.Spec.MCP.HeadersFrom, func(h v1alpha1.HeaderFrom) bool { return h.SecretKeyRef.Name == o.GetName() })
-		})
+		return r.connectorsMatching(ctx, func(c v1alpha1.TakeCareConnector) bool { return usesSecret(c, o.GetName()) })
 	})
 	toConnectorsOfService := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
 		addon := strings.TrimPrefix(o.GetLabels()[discoveryv1.LabelServiceName], addonNamePrefix)

@@ -59,6 +59,55 @@ spec:
             description: TakeCareConnectorSpec declares one MCP server reachable through
               the gateway (spec 05).
             properties:
+              cluster:
+                description: |-
+                  A workload cluster read through its front (ADR 0016): type cluster by
+                  mcp.url only, reached with mTLS.
+                properties:
+                  name:
+                    description: |-
+                      The name the cluster is registered under, unique among the
+                      connectors; it qualifies the cluster's namespaces.
+                    maxLength: 63
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    type: string
+                  tls:
+                    description: ClusterTLS is the mTLS material of a cluster connector.
+                    properties:
+                      caSecretRef:
+                        description: The Secret holding ca.crt, the CA the front's
+                          certificate chains to.
+                        properties:
+                          name:
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      clientCertSecretRef:
+                        description: |-
+                          The Secret holding tls.crt and tls.key, the client certificate the
+                          gateway and the operator present.
+                        properties:
+                          name:
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      serverName:
+                        description: |-
+                          The name sent as SNI and verified in the front's certificate; the
+                          URL's host by default.
+                        type: string
+                    required:
+                    - caSecretRef
+                    - clientCertSecretRef
+                    type: object
+                required:
+                - name
+                - tls
+                type: object
               description:
                 type: string
               kubernetes:
@@ -243,6 +292,9 @@ spec:
               rule: '!(''cluster'' in self.types) || has(self.kubernetes)'
             - message: spec.kubernetes is only valid for a connector of type cluster
               rule: '!has(self.kubernetes) || ''cluster'' in self.types'
+            - message: cluster needs an https mcp.url, no addon, and the cluster type
+              rule: '!has(self.cluster) || (has(self.mcp.url) && !has(self.mcp.addon)
+                && self.mcp.url.startsWith(''https://'') && ''cluster'' in self.types)'
           status:
             description: TakeCareConnectorStatus is the observed state of a connector.
             properties:
