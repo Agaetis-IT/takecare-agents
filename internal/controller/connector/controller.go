@@ -631,6 +631,9 @@ func (r *Reconciler) writeStatus(ctx context.Context, c *v1alpha1.TakeCareConnec
 		c.Status.LastDiscovery = &now
 	}
 	c.Status.Conditions = st.conditions
+	if st.mapRevision != "" {
+		c.Status.MapRevision = st.mapRevision
+	}
 	if err := r.Status().Update(ctx, c); err != nil {
 		return fmt.Errorf("update status of connector %s: %w", c.Name, err)
 	}
@@ -644,6 +647,8 @@ type status struct {
 	overrides  []v1alpha1.ToolClassChange
 	discovered bool
 	generation int64
+	// mapRevision is the revision a map add-on serves, when it said.
+	mapRevision string
 }
 
 func (s *status) set(condType string, ok bool, reason, message string) {
@@ -774,9 +779,25 @@ func ResolveDestination(c *v1alpha1.TakeCareConnector, name string) (string, err
 // URL with its headers from Secrets. It never checks readiness: a call that
 // fails says why.
 func ReportEndpoint(ctx context.Context, c client.Reader, conn *v1alpha1.TakeCareConnector) (mcp.Endpoint, error) {
+	return callEndpoint(ctx, c, conn, v1alpha1.ConnectorReport)
+}
+
+// MapEndpoint is where the operator calls a map connector's entry tool, like
+// ReportEndpoint: the add-on's Service, or the declared URL with its
+// headers. ReadTools are its tools of class read.
+func MapEndpoint(ctx context.Context, c client.Reader, conn *v1alpha1.TakeCareConnector) (mcp.Endpoint, error) {
+	ep, err := callEndpoint(ctx, c, conn, v1alpha1.ConnectorMap)
+	ep.ReadTools = map[string]bool{}
+	for _, t := range conn.Status.Tools {
+		ep.ReadTools[t.Name] = t.Class == v1alpha1.ToolRead
+	}
+	return ep, err
+}
+
+func callEndpoint(ctx context.Context, c client.Reader, conn *v1alpha1.TakeCareConnector, t v1alpha1.ConnectorType) (mcp.Endpoint, error) {
 	ep := mcp.Endpoint{Types: conn.Spec.Types, Addon: conn.Spec.MCP.Addon != ""}
-	if !slices.Contains(conn.Spec.Types, v1alpha1.ConnectorReport) {
-		return ep, fmt.Errorf("connector %s is not a report connector", conn.Name)
+	if !slices.Contains(conn.Spec.Types, t) {
+		return ep, fmt.Errorf("connector %s is not a %s connector", conn.Name, t)
 	}
 	if conn.Spec.MCP.Addon != "" {
 		ep.URL = addonURL(conn.Spec.MCP.Addon, conn.Namespace, addonPath)

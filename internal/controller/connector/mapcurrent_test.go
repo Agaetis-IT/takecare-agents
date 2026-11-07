@@ -102,6 +102,9 @@ func TestMapCurrent(t *testing.T) {
 	if got := h.statusz.paths.Load().(string); got != "takecare-addon-map.takecare-system.svc:8080/statusz" {
 		t.Errorf("read %s", got)
 	}
+	if got := h.get("map").Status.MapRevision; got != revGood {
+		t.Errorf("status.mapRevision = %q", got)
+	}
 	step(statusBad, metav1.ConditionFalse, ReasonInvalidRevision, "does not validate: map/runbook/broken.yaml")
 	step(statusBad, metav1.ConditionFalse, ReasonInvalidRevision, "serving the last valid revision "+revGood)
 	h.saidOnce(EventMapRevisionInvalid)

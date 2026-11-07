@@ -42,8 +42,13 @@ const (
 	podsListLog = "pods_list,pods_log"
 	scope       = v1alpha1.Namespace("shop")
 	// k8sConnector is the cluster connector's name in these tests.
-	k8sConnector  = "kubernetes"
-	kindConfigMap = "ConfigMap"
+	k8sConnector = "kubernetes"
+	mapConnector = "map"
+	// billingConnector declares a namespace outside the scope, never
+	// discovered.
+	billingConnector = "kubernetes-billing"
+	billingNS        = v1alpha1.Namespace("billing")
+	kindConfigMap    = "ConfigMap"
 )
 
 var (
@@ -74,6 +79,8 @@ type fixture struct {
 	clock  *clock
 	answer atomic.Bool
 	probed atomic.Value
+	// maps routes the Doc's entry calls to a test Map server.
+	maps *mapCaller
 }
 
 func start(t *testing.T) *fixture {
@@ -95,7 +102,7 @@ func start(t *testing.T) *fixture {
 			t.Fatal(err)
 		}
 	}
-	f := &fixture{c: c, clock: &clock{now: time.Now()}}
+	f := &fixture{c: c, clock: &clock{now: time.Now()}, maps: &mapCaller{}}
 	skip := true
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{Scheme: scheme, Metrics: metricsserver.Options{BindAddress: "0"}, Controller: config.Controller{SkipNameValidation: &skip}})
 	if err != nil {
@@ -105,6 +112,7 @@ func start(t *testing.T) *fixture {
 		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("test"),
 		OperatorNamespace: ns, EngineNamespace: engineNS,
 		Engine: &kagent0103.Agents{Client: mgr.GetClient()},
+		MCP:    f.maps,
 		Probe: func(_ context.Context, url string) error {
 			f.probed.Store(url)
 			if f.answer.Load() {
@@ -585,10 +593,10 @@ func TestMapIsGivenAtEveryLevel(t *testing.T) {
 	f := start(t)
 	f.platform(t)
 	f.connector(t, k8sConnector, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, read("pods_list"), true)
-	f.connector(t, "map", []v1alpha1.ConnectorType{v1alpha1.ConnectorMap}, read("blast_radius", "entry", "map_at", "neighbours", "path"), true)
+	f.connector(t, mapConnector, []v1alpha1.ConnectorType{v1alpha1.ConnectorMap}, read("blast_radius", "entry", "map_at", "neighbours", "path"), true)
 	f.doc(t, "doc", func(d *v1alpha1.TakeCareDoc) {
 		d.Spec.Level = v1alpha1.LevelApprentice
-		d.Spec.Connectors = v1alpha1.DocConnectors{Cluster: []string{k8sConnector}, Map: []string{"map"}}
+		d.Spec.Connectors = v1alpha1.DocConnectors{Cluster: []string{k8sConnector}, Map: []string{mapConnector}}
 	})
 	eventually(t, "the Apprentice agent gets the Map's five read tools", func() (bool, string) {
 		got := strings.Join(f.agentTools(t)[agent+"-map"], ",")

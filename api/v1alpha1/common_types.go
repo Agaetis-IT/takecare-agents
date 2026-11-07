@@ -160,7 +160,7 @@ type RoleStatus struct {
 }
 
 // BlindSpotReason says why an entity is not covered.
-// +kubebuilder:validation:Enum=NoAccess;ConnectorNotReady
+// +kubebuilder:validation:Enum=NoAccess;ConnectorNotReady;NotInMap;NotValidated
 type BlindSpotReason string
 
 // Blind spot reasons.
@@ -169,6 +169,10 @@ const (
 	BlindSpotNoAccess BlindSpotReason = "NoAccess"
 	// BlindSpotConnectorNotReady: the connector that reads it is not ready.
 	BlindSpotConnectorNotReady BlindSpotReason = "ConnectorNotReady"
+	// BlindSpotNotInMap: the entity's key is not in the Map.
+	BlindSpotNotInMap BlindSpotReason = "NotInMap"
+	// BlindSpotNotValidated: the entity's entry is proposed, not validated.
+	BlindSpotNotValidated BlindSpotReason = "NotValidated"
 )
 
 // BlindSpot is an entity of the scope the role cannot read.

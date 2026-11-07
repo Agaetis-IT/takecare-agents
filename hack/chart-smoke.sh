@@ -343,7 +343,7 @@ kind: TakeCareDoc
 metadata: { name: smoke-doc, namespace: ${NS} }
 spec:
   level: Practitioner
-  scope: { namespaces: [demo-apps] }
+  scope: { namespaces: [demo-apps], entities: [service/billing-api] }
   contentTools: [pods_log]
   connectors: { cluster: [kubernetes], metrics: [prometheus], map: [map], report: report }
   report: { practitioner: on-call }
@@ -377,6 +377,8 @@ EOF
     bash -c "want=\$(kubectl get takecareplatform main -o jsonpath='{.spec.observability.captureContent}'); for v in ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS TRACELOOP_TRACE_CONTENT; do [[ \$(kubectl -n kagent get agent ${agent} -o jsonpath=\"{.spec.declarative.deployment.env[?(@.name=='\$v')].value}\") == \"\${want:-false}\" ]] || exit 1; done"
   check "EngineReady=True: the agent's card answers through the gateway's A2A route" \
     wait_condition_long takecaredoc smoke-doc EngineReady True 300
+  check "the smoke Doc's scope.entities is covered through the Map's entry tool: no blind spot (spec 08 §7)" \
+    bash -c "[[ \$(kubectl -n ${NS} get takecaredoc smoke-doc -o jsonpath='{.spec.scope.entities[0]}') == service/billing-api && -z \$(kubectl -n ${NS} get takecaredoc smoke-doc -o jsonpath='{.status.blindSpots}') ]]"
   kubectl -n kagent delete pod smoke-a2a --ignore-not-found >/dev/null
   kubectl -n kagent run smoke-a2a --image="$SMOKE_CURL_IMAGE" --restart=Never --command -- sleep 600 >/dev/null
   kubectl -n kagent wait pod/smoke-a2a --for=condition=Ready --timeout=120s >/dev/null
@@ -540,10 +542,10 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=70 install ;;
-  upgrade) CHECKS_EXPECTED=70 upgrade ;;
+  install) CHECKS_EXPECTED=71 install ;;
+  upgrade) CHECKS_EXPECTED=71 upgrade ;;
   status) status ;;
   down) down ;;
-  all) up; CHECKS_EXPECTED=70 install; CHECKS_EXPECTED=70 upgrade ;;
+  all) up; CHECKS_EXPECTED=71 install; CHECKS_EXPECTED=71 upgrade ;;
   *) echo "usage: $0 [up|install|upgrade|status|down|all]"; exit 2 ;;
 esac

@@ -172,6 +172,10 @@ type TakeCareConnectorStatus struct {
 
 	// +optional
 	LastDiscovery *metav1.Time `json:"lastDiscovery,omitempty"`
+
+	// The Map revision a map add-on serves, read from its status page.
+	// +optional
+	MapRevision string `json:"mapRevision,omitempty"`
 }
 
 // ToolStatus is a discovered tool and its class.

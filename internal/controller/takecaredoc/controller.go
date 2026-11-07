@@ -118,6 +118,8 @@ type Reconciler struct {
 	EngineNamespace   string
 	Engine            engine.Agents
 	Probe             CardProbe
+	// MCP calls the Map's entry tool to cover scope.entities.
+	MCP MapCaller
 	// Now is replaceable in tests.
 	Now func() time.Time
 
@@ -130,6 +132,8 @@ type Reconciler struct {
 	// status' observedGeneration, like the Doc itself, may be read stale
 	// from the cache.
 	said map[string]said
+	// entries caches the Map's answers per connector and revision.
+	entries map[string]entryCache
 }
 
 // said is what an event last said, and for which generation.
@@ -574,6 +578,10 @@ type findings struct {
 	// binding order.
 	declared []declared
 	seen     map[string]bool
+	// entities are the Map's answers for scope.entities; mapProblem says,
+	// when set, why the Map could not be asked.
+	entities   map[v1alpha1.EntityKey]entryInfo
+	mapProblem mapProblem
 }
 
 type declared struct {
@@ -624,6 +632,9 @@ func (r *Reconciler) connectors(ctx context.Context, d *v1alpha1.TakeCareDoc, st
 		}
 	}
 	if err := r.inspectReport(ctx, d, &f); err != nil {
+		return b, err
+	}
+	if err := r.lookupEntities(ctx, d, b, &f); err != nil {
 		return b, err
 	}
 	b.decide(d, f, st)
@@ -734,22 +745,29 @@ func (b *binding) cover(d *v1alpha1.TakeCareDoc, f findings) int {
 			covered++
 			continue
 		}
-		var by []string
-		for _, dc := range f.declared {
-			if slices.Contains(dc.namespaces, ns) && !slices.Contains(by, dc.connector) {
-				by = append(by, dc.connector)
-			}
-		}
-		spot := v1alpha1.BlindSpot{Entity: v1alpha1.EntityKey("environment/" + ns), Reason: v1alpha1.BlindSpotNoAccess}
-		spot.Message = fmt.Sprintf("The namespace `%s` (%s): no connector reads it.", ns, spot.Entity)
-		if len(by) > 0 {
-			spot.Reason = v1alpha1.BlindSpotConnectorNotReady
-			spot.Message = fmt.Sprintf("The namespace `%s` (%s): its connector %s is not given to the agent (never discovered, or no read tool).", ns, spot.Entity, strings.Join(by, ", "))
-		}
-		b.blindSpots = append(b.blindSpots, spot)
+		key := v1alpha1.EntityKey("environment/" + ns)
+		reason, why := f.unread(ns)
+		b.blindSpots = append(b.blindSpots, v1alpha1.BlindSpot{Entity: key, Reason: reason, Message: fmt.Sprintf("The namespace `%s` (%s): %s.", ns, key, why)})
 	}
+	covered += b.coverEntities(d, f, readable)
 	slices.SortFunc(b.blindSpots, func(x, y v1alpha1.BlindSpot) int { return strings.Compare(string(x.Entity), string(y.Entity)) })
 	return covered
+}
+
+// unread says why a namespace nothing given reads is not read: NoAccess
+// when no bound cluster connector declares it, ConnectorNotReady when the
+// ones that do are not given.
+func (f findings) unread(ns v1alpha1.Namespace) (v1alpha1.BlindSpotReason, string) {
+	var by []string
+	for _, dc := range f.declared {
+		if slices.Contains(dc.namespaces, ns) && !slices.Contains(by, dc.connector) {
+			by = append(by, dc.connector)
+		}
+	}
+	if len(by) == 0 {
+		return v1alpha1.BlindSpotNoAccess, "no connector reads it"
+	}
+	return v1alpha1.BlindSpotConnectorNotReady, fmt.Sprintf("its connector %s is not given to the agent (never discovered, or no read tool)", strings.Join(by, ", "))
 }
 
 // blindSpotLines are the blind spots' sentences, for the instructions.
@@ -777,7 +795,7 @@ func (b *binding) decide(d *v1alpha1.TakeCareDoc, f findings, st *status) {
 	case covered == 0:
 		b.blocking = "nothing in the scope is covered: " + strings.Join(b.blindSpotLines(), " ")
 		// Connectors not discovered yet may come: keep what was rendered.
-		b.transient = !slices.ContainsFunc(b.blindSpots, func(s v1alpha1.BlindSpot) bool { return s.Reason == v1alpha1.BlindSpotNoAccess })
+		b.transient = !slices.ContainsFunc(b.blindSpots, func(s v1alpha1.BlindSpot) bool { return s.Reason != v1alpha1.BlindSpotConnectorNotReady })
 		st.set(v1alpha1.ConditionConnectorsReady, false, v1alpha1.ReasonBlindSpots, b.blocking)
 	case len(f.unavailable) > 0:
 		st.set(v1alpha1.ConditionConnectorsReady, false, ReasonConnectorNotReady, strings.Join(f.unavailable, "; "))

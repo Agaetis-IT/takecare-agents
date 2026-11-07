@@ -34,7 +34,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=11
+CHECKS_EXPECTED=12
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -113,6 +113,8 @@ run() {
     bash -c "[[ \"\$(kubectl -n $NS get takecareconnector map -o jsonpath='{.status.conditions[?(@.type==\"MapCurrent\")].status} {.status.conditions[?(@.type==\"MapCurrent\")].message}')\" =~ ^True\ serving\ revision\ [0-9a-f]+ ]]"
   check "the demo Doc's agent is given the map connector's five read tools (spec 08 §9)" \
     bash -c "[[ \$(kubectl -n kagent get agent takecare-doc-doc -o jsonpath='{.spec.declarative.tools[?(@.mcpServer.name==\"takecare-doc-doc-map\")].mcpServer.toolNames}') == '[\"blast_radius\",\"entry\",\"map_at\",\"neighbours\",\"path\"]' ]]"
+  check "the demo Doc's scope.entities is covered through the Map: no blind spot, ConnectorsReady=True (spec 08 §7)" \
+    bash -c "[[ -z \$(kubectl -n $NS get takecaredoc doc -o jsonpath='{.status.blindSpots}') && \$(kubectl -n $NS get takecaredoc doc -o jsonpath='{.spec.scope.entities[0]} {.status.conditions[?(@.type==\"ConnectorsReady\")].status}') == 'service/billing-api True' ]]"
   check "one investigation of demo-apps, Completed, for HighErrorRate" \
     bash -c "[[ \$(kubectl -n $NS get takecareinvestigations -l takecare.agaetis.fr/alert-namespace=demo-apps -o name | wc -l) -eq 1 && \$($get='{.status.phase} {.spec.alert.name}') == 'Completed HighErrorRate' ]]"
   check "completed less than 3 minutes after the alert fired (spec 02 AC 1)" \

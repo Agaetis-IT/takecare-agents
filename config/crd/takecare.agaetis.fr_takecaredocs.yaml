@@ -260,6 +260,8 @@ spec:
                       enum:
                       - NoAccess
                       - ConnectorNotReady
+                      - NotInMap
+                      - NotValidated
                       type: string
                   required:
                   - entity

@@ -10,6 +10,7 @@ spec:
   level: Practitioner
   scope:
     namespaces: [demo-apps]
+    entities: [service/billing-api]   # covered through the demo's Map
   contentTools: [pods_log]
   connectors:
     cluster: [kubernetes]
