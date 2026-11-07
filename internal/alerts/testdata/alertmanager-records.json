@@ -1,0 +1,59 @@
+[
+  {
+    "record": {
+      "name": "HighErrorRate",
+      "fingerprint": "a1b2c3d4e5f60718",
+      "service": "billing-api",
+      "namespace": "demo-apps",
+      "workload": "billing-api",
+      "firedAt": "2026-11-07T09:00:00Z",
+      "labels": {
+        "alertname": "HighErrorRate",
+        "namespace": "demo-apps",
+        "service": "billing-api",
+        "severity": "critical"
+      },
+      "annotations": {
+        "summary": "High error rate on billing-api"
+      },
+      "source": "alertmanager"
+    },
+    "state": "firing",
+    "silent": false
+  },
+  {
+    "record": {
+      "name": "PodNotReady",
+      "fingerprint": "b1b2c3d4e5f60718",
+      "namespace": "demo-apps",
+      "workload": "notifications-worker",
+      "firedAt": "2026-11-07T09:00:30Z",
+      "labels": {
+        "alertname": "PodNotReady",
+        "namespace": "demo-apps",
+        "pod": "notifications-worker-5c7b9d8f4-q8zrt",
+        "takecare_silent": "true"
+      },
+      "source": "alertmanager"
+    },
+    "state": "firing",
+    "silent": true
+  },
+  {
+    "record": {
+      "name": "KubeJobFailed",
+      "fingerprint": "c1b2c3d4e5f60718",
+      "namespace": "batch",
+      "workload": "nightly-backup",
+      "firedAt": "2026-11-07T08:00:00Z",
+      "labels": {
+        "alertname": "KubeJobFailed",
+        "job_name": "nightly-backup",
+        "namespace": "batch"
+      },
+      "source": "alertmanager"
+    },
+    "state": "resolved",
+    "silent": false
+  }
+]

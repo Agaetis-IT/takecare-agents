@@ -229,6 +229,7 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	if err := mgr.Add(&alertServer{addr: cfg.alertsAddr, handler: &alerts.Handler{
 		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), TokenSecret: cfg.alertsTokenSecret,
 		Namespace: cfg.operatorNamespace, Metrics: alertMetrics,
+		Resolver: &alerts.MapResolver{Client: mgr.GetClient(), HTTP: mcpClient, Namespace: cfg.operatorNamespace},
 	}}); err != nil {
 		return nil, fmt.Errorf("add the alert intake: %w", err)
 	}

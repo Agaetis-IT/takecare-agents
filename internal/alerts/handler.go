@@ -56,6 +56,7 @@ type Metrics struct {
 	Received prometheus.Counter
 	Ignored  *prometheus.CounterVec
 	Created  prometheus.Counter
+	Resolved *prometheus.CounterVec
 }
 
 // NewMetrics creates and registers the intake's metrics.
@@ -72,7 +73,11 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Metrics{Received: received, Ignored: ignored, Created: created}, nil
+	resolved, err := register(reg, prometheus.NewCounterVec(prometheus.CounterOpts{Name: "takecare_alerts_resolved_total", Help: "Firing alerts resolved to a Map entry at intake, by result: hit, miss, unavailable, none."}, []string{"result"}))
+	if err != nil {
+		return nil, err
+	}
+	return &Metrics{Received: received, Ignored: ignored, Created: created, Resolved: resolved}, nil
 }
 
 // register registers a collector, or returns the one already registered
@@ -109,6 +114,8 @@ type Handler struct {
 	Reader    client.Reader
 	Namespace string
 	Metrics   *Metrics
+	// Resolver finds a firing alert's Map entry; nil resolves nothing.
+	Resolver Resolver
 	// Now is replaceable in tests.
 	Now func() time.Time
 }
@@ -143,10 +150,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// resent alert is a duplicate). The metrics therefore count deliveries,
 	// not distinct alerts (spec 02 §1).
 	seen := map[string]*v1alpha1.TakeCareInvestigation{}
-	for _, a := range p.Alerts {
+	for _, in := range fromAlertmanager(p) {
 		h.Metrics.Received.Inc()
-		if err := h.handle(ctx, a, seen); err != nil {
-			logger.Error(err, "alert not recorded", "alertname", a.Labels[labelAlertName], "fingerprint", a.Fingerprint)
+		if err := h.handle(ctx, in, seen); err != nil {
+			logger.Error(err, "alert not recorded", "alertname", in.record.Name, "fingerprint", in.record.Fingerprint)
 			http.Error(w, "alert not recorded, retry", http.StatusServiceUnavailable)
 			return
 		}
@@ -181,13 +188,14 @@ func (h *Handler) ignore(reason string) { h.Metrics.Ignored.WithLabelValues(reas
 
 // handle turns one alert into a record, or not, and says why not. seen
 // holds the investigations this webhook created, by incident key.
-func (h *Handler) handle(ctx context.Context, a Alert, seen map[string]*v1alpha1.TakeCareInvestigation) error {
-	ns := a.Labels[labelNamespace]
-	if a.Status == "resolved" {
+func (h *Handler) handle(ctx context.Context, in incoming, seen map[string]*v1alpha1.TakeCareInvestigation) error {
+	a := in.record
+	ns := a.Namespace
+	if in.state == stateResolved {
 		h.ignore(ReasonNotFiring)
 		return h.resolve(ctx, a)
 	}
-	if a.Status != "firing" {
+	if in.state != stateFiring {
 		h.ignore(ReasonNotFiring)
 		return nil
 	}
@@ -203,7 +211,7 @@ func (h *Handler) handle(ctx context.Context, a Alert, seen map[string]*v1alpha1
 		h.ignore(reason)
 		return nil
 	}
-	name := InvestigationName(roleDoc, a.Fingerprint, a.StartsAt)
+	name := InvestigationName(roleDoc, a.Fingerprint, a.FiredAt.Time)
 	var existing v1alpha1.TakeCareInvestigation
 	switch err := h.reader().Get(ctx, client.ObjectKey{Namespace: h.Namespace, Name: name}, &existing); {
 	case err == nil:
@@ -223,8 +231,8 @@ func (h *Handler) handle(ctx context.Context, a Alert, seen map[string]*v1alpha1
 		h.ignore(ReasonCooldown)
 		return nil
 	}
-	workload := Workload(a.Labels)
-	key := IncidentKey(ns, workload)
+	a.Entity = h.entity(ctx, a)
+	key := IncidentKey(a)
 	if inv, ok := seen[key]; ok {
 		h.ignore(ReasonGrouped)
 		return h.fold(ctx, inv, a)
@@ -235,25 +243,23 @@ func (h *Handler) handle(ctx context.Context, a Alert, seen map[string]*v1alpha1
 		h.ignore(ReasonGrouped)
 		return h.fold(ctx, recent, a)
 	}
+	labels := map[string]string{
+		v1alpha1.LabelRole:           roleDoc,
+		v1alpha1.LabelFingerprint:    labelSafe(a.Fingerprint),
+		v1alpha1.LabelAlertNamespace: labelSafe(ns),
+		v1alpha1.LabelAlertName:      labelSafe(a.Name),
+		LabelIncident:                key,
+	}
+	if a.Entity != "" {
+		labels[v1alpha1.LabelAlertEntity] = labelSafe(strings.ReplaceAll(string(a.Entity), "/", "."))
+	}
 	inv := &v1alpha1.TakeCareInvestigation{
-		Name: name, Namespace: h.Namespace,
-		Labels: map[string]string{
-			v1alpha1.LabelRole:           roleDoc,
-			v1alpha1.LabelFingerprint:    labelSafe(a.Fingerprint),
-			v1alpha1.LabelAlertNamespace: labelSafe(ns),
-			v1alpha1.LabelAlertName:      labelSafe(a.Labels[labelAlertName]),
-			LabelIncident:                key,
-		},
+		Name: name, Namespace: h.Namespace, Labels: labels,
 		Spec: v1alpha1.TakeCareInvestigationSpec{
 			RoleRef: v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareDoc, Name: doc.Name},
-			Alert: v1alpha1.AlertRecord{
-				Name: a.Labels[labelAlertName], Fingerprint: a.Fingerprint,
-				Service: a.Labels[labelService], Namespace: ns, Workload: workload,
-				FiredAt: metav1.NewTime(a.StartsAt), Labels: a.Labels, Annotations: a.Annotations,
-				Source: v1alpha1.SourceAlertmanager,
-			},
-			Level:  effectiveLevel(doc.Spec.Level),
-			Silent: a.Labels[labelSilent] == "true",
+			Alert:   a,
+			Level:   effectiveLevel(doc.Spec.Level),
+			Silent:  in.silent,
 		},
 	}
 	if err := h.Client.Create(ctx, inv); err != nil {
@@ -281,7 +287,7 @@ const LabelIncident = "takecare.agaetis.fr/incident"
 // docFor finds the Doc whose scope and matchers take the alert. Milestone 1
 // runs one Doc per cluster (spec 02); when several Docs' scopes overlap, the
 // first by name takes the alert, so that the choice is deterministic.
-func (h *Handler) docFor(ctx context.Context, a Alert) (*v1alpha1.TakeCareDoc, string, error) {
+func (h *Handler) docFor(ctx context.Context, a v1alpha1.AlertRecord) (*v1alpha1.TakeCareDoc, string, error) {
 	var docs v1alpha1.TakeCareDocList
 	if err := h.Client.List(ctx, &docs, client.InNamespace(h.Namespace)); err != nil {
 		return nil, "", fmt.Errorf("list TakeCareDocs: %w", err)
@@ -293,7 +299,7 @@ func (h *Handler) docFor(ctx context.Context, a Alert) (*v1alpha1.TakeCareDoc, s
 	reason := ReasonOutOfScope
 	for i := range docs.Items {
 		d := &docs.Items[i]
-		namespace := a.Labels[labelNamespace]
+		namespace := a.Namespace
 		if !slices.Contains(d.Spec.Scope.Namespaces, v1alpha1.Namespace(namespace)) {
 			continue
 		}
@@ -347,7 +353,7 @@ func (h *Handler) recent(ctx context.Context, label, value string, since time.Ti
 }
 
 // fold records an alert of the same incident on the existing investigation.
-func (h *Handler) fold(ctx context.Context, inv *v1alpha1.TakeCareInvestigation, a Alert) error {
+func (h *Handler) fold(ctx context.Context, inv *v1alpha1.TakeCareInvestigation, a v1alpha1.AlertRecord) error {
 	if inv.Spec.Alert.Fingerprint == a.Fingerprint || slices.ContainsFunc(inv.Status.Alerts, func(g v1alpha1.GroupedAlert) bool { return g.Fingerprint == a.Fingerprint }) {
 		return nil
 	}
@@ -355,7 +361,7 @@ func (h *Handler) fold(ctx context.Context, inv *v1alpha1.TakeCareInvestigation,
 		return nil
 	}
 	patch := client.MergeFrom(inv.DeepCopy())
-	inv.Status.Alerts = append(inv.Status.Alerts, v1alpha1.GroupedAlert{Name: a.Labels[labelAlertName], Fingerprint: a.Fingerprint, FiredAt: metav1.NewTime(a.StartsAt)})
+	inv.Status.Alerts = append(inv.Status.Alerts, v1alpha1.GroupedAlert{Name: a.Name, Fingerprint: a.Fingerprint, FiredAt: a.FiredAt})
 	if err := h.Client.Status().Patch(ctx, inv, patch); err != nil {
 		return fmt.Errorf("fold alert into %s: %w", inv.Name, err)
 	}
@@ -363,9 +369,9 @@ func (h *Handler) fold(ctx context.Context, inv *v1alpha1.TakeCareInvestigation,
 }
 
 // resolve stamps resolvedAt on the investigation of a resolved alert.
-func (h *Handler) resolve(ctx context.Context, a Alert) error {
+func (h *Handler) resolve(ctx context.Context, a v1alpha1.AlertRecord) error {
 	var inv v1alpha1.TakeCareInvestigation
-	name := InvestigationName(roleDoc, a.Fingerprint, a.StartsAt)
+	name := InvestigationName(roleDoc, a.Fingerprint, a.FiredAt.Time)
 	if err := h.Client.Get(ctx, client.ObjectKey{Namespace: h.Namespace, Name: name}, &inv); err != nil {
 		return client.IgnoreNotFound(err)
 	}

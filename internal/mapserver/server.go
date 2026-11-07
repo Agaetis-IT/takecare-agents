@@ -58,6 +58,7 @@ const (
 	argKey                 = "key"
 	keyEntries             = "entries"
 	keyError               = "error"
+	keyRevision            = "revision"
 )
 
 // New builds the server over its source; Run keeps the Map current.
@@ -152,8 +153,8 @@ func (s *Server) serve(h func(*Map, json.RawMessage) (any, error)) sdk.ToolHandl
 	}
 }
 
-// Handler serves /mcp, /healthz, /readyz (ready once a Map loaded) and
-// /statusz.
+// Handler serves /mcp, /healthz, /readyz (ready once a Map loaded),
+// /statusz and, for the operator, /resolve.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return s.mcp }, &sdk.StreamableHTTPOptions{Stateless: true}))
@@ -166,6 +167,7 @@ func (s *Server) Handler() http.Handler {
 		}
 		w.WriteHeader(http.StatusOK)
 	})
+	mux.HandleFunc("/resolve", s.serveResolve)
 	mux.HandleFunc("/statusz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = s.snapshot()
 		w.Header().Set("Content-Type", "application/json")
@@ -410,7 +412,7 @@ func (s *Server) mapAt(_ *Map, raw json.RawMessage) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		e["revision"] = m.Revision
+		e[keyRevision] = m.Revision
 		return e, nil
 	}
 	type item struct {
@@ -423,5 +425,5 @@ func (s *Server) mapAt(_ *Map, raw json.RawMessage) (any, error) {
 		entries = append(entries, item{k, e.Type(), e.Status})
 	}
 	slices.SortFunc(entries, func(a, b item) int { return strings.Compare(a.Key, b.Key) })
-	return map[string]any{"revision": m.Revision, keyEntries: entries}, nil
+	return map[string]any{keyRevision: m.Revision, keyEntries: entries}, nil
 }

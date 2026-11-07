@@ -433,7 +433,7 @@ func (g *gitSource) status() map[string]any {
 	st := map[string]any{"source": "git", "url": redact(g.cfg.URL), "ref": g.cfg.Ref, "path": g.cfg.Path,
 		"pollInterval": g.cfg.PollInterval.String(), keyEntries: 0}
 	if g.valid != nil {
-		st["revision"], st["revisionTime"], st[keyEntries] = g.valid.Revision, g.valid.LoadedAt, len(g.valid.Entries)
+		st[keyRevision], st["revisionTime"], st[keyEntries] = g.valid.Revision, g.valid.LoadedAt, len(g.valid.Entries)
 	}
 	if !g.lastFetch.IsZero() {
 		st["lastFetch"] = g.lastFetch

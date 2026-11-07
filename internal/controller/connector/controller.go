@@ -210,7 +210,7 @@ func (r *Reconciler) endpoint(ctx context.Context, c *v1alpha1.TakeCareConnector
 			st.set(v1alpha1.ConditionReachable, false, ReasonNoReadyEndpoint, fmt.Sprintf("no ready endpoint for Service %s/%s: check the pod's readiness (for a report server, the Slack token: auth.test failed or the Secret is missing)", r.OperatorNamespace, name))
 			return nil, nil
 		}
-		ep.URL = addonURL(c.Spec.MCP.Addon, r.OperatorNamespace, addonPath)
+		ep.URL = AddonURL(c.Spec.MCP.Addon, r.OperatorNamespace, addonPath)
 	default:
 		ep.URL = c.Spec.MCP.URL
 		headers, problem, err := headerValues(ctx, r.Client, c)
@@ -226,9 +226,9 @@ func (r *Reconciler) endpoint(ctx context.Context, c *v1alpha1.TakeCareConnector
 	return ep, nil
 }
 
-// addonURL is a path on an add-on's Service: its MCP endpoint, or the map
-// server's /statusz.
-func addonURL(addon, namespace, path string) string {
+// AddonURL is a path on an add-on's Service: its MCP endpoint, the map
+// server's /statusz, or its /resolve for the alert intake.
+func AddonURL(addon, namespace, path string) string {
 	return fmt.Sprintf("http://%s%s.%s.svc:%d%s", addonNamePrefix, addon, namespace, addonPort, path)
 }
 
@@ -800,7 +800,7 @@ func callEndpoint(ctx context.Context, c client.Reader, conn *v1alpha1.TakeCareC
 		return ep, fmt.Errorf("connector %s is not a %s connector", conn.Name, t)
 	}
 	if conn.Spec.MCP.Addon != "" {
-		ep.URL = addonURL(conn.Spec.MCP.Addon, conn.Namespace, addonPath)
+		ep.URL = AddonURL(conn.Spec.MCP.Addon, conn.Namespace, addonPath)
 		return ep, nil
 	}
 	ep.URL = conn.Spec.MCP.URL

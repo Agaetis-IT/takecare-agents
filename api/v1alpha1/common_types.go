@@ -11,6 +11,9 @@ const (
 	LabelFingerprint    = "takecare.agaetis.fr/fingerprint"
 	LabelAlertNamespace = "takecare.agaetis.fr/alert-namespace"
 	LabelAlertName      = "takecare.agaetis.fr/alertname"
+	// LabelAlertEntity is the Map entry the alert resolved to, label-safe
+	// ("/" as "."), for listing.
+	LabelAlertEntity = "takecare.agaetis.fr/alert-entity"
 
 	// AnnotationIncident and AnnotationReset trigger the actions of a TakeCareDemo.
 	AnnotationIncident = "takecare.agaetis.fr/incident"
