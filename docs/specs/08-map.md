@@ -120,7 +120,7 @@ Runtime metrics, logs and secrets (they stay in their sources); automatic writes
 
 ## 9. Acceptance criteria
 
-1. The demo scenery's Map validates against the schema, and its `map` connector is Ready with the five read tools, none content; the tools answer through the gateway with the Doc's allow-list once the Doc binds the Map (ADR 0014's coverage, with its bench).
+1. The demo scenery's Map validates against the schema, and its `map` connector is Ready with the five read tools, none content; the Doc binds the Map and the tools answer through the gateway with its allow-list (bench of 2026-11-07).
 2. `map_at` on a date before a change returns the earlier entry.
 3. A file that fails the schema leaves the server on the last valid reference, with a condition on the connector.
 4. An alert whose labels resolve to a validated entity is keyed by that entity; one that does not is keyed by namespace plus workload.
