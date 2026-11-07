@@ -19,6 +19,6 @@ One decision per file, numbered, never rewritten: a decision that changes gives 
 | [0013](0013-level-names-apprentice-practitioner-expert.md) | The levels are Apprentice, Practitioner and Expert, in the API too | Accepted |
 | [0014](0014-ready-when-the-ground-is-covered.md) | A role is ready when its ground is covered, not when mandatory access types are bound | Accepted |
 | [0015](0015-map-connector-and-alert-format.md) | The Map is a connector; alerts are one internal format keyed by Map entity | Accepted |
-| [0016](0016-workload-cluster-front-and-registration.md) | A workload cluster is read through its own mTLS front and registered as a cluster connector by URL | Proposed |
+| [0016](0016-workload-cluster-front-and-registration.md) | A workload cluster is read through its own mTLS front and registered as a cluster connector by URL | Accepted |
 
 Format: Context, Decision, Consequences, Rejected alternatives. Statuses: Proposed, Accepted, Superseded.

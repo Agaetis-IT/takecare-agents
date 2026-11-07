@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Proposed |
+| Status | Accepted |
 | Date | 2026-11-07 |
 | Relates to | ADR 0008 (connector placement, two allow-list layers), ADR 0011 (administration cluster), ADR 0014 (coverage), ADR 0015 (alert format, routing), spec 02 §1, spec 05, spec 08 |
 
