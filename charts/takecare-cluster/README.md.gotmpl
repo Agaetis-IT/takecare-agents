@@ -1,0 +1,9 @@
+# takecare-cluster
+
+Chart version {{ template "chart.version" . }}, application version {{ template "chart.appVersion" . }}.
+
+The workload-cluster package of TakeCare Agents ([ADR 0016](../../docs/adr/0016-workload-cluster-front-and-registration.md)): installed in each cluster a TakeCare administration cluster supervises, with no operator and no CRD. One pod runs the read-only `kubernetes` MCP server, bound to the loopback, and its mTLS front, `takecare-agents-mcp-front`, the cluster's one inbound endpoint. The front requires a client certificate that chains to `tls.clientCASecretName` and names one of `tls.clientNames`, forwards `/mcp` to the server, and serves `/guardz`, the read-only guard's check of the pod's ServiceAccount.
+
+The chart refuses to render without its REQUIRED values. The install steps (certificates, exposure, registration) come with the release of this chart.
+
+{{ template "chart.valuesSection" . }}

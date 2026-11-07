@@ -25,32 +25,7 @@ metadata:
   labels:
     {{- include "takecare.addon.labels" $ctx | nindent 4 }}
 rules:
-  - apiGroups: [""]
-    resources: [pods, pods/log, pods/status, events, services, endpoints, persistentvolumeclaims, serviceaccounts, replicationcontrollers, limitranges, resourcequotas]
-    verbs: [get, list, watch]
-  - apiGroups: [apps]
-    resources: [deployments, replicasets, statefulsets, daemonsets]
-    verbs: [get, list, watch]
-  - apiGroups: [batch]
-    resources: [jobs, cronjobs]
-    verbs: [get, list, watch]
-  - apiGroups: [events.k8s.io]
-    resources: [events]
-    verbs: [get, list, watch]
-  - apiGroups: [autoscaling]
-    resources: [horizontalpodautoscalers]
-    verbs: [get, list, watch]
-  - apiGroups: [networking.k8s.io]
-    resources: [ingresses, networkpolicies]
-    verbs: [get, list, watch]
-  - apiGroups: [metrics.k8s.io]
-    resources: [pods]
-    verbs: [get, list]
-  {{- range $r := $a.extraResources }}
-  - apiGroups: [{{ $r.group | default "" | quote }}]
-    resources: [{{ $r.resource }}]
-    verbs: [get, list, watch]
-  {{- end }}
+  {{- include "takecare.kubernetes.rules" $a.extraResources | nindent 2 }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

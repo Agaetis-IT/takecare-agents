@@ -42,6 +42,8 @@ const (
 	kindRole         = "Role"
 	flagSet          = "--set"
 	verbGet          = "get"
+	verbList         = "list"
+	verbWatch        = "watch"
 	tokenSecret      = "takecare-alerting"
 )
 
@@ -301,7 +303,7 @@ func TestOperatorRBAC(t *testing.T) {
 			switch key {
 			case "Role/" + releaseNamespace + "/" + sa:
 				for _, v := range r.Verbs {
-					if v != verbGet && v != "list" && v != "watch" {
+					if v != verbGet && v != verbList && v != verbWatch {
 						t.Errorf("%s may %s Secrets of its namespace: read only", key, v)
 					}
 				}
@@ -350,7 +352,7 @@ func checkAddonRule(t *testing.T, refKind, refName, sa string, r rbacv1.PolicyRu
 		t.Errorf("%s %s bound to %s %s", refKind, refName, sa, msg)
 	}
 	for _, v := range r.Verbs {
-		if v != verbGet && v != "list" && v != "watch" {
+		if v != verbGet && v != verbList && v != verbWatch {
 			t.Errorf("%s %s bound to %s allows %s", refKind, refName, sa, v)
 		}
 	}

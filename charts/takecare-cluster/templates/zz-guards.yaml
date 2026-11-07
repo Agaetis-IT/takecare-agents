@@ -1,0 +1,26 @@
+{{- /*
+Every REQUIRED value is checked here, so that the failure names the value.
+Helm renders templates in reverse path order: this file comes first.
+*/ -}}
+{{- with .Values.cluster }}
+{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$" .name) }}
+{{- fail (printf "cluster.name is REQUIRED, a DNS label: the name the administration cluster registers this cluster under (got %q)" .name) }}
+{{- end }}
+{{- if not .namespaces }}
+{{- fail "cluster.namespaces is REQUIRED: at least one namespace the ServiceAccount may read" }}
+{{- end }}
+{{- range $r := .extraResources }}
+{{- if or (has $r.resource (list "secrets" "pods/exec" "pods/attach" "pods/portforward" "serviceaccounts/token" "*")) (eq ($r.group | default "") "*") }}
+{{- fail (printf "cluster.extraResources: %s/%s is refused by the read-only guard (spec 04)" ($r.group | default "core") $r.resource) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if not .Values.tls.secretName }}
+{{- fail "tls.secretName is REQUIRED: the Secret holding the front's server certificate (tls.crt, tls.key)" }}
+{{- end }}
+{{- if not .Values.tls.clientCASecretName }}
+{{- fail "tls.clientCASecretName is REQUIRED: the Secret holding ca.crt, the CA the administration cluster's client certificate chains to" }}
+{{- end }}
+{{- if not .Values.tls.clientNames }}
+{{- fail "tls.clientNames is REQUIRED: the administration cluster's identities, names of its client certificate" }}
+{{- end }}

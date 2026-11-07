@@ -76,6 +76,10 @@ fi
 # cluster-scoped kinds), copied verbatim; the chart adds the bindings.
 sync_file config/rbac/role.yaml charts/takecare/templates/operator/roles.yaml
 
+# The kubernetes MCP server's read-only rules, shared by the add-on and the
+# workload-cluster chart (ADR 0016): one source, copied verbatim.
+sync_file charts/takecare/templates/addons/_kubernetes-rules.tpl charts/takecare-cluster/templates/_kubernetes-rules.tpl
+
 # A pinned line looks like `    version: v1.6.0 # pin: AGENTGATEWAY_VERSION`.
 # The value is replaced by the variable of the same name from versions.env.
 tmp="$(mktemp)"
