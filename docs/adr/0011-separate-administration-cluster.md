@@ -2,13 +2,15 @@
 
 | | |
 |---|---|
-| Status | Proposed |
+| Status | Accepted |
 | Date | 2026-10-28 |
 | Amends | ADR 0007 (installation requirements gain a topology) |
 | Relates to | ADR 0008 (connector placement), ADR 0010 (the 1.0 line's Kubernetes floor), spec 00 (multi-cluster deferral), spec 05 (connector controller) |
 | Milestone | Out of milestone 1 |
 
 Redacted on 2026-11-03: the measured controller findings were withdrawn from this public text; the decision is unchanged.
+
+> **Note (2026-11-07)**: accepted as written. The two open questions on the network path and the registration are answered by ADR 0016; the demo footprint stays a known, absorbed cost.
 
 ## Context
 
