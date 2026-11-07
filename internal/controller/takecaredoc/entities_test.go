@@ -88,6 +88,7 @@ func blindSpots(d *v1alpha1.TakeCareDoc) string {
 
 // ADR 0014 §1, spec 08 §7: scope.entities covered through the Map.
 func TestEntityCoverage(t *testing.T) {
+	entities := []v1alpha1.EntityKey{"service/shop-api", "service/proposed", "service/ghost", "datastore/aws-db", "compute/billing-worker", "team/platform", "environment/other"}
 	f := start(t)
 	f.maps.url.Store(startMap(t, map[string]string{
 		"service/shop-api":       "provenance: declared\nstatus: validated\nsources:\n  - kubernetes: shop/Deployment/shop-api\n",
@@ -105,7 +106,7 @@ func TestEntityCoverage(t *testing.T) {
 	f.setMapRevision(t, "rev1")
 	f.doc(t, "doc", func(d *v1alpha1.TakeCareDoc) {
 		d.Spec.Level = v1alpha1.LevelApprentice
-		d.Spec.Scope.Entities = []v1alpha1.EntityKey{"service/shop-api", "service/proposed", "service/ghost", "datastore/aws-db", "compute/billing-worker", "team/platform", "environment/other"}
+		d.Spec.Scope.Entities = entities
 		d.Spec.Connectors = v1alpha1.DocConnectors{Cluster: []string{k8sConnector, billingConnector}, Map: []string{mapConnector}}
 	})
 
@@ -140,6 +141,29 @@ func TestEntityCoverage(t *testing.T) {
 	f.setMapRevision(t, "rev2")
 	eventually(t, "a new revision asks the Map again", func() (bool, string) {
 		return f.maps.calls.Load() > calls, "no new call"
+	})
+
+	// Nothing covered and a spot that will not pass by itself (NotInMap):
+	// a misconfiguration, the agent goes.
+	d = f.getDoc(t, "doc")
+	d.Spec.Scope.Namespaces = []v1alpha1.Namespace{billingNS}
+	d.Spec.Scope.Entities = []v1alpha1.EntityKey{"service/ghost"}
+	if err := f.c.Update(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "the agent is removed", func() (bool, string) {
+		_, err := f.get(agentGVK, engineNS, agent)
+		return err != nil, blindSpots(f.getDoc(t, "doc"))
+	})
+	d = f.getDoc(t, "doc")
+	d.Spec.Scope.Namespaces = []v1alpha1.Namespace{scope}
+	d.Spec.Scope.Entities = entities
+	if err := f.c.Update(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "the agent is back", func() (bool, string) {
+		_, err := f.get(agentGVK, engineNS, agent)
+		return err == nil, "no agent"
 	})
 
 	// The Map connector not given: every entity on a ground is

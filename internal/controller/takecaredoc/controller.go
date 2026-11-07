@@ -795,7 +795,7 @@ func (b *binding) decide(d *v1alpha1.TakeCareDoc, f findings, st *status) {
 	case covered == 0:
 		b.blocking = "nothing in the scope is covered: " + strings.Join(b.blindSpotLines(), " ")
 		// Connectors not discovered yet may come: keep what was rendered.
-		b.transient = !slices.ContainsFunc(b.blindSpots, func(s v1alpha1.BlindSpot) bool { return s.Reason == v1alpha1.BlindSpotNoAccess })
+		b.transient = !slices.ContainsFunc(b.blindSpots, func(s v1alpha1.BlindSpot) bool { return s.Reason != v1alpha1.BlindSpotConnectorNotReady })
 		st.set(v1alpha1.ConditionConnectorsReady, false, v1alpha1.ReasonBlindSpots, b.blocking)
 	case len(f.unavailable) > 0:
 		st.set(v1alpha1.ConditionConnectorsReady, false, ReasonConnectorNotReady, strings.Join(f.unavailable, "; "))

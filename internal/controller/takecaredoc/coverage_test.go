@@ -30,7 +30,7 @@ func TestCoverage(t *testing.T) {
 	// shop is read; billing's connector was never discovered; nothing
 	// declares payments; no metrics connector.
 	f.doc(t, "doc", func(d *v1alpha1.TakeCareDoc) {
-		d.Spec.Scope.Namespaces = []v1alpha1.Namespace{scope, "payments", "billing"}
+		d.Spec.Scope.Namespaces = []v1alpha1.Namespace{scope, "payments", billingNS}
 		d.Spec.Connectors.Cluster = []string{k8sConnector, billingConnector}
 		d.Spec.Connectors.Metrics = nil
 	})
@@ -104,7 +104,7 @@ func (f *fixture) billingConnector(t *testing.T) {
 	if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: billingConnector}, &c); err != nil {
 		t.Fatal(err)
 	}
-	c.Spec.Kubernetes.Namespaces = []v1alpha1.Namespace{"billing"}
+	c.Spec.Kubernetes.Namespaces = []v1alpha1.Namespace{billingNS}
 	if err := f.c.Update(context.Background(), &c); err != nil {
 		t.Fatal(err)
 	}

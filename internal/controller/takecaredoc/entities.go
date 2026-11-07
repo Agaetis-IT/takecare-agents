@@ -32,8 +32,10 @@ type entryInfo struct {
 	validated bool
 	// namespaces are those of the entry's kubernetes sources.
 	namespaces []v1alpha1.Namespace
-	// err is set when the Map did not answer.
-	err string
+	// err is set when the Map did not answer; down when the server
+	// itself failed, not the tool.
+	err  string
+	down bool
 }
 
 // entryCache holds a connector's answers for one revision of the Map.
@@ -99,13 +101,23 @@ func (r *Reconciler) lookupEntities(ctx context.Context, d *v1alpha1.TakeCareDoc
 		return nil
 	}
 	f.entities = map[v1alpha1.EntityKey]entryInfo{}
+	// The first server error stops the lookups: a hung server must not hold
+	// the reconcile for every key.
+	var down string
 	for _, k := range keys {
+		if down != "" {
+			f.entities[k] = entryInfo{err: down, down: true}
+			continue
+		}
 		if info, ok := r.cachedEntry(name, c.Status.MapRevision, k); ok {
 			f.entities[k] = info
 			continue
 		}
 		info := r.entry(ctx, ep, k)
 		f.entities[k] = info
+		if info.down {
+			down = info.err
+		}
 		if info.err == "" && c.Status.MapRevision != "" {
 			r.cacheEntry(name, c.Status.MapRevision, k, info)
 		}
@@ -119,7 +131,7 @@ func (r *Reconciler) entry(ctx context.Context, ep mcp.Endpoint, key v1alpha1.En
 	res, err := r.MCP.Call(ctx, ep, mcp.MapEntryTool, map[string]any{"key": string(key)})
 	switch {
 	case err != nil:
-		return entryInfo{err: err.Error()}
+		return entryInfo{err: err.Error(), down: true}
 	case res.IsError && strings.HasPrefix(res.Text, "unknown key"):
 		return entryInfo{}
 	case res.IsError:

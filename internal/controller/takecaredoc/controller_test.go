@@ -47,6 +47,7 @@ const (
 	// billingConnector declares a namespace outside the scope, never
 	// discovered.
 	billingConnector = "kubernetes-billing"
+	billingNS        = v1alpha1.Namespace("billing")
 	kindConfigMap    = "ConfigMap"
 )
 
