@@ -527,7 +527,7 @@ EOF
 # the MCP server's tools behind the front.
 cluster_chart() {
   checks=0 failed=0
-  local cns=takecare-cluster host=takecare-cluster.takecare-cluster.svc dir pf
+  local cns=takecare-cluster host=takecare-cluster.takecare-cluster.svc dir
   dir="$(mktemp -d)"
   log "takecare-cluster with certificates from ${dir}"
   (
@@ -550,21 +550,38 @@ cluster_chart() {
     --set cluster.name=smoke --set 'cluster.namespaces={demo-apps}' --set service.type=ClusterIP --set apiServer.port=6443 \
     --set tls.secretName=front-tls --set tls.clientCASecretName=front-client-ca --set 'tls.clientNames={admin.smoke.internal}' \
     --set front.image.registry="$IMAGE_REGISTRY" --set front.image.tag="$IMAGE_TAG" --wait --timeout 3m >/dev/null
-  kubectl -n "$cns" port-forward svc/takecare-cluster 18443:8443 >/dev/null 2>&1 &
-  pf=$!
-  sleep 3
+  # One port-forward per check, waited for until the port accepts: a
+  # handshake the front refuses on purpose can end kubectl's forward, and a
+  # slow runner must not fail the first check.
+  via_front() {
+    local pf rc=97
+    kubectl -n "$cns" port-forward svc/takecare-cluster 18443:8443 >/dev/null 2>&1 &
+    pf=$!
+    for _ in $(seq 40); do
+      if (exec 3<>/dev/tcp/127.0.0.1/18443) 2>/dev/null; then
+        "$@"
+        rc=$?
+        break
+      fi
+      sleep 0.25
+    done
+    kill "$pf" 2>/dev/null || true
+    wait "$pf" 2>/dev/null || true
+    return "$rc"
+  }
   local tls=(curl -s -m 10 --cacert "$dir/ca.crt" --resolve "${host}:18443:127.0.0.1")
   local admin=("${tls[@]}" --cert "$dir/admin.crt" --key "$dir/admin.key")
   check "/guardz: the front's ServiceAccount holds nothing forbidden and reads demo-apps" \
-    bash -c "\"\$@\" https://${host}:18443/guardz | grep -q '\"violations\":\[\],\"missing\":\[\]' " _ "${admin[@]}"
-  check_not "without a client certificate, the front refuses the handshake" "${tls[@]}" -f "https://${host}:18443/mcp"
+    via_front bash -c "\"\$@\" https://${host}:18443/guardz | grep -q '\"violations\":\[\],\"missing\":\[\]' " _ "${admin[@]}"
+  # curl's TLS failures (35, 56), not a connection refused (7): the front
+  # was reached and refused the handshake.
+  check "without a client certificate, the front refuses the handshake" \
+    via_front bash -c "\"\$@\" -f https://${host}:18443/mcp; rc=\$?; [[ \$rc -eq 35 || \$rc -eq 56 ]]" _ "${tls[@]}"
   check "a client certificate with another name is 403" \
-    test "$("${tls[@]}" --cert "$dir/stranger.crt" --key "$dir/stranger.key" -o /dev/null -w '%{http_code}' "https://${host}:18443/mcp")" = 403
+    via_front bash -c "test \"\$(\"\$@\" -o /dev/null -w '%{http_code}' https://${host}:18443/mcp)\" = 403" _ "${tls[@]}" --cert "$dir/stranger.crt" --key "$dir/stranger.key"
   check "tools/list through the front answers the read tools (pods_list)" \
-    bash -c "\"\$@\" -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+    via_front bash -c "\"\$@\" -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
       -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}' https://${host}:18443/mcp | grep -q '\"pods_list\"'" _ "${admin[@]}"
-  kill "$pf" 2>/dev/null || true
-  wait "$pf" 2>/dev/null || true
   rm -rf "$dir"
   assert_checks "$CHECKS_EXPECTED"
 }
