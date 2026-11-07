@@ -66,7 +66,7 @@ func (r *Reconciler) mapCurrent(ctx context.Context, c *v1alpha1.TakeCareConnect
 		st.set(ConditionMapCurrent, false, ReasonStatusUnavailable, "not probed: the server is not reachable")
 		return
 	}
-	ms, err := r.statusz(ctx, statuszURL(c.Spec.MCP.Addon, r.OperatorNamespace))
+	ms, err := r.statusz(ctx, addonURL(c.Spec.MCP.Addon, r.OperatorNamespace, "/statusz"))
 	switch {
 	case err != nil:
 		st.set(ConditionMapCurrent, false, ReasonStatusUnavailable, err.Error())
@@ -90,11 +90,6 @@ func (r *Reconciler) mapCurrent(ctx context.Context, c *v1alpha1.TakeCareConnect
 		}
 		st.set(ConditionMapCurrent, true, ReasonReady, msg)
 	}
-}
-
-// statuszURL is the status page of an add-on's Service.
-func statuszURL(addon, namespace string) string {
-	return fmt.Sprintf("http://%s%s.%s.svc:%d/statusz", addonNamePrefix, addon, namespace, addonPort)
 }
 
 func (r *Reconciler) statusz(ctx context.Context, url string) (*mapStatus, error) {
