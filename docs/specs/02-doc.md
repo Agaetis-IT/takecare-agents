@@ -50,7 +50,7 @@ spec:
   actTools: []                   # Expert level only (not implemented in milestone 1)
 ```
 
-**Connector requirements** (ADR 0008): `cluster` and `metrics` are **required**; `report` is **required from the `Practitioner` level** (at `Apprentice`, without a report connector, diagnoses stay in status); `knowledge` and `changes` are **recommended**. Missing required types give `Ready=False`, reason `MissingConnectorType`; missing recommended types give a warning event and a `Degraded` condition. Readiness moves to the coverage of the scope with ADR 0014. The Doc lists its log tools in `spec.contentTools`: a content tool it does not list stays out of its allow-list, on the agent and at the gateway, and the withheld content tools are named in a `ContentToolsWithheld` event (a listed name no bound connector exposes as content gives a `ContentToolUnknown` warning).
+**Coverage** (ADR 0014 §1-2, ADR 0008): the Doc is ready when its ground is covered, not when connector types are bound. A namespace of `scope.namespaces` is covered when a bound `cluster` connector declares it in `spec.kubernetes.namespaces` and that connector is given to the agent (its tools are known). Otherwise it is a **blind spot**, listed in `status.blindSpots` under its Map key `environment/<namespace>` with a one-sentence message: `NoAccess` when no bound connector declares it, `ConnectorNotReady` when the connectors that declare it are not given (never discovered, or no read tool). Some blind spots give `Degraded=True`, reason `BlindSpots`, naming them, and a `BlindSpotsChanged` event when their set changes; the Doc runs on what it covers. Nothing covered gives `ConnectorsReady=False`, reason `BlindSpots`, and the Doc runs nothing; a scope that selects nothing gives `EmptyScope`. `report` is **required from the `Practitioner` level** (at `Apprentice`, without a report connector, diagnoses stay in status): without it, `ConnectorsReady=False`, reason `ConnectorMissing`. `metrics`, `knowledge` and `changes` are **recommended**: a missing one gives `Degraded`, never `Ready=False`. The Doc lists its log tools in `spec.contentTools`: a content tool it does not list stays out of its allow-list, on the agent and at the gateway, and the withheld content tools are named in a `ContentToolsWithheld` event (a listed name no bound connector exposes as content gives a `ContentToolUnknown` warning).
 
 Milestone 1 supports **one `TakeCareDoc` per cluster**; a second one gets `Ready=False`, reason `SingleDocOnly`.
 
@@ -135,7 +135,7 @@ The Doc controller generates and keeps up to date one kagent `Agent` per `TakeCa
   | `Expert` | not implemented in milestone 1 |
 
   The same allow-list is applied at the gateway as per-tool authorization for the Doc's identity (ADR 0008): two independent layers.
-- **Instructions**: the investigation guidance, rendered from `internal/doc/instructions.md` (golden-tested) with the Doc's scope and the types of its connectors, into a ConfigMap of the engine's namespace that the `Agent` reads (`systemMessageFrom`, as validated by spike 001). It includes HolmesGPT-inspired investigation practice (credited in the file) and the output rules below.
+- **Instructions**: the investigation guidance, rendered from `internal/doc/instructions.md` (golden-tested) with the Doc's scope, the types of its connectors and its blind spots (a section "What you cannot check", rendered only when there are some, asks the model to say it could not verify a conclusion there instead of guessing), into a ConfigMap of the engine's namespace that the `Agent` reads (`systemMessageFrom`, as validated by spike 001). It includes HolmesGPT-inspired investigation practice (credited in the file) and the output rules below.
 - **Updates**: the two layers of the allow-list are not updated alike. The gateway's policies follow the connectors at once: a tool that is no longer allowed is refused from the next call. A re-rendered `Agent` restarts its pod, which loses a running task (spike 001 report §5.5): its re-rendering waits while an investigation of the Doc is `Running`, **at most until that investigation's timeout**; after that it is applied and the run's retry takes over. `status.renderPendingSince` and the `EngineReady` message say that a rendering waits, since when and until when.
 - **Deletion**: the `Agent`, its `RemoteMCPServer`s and its ConfigMap live in the engine's namespace and cannot carry an owner reference to the Doc: a finalizer removes them. Without the operator, the deletion waits; the chart's README gives the manual way out.
 - **A2A**: an `a2aConfig` with the skill `diagnose-alert` (ADR 0009). The agent card is reachable through the gateway.
@@ -168,7 +168,7 @@ At most `maxConcurrent` investigations run at once; others wait in a queue held 
 
 ### 3. Scope and read-only
 
-The Doc has no RBAC of its own: it reads the cluster through its `cluster` connector, whose ServiceAccount RBAC is read-only and limited to the connector's namespaces (spec 05). The Doc's `scope.namespaces` must be a subset of the bound cluster connector's namespaces; otherwise `Ready=False`, reason `ScopeNotCovered`.
+The Doc has no RBAC of its own: it reads the cluster through its `cluster` connector, whose ServiceAccount RBAC is read-only and limited to the connector's namespaces (spec 05). A namespace of `scope.namespaces` that no bound cluster connector reads is a blind spot (§2, Coverage).
 
 ### 4. Publishing the diagnosis
 
@@ -215,9 +215,13 @@ status:
     - type: Ready
     - type: LevelSupported
     - type: ModelResolved        # spec.model, or the platform's first model, is declared by the platform
-    - type: ConnectorsReady      # every bound connector exists and is Ready; required types covered
+    - type: ConnectorsReady      # every bound connector exists and is Ready; something in the scope is covered
     - type: EngineReady          # kagent Agent accepted and ready, and its card answers through the gateway's A2A route
-    - type: Degraded             # a recommended connector type is missing, or a bound connector is known but unavailable
+    - type: Degraded             # blind spots (BlindSpots), a recommended connector type missing, or a bound connector known but unavailable
+  blindSpots:                    # the scope's namespaces nothing given reads (ADR 0014 §2)
+    - entity: environment/payments
+      reason: NoAccess           # or ConnectorNotReady
+      message: "The namespace `payments` (environment/payments): no connector reads it."
   lastInvestigation: doc-3fa29c1b07-a1b2c3
   lastInvestigationTime: "2026-10-16T03:00:51Z"
   renderPendingSince: null       # set while a re-rendering of the agent waits for a running investigation
@@ -225,7 +229,7 @@ status:
 
 `EngineReady` needs the agent card to answer **through the gateway's A2A route**, not only the `Agent` to be ready: kagent sets `Ready` before the agent's pod serves (spike 001 report §3). A card that does not answer yet is `AgentStarting` for a start grace of two minutes, then `A2AUnreachable` with a warning event.
 
-A misconfigured Doc (`MissingConnectorType`, a bound connector that does not exist, `ScopeNotCovered`, an unknown model, `SingleDocOnly`) runs nothing: its routes and its agent are removed. What may pass by itself (the platform's gateway not ready, no cluster or metrics connector with known tools yet) leaves what was rendered in place.
+A misconfigured Doc (`BlindSpots` with nothing covered, `ConnectorMissing`: a bound connector that does not exist, has the wrong type, or a report connector missing from `Practitioner`, an unknown model, `SingleDocOnly`) runs nothing: its routes and its agent are removed. What may pass by itself (the platform's gateway not ready, nothing covered only because the cluster connectors are not discovered yet) leaves what was rendered in place.
 
 ## Metrics (operator)
 
@@ -237,8 +241,8 @@ A misconfigured Doc (`MissingConnectorType`, a bound connector that does not exi
 2. The same alert sent twice (same fingerprint and `startsAt`) produces one investigation. Sent again with a new `startsAt` within `cooldown`, it is skipped and counted.
 3. At the `Apprentice` level, the diagnosis goes to the `review` destination with the Apprentice banner, or to status only; nothing goes to `on-call`. Switching to `Practitioner` with `kubectl apply` changes the destination for the next alert, with an event.
 4. The kagent `Agent` generated for each level lists only `read` tools; a forged call to an `act` tool through the gateway with the Doc's identity is refused.
-5. A webhook call without the token, or with a wrong one, gets `401` and creates nothing; an out-of-scope alert creates nothing and increments `takecare_alerts_ignored_total{reason="out_of_scope"}`.
-6. A missing required connector type gives `Ready=False` (`MissingConnectorType`); a scope not covered by the cluster connector gives `Ready=False` (`ScopeNotCovered`).
+5. A webhook call without the token, or with a wrong one, gets `401` and creates nothing; an out-of-scope alert creates nothing and increments `takecare_alerts_ignored_total{reason="out_of_scope"}`; an alert in a namespace of the scope that is a blind spot creates nothing and increments `{reason="outside_ground"}`.
+6. A scope namespace no bound cluster connector reads is a blind spot: `status.blindSpots`, `Degraded` (`BlindSpots`), the instructions name it and its alerts are counted `outside_ground`; a Doc with nothing covered is `Ready=False` (`BlindSpots`); a missing `metrics` connector is `Degraded`, not blocking.
 7. Every investigation produces a trace with an `invoke_agent doc` root span carrying the attributes above, exported over OTLP (in-memory exporter in tests, collector in e2e).
 8. `level: Expert` gives `LevelSupported=False` and the `Practitioner` tools and destination.
 9. With the fake model provider (spec 04), the end-to-end test checks the Slack message structure against a golden file.

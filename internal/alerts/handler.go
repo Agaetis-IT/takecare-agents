@@ -37,15 +37,18 @@ const (
 
 // Reasons an alert is not turned into a new investigation.
 const (
-	ReasonOutOfScope  = "out_of_scope"
-	ReasonNotMatched  = "not_matched"
-	ReasonNoRole      = "no_role"
-	ReasonSuspended   = "suspended"
-	ReasonCooldown    = "cooldown"
-	ReasonGrouped     = "grouped"
-	ReasonDuplicate   = "duplicate"
-	ReasonNotFiring   = "not_firing"
-	ReasonNoNamespace = "no_namespace"
+	ReasonOutOfScope = "out_of_scope"
+	// ReasonOutsideGround: the namespace is in a Doc's scope but is one of
+	// its blind spots (ADR 0014 §2): nothing could be checked there.
+	ReasonOutsideGround = "outside_ground"
+	ReasonNotMatched    = "not_matched"
+	ReasonNoRole        = "no_role"
+	ReasonSuspended     = "suspended"
+	ReasonCooldown      = "cooldown"
+	ReasonGrouped       = "grouped"
+	ReasonDuplicate     = "duplicate"
+	ReasonNotFiring     = "not_firing"
+	ReasonNoNamespace   = "no_namespace"
 )
 
 // Metrics of the intake (spec 02, "Metrics").
@@ -290,7 +293,12 @@ func (h *Handler) docFor(ctx context.Context, a Alert) (*v1alpha1.TakeCareDoc, s
 	reason := ReasonOutOfScope
 	for i := range docs.Items {
 		d := &docs.Items[i]
-		if !slices.Contains(d.Spec.Scope.Namespaces, v1alpha1.Namespace(a.Labels[labelNamespace])) {
+		namespace := a.Labels[labelNamespace]
+		if !slices.Contains(d.Spec.Scope.Namespaces, v1alpha1.Namespace(namespace)) {
+			continue
+		}
+		if slices.ContainsFunc(d.Status.BlindSpots, func(s v1alpha1.BlindSpot) bool { return s.Entity == v1alpha1.EntityKey("environment/"+namespace) }) {
+			reason = ReasonOutsideGround
 			continue
 		}
 		if !matches(d.Spec.Alerts.Matchers, a.Labels) {

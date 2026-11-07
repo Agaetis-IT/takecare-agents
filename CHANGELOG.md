@@ -16,6 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The `map` add-on (spec 08): the Map server deployed by the chart, reading the customer's Git with a token or a deploy key from a Secret, or the demo's Map from a ConfigMap; one connector `map` with its five read tools. The `takecare-agents-mcp-map` image joins the release. **Upgrading with `values-prod.yaml`**: the profile enables the add-on, so set `addons.map.git.url` (and its credential), or `addons.map.enabled=false`.
 - The `map` connector carries a `MapCurrent` condition read from the Map server's status: the served revision, or the invalid revision reported while the last valid one keeps serving.
 
+### Changed
+
+- **Breaking for status readers** (ADR 0014): a Doc is ready when its scope is covered, not when connector types are bound. `MissingConnectorType` and `ScopeNotCovered` are gone; a scope namespace no connector reads is a blind spot in `status.blindSpots` (`environment/<ns>`), `Degraded` with reason `BlindSpots`, named in the Doc's instructions under "What you cannot check", and its alerts are ignored with `reason="outside_ground"`; a Doc with nothing covered is `Ready=False` (`BlindSpots`); `metrics` is recommended, no longer required. A missing report connector from the `Practitioner` level is reported as `ConnectorMissing`.
+
 ### Fixed
 
 - `make demo-up` works with the bash 3.2 that macOS ships when it pulls the released images without a Slack token: an empty list of Helm options stopped the script with `sets[@]: unbound variable`. `hack/bench.sh` had the same flaw in its cleanup.

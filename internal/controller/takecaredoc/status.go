@@ -22,6 +22,8 @@ type status struct {
 	// message.
 	withheld       []string
 	unknownContent []string
+	// blindSpots are the scope's namespaces nothing given reads.
+	blindSpots []v1alpha1.BlindSpot
 }
 
 func (s *status) set(condType string, ok bool, reason, message string) {

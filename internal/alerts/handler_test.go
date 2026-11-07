@@ -366,3 +366,32 @@ func TestBodyLimit(t *testing.T) {
 		t.Errorf("a body over 1 MiB: %d", resp.StatusCode)
 	}
 }
+
+// ADR 0014 §2: an alert in a blind spot of the Doc's scope creates nothing
+// and is counted apart from one no scope holds.
+func TestOutsideGround(t *testing.T) {
+	f := start(t)
+	ctx := context.Background()
+	var doc v1alpha1.TakeCareDoc
+	if err := f.c.Get(ctx, client.ObjectKey{Namespace: ns, Name: roleDoc}, &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc.Spec.Scope.Namespaces = append(doc.Spec.Scope.Namespaces, "payments")
+	if err := f.c.Update(ctx, &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc.Status.BlindSpots = []v1alpha1.BlindSpot{{Entity: "environment/payments", Reason: v1alpha1.BlindSpotNoAccess}}
+	if err := f.c.Status().Update(ctx, &doc); err != nil {
+		t.Fatal(err)
+	}
+	t0 := time.Now().Add(-time.Minute).Truncate(time.Second)
+	f.post(token,
+		alert("HighErrorRate", "3132333435363738", "p-1", t0, map[string]string{labelNamespace: "payments"}),
+		alert("HighErrorRate", "4142434445464748", "q-1", t0, map[string]string{labelNamespace: "elsewhere"}))
+	if n := len(f.investigations()); n != 0 {
+		t.Errorf("%d investigations created", n)
+	}
+	if f.ignored(ReasonOutsideGround) != 1 || f.ignored(ReasonOutOfScope) != 1 {
+		t.Errorf("outside ground %v, out of scope %v", f.ignored(ReasonOutsideGround), f.ignored(ReasonOutOfScope))
+	}
+}

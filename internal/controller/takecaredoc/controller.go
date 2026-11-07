@@ -64,8 +64,6 @@ const (
 	ReasonPlatformMissing        = "PlatformMissing"
 	ReasonModelUnknown           = "ModelUnknown"
 	ReasonResolved               = "Resolved"
-	ReasonMissingConnectorType   = "MissingConnectorType"
-	ReasonScopeNotCovered        = "ScopeNotCovered"
 	ReasonConnectorMissing       = "ConnectorMissing"
 	ReasonConnectorNotReady      = "ConnectorNotReady"
 	ReasonMissingRecommendedType = "MissingRecommendedType"
@@ -79,10 +77,13 @@ const (
 	// Event reasons of the content tools (ADR 0014 §5).
 	ReasonContentToolsWithheld = "ContentToolsWithheld"
 	ReasonContentToolUnknown   = "ContentToolUnknown"
+	// ReasonBlindSpotsChanged is the event of a changed set of blind spots
+	// (ADR 0014 §2).
+	ReasonBlindSpotsChanged = "BlindSpotsChanged"
 )
 
-// ConditionDegraded reports what the Doc works without: a recommended
-// connector type, a connector that is known but unavailable.
+// ConditionDegraded reports what the Doc works without: a blind spot, a
+// recommended connector type, a connector that is known but unavailable.
 const ConditionDegraded = "Degraded"
 
 // Timing.
@@ -155,11 +156,34 @@ func (r *Reconciler) sayOnce(d *v1alpha1.TakeCareDoc, generation int64, reason, 
 	return true
 }
 
+// sayBlindSpots names the blind spots when their set changes, whatever the
+// generation; their end is said only after they were.
+func (r *Reconciler) sayBlindSpots(d *v1alpha1.TakeCareDoc, spots []v1alpha1.BlindSpot) {
+	msg := "every namespace of the scope is covered"
+	if len(spots) > 0 {
+		lines := make([]string, 0, len(spots))
+		for _, s := range spots {
+			lines = append(lines, s.Message)
+		}
+		msg = "blind spots: " + strings.Join(lines, " ")
+	} else {
+		r.mu.Lock()
+		_, before := r.said[string(d.UID)+"/"+ReasonBlindSpotsChanged]
+		r.mu.Unlock()
+		if !before {
+			return
+		}
+	}
+	if r.sayOnce(d, 0, ReasonBlindSpotsChanged, msg) {
+		r.Recorder.Eventf(d, nil, corev1.EventTypeNormal, ReasonBlindSpotsChanged, "Reconcile", "%s", msg)
+	}
+}
+
 // unsay drops what was said about a deleted Doc.
 func (r *Reconciler) unsay(d *v1alpha1.TakeCareDoc) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for _, reason := range []string{ReasonContentToolsWithheld, ReasonContentToolUnknown} {
+	for _, reason := range []string{ReasonContentToolsWithheld, ReasonContentToolUnknown, ReasonBlindSpotsChanged} {
 		delete(r.said, string(d.UID)+"/"+reason)
 	}
 }
@@ -311,7 +335,7 @@ func (r *Reconciler) reconcileDoc(ctx context.Context, d *v1alpha1.TakeCareDoc, 
 
 	desired, err := doc.Agent{
 		Doc: d, EngineNamespace: r.EngineNamespace, Model: model, Tools: servers,
-		Types: bound.types, Readable: bound.readable, CaptureContent: p.Spec.Observability.CaptureContent,
+		Types: bound.types, Readable: bound.readable, BlindSpots: bound.blindSpotLines(), CaptureContent: p.Spec.Observability.CaptureContent,
 	}.Render()
 	if err != nil {
 		return ctrl.Result{}, err
@@ -528,9 +552,11 @@ type boundConnector struct {
 type binding struct {
 	rendered []boundConnector
 	types    map[v1alpha1.ConnectorType]bool
-	// readable are the namespaces the bound cluster connectors read, in
-	// their order, for the instructions.
+	// readable are the namespaces the cluster connectors given to the agent
+	// read, in their order, for the instructions.
 	readable []v1alpha1.Namespace
+	// blindSpots are the scope's namespaces nothing given reads.
+	blindSpots []v1alpha1.BlindSpot
 	// blocking explains why the Doc cannot run; empty when it can.
 	blocking string
 	// transient is set when blocking may pass by itself.
@@ -541,11 +567,18 @@ type binding struct {
 type findings struct {
 	// content are the content tools the bound connectors expose; unknown
 	// is set when one of them is missing or never discovered.
-	content                             map[string]bool
-	unknown                             bool
-	missingTypes, problems, unavailable []string
-	covered                             map[v1alpha1.Namespace]bool
-	seen                                map[string]bool
+	content               map[string]bool
+	unknown               bool
+	problems, unavailable []string
+	// declared are the bound cluster connectors and their namespaces, in
+	// binding order.
+	declared []declared
+	seen     map[string]bool
+}
+
+type declared struct {
+	connector  string
+	namespaces []v1alpha1.Namespace
 }
 
 // typedNames lists the Doc's connector names by type, report aside.
@@ -573,15 +606,9 @@ func typedNames(d *v1alpha1.TakeCareDoc) []struct {
 // spec.contentTools (ADR 0014 §5).
 func (r *Reconciler) connectors(ctx context.Context, d *v1alpha1.TakeCareDoc, st *status) (binding, error) {
 	b := binding{types: map[v1alpha1.ConnectorType]bool{}}
-	f := findings{covered: map[v1alpha1.Namespace]bool{}, seen: map[string]bool{}, content: map[string]bool{}}
-	if len(d.Spec.Connectors.Cluster) == 0 {
-		f.missingTypes = append(f.missingTypes, string(v1alpha1.ConnectorCluster))
-	}
-	if len(d.Spec.Connectors.Metrics) == 0 {
-		f.missingTypes = append(f.missingTypes, string(v1alpha1.ConnectorMetrics))
-	}
+	f := findings{seen: map[string]bool{}, content: map[string]bool{}}
 	if st.level != v1alpha1.LevelApprentice && d.Spec.Connectors.Report == "" {
-		f.missingTypes = append(f.missingTypes, string(v1alpha1.ConnectorReport)+" (required from the Practitioner level)")
+		f.problems = append(f.problems, "no report connector (required from the Practitioner level)")
 	}
 	for _, e := range typedNames(d) {
 		for _, name := range e.names {
@@ -618,12 +645,7 @@ func (r *Reconciler) inspect(ctx context.Context, d *v1alpha1.TakeCareDoc, t v1a
 		return nil
 	}
 	if t == v1alpha1.ConnectorCluster && c.Spec.Kubernetes != nil {
-		for _, ns := range c.Spec.Kubernetes.Namespaces {
-			if !f.covered[ns] {
-				b.readable = append(b.readable, ns)
-			}
-			f.covered[ns] = true
-		}
+		f.declared = append(f.declared, declared{connector: name, namespaces: c.Spec.Kubernetes.Namespaces})
 	}
 	if f.seen[name] {
 		if slices.ContainsFunc(b.rendered, func(x boundConnector) bool { return x.name == name }) {
@@ -686,45 +708,95 @@ func (r *Reconciler) inspectReport(ctx context.Context, d *v1alpha1.TakeCareDoc,
 	return nil
 }
 
-// decide turns the findings into ConnectorsReady, Degraded and whether the
-// Doc can run.
-func (b *binding) decide(d *v1alpha1.TakeCareDoc, f findings, st *status) {
-	var uncovered []string
-	for _, ns := range d.Spec.Scope.Namespaces {
-		if !f.covered[ns] {
-			uncovered = append(uncovered, string(ns))
+// cover reads the scope's namespaces against the cluster connectors given
+// to the agent (ADR 0014 §1-2): a namespace is covered when one of them
+// declares it; otherwise it is a blind spot, NoAccess when no bound
+// connector declares it, ConnectorNotReady when the ones that do are not
+// given. It returns how many namespaces are covered.
+func (b *binding) cover(d *v1alpha1.TakeCareDoc, f findings) int {
+	given := map[string]bool{}
+	for _, c := range b.rendered {
+		given[c.name] = true
+	}
+	readable := map[v1alpha1.Namespace]bool{}
+	for _, dc := range f.declared {
+		for _, ns := range dc.namespaces {
+			if given[dc.connector] && !readable[ns] {
+				readable[ns] = true
+				b.readable = append(b.readable, ns)
+			}
 		}
 	}
+	covered := 0
+	for _, ns := range d.Spec.Scope.Namespaces {
+		if readable[ns] {
+			covered++
+			continue
+		}
+		var by []string
+		for _, dc := range f.declared {
+			if slices.Contains(dc.namespaces, ns) && !slices.Contains(by, dc.connector) {
+				by = append(by, dc.connector)
+			}
+		}
+		spot := v1alpha1.BlindSpot{Entity: v1alpha1.EntityKey("environment/" + ns), Reason: v1alpha1.BlindSpotNoAccess}
+		spot.Message = fmt.Sprintf("The namespace `%s` (%s): no connector reads it.", ns, spot.Entity)
+		if len(by) > 0 {
+			spot.Reason = v1alpha1.BlindSpotConnectorNotReady
+			spot.Message = fmt.Sprintf("The namespace `%s` (%s): its connector %s is not given to the agent (never discovered, or no read tool).", ns, spot.Entity, strings.Join(by, ", "))
+		}
+		b.blindSpots = append(b.blindSpots, spot)
+	}
+	slices.SortFunc(b.blindSpots, func(x, y v1alpha1.BlindSpot) int { return strings.Compare(string(x.Entity), string(y.Entity)) })
+	return covered
+}
+
+// blindSpotLines are the blind spots' sentences, for the instructions.
+func (b *binding) blindSpotLines() []string {
+	lines := make([]string, 0, len(b.blindSpots))
+	for _, s := range b.blindSpots {
+		lines = append(lines, s.Message)
+	}
+	return lines
+}
+
+// decide turns the findings into ConnectorsReady, Degraded and whether the
+// Doc can run: a misconfiguration or nothing covered blocks; blind spots,
+// a missing recommended type or a connector known but unavailable degrade.
+func (b *binding) decide(d *v1alpha1.TakeCareDoc, f findings, st *status) {
+	covered := b.cover(d, f)
+	st.blindSpots = b.blindSpots
 	switch {
-	case len(f.missingTypes) > 0:
-		b.blocking = "missing connector type: " + strings.Join(f.missingTypes, ", ")
-		st.set(v1alpha1.ConditionConnectorsReady, false, ReasonMissingConnectorType, b.blocking)
 	case len(f.problems) > 0:
 		b.blocking = strings.Join(f.problems, "; ")
 		st.set(v1alpha1.ConditionConnectorsReady, false, ReasonConnectorMissing, b.blocking)
-	case len(uncovered) > 0:
-		b.blocking = fmt.Sprintf("the scope's namespaces %s are not read by any bound cluster connector", strings.Join(uncovered, ", "))
-		st.set(v1alpha1.ConditionConnectorsReady, false, ReasonScopeNotCovered, b.blocking)
-	case !b.types[v1alpha1.ConnectorCluster] || !b.types[v1alpha1.ConnectorMetrics]:
-		b.blocking = "no cluster or no metrics connector has known read tools: " + strings.Join(f.unavailable, "; ")
-		b.transient = true
-		st.set(v1alpha1.ConditionConnectorsReady, false, ReasonConnectorNotReady, b.blocking)
+	case len(d.Spec.Scope.Namespaces) == 0 && len(d.Spec.Scope.Entities) == 0:
+		b.blocking = "the scope selects nothing"
+		st.set(v1alpha1.ConditionConnectorsReady, false, v1alpha1.ReasonEmptyScope, b.blocking)
+	case covered == 0:
+		b.blocking = "nothing in the scope is covered: " + strings.Join(b.blindSpotLines(), " ")
+		// Connectors not discovered yet may come: keep what was rendered.
+		b.transient = !slices.ContainsFunc(b.blindSpots, func(s v1alpha1.BlindSpot) bool { return s.Reason == v1alpha1.BlindSpotNoAccess })
+		st.set(v1alpha1.ConditionConnectorsReady, false, v1alpha1.ReasonBlindSpots, b.blocking)
 	case len(f.unavailable) > 0:
 		st.set(v1alpha1.ConditionConnectorsReady, false, ReasonConnectorNotReady, strings.Join(f.unavailable, "; "))
 	default:
 		st.set(v1alpha1.ConditionConnectorsReady, true, ReasonReady, fmt.Sprintf("%d connector(s) given to the agent", len(b.rendered)))
 	}
-	var degraded []string
-	for _, rec := range []v1alpha1.ConnectorType{v1alpha1.ConnectorKnowledge, v1alpha1.ConnectorChanges} {
+	degraded := b.blindSpotLines()
+	for _, rec := range []v1alpha1.ConnectorType{v1alpha1.ConnectorMetrics, v1alpha1.ConnectorKnowledge, v1alpha1.ConnectorChanges} {
 		if !b.types[rec] {
 			degraded = append(degraded, fmt.Sprintf("no %s connector (recommended)", rec))
 		}
 	}
 	degraded = append(degraded, f.unavailable...)
-	if len(degraded) > 0 {
+	switch {
+	case len(b.blindSpots) > 0:
+		st.set(ConditionDegraded, true, v1alpha1.ReasonBlindSpots, strings.Join(degraded, "; "))
+	case len(degraded) > 0:
 		st.set(ConditionDegraded, true, ReasonMissingRecommendedType, strings.Join(degraded, "; "))
-	} else {
-		st.set(ConditionDegraded, false, ReasonComplete, "every recommended connector type is bound and available")
+	default:
+		st.set(ConditionDegraded, false, ReasonComplete, "the scope is covered and every recommended connector type is bound and available")
 	}
 }
 
@@ -747,6 +819,7 @@ func (r *Reconciler) writeStatus(ctx context.Context, d *v1alpha1.TakeCareDoc, s
 	d.Status.ObservedGeneration = d.Generation
 	d.Status.Level = st.level
 	d.Status.RenderPendingSince = st.pendingSince
+	d.Status.BlindSpots = st.blindSpots
 	for _, c := range st.conditions {
 		meta.SetStatusCondition(&d.Status.Conditions, c)
 	}
@@ -759,11 +832,12 @@ func (r *Reconciler) writeStatus(ctx context.Context, d *v1alpha1.TakeCareDoc, s
 	if names := strings.Join(st.unknownContent, ", "); names != "" && r.sayOnce(d, st.generation, ReasonContentToolUnknown, names) {
 		r.Recorder.Eventf(d, nil, corev1.EventTypeWarning, ReasonContentToolUnknown, "Reconcile", "spec.contentTools lists %s, which no bound connector exposes as a content tool", names)
 	}
+	r.sayBlindSpots(d, st.blindSpots)
 	if previousLevel != "" && previousLevel != st.level {
 		r.Recorder.Eventf(d, nil, corev1.EventTypeNormal, ReasonLevelChanged, "Reconcile", "the Doc works at the %s level (was %s)", st.level, previousLevel)
 	}
 	if degraded := meta.FindStatusCondition(d.Status.Conditions, ConditionDegraded); degraded != nil && degraded.Status == metav1.ConditionTrue && !wasDegraded {
-		r.Recorder.Eventf(d, nil, corev1.EventTypeWarning, ReasonMissingRecommendedType, "Reconcile", "%s", degraded.Message)
+		r.Recorder.Eventf(d, nil, corev1.EventTypeWarning, degraded.Reason, "Reconcile", "%s", degraded.Message)
 	}
 	engineReady := meta.FindStatusCondition(d.Status.Conditions, v1alpha1.ConditionEngineReady)
 	wasUnreachable := false

@@ -20,18 +20,23 @@ func TestInstructions(t *testing.T) {
 		golden string
 		scope  []v1alpha1.Namespace
 		types  []v1alpha1.ConnectorType
+		blind  []string
 	}{
 		{"instructions-all-types.md", []v1alpha1.Namespace{appsNS, "ack-system"}, []v1alpha1.ConnectorType{
 			v1alpha1.ConnectorCluster, v1alpha1.ConnectorMetrics, v1alpha1.ConnectorLogs, v1alpha1.ConnectorKnowledge, v1alpha1.ConnectorChanges, v1alpha1.ConnectorTickets,
+		}, nil},
+		{"instructions-required-only.md", []v1alpha1.Namespace{shopNS}, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster, v1alpha1.ConnectorMetrics}, nil},
+		{"instructions-blind-spots.md", []v1alpha1.Namespace{shopNS}, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, []string{
+			"The namespace `payments` (environment/payments): no connector reads it.",
+			"The namespace `billing` (environment/billing): its connector kubernetes-billing is not given to the agent (never discovered, or no read tool).",
 		}},
-		{"instructions-required-only.md", []v1alpha1.Namespace{shopNS}, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster, v1alpha1.ConnectorMetrics}},
 	} {
 		t.Run(tc.golden, func(t *testing.T) {
 			types := map[v1alpha1.ConnectorType]bool{}
 			for _, ty := range tc.types {
 				types[ty] = true
 			}
-			got, err := Instructions(tc.scope, types)
+			got, err := Instructions(tc.scope, types, tc.blind)
 			if err != nil {
 				t.Fatal(err)
 			}
