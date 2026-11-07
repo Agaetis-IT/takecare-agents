@@ -45,13 +45,14 @@ func TestListToolsReportsAnnotations(t *testing.T) {
 	}
 }
 
-// The operator calls a tool in two cases only; everything else is refused
-// before any request leaves, whatever the caller asks.
-func TestCallIsLockedToReportAndProbe(t *testing.T) {
+// The operator calls a tool in three cases only; everything else is
+// refused before any request leaves, whatever the caller asks.
+func TestCallIsLockedToReportProbeAndEntry(t *testing.T) {
 	srv := mcptest.Start(t,
 		mcptest.ToolSpec{Name: toolPost, Reply: "ok"},
 		mcptest.ToolSpec{Name: ProbeTool, ReadOnly: true, Reply: "[]"},
 		mcptest.ToolSpec{Name: toolDelete, Reply: "deleted"},
+		mcptest.ToolSpec{Name: MapEntryTool, ReadOnly: true, Reply: "{}"},
 		mcptest.ToolSpec{Name: "broken", ReadOnly: true, Reply: "boom", IsError: true},
 	)
 	c := &Client{HTTP: &http.Client{Timeout: 5 * time.Second}}
@@ -61,6 +62,11 @@ func TestCallIsLockedToReportAndProbe(t *testing.T) {
 		e := ep(types...)
 		e.Addon = true
 		e.ReadTools = map[string]bool{ProbeTool: readProbe}
+		return e
+	}
+	mapEP := func(readEntry bool) Endpoint {
+		e := ep(v1alpha1.ConnectorMap)
+		e.ReadTools = map[string]bool{MapEntryTool: readEntry, toolDelete: true}
 		return e
 	}
 	tests := []struct {
@@ -77,6 +83,9 @@ func TestCallIsLockedToReportAndProbe(t *testing.T) {
 		{"tickets (a customer's url connector): nothing", ep(v1alpha1.ConnectorTickets), toolPost, true},
 		{"metrics add-on: not the probe either", addon(true, v1alpha1.ConnectorMetrics), ProbeTool, true},
 		{"no type: nothing", ep(), ProbeTool, true},
+		{"map, entry classed read: entry, add-on or url", mapEP(true), MapEntryTool, false},
+		{"map, entry not classed read: refused", mapEP(false), MapEntryTool, true},
+		{"map: not another tool", mapEP(true), toolDelete, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

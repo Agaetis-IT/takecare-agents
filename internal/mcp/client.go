@@ -36,6 +36,11 @@ var ErrCallForbidden = errors.New("the operator does not call this tool")
 // server would not be restarted anyway.
 const ProbeTool = "resources_list"
 
+// MapEntryTool is the Map server's tool the operator calls to cover a
+// role's scope.entities (ADR 0014 §1, spec 08 §7), on any map connector,
+// an add-on or a customer's server, when discovery classed it read.
+const MapEntryTool = "entry"
+
 // Endpoint is a connector's server as the operator reaches it.
 type Endpoint struct {
 	// URL of the MCP endpoint (Streamable HTTP).
@@ -102,10 +107,14 @@ func (c *Client) ListTools(ctx context.Context, ep Endpoint) ([]Tool, error) {
 
 // Allowed says whether the operator may call a tool on this endpoint: any
 // tool of a report connector (the operator publishes, the model never does),
-// or the probe tool of a cluster add-on of TakeCare's when discovery classed
-// it read; nothing else, whatever the caller asks.
+// the entry tool of a map connector, or the probe tool of a cluster add-on
+// of TakeCare's, each when discovery classed it read; nothing else, whatever
+// the caller asks.
 func (ep Endpoint) Allowed(tool string) bool {
 	if slices.Contains(ep.Types, v1alpha1.ConnectorReport) {
+		return true
+	}
+	if slices.Contains(ep.Types, v1alpha1.ConnectorMap) && tool == MapEntryTool && ep.ReadTools[tool] {
 		return true
 	}
 	return ep.Addon && slices.Contains(ep.Types, v1alpha1.ConnectorCluster) && tool == ProbeTool && ep.ReadTools[tool]

@@ -24,22 +24,14 @@ func TestCoverage(t *testing.T) {
 	f.platform(t)
 	cluster := []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}
 	f.connector(t, k8sConnector, cluster, read("pods_list"), true)
-	f.connector(t, "kubernetes-billing", cluster, nil, false)
-	var billing v1alpha1.TakeCareConnector
-	if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: "kubernetes-billing"}, &billing); err != nil {
-		t.Fatal(err)
-	}
-	billing.Spec.Kubernetes.Namespaces = []v1alpha1.Namespace{"billing"}
-	if err := f.c.Update(context.Background(), &billing); err != nil {
-		t.Fatal(err)
-	}
+	f.billingConnector(t)
 	f.connector(t, "report", []v1alpha1.ConnectorType{v1alpha1.ConnectorReport}, nil, true)
 
 	// shop is read; billing's connector was never discovered; nothing
 	// declares payments; no metrics connector.
 	f.doc(t, "doc", func(d *v1alpha1.TakeCareDoc) {
 		d.Spec.Scope.Namespaces = []v1alpha1.Namespace{scope, "payments", "billing"}
-		d.Spec.Connectors.Cluster = []string{k8sConnector, "kubernetes-billing"}
+		d.Spec.Connectors.Cluster = []string{k8sConnector, billingConnector}
 		d.Spec.Connectors.Metrics = nil
 	})
 	d := f.waitCondition(t, "doc", ConditionDegraded, metav1.ConditionTrue, v1alpha1.ReasonBlindSpots)
@@ -101,4 +93,19 @@ func TestCoverage(t *testing.T) {
 		e := f.events(t, ReasonBlindSpotsChanged)
 		return len(d.Status.BlindSpots) == 0 && len(e) == 3 && strings.Contains(strings.Join(e, " "), "every namespace of the scope is covered"), strings.Join(e, " | ") + "; " + describe(d)
 	})
+}
+
+// billingConnector is a cluster connector declaring the billing namespace,
+// never discovered: it is not given to the agent.
+func (f *fixture) billingConnector(t *testing.T) {
+	t.Helper()
+	f.connector(t, billingConnector, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, nil, false)
+	var c v1alpha1.TakeCareConnector
+	if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: billingConnector}, &c); err != nil {
+		t.Fatal(err)
+	}
+	c.Spec.Kubernetes.Namespaces = []v1alpha1.Namespace{"billing"}
+	if err := f.c.Update(context.Background(), &c); err != nil {
+		t.Fatal(err)
+	}
 }

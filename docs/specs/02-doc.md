@@ -27,7 +27,7 @@ spec:
   level: Practitioner            # Apprentice | Practitioner | Expert
   scope:
     namespaces: [demo-apps]      # must be covered by the bound cluster connector
-    # entities: [service/billing-api]   # Map keys: used from ADR 0015's intake
+    # entities: [service/billing-api]   # Map keys, covered through the bound Map (spec 08 §7)
   contentTools: [pods_log]       # content tools the Doc may read (ADR 0014)
   # Doc-specific
   connectors:                    # TakeCareConnector names, by type
@@ -51,7 +51,7 @@ spec:
   actTools: []                   # Expert level only (not implemented in milestone 1)
 ```
 
-**Coverage** (ADR 0014 §1-2, ADR 0008): the Doc is ready when its ground is covered, not when connector types are bound. A namespace of `scope.namespaces` is covered when a bound `cluster` connector declares it in `spec.kubernetes.namespaces` and that connector is given to the agent (its tools are known). Otherwise it is a **blind spot**, listed in `status.blindSpots` under its Map key `environment/<namespace>` with a one-sentence message: `NoAccess` when no bound connector declares it, `ConnectorNotReady` when the connectors that declare it are not given (never discovered, or no read tool). Some blind spots give `Degraded=True`, reason `BlindSpots`, naming them, and a `BlindSpotsChanged` event when their set changes; the Doc runs on what it covers. Nothing covered gives `ConnectorsReady=False`, reason `BlindSpots`, and the Doc runs nothing; a scope that selects nothing gives `EmptyScope`. `report` is **required from the `Practitioner` level** (at `Apprentice`, without a report connector, diagnoses stay in status): without it, `ConnectorsReady=False`, reason `ConnectorMissing`. `metrics`, `knowledge` and `changes` are **recommended**: a missing one gives `Degraded`, never `Ready=False`. The **Map** (`connectors.map`, one connector of type `map`, spec 08) is neither required nor recommended: when bound, its five read tools reach the agent at every level, and the instructions name it. `scope.entities` is accepted but not covered yet: coverage counts the namespaces. The Doc lists its log tools in `spec.contentTools`: a content tool it does not list stays out of its allow-list, on the agent and at the gateway, and the withheld content tools are named in a `ContentToolsWithheld` event (a listed name no bound connector exposes as content gives a `ContentToolUnknown` warning).
+**Coverage** (ADR 0014 §1-2, ADR 0008): the Doc is ready when its ground is covered, not when connector types are bound. A namespace of `scope.namespaces` is covered when a bound `cluster` connector declares it in `spec.kubernetes.namespaces` and that connector is given to the agent (its tools are known). Otherwise it is a **blind spot**, listed in `status.blindSpots` under its Map key `environment/<namespace>` with a one-sentence message: `NoAccess` when no bound connector declares it, `ConnectorNotReady` when the connectors that declare it are not given (never discovered, or no read tool). Some blind spots give `Degraded=True`, reason `BlindSpots`, naming them, and a `BlindSpotsChanged` event when their set changes; the Doc runs on what it covers. Nothing covered gives `ConnectorsReady=False`, reason `BlindSpots`, and the Doc runs nothing; a scope that selects nothing gives `EmptyScope`. `report` is **required from the `Practitioner` level** (at `Apprentice`, without a report connector, diagnoses stay in status): without it, `ConnectorsReady=False`, reason `ConnectorMissing`. `metrics`, `knowledge` and `changes` are **recommended**: a missing one gives `Degraded`, never `Ready=False`. The **Map** (`connectors.map`, one connector of type `map`, spec 08) is neither required nor recommended: when bound, its five read tools reach the agent at every level, and the instructions name it. The entities of `scope.entities` are covered through the bound Map's validated entries, by spec 08 §7's rule; an entity that is not is a blind spot too (`NotInMap`, `NotValidated`, `NoAccess` or `ConnectorNotReady`), keyed by its Map key. The Doc lists its log tools in `spec.contentTools`: a content tool it does not list stays out of its allow-list, on the agent and at the gateway, and the withheld content tools are named in a `ContentToolsWithheld` event (a listed name no bound connector exposes as content gives a `ContentToolUnknown` warning).
 
 Milestone 1 supports **one `TakeCareDoc` per cluster**; a second one gets `Ready=False`, reason `SingleDocOnly`.
 
@@ -219,10 +219,13 @@ status:
     - type: ConnectorsReady      # every bound connector exists and is Ready; something in the scope is covered
     - type: EngineReady          # kagent Agent accepted and ready, and its card answers through the gateway's A2A route
     - type: Degraded             # blind spots (BlindSpots), a recommended connector type missing, or a bound connector known but unavailable
-  blindSpots:                    # the scope's namespaces nothing given reads (ADR 0014 §2)
+  blindSpots:                    # the scope's namespaces and entities nothing given reads (ADR 0014 §2, spec 08 §7)
     - entity: environment/payments
       reason: NoAccess           # or ConnectorNotReady
       message: "The namespace `payments` (environment/payments): no connector reads it."
+    - entity: service/notifications
+      reason: NotValidated       # or NotInMap, NoAccess, ConnectorNotReady
+      message: "The entity `service/notifications`: proposed in the Map, not validated."
   lastInvestigation: doc-3fa29c1b07-a1b2c3
   lastInvestigationTime: "2026-10-16T03:00:51Z"
   renderPendingSince: null       # set while a re-rendering of the agent waits for a running investigation

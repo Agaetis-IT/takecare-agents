@@ -308,6 +308,10 @@ spec:
               lastDiscovery:
                 format: date-time
                 type: string
+              mapRevision:
+                description: The Map revision a map add-on serves, read from its status
+                  page.
+                type: string
               observedGeneration:
                 format: int64
                 type: integer

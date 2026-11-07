@@ -111,7 +111,13 @@ Never an agent. The Intendant's discovery (operator code) writes proposals as fi
 
 - **Scope by entities** (ADR 0014 §4).
 - **Routing and the incident key** (ADR 0015 §4 and §5).
-- **Readiness by coverage** (ADR 0014 §1).
+- **Readiness by coverage** (ADR 0014 §1). A role's `scope.entities` are read through its Map connector's `entry` tool. An entity is checked when its type has state on a ground: `service`, `compute`, `datastore`, `storage`, `network`, `identity`. It is covered when it is `validated` and one of its `sources` is `kubernetes: <namespace>/...` in a namespace a cluster connector given to the role reads. Otherwise it is a blind spot:
+  - `NotInMap`: the key is not in the Map;
+  - `NotValidated`: the entry is `proposed`;
+  - `NoAccess`: no `kubernetes` source among its sources (until other access types exist);
+  - the namespace's own reason, when its namespace is not read.
+
+  `environment/<namespace>` is covered when the namespace is read. `team`, `observability`, `runbook` and `external` are never blind spots: there is nothing to read on a ground. When the Map connector is not given to the role (not discovered, no read tool), every checked entity is `ConnectorNotReady` and the role is `Degraded`, not blocked: its namespaces may still cover the ground. The operator caches the answers per connector and Map revision (`status.mapRevision`, which the connector controller reads from the add-on's `/statusz`): a new revision re-reconciles the role, and a customer's own Map server, which has no revision, is asked at every reconcile with a three-second timeout.
 - **Replay**, with `map_at` and the `history` connector (step 2).
 
 ## 8. Out of scope for the light Map

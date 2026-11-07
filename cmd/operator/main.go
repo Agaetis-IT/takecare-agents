@@ -294,6 +294,7 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		OperatorNamespace: cfg.operatorNamespace, EngineNamespace: cfg.engineNamespace,
 		Engine: &kagent0103.Agents{Client: mgr.GetClient()},
 		Probe:  takecaredoc.HTTPCardProbe(gatewayClient),
+		MCP:    &mcp.Client{HTTP: mcpClient},
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up the Doc controller: %w", err)
 	}
