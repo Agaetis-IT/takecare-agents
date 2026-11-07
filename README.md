@@ -63,6 +63,7 @@ spec:
     cluster: [kubernetes]
     metrics: [prometheus]
     knowledge: [runbooks, incidents]
+    map: [map]                # the Map of the ground (spec 08)
     report: report            # the report connector (here: Slack)
   report:
     apprentice: review        # where diagnoses go at each level

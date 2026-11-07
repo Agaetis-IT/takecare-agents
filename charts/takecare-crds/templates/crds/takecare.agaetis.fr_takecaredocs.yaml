@@ -106,6 +106,15 @@ spec:
                       type: string
                     type: array
                     x-kubernetes-list-type: set
+                  map:
+                    description: |-
+                      The Map connector (type map, spec 08): one Map per scope. Its read
+                      tools are given at every level, and it covers scope.entities.
+                    items:
+                      type: string
+                    maxItems: 1
+                    type: array
+                    x-kubernetes-list-type: set
                   metrics:
                     items:
                       type: string

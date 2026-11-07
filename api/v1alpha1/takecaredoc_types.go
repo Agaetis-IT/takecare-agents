@@ -55,6 +55,12 @@ type DocConnectors struct {
 	// +listType=set
 	// +optional
 	Tickets []string `json:"tickets,omitempty"`
+	// The Map connector (type map, spec 08): one Map per scope. Its read
+	// tools are given at every level, and it covers scope.entities.
+	// +kubebuilder:validation:MaxItems=1
+	// +listType=set
+	// +optional
+	Map []string `json:"map,omitempty"`
 	// The report connector: where the operator publishes diagnoses.
 	// +optional
 	Report string `json:"report,omitempty"`
