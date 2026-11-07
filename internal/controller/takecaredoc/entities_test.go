@@ -18,6 +18,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
@@ -77,6 +78,19 @@ func (f *fixture) setMapRevision(t *testing.T, revision string) {
 	}
 }
 
+// updateDoc changes a Doc's spec, again on a conflict: the controller
+// patches its status meanwhile.
+func (f *fixture) updateDoc(t *testing.T, name string, change func(*v1alpha1.TakeCareDoc)) {
+	t.Helper()
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		d := f.getDoc(t, name)
+		change(d)
+		return f.c.Update(context.Background(), d)
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // blindSpots lists a Doc's blind spots as key=reason, in order.
 func blindSpots(d *v1alpha1.TakeCareDoc) string {
 	got := make([]string, 0, len(d.Status.BlindSpots))
@@ -126,11 +140,7 @@ func TestEntityCoverage(t *testing.T) {
 
 	// The same revision: the Map is not asked again.
 	calls := f.maps.calls.Load()
-	d := f.getDoc(t, "doc")
-	d.Spec.Investigation.MaxConcurrent = 2
-	if err := f.c.Update(context.Background(), d); err != nil {
-		t.Fatal(err)
-	}
+	f.updateDoc(t, "doc", func(d *v1alpha1.TakeCareDoc) { d.Spec.Investigation.MaxConcurrent = 2 })
 	eventually(t, "the new generation is reconciled", func() (bool, string) {
 		d := f.getDoc(t, "doc")
 		return d.Status.ObservedGeneration == d.Generation, describe(d)
@@ -145,22 +155,16 @@ func TestEntityCoverage(t *testing.T) {
 
 	// Nothing covered and a spot that will not pass by itself (NotInMap):
 	// a misconfiguration, the agent goes.
-	d = f.getDoc(t, "doc")
-	d.Spec.Scope.Namespaces = []v1alpha1.Namespace{billingNS}
-	d.Spec.Scope.Entities = []v1alpha1.EntityKey{"service/ghost"}
-	if err := f.c.Update(context.Background(), d); err != nil {
-		t.Fatal(err)
-	}
+	f.updateDoc(t, "doc", func(d *v1alpha1.TakeCareDoc) {
+		d.Spec.Scope = v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{billingNS}, Entities: []v1alpha1.EntityKey{"service/ghost"}}
+	})
 	eventually(t, "the agent is removed", func() (bool, string) {
 		_, err := f.get(agentGVK, engineNS, agent)
 		return err != nil, blindSpots(f.getDoc(t, "doc"))
 	})
-	d = f.getDoc(t, "doc")
-	d.Spec.Scope.Namespaces = []v1alpha1.Namespace{scope}
-	d.Spec.Scope.Entities = entities
-	if err := f.c.Update(context.Background(), d); err != nil {
-		t.Fatal(err)
-	}
+	f.updateDoc(t, "doc", func(d *v1alpha1.TakeCareDoc) {
+		d.Spec.Scope = v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{scope}, Entities: entities}
+	})
 	eventually(t, "the agent is back", func() (bool, string) {
 		_, err := f.get(agentGVK, engineNS, agent)
 		return err == nil, "no agent"

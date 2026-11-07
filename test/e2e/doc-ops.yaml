@@ -1,0 +1,15 @@
+# A second Doc beside the demo's (spec 02, ADR 0015 §5): its scope,
+# ack-system, is disjoint from the demo Doc's, so both run and it takes
+# nothing of demo-apps. Apprentice without a report connector: its
+# diagnoses would stay in status, nothing is published.
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareDoc
+metadata:
+  name: ops
+  namespace: takecare-system
+spec:
+  level: Apprentice
+  scope:
+    namespaces: [ack-system]
+  connectors:
+    cluster: [kubernetes]

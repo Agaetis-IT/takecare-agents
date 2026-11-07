@@ -203,6 +203,8 @@ func (h *Handler) handle(ctx context.Context, in incoming, seen map[string]*v1al
 		h.ignore(ReasonNoNamespace)
 		return nil
 	}
+	// The entity routes the alert (ADR 0015 §5): it is resolved first.
+	a.Entity = h.entity(ctx, a)
 	doc, reason, err := h.docFor(ctx, a)
 	if err != nil {
 		return err
@@ -231,7 +233,6 @@ func (h *Handler) handle(ctx context.Context, in incoming, seen map[string]*v1al
 		h.ignore(ReasonCooldown)
 		return nil
 	}
-	a.Entity = h.entity(ctx, a)
 	key := IncidentKey(a)
 	if inv, ok := seen[key]; ok {
 		h.ignore(ReasonGrouped)
@@ -284,9 +285,12 @@ func (h *Handler) reader() client.Reader {
 // LabelIncident carries the incident key on an investigation.
 const LabelIncident = "takecare.agaetis.fr/incident"
 
-// docFor finds the Doc whose scope and matchers take the alert. Milestone 1
-// runs one Doc per cluster (spec 02); when several Docs' scopes overlap, the
-// first by name takes the alert, so that the choice is deterministic.
+// docFor finds the Doc whose scope covers the alert (ADR 0015 §5): its
+// entity is in scope.entities, or its namespace in scope.namespaces; then
+// its matchers and suspend. Candidates are taken by creation time, then
+// name, so that an overlap, which the Doc controller flags (ScopeOverlap),
+// still routes to the earlier Doc. An alert on one of the Doc's blind
+// spots, its entity or its namespace, is outside_ground.
 func (h *Handler) docFor(ctx context.Context, a v1alpha1.AlertRecord) (*v1alpha1.TakeCareDoc, string, error) {
 	var docs v1alpha1.TakeCareDocList
 	if err := h.Client.List(ctx, &docs, client.InNamespace(h.Namespace)); err != nil {
@@ -295,15 +299,24 @@ func (h *Handler) docFor(ctx context.Context, a v1alpha1.AlertRecord) (*v1alpha1
 	if len(docs.Items) == 0 {
 		return nil, ReasonNoRole, nil
 	}
-	slices.SortFunc(docs.Items, func(x, y v1alpha1.TakeCareDoc) int { return strings.Compare(x.Name, y.Name) })
+	slices.SortFunc(docs.Items, func(x, y v1alpha1.TakeCareDoc) int {
+		if c := x.CreationTimestamp.Compare(y.CreationTimestamp.Time); c != 0 {
+			return c
+		}
+		return strings.Compare(x.Name, y.Name)
+	})
 	reason := ReasonOutOfScope
 	for i := range docs.Items {
 		d := &docs.Items[i]
-		namespace := a.Namespace
-		if !slices.Contains(d.Spec.Scope.Namespaces, v1alpha1.Namespace(namespace)) {
+		byEntity := a.Entity != "" && slices.Contains(d.Spec.Scope.Entities, a.Entity)
+		if !byEntity && !slices.Contains(d.Spec.Scope.Namespaces, v1alpha1.Namespace(a.Namespace)) {
 			continue
 		}
-		if slices.ContainsFunc(d.Status.BlindSpots, func(s v1alpha1.BlindSpot) bool { return s.Entity == v1alpha1.EntityKey("environment/"+namespace) }) {
+		spot := v1alpha1.EntityKey("environment/" + a.Namespace)
+		if byEntity {
+			spot = a.Entity
+		}
+		if slices.ContainsFunc(d.Status.BlindSpots, func(s v1alpha1.BlindSpot) bool { return s.Entity == spot }) {
 			reason = ReasonOutsideGround
 			continue
 		}

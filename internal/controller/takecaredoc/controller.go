@@ -58,7 +58,6 @@ const (
 	ReasonReady                  = "Ready"
 	ReasonNotReady               = "NotReady"
 	ReasonSuspended              = "Suspended"
-	ReasonSingleDocOnly          = "SingleDocOnly"
 	ReasonNotImplemented         = "NotImplemented"
 	ReasonSupported              = "Supported"
 	ReasonPlatformMissing        = "PlatformMissing"
@@ -272,14 +271,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 // reconcileDoc evaluates everything but the level and renders what it can.
 func (r *Reconciler) reconcileDoc(ctx context.Context, d *v1alpha1.TakeCareDoc, role routes.Role, st *status) (ctrl.Result, error) {
-	if first, err := r.firstDoc(ctx, d); err != nil {
+	if other, shared, err := r.overlap(ctx, d); err != nil {
 		return ctrl.Result{}, err
-	} else if first != d.Name {
-		msg := fmt.Sprintf("milestone 1 runs one TakeCareDoc per cluster and %s came first", first)
-		st.set(v1alpha1.ConditionConnectorsReady, false, ReasonSingleDocOnly, msg)
-		st.set(v1alpha1.ConditionModelResolved, false, ReasonSingleDocOnly, msg)
-		st.set(v1alpha1.ConditionEngineReady, false, ReasonSingleDocOnly, msg)
-		st.set(v1alpha1.ConditionReady, false, ReasonSingleDocOnly, msg)
+	} else if other != "" {
+		msg := overlapMessage(other, shared)
+		for _, c := range []string{v1alpha1.ConditionConnectorsReady, v1alpha1.ConditionModelResolved, v1alpha1.ConditionEngineReady, v1alpha1.ConditionReady} {
+			st.set(c, false, v1alpha1.ReasonScopeOverlap, msg)
+		}
 		st.pendingSince = nil
 		return ctrl.Result{}, r.removeAll(ctx, d, role)
 	}
@@ -490,25 +488,6 @@ func (r *Reconciler) removeAll(ctx context.Context, d *v1alpha1.TakeCareDoc, rol
 		return err
 	}
 	return routes.Prune(ctx, r.Client, role, nil, false)
-}
-
-// firstDoc names the Doc that runs: the oldest, then the first by name.
-func (r *Reconciler) firstDoc(ctx context.Context, d *v1alpha1.TakeCareDoc) (string, error) {
-	var list v1alpha1.TakeCareDocList
-	if err := r.List(ctx, &list, client.InNamespace(d.Namespace)); err != nil {
-		return "", fmt.Errorf("list Docs: %w", err)
-	}
-	items := slices.DeleteFunc(list.Items, func(o v1alpha1.TakeCareDoc) bool { return !o.DeletionTimestamp.IsZero() })
-	if len(items) == 0 {
-		return d.Name, nil
-	}
-	slices.SortFunc(items, func(a, b v1alpha1.TakeCareDoc) int {
-		if c := a.CreationTimestamp.Compare(b.CreationTimestamp.Time); c != 0 {
-			return c
-		}
-		return strings.Compare(a.Name, b.Name)
-	})
-	return items[0].Name, nil
 }
 
 // platform returns the platform (cluster-scoped), nil when there is none.
@@ -855,6 +834,11 @@ func (r *Reconciler) writeStatus(ctx context.Context, d *v1alpha1.TakeCareDoc, s
 	if previousLevel != "" && previousLevel != st.level {
 		r.Recorder.Eventf(d, nil, corev1.EventTypeNormal, ReasonLevelChanged, "Reconcile", "the Doc works at the %s level (was %s)", st.level, previousLevel)
 	}
+	if ready := meta.FindStatusCondition(d.Status.Conditions, v1alpha1.ConditionReady); ready != nil && ready.Reason == v1alpha1.ReasonScopeOverlap {
+		if old := meta.FindStatusCondition(before.Status.Conditions, v1alpha1.ConditionReady); old == nil || old.Reason != v1alpha1.ReasonScopeOverlap {
+			r.Recorder.Eventf(d, nil, corev1.EventTypeWarning, v1alpha1.ReasonScopeOverlap, "Reconcile", "%s", ready.Message)
+		}
+	}
 	if degraded := meta.FindStatusCondition(d.Status.Conditions, ConditionDegraded); degraded != nil && degraded.Status == metav1.ConditionTrue && !wasDegraded {
 		r.Recorder.Eventf(d, nil, corev1.EventTypeWarning, degraded.Reason, "Reconcile", "%s", degraded.Message)
 	}
@@ -879,6 +863,9 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	b := ctrl.NewControllerManagedBy(mgr).
 		Named("takecaredoc").
 		For(&v1alpha1.TakeCareDoc{}).
+		// Another Doc's scope decides ScopeOverlap: a Doc created, deleted
+		// or changed reconciles them all.
+		Watches(&v1alpha1.TakeCareDoc{}, allDocs, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&v1alpha1.TakeCareConnector{}, allDocs, builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, statusChanged{}))).
 		Watches(&v1alpha1.TakeCarePlatform{}, allDocs, builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, statusChanged{}))).
 		Watches(&v1alpha1.TakeCareInvestigation{}, handler.EnqueueRequestsFromMapFunc(func(_ context.Context, o client.Object) []reconcile.Request {
