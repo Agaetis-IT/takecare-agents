@@ -6,6 +6,7 @@ package takecaredoc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -52,8 +53,9 @@ const (
 )
 
 var (
-	agentGVK  = schema.GroupVersionKind{Group: "kagent.dev", Version: "v1alpha2", Kind: "Agent"}
-	serverGVK = schema.GroupVersionKind{Group: "kagent.dev", Version: "v1alpha2", Kind: "RemoteMCPServer"}
+	agentGVK       = schema.GroupVersionKind{Group: "kagent.dev", Version: "v1alpha2", Kind: "Agent"}
+	modelConfigGVK = agentGVK.GroupVersion().WithKind("ModelConfig")
+	serverGVK      = schema.GroupVersionKind{Group: "kagent.dev", Version: "v1alpha2", Kind: "RemoteMCPServer"}
 )
 
 // clock is a test clock the reconciler reads.
@@ -112,6 +114,7 @@ func start(t *testing.T) *fixture {
 		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("test"),
 		OperatorNamespace: ns, EngineNamespace: engineNS,
 		Engine: &kagent0103.Agents{Client: mgr.GetClient()},
+		Models: &kagent0103.Models{Client: mgr.GetClient()},
 		MCP:    f.maps,
 		Probe: func(_ context.Context, url string) error {
 			f.probed.Store(url)
@@ -377,19 +380,22 @@ func TestContentTools(t *testing.T) {
 	})
 }
 
-// agentReady writes the conditions kagent sets once the pod runs.
+// agentReady writes the conditions kagent sets once the pod runs, on the
+// Doc's model configuration and on its agent.
 func (f *fixture) agentReady(t *testing.T) {
 	t.Helper()
-	obj, err := f.get(agentGVK, engineNS, agent)
-	if err != nil {
-		t.Fatal(err)
-	}
-	obj.Object["status"] = map[string]any{"conditions": []any{
-		map[string]any{"type": "Accepted", "status": "True", "reason": "Accepted", "message": "", "lastTransitionTime": "2026-10-30T00:00:00Z"},
-		map[string]any{"type": "Ready", "status": "True", "reason": "Ready", "message": "", "lastTransitionTime": "2026-10-30T00:00:00Z"},
-	}}
-	if err := f.c.Status().Update(context.Background(), obj); err != nil {
-		t.Fatal(err)
+	for _, gvk := range []schema.GroupVersionKind{modelConfigGVK, agentGVK} {
+		obj, err := f.get(gvk, engineNS, agent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		obj.Object["status"] = map[string]any{"conditions": []any{
+			map[string]any{"type": "Accepted", "status": "True", "reason": "Accepted", "message": "", "lastTransitionTime": "2026-10-30T00:00:00Z"},
+			map[string]any{"type": "Ready", "status": "True", "reason": "Ready", "message": "", "lastTransitionTime": "2026-10-30T00:00:00Z"},
+		}}
+		if err := f.c.Status().Update(context.Background(), obj); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -438,6 +444,32 @@ func TestRendering(t *testing.T) {
 	d = f.waitCondition(t, "doc", v1alpha1.ConditionReady, metav1.ConditionTrue, "")
 	if d.Status.Level != v1alpha1.LevelPractitioner || len(d.Finalizers) != 1 {
 		t.Errorf("level %s, finalizers %v", d.Status.Level, d.Finalizers)
+	}
+
+	// Its own model configuration, on its own model route (spec 01).
+	mc, err := f.get(modelConfigGVK, engineNS, agent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u, _, _ := unstructured.NestedString(mc.Object, "spec", "openAI", "baseUrl"); u != gwURL+"/roles/doc.doc/models/default/v1" {
+		t.Errorf("the Doc's ModelConfig baseUrl = %q, not its model route", u)
+	}
+	if m, _, _ := unstructured.NestedString(mc.Object, "spec", "model"); m != "m" {
+		t.Errorf("the Doc's ModelConfig model = %q", m)
+	}
+	ag, err := f.get(agentGVK, engineNS, agent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m, _, _ := unstructured.NestedString(ag.Object, "spec", "declarative", "modelConfig"); m != agent {
+		t.Errorf("the agent's modelConfig = %q, want its own %q", m, agent)
+	}
+	route, err := f.get(routes.HTTPRouteGVK, ns, "role-doc-doc-model-default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ref, _, _ := unstructured.NestedSlice(route.Object, "spec", "rules"); len(ref) != 1 || !strings.Contains(fmt.Sprint(ref), "model-default") {
+		t.Errorf("the model route = %v", ref)
 	}
 
 	t.Run("a card still silent after the start grace is unreachable", func(t *testing.T) {
@@ -528,6 +560,8 @@ func TestRendering(t *testing.T) {
 			namespace, name string
 		}{
 			{agentGVK, engineNS, agent},
+			{modelConfigGVK, engineNS, agent},
+			{routes.HTTPRouteGVK, ns, "role-doc-doc-model-default"},
 			{serverGVK, engineNS, agent + "-kubernetes"},
 			{schema.GroupVersionKind{Version: "v1", Kind: kindConfigMap}, engineNS, agent + "-instructions"},
 			{routes.HTTPRouteGVK, ns, "role-doc-doc-a2a"},

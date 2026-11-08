@@ -19,20 +19,21 @@ import (
 // (ADR 0004): never a provider key, only the gateway route and a Secret
 // holding a dummy key the engine's runtime insists on.
 type Model struct {
-	// Name of the model entry in the platform; names the engine's object.
+	// Name of the engine's object: one per role and model (spec 01).
 	Name string
 	// Namespace of the engine, where the object is written.
 	Namespace string
 	// Model identifier the provider expects, passed through the gateway.
 	Model string
-	// GatewayURL is the OpenAI-compatible base URL of the gateway, with its
-	// /v1 path.
+	// GatewayURL is the OpenAI-compatible base URL of the role's model route
+	// on the gateway, with its /v1 path.
 	GatewayURL string
 	// DummyKeySecret names the Secret, in Namespace, whose DummyKeyField holds
 	// the dummy key.
 	DummyKeySecret string
 	DummyKeyField  string
-	// Owner is set on the engine's object so that it follows the platform.
+	// Owner, when set, is put on the engine's object; a role in another
+	// namespace deletes it itself (DeleteModel).
 	Owner metav1.OwnerReference
 	// Labels copied onto the engine's object.
 	Labels map[string]string
@@ -51,6 +52,8 @@ type Readiness struct {
 type Models interface {
 	// EnsureModel creates or updates the engine's configuration for a model.
 	EnsureModel(ctx context.Context, m Model) error
+	// DeleteModel deletes the engine's configuration of a model.
+	DeleteModel(ctx context.Context, namespace, name string) error
 	// ModelReadiness reports whether the engine accepted a model.
 	ModelReadiness(ctx context.Context, namespace, name string) (Readiness, error)
 	// OwnedTypes lists the kinds EnsureModel writes, for the controller to watch.

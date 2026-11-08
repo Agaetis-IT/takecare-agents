@@ -61,7 +61,9 @@ func (m *Models) EnsureModel(ctx context.Context, model engine.Model) error {
 	obj.SetName(model.Name)
 	obj.SetNamespace(model.Namespace)
 	obj.SetLabels(model.Labels)
-	obj.SetOwnerReferences([]metav1.OwnerReference{model.Owner})
+	if model.Owner.UID != "" {
+		obj.SetOwnerReferences([]metav1.OwnerReference{model.Owner})
+	}
 	obj.Object["spec"] = map[string]any{
 		"provider":        "OpenAI",
 		"model":           model.Model,
@@ -73,6 +75,18 @@ func (m *Models) EnsureModel(ctx context.Context, model engine.Model) error {
 		},
 	}
 	return apply.Strict(ctx, m.Client, obj)
+}
+
+// DeleteModel deletes a ModelConfig; one already gone is no error.
+func (m *Models) DeleteModel(ctx context.Context, namespace, name string) error {
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(modelConfigGVK)
+	obj.SetName(name)
+	obj.SetNamespace(namespace)
+	if err := m.Client.Delete(ctx, obj); client.IgnoreNotFound(err) != nil {
+		return fmt.Errorf("delete ModelConfig %s/%s: %w", namespace, name, err)
+	}
+	return nil
 }
 
 // ModelReadiness reads the ModelConfig's Accepted condition.

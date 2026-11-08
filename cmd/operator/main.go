@@ -208,7 +208,6 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		Recorder:           mgr.GetEventRecorder("takecare-operator"),
 		OperatorNamespace:  cfg.operatorNamespace,
 		EngineNamespace:    cfg.engineNamespace,
-		Engine:             &kagent0103.Models{Client: mgr.GetClient()},
 		OperatorDeployment: cfg.operatorDeployment,
 		Probe:              probe,
 		Telemetry:          traces,
@@ -294,6 +293,7 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("takecare-operator"),
 		OperatorNamespace: cfg.operatorNamespace, EngineNamespace: cfg.engineNamespace,
 		Engine: &kagent0103.Agents{Client: mgr.GetClient()},
+		Models: &kagent0103.Models{Client: mgr.GetClient()},
 		Probe:  takecaredoc.HTTPCardProbe(gatewayClient),
 		MCP:    &mcp.Client{HTTP: mcpClient},
 	}).SetupWithManager(mgr); err != nil {

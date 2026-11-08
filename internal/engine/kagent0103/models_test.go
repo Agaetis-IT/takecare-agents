@@ -91,6 +91,31 @@ func TestEnsureModelWritesExactlyTheSpikeFields(t *testing.T) {
 		}
 	})
 
+	t.Run("a role's model, without owner reference, is deleted by name", func(t *testing.T) {
+		role := model
+		role.Name, role.Owner = "takecare-doc-doc", metav1.OwnerReference{}
+		role.GatewayURL = "http://agentgateway-proxy.takecare-system.svc/roles/doc.doc/models/default/v1"
+		if err := m.EnsureModel(ctx, role); err != nil {
+			t.Fatal(err)
+		}
+		obj := &unstructured.Unstructured{}
+		obj.SetGroupVersionKind(modelConfigGVK)
+		if err := c.Get(ctx, client.ObjectKey{Namespace: engineNS, Name: role.Name}, obj); err != nil {
+			t.Fatal(err)
+		}
+		if refs := obj.GetOwnerReferences(); len(refs) != 0 {
+			t.Errorf("owner references = %v, want none", refs)
+		}
+		for range 2 { // absent the second time
+			if err := m.DeleteModel(ctx, engineNS, role.Name); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := c.Get(ctx, client.ObjectKey{Namespace: engineNS, Name: role.Name}, obj); err == nil {
+			t.Error("the ModelConfig is still there")
+		}
+	})
+
 	t.Run("a misspelled field is refused, not dropped", func(t *testing.T) {
 		bad := &unstructured.Unstructured{}
 		bad.SetGroupVersionKind(modelConfigGVK)

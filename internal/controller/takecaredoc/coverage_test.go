@@ -64,11 +64,7 @@ func TestCoverage(t *testing.T) {
 	})
 
 	// Nothing covered: blocking, and the agent goes (nothing may come).
-	d = f.getDoc(t, "doc")
-	d.Spec.Scope.Namespaces = []v1alpha1.Namespace{"payments"}
-	if err := f.c.Update(context.Background(), d); err != nil {
-		t.Fatal(err)
-	}
+	f.updateDoc(t, "doc", func(d *v1alpha1.TakeCareDoc) { d.Spec.Scope.Namespaces = []v1alpha1.Namespace{"payments"} })
 	d = f.waitCondition(t, "doc", v1alpha1.ConditionConnectorsReady, metav1.ConditionFalse, v1alpha1.ReasonBlindSpots)
 	if !meta.IsStatusConditionFalse(d.Status.Conditions, v1alpha1.ConditionReady) {
 		t.Error("a Doc that covers nothing is Ready")
@@ -83,11 +79,7 @@ func TestCoverage(t *testing.T) {
 	})
 
 	// Covered again: the blind spots go, and their end is said.
-	d = f.getDoc(t, "doc")
-	d.Spec.Scope.Namespaces = []v1alpha1.Namespace{scope}
-	if err := f.c.Update(context.Background(), d); err != nil {
-		t.Fatal(err)
-	}
+	f.updateDoc(t, "doc", func(d *v1alpha1.TakeCareDoc) { d.Spec.Scope.Namespaces = []v1alpha1.Namespace{scope} })
 	eventually(t, "no blind spot left", func() (bool, string) {
 		d := f.getDoc(t, "doc")
 		e := f.events(t, ReasonBlindSpotsChanged)

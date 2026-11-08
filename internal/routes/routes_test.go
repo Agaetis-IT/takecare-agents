@@ -133,16 +133,30 @@ func TestRoutes(t *testing.T) {
 		t.Errorf("A2A backend host = %s", host)
 	}
 
-	if err := Prune(ctx, c, r, map[string]bool{"kubernetes": true}, true); err != nil {
+	for _, m := range []string{"default", "old"} {
+		if err := EnsureModel(ctx, c, gw, r, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	model := get(t, c, HTTPRouteGVK, "role-doc-doc-model-default")
+	rule := model.Object["spec"].(map[string]any)["rules"].([]any)[0].(map[string]any)
+	if match, _, _ := unstructured.NestedMap(rule["matches"].([]any)[0].(map[string]any), "path"); match["type"] != "PathPrefix" || match["value"] != "/roles/doc.doc/models/default" {
+		t.Errorf("model route match = %v", match)
+	}
+	if ref := rule["backendRefs"].([]any)[0].(map[string]any); ref["kind"] != "AgentgatewayBackend" || ref["name"] != "model-default" {
+		t.Errorf("the model route must lead to the platform's backend, got %v", ref)
+	}
+
+	if err := Prune(ctx, c, r, map[string]bool{"kubernetes": true}, []string{"default"}, true); err != nil {
 		t.Fatal(err)
 	}
-	if got := names(t, c, HTTPRouteGVK, r); len(got) != 2 || got[0] != "role-doc-doc-a2a" || got[1] != "role-doc-doc-mcp-kubernetes" {
-		t.Errorf("routes after pruning prometheus = %v", got)
+	if got := names(t, c, HTTPRouteGVK, r); len(got) != 3 || got[0] != "role-doc-doc-a2a" || got[1] != "role-doc-doc-mcp-kubernetes" || got[2] != "role-doc-doc-model-default" {
+		t.Errorf("routes after pruning prometheus and the old model = %v", got)
 	}
 	if got := names(t, c, PolicyGVK, r); len(got) != 1 {
 		t.Errorf("policies after pruning = %v", got)
 	}
-	if err := Prune(ctx, c, r, nil, false); err != nil {
+	if err := Prune(ctx, c, r, nil, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	for _, gvk := range Kinds() {
