@@ -13,6 +13,8 @@ on:
       - charts/**
       - hack/**
       - internal/gatewayapi/**
+      - internal/front/**
+      - internal/guard/**
       - cmd/**
       - Dockerfile
       - .dockerignore
@@ -24,6 +26,8 @@ on:
       - charts/**
       - hack/**
       - internal/gatewayapi/**
+      - internal/front/**
+      - internal/guard/**
       - cmd/**
       - Dockerfile
       - .dockerignore

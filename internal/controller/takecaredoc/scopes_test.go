@@ -100,9 +100,12 @@ func TestScopeOverlap(t *testing.T) {
 		d.Spec.Connectors.Cluster = []string{"billing-k8s"}
 	})
 	f.waitAgent(t, "second")
-	if d := f.getDoc(t, "second"); meta.FindStatusCondition(d.Status.Conditions, v1alpha1.ConditionReady).Reason == v1alpha1.ReasonScopeOverlap {
-		t.Errorf("a disjoint scope is still flagged: %s", describe(d))
-	}
+	// The agent is rendered before the status is written: wait for it.
+	eventually(t, "the disjoint scope no longer flagged", func() (bool, string) {
+		d := f.getDoc(t, "second")
+		c := meta.FindStatusCondition(d.Status.Conditions, v1alpha1.ConditionReady)
+		return c != nil && c.Reason != v1alpha1.ReasonScopeOverlap, describe(d)
+	})
 }
 
 // waitAgent waits for the Doc's agent: the Doc runs (the engine's

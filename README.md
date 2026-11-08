@@ -157,7 +157,7 @@ make docker-buildx   # operator image, amd64 + arm64
 
 Prerequisites: Go (version in `go.mod`), Docker, make. Every pinned version lives in [`hack/versions.env`](hack/versions.env); the linters run from pinned images, the Go tools, Helm 4 and kubeconform are installed into `./bin` (Helm runs with its own repository config there, never yours).
 
-The charts live in [`charts/`](charts/), each with its own README to read before installing: [`takecare-crds`](charts/takecare-crds/README.md) (the CRDs, to install and upgrade first, never uninstalled while TakeCare runs) and [`takecare`](charts/takecare/README.md) (the operator and its building blocks: prerequisites, security requirements, values). `values-prod.yaml` is the template a customer fills, every value to set marked `# REQUIRED`; `values-demo.yaml` is complete.
+The charts live in [`charts/`](charts/), each with its own README to read before installing: [`takecare-crds`](charts/takecare-crds/README.md) (the CRDs, to install and upgrade first, never uninstalled while TakeCare runs) and [`takecare`](charts/takecare/README.md) (the operator and its building blocks: prerequisites, security requirements, values); a cluster that an administration cluster supervises installs [`takecare-cluster`](charts/takecare-cluster/README.md) instead (the read-only `kubernetes` MCP server behind its mTLS front, ADR 0016). `values-prod.yaml` is the template a customer fills, every value to set marked `# REQUIRED`; `values-demo.yaml` is complete.
 
 ## How we work
 
