@@ -37,6 +37,12 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The pinned chart archives, restored when the pins are the same (spec
+      # 04): make chart-deps then downloads only what is missing.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: charts/*/charts
+          key: chart-deps-${{ hashFiles('hack/versions.env', 'charts/*/Chart.lock') }}
       - run: make release-notes-test
       # The section in progress, or the one a release PR has just cut (its
       # Unreleased is then empty).
@@ -61,6 +67,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      # The pinned chart archives, restored when the pins are the same (spec
+      # 04): make chart-deps then downloads only what is missing.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: charts/*/charts
+          key: chart-deps-${{ hashFiles('hack/versions.env', 'charts/*/Chart.lock') }}
       - name: check the tag
         env:
           TAG: ${{ github.ref_name }}

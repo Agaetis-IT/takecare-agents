@@ -46,6 +46,12 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      # The pinned chart archives, restored when the pins are the same (spec
+      # 04): make chart-deps then downloads only what is missing.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: charts/*/charts
+          key: chart-deps-${{ hashFiles('hack/versions.env', 'charts/*/Chart.lock') }}
       - name: install k3d (version and checksum from hack/versions.env)
         run: |
           set -euo pipefail
