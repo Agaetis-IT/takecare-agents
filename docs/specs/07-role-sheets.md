@@ -33,7 +33,7 @@ Template: nature · business name · the promise (recto of the card) · trigger 
 - **Levels**: `Apprentice` "It watches what goes out, without blocking anything" · `Practitioner` "It masks, filters, caps and alerts" · `Expert` "An identity and rights per agent, tool by tool, and extra policies".
 - **Build**: `TakeCareRanger`, cluster-scoped, `GuardrailCommonSpec` (level, no namespaces, no model). Its controller renders gateway policies; most of what it needs is what the spike measured (per-route identity, tool authorisation, usage per route). The deterministic nature is the point: "a prompt will never bend it". Not an agent: no `RoleCommonSpec`, no engine. Capped costs are a promise until step 2: before the Ranger, costs are measured, not capped.
 - **Partners**: Intendant, Psy. **Step**: **2**.
-- **Open**: masking at the gateway (what agentgateway 1.6 offers natively); routing the customer's own agents through our gateway (installation topology, ADR 0011); the spike's check-tools script (a refused tool exists upstream, a forged call is refused) is the seed of a red-teaming toolbox.
+- **Open**: red-teaming toolbox seed (the spike's check-tools script: a refused tool exists upstream, a forged call is refused). The Markers, masking at the gateway included, are specified in spec 09; routing the customer's own agents through the gateway (exposure and identity) is a row of its own, X1, with its ADR.
 
 ## 03 Psy — AI agent quality control
 
