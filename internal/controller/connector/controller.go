@@ -124,7 +124,7 @@ type Reconciler struct {
 
 	mu sync.Mutex
 	// clients holds each remote cluster connector's client (ADR 0016).
-	clients map[types.UID]cachedClient
+	clients map[types.NamespacedName]cachedClient
 }
 
 // Reconcile computes the connector's state from its spec and the server it
@@ -133,6 +133,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	logger := log.FromContext(ctx)
 	var c v1alpha1.TakeCareConnector
 	if err := r.Get(ctx, req.NamespacedName, &c); err != nil {
+		if apierrors.IsNotFound(err) {
+			r.mu.Lock()
+			delete(r.clients, req.NamespacedName)
+			r.mu.Unlock()
+		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	st := &status{generation: c.Generation, conditions: c.Status.Conditions}
@@ -148,7 +153,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 		r.discover(ctx, &c, st, *ep)
 		if slices.Contains(c.Spec.Types, v1alpha1.ConnectorCluster) {
-			if err := r.readOnlyGuard(ctx, &c, st); err != nil {
+			if err := r.readOnlyGuard(ctx, &c, st, ep.HTTP); err != nil {
 				return ctrl.Result{}, err
 			}
 			if err := r.resourcesListable(ctx, &c, st, *ep); err != nil {
@@ -166,7 +171,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 	}
 	ready := st.allTrue(v1alpha1.ConditionReachable, v1alpha1.ConditionToolsDiscovered, ConditionBackendAccepted, ConditionReadOnlyGuard, ConditionResourcesListable)
-	if ready {
+	taken := ""
+	if c.Spec.Cluster != nil {
+		if taken, err = r.nameTaken(ctx, &c); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+	if taken != "" {
+		ready = false
+		st.set(v1alpha1.ConditionReady, false, ReasonClusterNameTaken, fmt.Sprintf("the cluster name %s is registered by the connector %s, which came first", c.Spec.Cluster.Name, taken))
+	} else if ready {
 		st.set(v1alpha1.ConditionReady, true, ReasonReady, fmt.Sprintf("%d tool(s) classified, server reachable, backend accepted", len(st.tools)))
 	} else {
 		st.set(v1alpha1.ConditionReady, false, ReasonNotReady, st.firstFalse(v1alpha1.ConditionReachable, v1alpha1.ConditionToolsDiscovered, ConditionBackendAccepted, ConditionReadOnlyGuard, ConditionResourcesListable))
@@ -429,9 +443,9 @@ func rank(c v1alpha1.ToolClass) int {
 // (spec.mcp.addon) in every declared namespace and at the cluster scope,
 // whether it may do what the read-only guard forbids, and whether it may
 // read pods at all.
-func (r *Reconciler) readOnlyGuard(ctx context.Context, c *v1alpha1.TakeCareConnector, st *status) error {
+func (r *Reconciler) readOnlyGuard(ctx context.Context, c *v1alpha1.TakeCareConnector, st *status, remote *http.Client) error {
 	if c.Spec.Cluster != nil {
-		st.set(ConditionReadOnlyGuard, false, ReasonGuardPending, "the read-only guard of a remote cluster is read from its front's /guardz: not implemented yet")
+		r.remoteGuard(ctx, c, remote, st)
 		return nil
 	}
 	if c.Spec.MCP.Addon == "" {
