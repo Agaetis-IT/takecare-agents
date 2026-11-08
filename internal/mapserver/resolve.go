@@ -7,7 +7,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
-	"strings"
+
+	mapschema "github.com/agaetis-it/takecare-agents/api/map"
 )
 
 // Why an alert resolves to no entry.
@@ -24,13 +25,13 @@ const sourceKubernetes = "kubernetes"
 // named after the workload or, failing that, the service. One candidate
 // is a hit; with several, the one whose alertedBy lists the alert is;
 // otherwise the reason of the miss.
-func (m *Map) resolve(namespace, workload, service, alert string) (string, string) {
+func (m *Map) resolve(cluster, namespace, workload, service, alert string) (string, string) {
 	var candidates []string
 	for _, name := range []string{workload, service} {
 		if name == "" {
 			continue
 		}
-		candidates = m.bySource(namespace, name)
+		candidates = m.bySource(cluster, namespace, name)
 		if len(candidates) > 0 {
 			break
 		}
@@ -51,16 +52,17 @@ func (m *Map) resolve(namespace, workload, service, alert string) (string, strin
 }
 
 // bySource lists the validated entries with a kubernetes source naming an
-// object of the namespace, of any kind, by that name, sorted by key.
-func (m *Map) bySource(namespace, name string) []string {
+// object of the cluster's namespace, of any kind, by that name, sorted by
+// key; the cluster "" is the unnamed one.
+func (m *Map) bySource(cluster, namespace, name string) []string {
 	var keys []string
 	for k, e := range m.Entries {
 		if e.Status != "validated" {
 			continue
 		}
 		if slices.ContainsFunc(e.Sources, func(s map[string]string) bool {
-			parts := strings.Split(s[sourceKubernetes], "/")
-			return len(parts) == 3 && parts[0] == namespace && parts[2] == name
+			src, ok := mapschema.ParseKubernetes(s[sourceKubernetes])
+			return ok && src.Kind != "" && src.Cluster == cluster && src.Namespace == namespace && src.Name == name
 		}) {
 			keys = append(keys, k)
 		}
@@ -85,7 +87,7 @@ func (s *Server) serveResolve(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]string{keyError: err.Error()})
 		return
 	}
-	key, miss := m.resolve(q.Get("namespace"), q.Get("workload"), q.Get("service"), q.Get("alert"))
+	key, miss := m.resolve(q.Get("cluster"), q.Get("namespace"), q.Get("workload"), q.Get("service"), q.Get("alert"))
 	if miss != "" {
 		w.WriteHeader(http.StatusNotFound)
 		_ = json.NewEncoder(w).Encode(map[string]string{"reason": miss, keyRevision: m.Revision})
