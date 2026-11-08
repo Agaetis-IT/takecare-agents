@@ -50,6 +50,8 @@ Go everywhere (current stable Go, kubebuilder v4 layout, controller-runtime), th
 | End-to-end | k3d in GitHub Actions, fake LLM | `demo-up` → `demo-incident` (short ramp) → diagnosis published to a fake Slack → trace in the collector | PRs labelled `e2e`, and `main` |
 | Accuracy bench | real model, k3d | N investigations, correctness ratio | on demand (`workflow_dispatch`) and before each release |
 
+The pinned chart archives are cached by the CI, keyed by the pins (`hack/versions.env` and the `Chart.lock` files); `make chart-deps` downloads only what is missing, a download retried three times.
+
 The end-to-end run (`make e2e`) needs about 5 GB of Docker memory, more than the demo: two Docs' agents, the fakes and the workload-cluster package of the cluster `east` (measured at 4.2 GiB at the end of a run on 2026-11-08).
 
 ### The read-only guard
