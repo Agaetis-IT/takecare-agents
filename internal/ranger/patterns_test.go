@@ -17,7 +17,9 @@ func TestShippedPatterns(t *testing.T) {
 		"github-token":      {"ghp_" + strings.Repeat("a", 36), "ghp_" + strings.Repeat("a", 10)},
 		"slack-token":       {"xoxb-1234567890-abcdef", "xoxz-1234567890-abcdef"},
 		"google-api-key":    {"AIza" + strings.Repeat("B", 35), "AIza" + strings.Repeat("B", 20)},
-		"generic-api-key":   {"api_key = 0123456789abcdef0123", "api_key = short"},
+		// Built at run time: a literal key-shaped sample is a finding for the
+		// repository's own secret scan.
+		"generic-api-key": {"api_key = " + strings.Repeat("x", 20), "api_key = short"},
 	}
 	if len(samples) != len(ShippedPatterns) {
 		t.Fatalf("%d samples for %d shipped patterns", len(samples), len(ShippedPatterns))

@@ -25,3 +25,14 @@ condition = "AND"
 paths = ['''(^|/)map/[a-z]+/[a-z0-9][-a-z0-9.]*\.yaml$''']
 regexTarget = "line"
 regexes = ['''^key: (service|compute|datastore|storage|network|identity|external|team|environment|observability|runbook)/[a-z0-9]([-a-z0-9.]*[a-z0-9])?$''']
+
+# The shipped secret shapes of the Ranger (spec 09) are tested on fake
+# samples. One commit of the branch that brought them carried a literal
+# generic-API-key sample; the test now builds it at run time. Only that
+# line, in that test, is allowed.
+[[allowlists]]
+description = "the Ranger's fake generic-api-key sample"
+condition = "AND"
+paths = ['''(^|/)internal/ranger/patterns_test\.go$''']
+regexTarget = "line"
+regexes = ['''^\s*"generic-api-key":\s*\{"api_key = 0123456789abcdef0123", "api_key = short"\},$''']
