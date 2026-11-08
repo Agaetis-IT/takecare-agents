@@ -91,7 +91,7 @@ install() {
   empty_corpora
   "$HELM" upgrade --install takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
-    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --wait --timeout 10m
+    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set ranger.caps.gateway.requestsPerMinute=600 --wait --timeout 10m
   kubectl -n kagent rollout status deploy/kagent-controller --timeout=180s >/dev/null
   verify
 }
@@ -227,7 +227,7 @@ upgrade() {
     --set image.tag="$IMAGE_TAG" --set demo.enabled=true --wait --timeout 5m
   "$HELM" upgrade takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
-    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set operator.extraArgs[0]=--zap-log-level=debug --wait --timeout 10m
+    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set operator.extraArgs[0]=--zap-log-level=debug --set ranger.caps.gateway.requestsPerMinute=600 --wait --timeout 10m
   check "helm upgrade of both charts succeeded without a field manager conflict" true
   check "operator rolled out with the new argument" \
     kubectl -n "$NS" rollout status deploy/takecare-operator --timeout=120s
@@ -257,6 +257,14 @@ verify() {
     bash -c "{ kubectl -n ${NS} get agentgatewaybackends,agentgatewaypolicies -o yaml; kubectl -n kagent get modelconfigs -o yaml; } | grep -q smoke-placeholder"
   check "status.models[0].route names the model's backend" \
     test "$(kubectl get takecareplatform main -o jsonpath='{.status.models[0].route}')" = "model-default"
+  log "the Ranger (spec 09): Practitioner in the demo, a generous request limit for the smoke"
+  check "TakeCareRanger main reaches Ready=True: its Markers are accepted by the gateway" \
+    bash -c "for _ in \$(seq 60); do [[ \$(kubectl get takecareranger main -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}') == True ]] && exit 0; sleep 2; done; kubectl get takecareranger main -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}: {.message}{\"\\n\"}{end}' >&2; exit 1"
+  local p
+  for p in ranger-journal ranger-guards ranger-caps; do
+    check "the gateway accepted ${p}" \
+      test "$(kubectl -n "$NS" get agentgatewaypolicy "$p" -o jsonpath='{.status.ancestors[0].conditions[?(@.type=="Accepted")].status}')" = "True"
+  done
   # The demo profile's stable production gaps (spec 01, AC 6); the gateway
   # scrape gap is transient there and NetworkPolicies are on.
   check "ProductionReady=False in the demo, listing content-capture-on and single-replica" \
@@ -398,6 +406,13 @@ EOF
     test "$("${code[@]}" "${gw}/api/a2a/kagent/${agent}x/.well-known/agent-card.json")" = "404"
   check "through the gateway, the engine's API is out of reach: /api/agents has no route (404)" \
     test "$("${code[@]}" "${gw}/api/agents")" = "404"
+  # The Ranger's journal (spec 09 §7): a request through the gateway leaves
+  # a line in the proxy's access log carrying the journal's mark (the proxy
+  # logs requests without the journal too).
+  local probe="ranger-journal-probe-$RANDOM"
+  "${code[@]}" "${gw}/${probe}" >/dev/null
+  check "the Ranger's journal logged a request through the gateway" \
+    bash -c "for _ in \$(seq 15); do kubectl -n ${NS} logs -l gateway.networking.k8s.io/gateway-name=agentgateway-proxy --tail=-1 | grep ${probe} | grep -q 'takecare.journal=\"ranger\"' && exit 0; sleep 2; done; exit 1"
   log "the Doc's runs (spec 02 §2): no model provider in the smoke, a run fails"
   local reports_before run_payload
   reports_before="$(kubectl -n "$NS" logs deploy/takecare-addon-report-log | grep -c 'logged for destination' || true)"
@@ -612,11 +627,11 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=72 install ;;
-  upgrade) CHECKS_EXPECTED=72 upgrade ;;
+  install) CHECKS_EXPECTED=77 install ;;
+  upgrade) CHECKS_EXPECTED=77 upgrade ;;
   status) status ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=4 cluster_chart ;;
-  all) up; CHECKS_EXPECTED=72 install; CHECKS_EXPECTED=72 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
+  all) up; CHECKS_EXPECTED=77 install; CHECKS_EXPECTED=77 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|cluster|status|down|all]"; exit 2 ;;
 esac

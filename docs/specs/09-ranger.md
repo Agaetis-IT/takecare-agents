@@ -79,7 +79,7 @@ It does not read any request (the gateway does); it does not evaluate answers (t
 
 ## 7. The journal
 
-Every request through the gateway is logged by the gateway's access log, with its route, identity when there is one, status and usage, never the content (ADR 0006: content follows `captureContent`). The traces stay the Logbook (the Psy's); the journal is the Ranger's.
+Every request through the gateway is logged by the gateway's access log, with its route, identity when there is one, status and usage, never the content (ADR 0006: content follows `captureContent`). The gateway logs every request by itself; the journal Marker stamps each line with the Ranger's attribute (`takecare.journal="ranger"`), so that what it covers can be told from what it does not. The traces stay the Logbook (the Psy's); the journal is the Ranger's.
 
 ## 8. The customer's agents
 

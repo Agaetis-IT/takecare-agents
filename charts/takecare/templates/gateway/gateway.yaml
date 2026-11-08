@@ -1,7 +1,6 @@
 {{- if .Values.gateway.create }}
 # The one Gateway every model, MCP and A2A call goes through (ADR 0004, 0008,
-# 0009). The listener opts in to agentgateway's model routes
-# (AgentgatewayModel); HTTPRoutes may come from any namespace, since the
+# 0009). The listener takes HTTPRoutes from any namespace, since the
 # operator renders the engine's routes next to the engine.
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
@@ -22,6 +21,4 @@ spec:
         kinds:
           - group: gateway.networking.k8s.io
             kind: HTTPRoute
-          - group: agentgateway.dev
-            kind: AgentgatewayModel
 {{- end }}

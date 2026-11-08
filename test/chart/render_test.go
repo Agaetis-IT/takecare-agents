@@ -167,22 +167,73 @@ func TestRenderedPlatformAgainstTheCRD(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			platforms := ofKind(render(t, releaseName, tt.args...), "TakeCarePlatform")
-			if len(platforms) != 1 || platforms[0].GetName() != "main" {
-				t.Fatalf("want exactly one TakeCarePlatform named main, got %d", len(platforms))
-			}
-			p := platforms[0]
-			err := c.Create(ctx, p)
-			if err == nil {
-				t.Cleanup(func() { _ = c.Delete(ctx, p) })
-			}
-			switch {
-			case tt.wantErr == "" && err != nil:
-				t.Fatalf("the rendered platform is rejected by its CRD: %v", err)
-			case tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)):
-				t.Fatalf("want a rejection mentioning %q, got %v", tt.wantErr, err)
+			objs := render(t, releaseName, tt.args...)
+			for _, kind := range []string{"TakeCarePlatform", "TakeCareRanger"} {
+				found := ofKind(objs, kind)
+				if len(found) != 1 || found[0].GetName() != "main" {
+					t.Fatalf("want exactly one %s named main, got %d", kind, len(found))
+				}
+				p := found[0]
+				err := c.Create(ctx, p)
+				if err == nil {
+					t.Cleanup(func() { _ = c.Delete(ctx, p) })
+				}
+				switch {
+				case tt.wantErr == "" && err != nil:
+					t.Fatalf("the rendered %s is rejected by its CRD: %v", kind, err)
+				case tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)):
+					t.Fatalf("want a rejection mentioning %q, got %v", tt.wantErr, err)
+				}
 			}
 		})
+	}
+}
+
+// The Ranger (spec 09): Apprentice by default, Practitioner in the demo, the
+// customer's material passed through, the extra Markers refused below Expert;
+// the gateway's listener no longer takes AgentgatewayModel routes (spec 01).
+func TestRanger(t *testing.T) {
+	level := func(args ...string) string {
+		rangers := ofKind(render(t, releaseName, args...), "TakeCareRanger")
+		if len(rangers) != 1 {
+			return fmt.Sprintf("%d Rangers", len(rangers))
+		}
+		l, _, _ := unstructured.NestedString(rangers[0].Object, "spec", "level")
+		return l
+	}
+	if got := level(append(profileArgs("prod"), prodSets...)...); got != "Apprentice" {
+		t.Errorf("prod Ranger level = %s, want Apprentice", got)
+	}
+	if got := level(profileArgs("demo")...); got != "Practitioner" {
+		t.Errorf("demo Ranger level = %s, want Practitioner", got)
+	}
+	if got := level(append(profileArgs("demo"), flagSet, "ranger.create=false")...); got != "0 Rangers" {
+		t.Errorf("ranger.create=false renders %s", got)
+	}
+
+	objs := render(t, releaseName, append(profileArgs("demo"),
+		flagSet, "ranger.caps.gateway.requestsPerMinute=60", flagSet, "ranger.filtering.patterns[0].name=itk",
+		flagSet, "ranger.filtering.patterns[0].regex=itk_[a-z]+")...)
+	rg := ofKind(objs, "TakeCareRanger")[0]
+	if rpm, _, _ := unstructured.NestedInt64(rg.Object, "spec", "caps", "gateway", "requestsPerMinute"); rpm != 60 {
+		t.Errorf("caps.gateway.requestsPerMinute = %d", rpm)
+	}
+	if p, _, _ := unstructured.NestedSlice(rg.Object, "spec", "filtering", "patterns"); len(p) != 1 {
+		t.Errorf("filtering.patterns = %v", p)
+	}
+	for _, gw := range ofKind(objs, "Gateway") {
+		kinds, _, _ := unstructured.NestedSlice(gw.Object, "spec", "listeners")
+		if s := fmt.Sprint(kinds); strings.Contains(s, "AgentgatewayModel") {
+			t.Errorf("the Gateway's listener still takes AgentgatewayModel: %s", s)
+		}
+	}
+
+	out, err := helmTemplate(t, releaseName, releaseNamespace, append(profileArgs("demo"), flagSet, "ranger.extra.sourceCIDRs={10.0.0.0/8}")...).CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "ranger.extra is the Expert's") {
+		t.Errorf("ranger.extra below Expert must be refused, got %v:\n%s", err, out)
+	}
+	if _, err := helmTemplate(t, releaseName, releaseNamespace, append(profileArgs("demo"), flagSet, "ranger.level=Expert", flagSet, "ranger.extra.sourceCIDRs={10.0.0.0/8}")...).CombinedOutput(); err != nil {
+		t.Errorf("ranger.extra at Expert is refused: %v", err)
 	}
 }
 

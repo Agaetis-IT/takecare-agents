@@ -18,6 +18,11 @@ const (
 	policyGuards  = "ranger-guards"
 	policyCaps    = "ranger-caps"
 
+	// JournalAttribute marks the access log lines the journal keeps: the
+	// gateway logs requests without it too, so the mark is what says the
+	// journal is in place (spec 09 §7).
+	JournalAttribute = "takecare.journal"
+
 	// RejectMessage is what a caller reads when the filtering Marker refuses
 	// its request.
 	RejectMessage = "rejected by the Ranger: a secret shape in the request"
@@ -34,6 +39,14 @@ const (
 	actionLimit  = "Limit"
 	actionLog    = "Log"
 )
+
+// journal is the access log's configuration: the gateway's default fields,
+// never the content (ADR 0006), and the journal's mark.
+func journal() map[string]any {
+	return map[string]any{"attributes": map[string]any{"add": []any{
+		map[string]any{"name": JournalAttribute, "expression": `"ranger"`},
+	}}}
+}
 
 // policy is one rendered AgentgatewayPolicy and the Markers it carries.
 type policy struct {
@@ -63,7 +76,7 @@ func render(rg *v1alpha1.TakeCareRanger, gateway string) []policy {
 
 	out := []policy{{
 		name:    policyJournal,
-		spec:    map[string]any{keyTargetRefs: target, "frontend": map[string]any{"accessLog": map[string]any{}}},
+		spec:    map[string]any{keyTargetRefs: target, "frontend": map[string]any{"accessLog": journal()}},
 		markers: []v1alpha1.Marker{marker("journal", policyJournal, actionLog)},
 	}}
 
