@@ -170,6 +170,7 @@ func build(files map[string][]byte) (*Map, error) {
 	// also report "no such entry", two faults for one cause.
 	for _, k := range slices.Sorted(maps.Keys(m.Entries)) {
 		errs = append(errs, m.link(m.Entries[k], where[k])...)
+		errs = append(errs, m.clusters(m.Entries[k], where[k])...)
 	}
 	if len(errs) > 0 {
 		return nil, errors.Join(errs...)
@@ -208,6 +209,32 @@ func parse(p string, raw []byte) (*Entry, error) {
 		}
 	}
 	return &e, nil
+}
+
+// clusters checks that a named cluster an entry refers to exists (ADR
+// 0016 §5): a namespace's key environment/<cluster>.<ns> and a source
+// <cluster>/... both need the entry environment/<cluster>. The unnamed
+// cluster needs none, and coexists with named ones.
+func (m *Map) clusters(e *Entry, file string) []error {
+	var errs []error
+	need := func(cluster, what string) {
+		if _, ok := m.Entries["environment/"+cluster]; !ok {
+			errs = append(errs, fmt.Errorf("%s: %s names the cluster %s, which has no entry environment/%s", file, what, cluster, cluster))
+		}
+	}
+	if t, name, _ := strings.Cut(e.Key, "/"); t == "environment" {
+		if cluster, _, dotted := strings.Cut(name, "."); dotted {
+			need(cluster, "the key "+e.Key)
+		}
+	}
+	for _, s := range e.Sources {
+		if ref, ok := s[sourceKubernetes]; ok {
+			if src, ok := mapschema.ParseKubernetes(ref); ok && src.Cluster != "" {
+				need(src.Cluster, "the source "+ref)
+			}
+		}
+	}
+	return errs
 }
 
 // link records an entry's relations both ways, checking their targets and

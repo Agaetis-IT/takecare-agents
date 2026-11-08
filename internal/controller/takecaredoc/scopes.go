@@ -89,17 +89,13 @@ func (r *Reconciler) scopeOf(ctx context.Context, d *v1alpha1.TakeCareDoc) (docS
 	if len(clusters) == 0 {
 		clusters = []string{""}
 	}
-	sc := docScope{entities: d.Spec.Scope.Entities, entityPlaces: map[v1alpha1.EntityKey][]place{}}
+	sc := docScope{entities: d.Spec.Scope.Entities}
 	for _, ns := range d.Spec.Scope.Namespaces {
 		for _, cl := range clusters {
 			sc.places = append(sc.places, place{cl, ns})
 		}
 	}
-	for k, nss := range r.entityNamespaces(ctx, d) {
-		for _, ns := range nss {
-			sc.entityPlaces[k] = append(sc.entityPlaces[k], place{"", ns})
-		}
-	}
+	sc.entityPlaces = r.entityPlaces(ctx, d)
 	return sc, nil
 }
 
@@ -133,17 +129,18 @@ func sharedScope(a, b docScope) []string {
 	return slices.Compact(shared)
 }
 
-// entityNamespaces gives the namespaces of a Doc's entities: environment/<ns>
-// is ns; an entity with state on a ground is asked to the Doc's Map, through
-// the per-revision cache, and counts when validated. A Map that does not
-// answer gives nothing: an overlap is never guessed.
-func (r *Reconciler) entityNamespaces(ctx context.Context, d *v1alpha1.TakeCareDoc) map[v1alpha1.EntityKey][]v1alpha1.Namespace {
-	out := map[v1alpha1.EntityKey][]v1alpha1.Namespace{}
+// entityPlaces gives where a Doc's entities lie: environment/[<cluster>.]<ns>
+// is that namespace; an entity with state on a ground is asked to the Doc's
+// Map, through the per-revision cache, and counts when validated, each
+// source on its cluster. A Map that does not answer gives nothing: an
+// overlap is never guessed.
+func (r *Reconciler) entityPlaces(ctx context.Context, d *v1alpha1.TakeCareDoc) map[v1alpha1.EntityKey][]place {
+	out := map[v1alpha1.EntityKey][]place{}
 	var keys []v1alpha1.EntityKey
 	for _, k := range d.Spec.Scope.Entities {
 		switch t, name := typeName(k); {
 		case t == typeEnvironment:
-			out[k] = []v1alpha1.Namespace{v1alpha1.Namespace(name)}
+			out[k] = []place{environmentPlace(name)}
 		case onGround(t):
 			keys = append(keys, k)
 		}
@@ -171,7 +168,7 @@ func (r *Reconciler) entityNamespaces(ctx context.Context, d *v1alpha1.TakeCareD
 			}
 		}
 		if info.found && info.validated {
-			out[k] = info.namespaces
+			out[k] = info.places
 		}
 	}
 	return out

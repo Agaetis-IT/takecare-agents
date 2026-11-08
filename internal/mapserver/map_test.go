@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	demoDir  = "testdata/demo"
-	cartFile = "map/service/cart.yaml"
+	demoDir      = "testdata/demo"
+	cartFile     = "map/service/cart.yaml"
+	cartNotMatch = cartFile + ": does not match"
 )
 
 // entryFile is a valid entry for a key, with extra YAML lines.
@@ -35,6 +36,22 @@ func TestLoadDemo(t *testing.T) {
 	}
 }
 
+// ADR 0016 §5: named clusters beside the unnamed one.
+func TestLoadNamedClusters(t *testing.T) {
+	m, err := Load(fstest.MapFS{
+		"map/environment/east.yaml":      entryFile("environment/east"),
+		"map/environment/east.apps.yaml": entryFile("environment/east.apps", "sources: [{kubernetes: east/apps}]"),
+		"map/environment/apps.yaml":      entryFile("environment/apps", "sources: [{kubernetes: apps}]"),
+		cartFile:                         entryFile("service/cart", "sources: [{kubernetes: east/apps/Deployment/cart}, {kubernetes: apps/Deployment/cart}]"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Entries) != 4 {
+		t.Errorf("%d entries", len(m.Entries))
+	}
+}
+
 func TestLoadRefuses(t *testing.T) {
 	base := func() fstest.MapFS {
 		return fstest.MapFS{
@@ -50,15 +67,19 @@ func TestLoadRefuses(t *testing.T) {
 		files fstest.MapFS
 		want  []string
 	}{
-		"bad key":                        {fstest.MapFS{"map/service/Shop.yaml": entryFile("service/Shop")}, []string{"map/service/Shop.yaml: does not match"}},
-		"key not matching path":          {fstest.MapFS{cartFile: entryFile("service/shop")}, []string{"key service/shop does not match the file's place, service/cart"}},
-		"dangling target":                {fstest.MapFS{cartFile: entryFile("service/cart", "relations: {dependsOn: [datastore/none]}")}, []string{"dependsOn datastore/none: no such entry"}},
-		"runsAs from a datastore":        {fstest.MapFS{"map/datastore/cart.yaml": entryFile("datastore/cart", "relations: {runsAs: [compute/shop]}")}, []string{"runsAs starts from service, not from datastore"}},
-		"deployedIn to a service":        {fstest.MapFS{"map/compute/cart.yaml": entryFile("compute/cart", "relations: {deployedIn: [service/shop]}")}, []string{"deployedIn service/shop: it points to environment, not to service"}},
-		"a second file with a taken key": {fstest.MapFS{"map/service/shop-copy.yaml": entryFile("service/shop")}, []string{"map/service/shop-copy.yaml: key service/shop does not match"}},
-		"unknown property":               {fstest.MapFS{cartFile: entryFile("service/cart", "shade: blue")}, []string{"map/service/cart.yaml: does not match"}},
-		"date that does not exist":       {fstest.MapFS{cartFile: entryFile("service/cart", "lastSeen: 2026-02-30")}, []string{"lastSeen 2026-02-30 is not a date"}},
-		"file outside the layout":        {fstest.MapFS{"map/notes.yaml": entryFile("service/notes")}, []string{"map/notes.yaml: not a map/<type>/<name>.yaml file"}},
+		"bad key":                                   {fstest.MapFS{"map/service/Shop.yaml": entryFile("service/Shop")}, []string{"map/service/Shop.yaml: does not match"}},
+		"key not matching path":                     {fstest.MapFS{cartFile: entryFile("service/shop")}, []string{"key service/shop does not match the file's place, service/cart"}},
+		"dangling target":                           {fstest.MapFS{cartFile: entryFile("service/cart", "relations: {dependsOn: [datastore/none]}")}, []string{"dependsOn datastore/none: no such entry"}},
+		"runsAs from a datastore":                   {fstest.MapFS{"map/datastore/cart.yaml": entryFile("datastore/cart", "relations: {runsAs: [compute/shop]}")}, []string{"runsAs starts from service, not from datastore"}},
+		"deployedIn to a service":                   {fstest.MapFS{"map/compute/cart.yaml": entryFile("compute/cart", "relations: {deployedIn: [service/shop]}")}, []string{"deployedIn service/shop: it points to environment, not to service"}},
+		"a second file with a taken key":            {fstest.MapFS{"map/service/shop-copy.yaml": entryFile("service/shop")}, []string{"map/service/shop-copy.yaml: key service/shop does not match"}},
+		"unknown property":                          {fstest.MapFS{cartFile: entryFile("service/cart", "shade: blue")}, []string{cartNotMatch}},
+		"date that does not exist":                  {fstest.MapFS{cartFile: entryFile("service/cart", "lastSeen: 2026-02-30")}, []string{"lastSeen 2026-02-30 is not a date"}},
+		"file outside the layout":                   {fstest.MapFS{"map/notes.yaml": entryFile("service/notes")}, []string{"map/notes.yaml: not a map/<type>/<name>.yaml file"}},
+		"a dotted environment without its cluster":  {fstest.MapFS{"map/environment/east.apps.yaml": entryFile("environment/east.apps")}, []string{"the key environment/east.apps names the cluster east, which has no entry environment/east"}},
+		"a four-segment source without its cluster": {fstest.MapFS{cartFile: entryFile("service/cart", "sources: [{kubernetes: east/apps/Deployment/cart}]")}, []string{"the source east/apps/Deployment/cart names the cluster east"}},
+		"a cluster that is not a DNS label":         {fstest.MapFS{cartFile: entryFile("service/cart", "sources: [{kubernetes: East_1/apps/Deployment/cart}]")}, []string{cartNotMatch}},
+		"five segments":                             {fstest.MapFS{cartFile: entryFile("service/cart", "sources: [{kubernetes: a/b/c/d/e}]")}, []string{cartNotMatch}},
 		"every fault at once": {fstest.MapFS{
 			"map/service/a.yaml": entryFile("service/b"),
 			"map/service/c.yaml": entryFile("service/c", "relations: {dependsOn: [datastore/none]}"),

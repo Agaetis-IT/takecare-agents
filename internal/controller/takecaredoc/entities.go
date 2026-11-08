@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	mapschema "github.com/agaetis-it/takecare-agents/api/map"
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/controller/connector"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
@@ -30,8 +31,9 @@ const (
 type entryInfo struct {
 	found     bool
 	validated bool
-	// namespaces are those of the entry's kubernetes sources.
-	namespaces []v1alpha1.Namespace
+	// places are the namespaces of the entry's kubernetes sources, each on
+	// its cluster (ADR 0016 §5).
+	places []place
 	// err is set when the Map did not answer; down when the server
 	// itself failed, not the tool.
 	err  string
@@ -58,6 +60,15 @@ func onGround(t string) bool {
 		return true
 	}
 	return false
+}
+
+// environmentPlace reads an environment entry's name: <cluster>.<ns> on a
+// named cluster, <ns> on the unnamed one (a namespace has no dot).
+func environmentPlace(name string) place {
+	if cluster, ns, dotted := strings.Cut(name, "."); dotted {
+		return place{cluster, v1alpha1.Namespace(ns)}
+	}
+	return place{"", v1alpha1.Namespace(name)}
 }
 
 func typeName(k v1alpha1.EntityKey) (string, string) {
@@ -146,9 +157,8 @@ func (r *Reconciler) entry(ctx context.Context, ep mcp.Endpoint, key v1alpha1.En
 	}
 	info := entryInfo{found: true, validated: e.Status == "validated"}
 	for _, s := range e.Sources {
-		if ref, ok := s["kubernetes"]; ok {
-			ns, _, _ := strings.Cut(ref, "/")
-			info.namespaces = append(info.namespaces, v1alpha1.Namespace(ns))
+		if src, ok := mapschema.ParseKubernetes(s["kubernetes"]); ok && s["kubernetes"] != "" {
+			info.places = append(info.places, place{src.Cluster, v1alpha1.Namespace(src.Namespace)})
 		}
 	}
 	return info
@@ -192,14 +202,14 @@ func (b *binding) coverEntities(d *v1alpha1.TakeCareDoc, f findings, readable ma
 	}
 	for _, k := range d.Spec.Scope.Entities {
 		t, name := typeName(k)
-		ns := v1alpha1.Namespace(name)
+		env := environmentPlace(name)
 		switch {
-		case t == typeEnvironment && slices.Contains(d.Spec.Scope.Namespaces, ns):
+		case t == typeEnvironment && env.cluster == "" && slices.Contains(d.Spec.Scope.Namespaces, env.ns):
 			// Counted with the namespaces.
-		case t == typeEnvironment && readable[place{"", ns}]:
+		case t == typeEnvironment && readable[env]:
 			covered++
 		case t == typeEnvironment:
-			reason, why := f.unread(place{"", ns})
+			reason, why := f.unread(env)
 			spot(k, reason, why)
 		case !onGround(t):
 		case f.mapProblem.why != "":
@@ -220,14 +230,13 @@ func (b *binding) coverEntry(k v1alpha1.EntityKey, f findings, readable map[plac
 		spot(k, v1alpha1.BlindSpotNotInMap, "not in the Map")
 	case !info.validated:
 		spot(k, v1alpha1.BlindSpotNotValidated, "proposed in the Map, not validated")
-	case len(info.namespaces) == 0:
+	case len(info.places) == 0:
 		spot(k, v1alpha1.BlindSpotNoAccess, "no kubernetes source in the Map, so no connector reads it")
-	// Map sources name no cluster yet: they are on the unnamed one.
-	case slices.ContainsFunc(info.namespaces, func(ns v1alpha1.Namespace) bool { return readable[place{"", ns}] }):
+	case slices.ContainsFunc(info.places, func(p place) bool { return readable[p] }):
 		return 1
 	default:
-		reason, why := f.unread(place{"", info.namespaces[0]})
-		spot(k, reason, fmt.Sprintf("its namespace `%s`: %s", info.namespaces[0], why))
+		reason, why := f.unread(info.places[0])
+		spot(k, reason, fmt.Sprintf("its namespace `%s`: %s", info.places[0], why))
 	}
 	return 0
 }

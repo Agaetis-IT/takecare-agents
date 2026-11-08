@@ -1,0 +1,7 @@
+key: service/cart-local
+provenance: declared
+status: validated
+created: 2026-11-08
+lastValidated: 2026-11-08
+sources:
+  - kubernetes: shop/Deployment/cart

@@ -26,7 +26,7 @@ The Intendant keeps it (spec 07, sheet 01); every agent reads it through the `ma
 | Identity | `identity` | An account a workload acts as: a ServiceAccount, a cloud role | `identity/billing-api` |
 | External dependency | `external` | A service outside the customer's ground: a payment provider, a SaaS API | `external/payment-provider` |
 | Team | `team` | Who answers for entries | `team/platform` |
-| Environment | `environment` | Where entries are deployed: a namespace, an account, a region | `environment/demo-apps` |
+| Environment | `environment` | Where entries are deployed: a namespace, an account, a region; a workload cluster `environment/<cluster>`, a namespace of a named cluster `environment/<cluster>.<namespace>` (ADR 0016 §5) | `environment/demo-apps` |
 | Observability source | `observability` | Where signals about entries come from | `observability/prometheus` |
 | Runbook | `runbook` | A procedure that applies to entries | `runbook/proxy-timeout` |
 
@@ -54,7 +54,7 @@ Every entry carries:
 - its **dates**: `created`, `lastValidated`, `lastSeen` (by the discovery);
 - free **`labels`**;
 - an **`owner`**, a team key;
-- its **`sources`**: the cloud or cluster identifiers it maps to.
+- its **`sources`**: the cloud or cluster identifiers it maps to. A `kubernetes` source is `[<cluster>/]<namespace>[/<Kind>/<name>]`, the segments' count telling the forms apart: a namespace, a named cluster's namespace, an object, a named cluster's object. Without a cluster, the source is on the unnamed cluster (a single-cluster install, the demo), which coexists with named ones; the cluster is a DNS label and needs its entry `environment/<cluster>`, as a dotted environment key does (ADR 0016 §5).
 
 Only validated entries are used for routing and scope.
 
@@ -103,7 +103,7 @@ Blast radius follows the reverse of `dependsOn`, `runsAs` and `deployedIn`: what
 
 All five are `read`, none `content` (ADR 0014). Errors: unknown key, invalid reference, date before the first commit.
 
-The server also answers **`GET /resolve`** for the operator's alert intake (spec 02 §1), with the query `namespace`, `alert` (the alert name), `workload` and `service` (optional): `200 {key, revision}` on a hit, `404 {reason, revision}` on a miss (`reason` is `none` or `ambiguous`), `503` while no Map is loaded. It is not an MCP tool: agents never call it and the gateway does not route it; the add-on's ingress policy admits the operator. The rule is in §7.
+The server also answers **`GET /resolve`** for the operator's alert intake (spec 02 §1), with the query `namespace`, `alert` (the alert name), `workload`, `service` and `cluster` (optional; empty for the unnamed cluster): `200 {key, revision}` on a hit, `404 {reason, revision}` on a miss (`reason` is `none` or `ambiguous`), `503` while no Map is loaded. It is not an MCP tool: agents never call it and the gateway does not route it; the add-on's ingress policy admits the operator. The rule is in §7.
 
 ## 6. Who writes
 
@@ -112,8 +112,8 @@ Never an agent. The Intendant's discovery (operator code) writes proposals as fi
 ## 7. What the Map is used for
 
 - **Scope by entities** (ADR 0014 §4).
-- **Routing and the incident key** (ADR 0015 §4 and §5). The intake resolves a firing alert to an entry with `/resolve` (§5): among the `validated` entries, those with a `kubernetes` source `<namespace>/<Kind>/<name>` in the alert's namespace whose `<name>` is the alert's workload or, when none is, its `service` label; one candidate is a hit; with several, the one whose `alertedBy` lists the alert's name is the hit; anything else is a miss, `none` without a candidate, `ambiguous` with several left. A `proposed` entry never resolves. The demo's `HighErrorRate` on `billing-api` resolves to `service/billing-api`: `compute/billing-api` has the same source, the service's `alertedBy` decides.
-- **Readiness by coverage** (ADR 0014 §1). A role's `scope.entities` are read through its Map connector's `entry` tool. An entity is checked when its type has state on a ground: `service`, `compute`, `datastore`, `storage`, `network`, `identity`. It is covered when it is `validated` and one of its `sources` is `kubernetes: <namespace>/...` in a namespace a cluster connector given to the role reads. Otherwise it is a blind spot:
+- **Routing and the incident key** (ADR 0015 §4 and §5). The intake resolves a firing alert to an entry with `/resolve` (§5): among the `validated` entries, those with a `kubernetes` source `[<cluster>/]<namespace>/<Kind>/<name>` on the alert's cluster (`/resolve`'s `cluster` parameter, empty for the unnamed cluster) and in its namespace whose `<name>` is the alert's workload or, when none is, its `service` label; one candidate is a hit; with several, the one whose `alertedBy` lists the alert's name is the hit; anything else is a miss, `none` without a candidate, `ambiguous` with several left. A `proposed` entry never resolves. The demo's `HighErrorRate` on `billing-api` resolves to `service/billing-api`: `compute/billing-api` has the same source, the service's `alertedBy` decides.
+- **Readiness by coverage** (ADR 0014 §1). A role's `scope.entities` are read through its Map connector's `entry` tool. An entity is checked when its type has state on a ground: `service`, `compute`, `datastore`, `storage`, `network`, `identity`. It is covered when it is `validated` and one of its `sources` is `kubernetes: [<cluster>/]<namespace>/...` in a namespace that a cluster connector of that cluster, given to the role, reads. Otherwise it is a blind spot:
   - `NotInMap`: the key is not in the Map;
   - `NotValidated`: the entry is `proposed`;
   - `NoAccess`: no `kubernetes` source among its sources (until other access types exist);

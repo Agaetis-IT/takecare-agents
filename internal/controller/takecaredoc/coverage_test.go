@@ -156,3 +156,39 @@ func TestCoverageOnNamedClusters(t *testing.T) {
 		return strings.Contains(text, "limited to the namespaces `east/shop`, `west/billing`."), text
 	})
 }
+
+const billingAPI = "service/billing-api"
+
+// ADR 0016 §5: an entity whose Map source names a cluster is covered when
+// the Doc's connector of that cluster reads its namespace; otherwise the
+// pair's own reason.
+func TestEntitiesOnNamedClusters(t *testing.T) {
+	f := start(t)
+	f.maps.url.Store(startMap(t, map[string]string{
+		"environment/east":     "provenance: declared\nstatus: validated\n",
+		string(shopAPI):        "provenance: declared\nstatus: validated\nsources:\n  - kubernetes: east/shop/Deployment/shop-api\n",
+		billingAPI:             "provenance: declared\nstatus: validated\nsources:\n  - kubernetes: east/billing/Deployment/billing-api\n",
+		"service/unnamed-shop": "provenance: declared\nstatus: validated\nsources:\n  - kubernetes: shop/Deployment/unnamed-shop\n",
+	}))
+	f.platform(t)
+	f.connector(t, "report", []v1alpha1.ConnectorType{v1alpha1.ConnectorReport}, nil, true)
+	f.remoteCluster(t, "east", scope)
+	f.connector(t, mapConnector, []v1alpha1.ConnectorType{v1alpha1.ConnectorMap}, read("blast_radius", "entry", "map_at", "neighbours", "path"), true)
+	f.setMapRevision(t, "rev1")
+	f.doc(t, "doc", func(d *v1alpha1.TakeCareDoc) {
+		d.Spec.Scope = v1alpha1.Scope{Entities: []v1alpha1.EntityKey{shopAPI, billingAPI, "service/unnamed-shop"}}
+		d.Spec.Connectors.Cluster = []string{"east"}
+		d.Spec.Connectors.Metrics = nil
+		d.Spec.Connectors.Map = []string{mapConnector}
+	})
+	want := "service/billing-api=NoAccess service/unnamed-shop=NoAccess"
+	eventually(t, "the entity on east/shop covered, the others the pair's reason", func() (bool, string) {
+		got := blindSpots(f.getDoc(t, "doc"))
+		return got == want, got
+	})
+	for _, s := range f.getDoc(t, "doc").Status.BlindSpots {
+		if s.Entity == billingAPI && s.Message != "The entity `service/billing-api`: its namespace `east/billing`: no connector reads it." {
+			t.Errorf("message %q", s.Message)
+		}
+	}
+}

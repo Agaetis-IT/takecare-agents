@@ -15,6 +15,13 @@ import (
 
 const alertHigh = "HighErrorRate"
 
+const clustersDir = "testdata/clusters"
+
+func onCluster(cluster string, q url.Values) url.Values {
+	q.Set("cluster", cluster)
+	return q
+}
+
 func query(namespace, workload, service, alert string) url.Values {
 	return url.Values{"namespace": {namespace}, "workload": {workload}, "service": {service}, "alert": {alert}}
 }
@@ -40,6 +47,9 @@ func TestResolve(t *testing.T) {
 		{"two candidates without alertedBy are ambiguous", "testdata/ambiguous",
 			query("shop", "orders", "", "HighLatency"), http.StatusNotFound, missAmbiguous},
 		{"no namespace", demoDir, query("", billing, "", alertHigh), http.StatusBadRequest, ""},
+		{"a named cluster's object, asked with its cluster", clustersDir, onCluster("east", query("shop", "cart", "", alertHigh)), http.StatusOK, "service/cart"},
+		{"the same name on the unnamed cluster, asked without one", clustersDir, query("shop", "cart", "", alertHigh), http.StatusOK, "service/cart-local"},
+		{"a cluster the Map does not know", clustersDir, onCluster("west", query("shop", "cart", "", alertHigh)), http.StatusNotFound, missNone},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, err := New(Config{Dir: tc.dir, Logger: slog.New(slog.DiscardHandler), Now: func() time.Time { return loadedAt }})

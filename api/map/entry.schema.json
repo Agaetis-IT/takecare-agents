@@ -38,7 +38,11 @@
         "minProperties": 1,
         "maxProperties": 1,
         "properties": {
-          "kubernetes": { "type": "string", "minLength": 1 },
+          "kubernetes": {
+            "type": "string",
+            "description": "[<cluster>/]<namespace>[/<Kind>/<name>]: a namespace or an object in it, on the unnamed cluster, or prefixed by a named cluster (a DNS label, ADR 0016); the segments' count tells them apart",
+            "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?/)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(/[^/]+/[^/]+)?$"
+          },
           "azure": { "type": "string", "minLength": 1 },
           "aws": { "type": "string", "minLength": 1 },
           "vsphere": { "type": "string", "minLength": 1 },
