@@ -1,0 +1,24 @@
+markers:
+- action: Limit
+  level: Practitioner
+  name: budget
+  policy: ranger-caps
+  target: Gateway/agentgateway-proxy
+- action: Limit
+  level: Practitioner
+  name: request-limit
+  policy: ranger-caps
+  target: Gateway/agentgateway-proxy
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: agentgateway-proxy
+  traffic:
+    rateLimit:
+      local:
+      - tokens: 2000000
+        unit: Hours
+      - burst: 20
+        requests: 120
+        unit: Minutes

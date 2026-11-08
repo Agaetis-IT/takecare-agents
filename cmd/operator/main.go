@@ -44,6 +44,7 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/controller/demo"
 	"github.com/agaetis-it/takecare-agents/internal/controller/investigation"
 	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
+	"github.com/agaetis-it/takecare-agents/internal/controller/ranger"
 	"github.com/agaetis-it/takecare-agents/internal/controller/takecaredoc"
 	"github.com/agaetis-it/takecare-agents/internal/engine/kagent0103"
 	"github.com/agaetis-it/takecare-agents/internal/gatewayapi"
@@ -214,6 +215,13 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	}
 	if err := platformReconciler.SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up the platform controller: %w", err)
+	}
+	// The Ranger's Markers on the platform's Gateway (spec 09).
+	if err := (&ranger.Reconciler{
+		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("takecare-operator"),
+		OperatorNamespace: cfg.operatorNamespace,
+	}).SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("set up the Ranger controller: %w", err)
 	}
 	mcpClient, err := httpclient.FromEnv(30 * time.Second).New()
 	if err != nil {

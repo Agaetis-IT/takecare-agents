@@ -65,6 +65,8 @@ The tool allow-lists of the roles (ADR 0008) are not the Ranger's and exist at e
 | Identity | JWT authentication and `Require` on the identity's claims | each agent's routes | Expert, with the Bib |
 | Extra | webhook guard, network authorization, CEL on the traffic | the Gateway or a route | Expert |
 
+On the Gateway, a request limit counts every request through it, MCP and A2A calls included; a token budget counts only the model answers.
+
 The budgets are soft, as the gateway counts tokens from the answer: the request that crosses the limit passes, the next ones are refused until the window resets. The Ranger says it in its status and its documentation; a hard ceiling is the provider's own quota.
 
 ## 5. Status and events
