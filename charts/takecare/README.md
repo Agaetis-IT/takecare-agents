@@ -131,7 +131,7 @@ Mirroring every image and installing without Internet access is tracked in issue
 | addons.reportSlack.destinations | list | `[]` | Destinations the connector and the server agree on. Prefer channel IDs (C0123...) to names: a renamed channel breaks a target by name. |
 | addons.reportSlack.egress | object | `{"excludedCIDRs":["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16","169.254.0.0/16"],"proxy":null}` | Egress of the server. A NetworkPolicy cannot name a host such as slack.com: by default, DNS plus TCP 443 to any address outside the cluster (the private ranges below excluded); with a proxy, the proxy pods only. |
 | agentgateway | object | see values.yaml (agentgateway chart values) | agentgateway v1.6.0 (ADR 0002). The chart installs the controller; the proxy pods are created from the Gateway above. |
-| agentgateway.agentgatewayModels | object | `{"enabled":true}` | Gateway-attached models (AgentgatewayModel) are an opt-in. |
+| agentgateway.agentgatewayModels | object | `{"enabled":false}` | Gateway-attached models (AgentgatewayModel): off, each role routes to its model's backend (spec 01). |
 | agentgateway.monitoring | object | `{"enabled":false}` | PodMonitor and ServiceMonitor for Prometheus Operator; set when it is installed (gateway metrics are what usage and cost come from). |
 | alerting.alertmanagerConfig.create | string | `"auto"` | An AlertmanagerConfig (Prometheus Operator) that sends the alerts to the Doc: auto creates it when the cluster serves monitoring.coreos.com/v1alpha1, true or false force it. Prometheus Operator adds a matcher on the AlertmanagerConfig's own namespace by default: the Doc then receives only the alerts of the release namespace, unless the Alertmanager resource sets alertmanagerConfigMatcherStrategy.type: None. See the README. |
 | alerting.alertmanagerConfig.labels | object | `{}` | Labels the Alertmanager resource's alertmanagerConfigSelector looks for, if it selects AlertmanagerConfigs by label. |
@@ -179,5 +179,15 @@ Mirroring every image and installing without Internet access is tracked in issue
 | platform.observability.captureContent | bool | `false` | Prompts, tool arguments and answers in traces: off by default (ADR 0006). |
 | platform.observability.metrics.prometheusURL | string | `""` | A Prometheus that scrapes the gateway: usage and cost (spec 01). |
 | platform.observability.otlp.endpoint | string | `""` | OTLP endpoint for traces; empty: no export (a production gap). |
+| ranger | object | see the keys below | The Ranger (spec 09), cluster-scoped singleton named main: the same rules for every agent through the gateway, rendered as gateway policies by level. Apprentice watches and blocks nothing (the guards audit); from Practitioner the gateway masks, refuses secret shapes and applies the caps. |
+| ranger.caps | object | `{}` | Budgets and limits: `gateway: {tokensPerHour, requestsPerMinute, burst}`, `models: [{name, tokensPerHour, ...}]`. Empty: no cap until you set one. The budgets are soft: the gateway counts the tokens of the answer. A request limit on the gateway counts every request (MCP and A2A calls included). |
+| ranger.extra | object | `{}` | Expert only: the extra Markers (`webhook`, `sourceCIDRs`, `expressions`). The chart refuses them below Expert, as the API does. |
+| ranger.filtering.patterns | list | `[]` | Your own patterns, as `{name, regex}`. |
+| ranger.filtering.shipped | bool | `true` | The shipped secret shapes (private keys, cloud access keys, API tokens of common services): a match refuses the request. |
+| ranger.level | string | `"Apprentice"` | Apprentice (audit only), Practitioner (mask, filter, cap) or Expert (the Practitioner's Markers and the extra ones; the identity per agent waits for the Intendant's Bib). |
+| ranger.masking.builtins | list | `["CreditCard","Email","PhoneNumber","Ssn"]` | The gateway's built-in patterns replaced before a request reaches the model (CreditCard, Email, PhoneNumber, Ssn). |
+| ranger.masking.patterns | list | `[]` | Your own patterns, as `{name, regex}`. |
+| ranger.models | list | `[]` | The platform's models each role kind may call, as `[{kind, allowed}]`; a kind not listed may call all. |
+| ranger.suspend | bool | `false` | Pause without deletion: no Marker is rendered. |
 
 Specs: [platform](../../docs/specs/01-platform.md), [connectors](../../docs/specs/05-connectors.md), [the Doc](../../docs/specs/02-doc.md). Decisions: [ADR 0002](../../docs/adr/0002-dependencies-installed-by-the-chart.md), [ADR 0004](../../docs/adr/0004-llm-through-the-gateway.md), [ADR 0007](../../docs/adr/0007-agent-engine-kagent.md), [ADR 0008](../../docs/adr/0008-everything-is-an-mcp-connector.md).

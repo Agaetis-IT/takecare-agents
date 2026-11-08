@@ -6,7 +6,11 @@ markers:
   target: Gateway/agentgateway-proxy
 spec:
   frontend:
-    accessLog: {}
+    accessLog:
+      attributes:
+        add:
+        - expression: '"ranger"'
+          name: takecare.journal
   targetRefs:
   - group: gateway.networking.k8s.io
     kind: Gateway

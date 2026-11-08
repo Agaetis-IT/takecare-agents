@@ -56,6 +56,10 @@ const (
 	// without (issue #10: the run degrades and says so, in the trace too).
 	DegradedConnectors = "takecare.degraded.connectors"
 	DegradedReason     = "takecare.degraded.reason"
+
+	// Journal stamps the gateway's access log lines the Ranger's journal
+	// keeps (spec 09 §7).
+	Journal = "takecare.journal"
 )
 
 // Span events of an investigation (spec 02).

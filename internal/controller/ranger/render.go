@@ -6,6 +6,7 @@ package ranger
 import (
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	shapes "github.com/agaetis-it/takecare-agents/internal/ranger"
+	"github.com/agaetis-it/takecare-agents/internal/telemetry/semconv"
 )
 
 // The Ranger's policies on the gateway (spec 09 §4), in the operator
@@ -35,6 +36,16 @@ const (
 	actionLog    = "Log"
 )
 
+// journal is the access log's configuration: the gateway's default fields,
+// never the content (ADR 0006), and the journal's mark. The gateway logs
+// requests without it too, so the mark is what says the journal is in
+// place (spec 09 §7).
+func journal() map[string]any {
+	return map[string]any{"attributes": map[string]any{"add": []any{
+		map[string]any{"name": semconv.Journal, "expression": `"ranger"`},
+	}}}
+}
+
 // policy is one rendered AgentgatewayPolicy and the Markers it carries.
 type policy struct {
 	name    string
@@ -63,7 +74,7 @@ func render(rg *v1alpha1.TakeCareRanger, gateway string) []policy {
 
 	out := []policy{{
 		name:    policyJournal,
-		spec:    map[string]any{keyTargetRefs: target, "frontend": map[string]any{"accessLog": map[string]any{}}},
+		spec:    map[string]any{keyTargetRefs: target, "frontend": map[string]any{"accessLog": journal()}},
 		markers: []v1alpha1.Marker{marker("journal", policyJournal, actionLog)},
 	}}
 

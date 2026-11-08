@@ -1,0 +1,39 @@
+{{- if .Values.ranger.create }}
+# The Ranger (spec 09): one cluster-scoped TakeCareRanger named main, whose
+# controller renders the Markers on the gateway by level. The operator only
+# writes its status, so a later `helm upgrade` never conflicts with it.
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareRanger
+metadata:
+  name: main
+  labels:
+    {{- include "takecare.labels" . | nindent 4 }}
+spec:
+  level: {{ .Values.ranger.level }}
+  suspend: {{ .Values.ranger.suspend }}
+  masking:
+    builtins:
+      {{- toYaml .Values.ranger.masking.builtins | nindent 6 }}
+    {{- with .Values.ranger.masking.patterns }}
+    patterns:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  filtering:
+    shipped: {{ .Values.ranger.filtering.shipped }}
+    {{- with .Values.ranger.filtering.patterns }}
+    patterns:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  {{- with .Values.ranger.caps }}
+  caps:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.ranger.models }}
+  models:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.ranger.extra }}
+  extra:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

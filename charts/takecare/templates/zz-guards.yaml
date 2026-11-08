@@ -34,6 +34,9 @@ reverse path order, so this file, last by name, is evaluated first.
 {{- fail "addons.prometheus.egress.podSelector is REQUIRED with NetworkPolicies: the pods of that Prometheus, the only egress the connector gets" }}
 {{- end }}
 {{- end }}
+{{- if and .Values.ranger.create .Values.ranger.extra (ne .Values.ranger.level "Expert") }}
+{{- fail "ranger.extra is the Expert's: set ranger.level=Expert or remove the extra Markers" }}
+{{- end }}
 {{- if and .Values.addons.demoCorpus.enabled (not .Values.demo.enabled) }}
 {{- fail "addons.demoCorpus is DEMO ONLY: it needs demo.enabled (the TakeCareDemo controller writes its corpus)" }}
 {{- end }}

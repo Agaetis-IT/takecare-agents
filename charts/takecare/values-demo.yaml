@@ -102,6 +102,11 @@ kagent:
           protocol: grpc
           insecure: true
 
+# The Ranger masks and filters in the demo (spec 09), so that the e2e and
+# the demo show it.
+ranger:
+  level: Practitioner
+
 demo:
   enabled: true
 
