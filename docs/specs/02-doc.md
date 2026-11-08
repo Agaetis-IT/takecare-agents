@@ -156,10 +156,11 @@ The operator sends **one A2A message per investigation** through the gateway, wi
 - **Timeout**: the engine gets 90 % of `timeout`; then the operator **requests cancellation** (`CancelTask`) and the investigation ends `TimedOut`. **On kagent 0.10.3 the run goes on to its own end and its result is ignored**: the python runtime cannot cancel a task (`Cancellation is not supported`, read in its sources and checked on a cluster; ADR 0007 records the gap). Each request is counted by what it achieved (`takecare_run_cancels_total{result}`), so that the cost of abandoned investigations shows.
 - **A failure after an answer**: kagent once ended `FAILED` a task that had produced a correct diagnosis (spike 001). Such a run ends `Failed` with the reason `EngineFailedAfterAnswer`; its text is kept in `status.diagnosis` and **never published**, and it is counted apart (`takecare_runs_total{outcome="failed_after_answer"}`) to measure that engine bug in production. A task that completes without an answer is a failure.
 
-The message is rendered from this template (`internal/doc/message.tmpl`, golden-tested). The alerts of the same incident folded into the investigation **before** the run starts are named after the description (`Other alerts of the same incident: …`); those folded later are not, a running investigation is never changed:
+The message is rendered from this template (`internal/doc/message.tmpl`, golden-tested). The first line names the alert's cluster when it is a named one (ADR 0016 §5); the second line names the alert's Map entry when the intake resolved it (ADR 0015 §4), so that the agent starts from it; both are absent otherwise, and the message is then unchanged. The alerts of the same incident folded into the investigation **before** the run starts are named after the description (`Other alerts of the same incident: …`); those folded later are not, a running investigation is never changed:
 
 ```text
-An alert just fired on the cluster: {alertname} on {service} (namespace {namespace}).
+An alert just fired on the cluster[ {cluster}]: {alertname} on {service} (namespace {namespace}).
+[Its entry in the Map is {entity}: start from it (its entry, then what depends on it).]
 {description}
 
 Diagnose the root cause and recommend an action. Back every conclusion with a verifiable source and cite it.

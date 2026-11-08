@@ -63,6 +63,7 @@ func Message(inv *v1alpha1.TakeCareInvestigation) (string, error) {
 	var out bytes.Buffer
 	if err := message.Execute(&out, map[string]any{
 		"Alert": a.Name, "Service": service, "Namespace": a.Namespace,
+		"Cluster": a.Cluster, "Entity": string(a.Entity),
 		"Description": strings.TrimSpace(description), "Others": others,
 	}); err != nil {
 		return "", fmt.Errorf("render the message of %s: %w", inv.Name, err)
