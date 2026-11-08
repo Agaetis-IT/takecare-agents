@@ -14,6 +14,8 @@ const (
 	// LabelAlertEntity is the Map entry the alert resolved to, label-safe
 	// ("/" as "."), for listing.
 	LabelAlertEntity = "takecare.agaetis.fr/alert-entity"
+	// LabelAlertCluster is the named cluster the alert comes from.
+	LabelAlertCluster = "takecare.agaetis.fr/alert-cluster"
 
 	// AnnotationIncident and AnnotationReset trigger the actions of a TakeCareDemo.
 	AnnotationIncident = "takecare.agaetis.fr/incident"

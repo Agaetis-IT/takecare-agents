@@ -29,6 +29,7 @@ The workload-cluster package of TakeCare Agents ([ADR 0016](../../docs/adr/0016-
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
+| alerting.url | string | `""` | The administration cluster's alert intake as this cluster's Alertmanager reaches it (`https://<host>/v1/alerts` through the administration cluster's ingress); printed in the receiver the install notes show. Its token is the connector's `cluster.alertTokenSecretRef`. |
 | apiServer.port | int | `443` | The API server's port, which bounds the pod's egress (a NetworkPolicy cannot name the API server): 443 on most managed clusters, 6443 on k3s. |
 | cluster.extraResources | list | `[]` | Resources beyond the defaults, as {group, resource}, for example custom resources. ConfigMaps are read only when listed here: customers keep credentials in them. Secrets, pods/exec, pods/attach, pods/portforward, serviceaccounts/token and wildcards are refused. |
 | cluster.name | string | `""` | REQUIRED: the name the administration cluster registers this cluster under (a DNS label), printed in the connector manifest. |

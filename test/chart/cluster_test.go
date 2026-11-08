@@ -5,6 +5,8 @@ package chart
 
 import (
 	"bytes"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -143,5 +145,23 @@ func TestClusterChartRefuses(t *testing.T) {
 				t.Errorf("err %v, stderr %q, want %q", err, stderr.String(), tc.want)
 			}
 		})
+	}
+}
+
+// The install notes print the connector, its alert token reference, and
+// the receiver of this cluster's Alertmanager with the intake's URL and a
+// token file, never a value (ADR 0016 §5).
+func TestClusterChartNotes(t *testing.T) {
+	args := append([]string{"install", "takecare-cluster", filepath.Join(repoRoot, "charts", clusterChart), "-n", "takecare-cluster", "--dry-run=client",
+		flagSet, "alerting.url=https://alerts.admin.example/v1/alerts"}, clusterSets...)
+	out, err := exec.Command(helmBinary(t), args...).CombinedOutput() //nolint:gosec // the test's own binary and arguments
+	if err != nil {
+		t.Fatalf("helm install --dry-run: %v\n%s", err, out)
+	}
+	notes := string(out[bytes.Index(out, []byte("NOTES:")):])
+	for _, want := range []string{"alertTokenSecretRef:", "url: https://alerts.admin.example/v1/alerts", "credentials_file: /etc/alertmanager/secrets/takecare-alerts/token"} {
+		if !strings.Contains(notes, want) {
+			t.Errorf("the notes lack %q:\n%s", want, notes)
+		}
 	}
 }

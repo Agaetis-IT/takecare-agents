@@ -5,7 +5,6 @@ package alerts
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,7 +16,6 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -49,6 +47,9 @@ const (
 	ReasonDuplicate     = "duplicate"
 	ReasonNotFiring     = "not_firing"
 	ReasonNoNamespace   = "no_namespace"
+	// ReasonClusterMismatch: the alert's cluster label contradicts the
+	// cluster its token identifies.
+	ReasonClusterMismatch = "cluster_mismatch"
 )
 
 // Metrics of the intake (spec 02, "Metrics").
@@ -129,7 +130,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if err := h.authenticate(ctx, r); err != nil {
+	cluster, err := h.authenticate(ctx, r)
+	if err != nil {
 		logger.V(1).Info("rejected", "reason", err.Error())
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -152,6 +154,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	seen := map[string]*v1alpha1.TakeCareInvestigation{}
 	for _, in := range fromAlertmanager(p) {
 		h.Metrics.Received.Inc()
+		// The token says the cluster; a cluster label that contradicts it
+		// is not believed (ADR 0016 §5).
+		if label := in.record.Labels[labelCluster]; label != "" && label != cluster {
+			h.ignore(ReasonClusterMismatch)
+			continue
+		}
+		in.record.Cluster = cluster
 		if err := h.handle(ctx, in, seen); err != nil {
 			logger.Error(err, "alert not recorded", "alertname", in.record.Name, "fingerprint", in.record.Fingerprint)
 			http.Error(w, "alert not recorded, retry", http.StatusServiceUnavailable)
@@ -159,29 +168,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(http.StatusAccepted)
-}
-
-// authenticate checks the bearer token against the Secret the chart
-// generates, in constant time.
-func (h *Handler) authenticate(ctx context.Context, r *http.Request) error {
-	got, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if !ok || got == "" {
-		return errors.New("no bearer token")
-	}
-	name := h.TokenSecret
-	if name == "" {
-		name = TokenSecretName
-	}
-	var s corev1.Secret
-	// From the cache, never the API reader: see Client.
-	if err := h.Client.Get(ctx, client.ObjectKey{Namespace: h.Namespace, Name: name}, &s); err != nil {
-		return fmt.Errorf("token Secret: %w", err)
-	}
-	want := s.Data[TokenSecretKey]
-	if len(want) == 0 || subtle.ConstantTimeCompare([]byte(got), want) != 1 {
-		return errors.New("wrong token")
-	}
-	return nil
 }
 
 func (h *Handler) ignore(reason string) { h.Metrics.Ignored.WithLabelValues(reason).Inc() }
@@ -254,6 +240,9 @@ func (h *Handler) handle(ctx context.Context, in incoming, seen map[string]*v1al
 	if a.Entity != "" {
 		labels[v1alpha1.LabelAlertEntity] = labelSafe(strings.ReplaceAll(string(a.Entity), "/", "."))
 	}
+	if a.Cluster != "" {
+		labels[v1alpha1.LabelAlertCluster] = labelSafe(a.Cluster)
+	}
 	inv := &v1alpha1.TakeCareInvestigation{
 		Name: name, Namespace: h.Namespace, Labels: labels,
 		Spec: v1alpha1.TakeCareInvestigationSpec{
@@ -309,10 +298,21 @@ func (h *Handler) docFor(ctx context.Context, a v1alpha1.AlertRecord) (*v1alpha1
 	for i := range docs.Items {
 		d := &docs.Items[i]
 		byEntity := a.Entity != "" && slices.Contains(d.Spec.Scope.Entities, a.Entity)
-		if !byEntity && !slices.Contains(d.Spec.Scope.Namespaces, v1alpha1.Namespace(a.Namespace)) {
+		byPlace := false
+		if slices.Contains(d.Spec.Scope.Namespaces, v1alpha1.Namespace(a.Namespace)) {
+			clusters, err := h.clustersOf(ctx, d)
+			if err != nil {
+				return nil, "", err
+			}
+			byPlace = slices.Contains(clusters, a.Cluster)
+		}
+		if !byEntity && !byPlace {
 			continue
 		}
 		spot := v1alpha1.EntityKey("environment/" + a.Namespace)
+		if a.Cluster != "" {
+			spot = v1alpha1.EntityKey("environment/" + a.Cluster + "." + a.Namespace)
+		}
 		if byEntity {
 			spot = a.Entity
 		}

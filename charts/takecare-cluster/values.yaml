@@ -64,6 +64,13 @@ front:
     requests: { cpu: 10m, memory: 32Mi }
     limits: { memory: 128Mi }
 
+alerting:
+  # -- The administration cluster's alert intake as this cluster's
+  # Alertmanager reaches it (`https://<host>/v1/alerts` through the
+  # administration cluster's ingress); printed in the receiver the install
+  # notes show. Its token is the connector's `cluster.alertTokenSecretRef`.
+  url: ""
+
 global:
   # -- Replaces the registry of every image (a mirror).
   imageRegistry: ""

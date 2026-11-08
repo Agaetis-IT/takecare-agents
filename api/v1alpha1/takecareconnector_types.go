@@ -106,6 +106,12 @@ type ClusterSpec struct {
 	Name string `json:"name"`
 
 	TLS ClusterTLS `json:"tls"`
+
+	// The Secret (key token, in the connector's namespace) holding the
+	// bearer token this cluster's Alertmanager presents to the intake: it
+	// identifies the alert's cluster (ADR 0016 §5).
+	// +optional
+	AlertTokenSecretRef *SecretRef `json:"alertTokenSecretRef,omitempty"`
 }
 
 // ClusterTLS is the mTLS material of a cluster connector.
