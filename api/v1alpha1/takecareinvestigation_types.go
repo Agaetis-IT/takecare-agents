@@ -50,6 +50,10 @@ type AlertRecord struct {
 	Service string `json:"service,omitempty"`
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
+	// The workload cluster the alert comes from (ADR 0016 §5); empty for
+	// the unnamed cluster, which is every alert today.
+	// +optional
+	Cluster string `json:"cluster,omitempty"`
 	// The workload the alert is about, from its labels: the incident key
 	// with the namespace (spec 02 §1).
 	// +optional

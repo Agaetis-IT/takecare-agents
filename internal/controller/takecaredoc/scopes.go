@@ -49,39 +49,86 @@ func (r *Reconciler) overlap(ctx context.Context, d *v1alpha1.TakeCareDoc) (stri
 		}
 		return 1
 	})
-	mine := r.entityNamespaces(ctx, d)
+	mine, err := r.scopeOf(ctx, d)
+	if err != nil {
+		return "", nil, err
+	}
 	for _, o := range others {
-		if shared := sharedScope(d, o, mine, r.entityNamespaces(ctx, o)); len(shared) > 0 {
+		theirs, err := r.scopeOf(ctx, o)
+		if err != nil {
+			return "", nil, err
+		}
+		if shared := sharedScope(mine, theirs); len(shared) > 0 {
 			return o.Name, shared, nil
 		}
 	}
 	return "", nil, nil
 }
 
-// sharedScope lists what two scopes share, sorted.
-func sharedScope(a, b *v1alpha1.TakeCareDoc, aNS, bNS map[v1alpha1.EntityKey][]v1alpha1.Namespace) []string {
-	var shared []string
-	for _, ns := range a.Spec.Scope.Namespaces {
-		if slices.Contains(b.Spec.Scope.Namespaces, ns) {
-			shared = append(shared, "namespace "+string(ns))
+// docScope is what a Doc covers, by place (ADR 0016 §5): its namespaces on
+// every cluster its cluster connectors read, its entities, and where its
+// entities lie by the Map (on the unnamed cluster until Map sources name
+// one).
+type docScope struct {
+	places       []place
+	entities     []v1alpha1.EntityKey
+	entityPlaces map[v1alpha1.EntityKey][]place
+}
+
+func (r *Reconciler) scopeOf(ctx context.Context, d *v1alpha1.TakeCareDoc) (docScope, error) {
+	var clusters []string
+	for _, name := range d.Spec.Connectors.Cluster {
+		c, err := r.connector(ctx, d.Namespace, name)
+		if err != nil {
+			return docScope{}, err
+		}
+		if c != nil && !slices.Contains(clusters, connector.ClusterOf(c)) {
+			clusters = append(clusters, connector.ClusterOf(c))
 		}
 	}
-	for _, k := range a.Spec.Scope.Entities {
-		if slices.Contains(b.Spec.Scope.Entities, k) {
+	if len(clusters) == 0 {
+		clusters = []string{""}
+	}
+	sc := docScope{entities: d.Spec.Scope.Entities, entityPlaces: map[v1alpha1.EntityKey][]place{}}
+	for _, ns := range d.Spec.Scope.Namespaces {
+		for _, cl := range clusters {
+			sc.places = append(sc.places, place{cl, ns})
+		}
+	}
+	for k, nss := range r.entityNamespaces(ctx, d) {
+		for _, ns := range nss {
+			sc.entityPlaces[k] = append(sc.entityPlaces[k], place{"", ns})
+		}
+	}
+	return sc, nil
+}
+
+// sharedScope lists what two scopes share, sorted: a place, an entity, or
+// an entity of one at a place of the other. Two Docs on one namespace of
+// two clusters share nothing.
+func sharedScope(a, b docScope) []string {
+	var shared []string
+	for _, p := range a.places {
+		if slices.Contains(b.places, p) {
+			shared = append(shared, "namespace "+p.String())
+		}
+	}
+	for _, k := range a.entities {
+		if slices.Contains(b.entities, k) {
 			shared = append(shared, "entity "+string(k))
 		}
 	}
-	within := func(entities map[v1alpha1.EntityKey][]v1alpha1.Namespace, namespaces []v1alpha1.Namespace) {
-		for k, nss := range entities {
-			for _, ns := range nss {
-				if slices.Contains(namespaces, ns) {
-					shared = append(shared, fmt.Sprintf("entity %s in namespace %s", k, ns))
+	within := func(entities map[v1alpha1.EntityKey][]place, places []place) {
+		for k, ps := range entities {
+			for _, p := range ps {
+				if slices.Contains(places, p) {
+					shared = append(shared, fmt.Sprintf("entity %s in namespace %s", k, p))
 				}
 			}
 		}
 	}
-	within(aNS, b.Spec.Scope.Namespaces)
-	within(bNS, a.Spec.Scope.Namespaces)
+	within(a.entityPlaces, b.places)
+	within(b.entityPlaces, a.places)
 	slices.Sort(shared)
 	return slices.Compact(shared)
 }

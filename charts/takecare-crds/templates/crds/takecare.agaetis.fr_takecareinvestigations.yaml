@@ -68,6 +68,11 @@ spec:
                     additionalProperties:
                       type: string
                     type: object
+                  cluster:
+                    description: |-
+                      The workload cluster the alert comes from (ADR 0016 §5); empty for
+                      the unnamed cluster, which is every alert today.
+                    type: string
                   entity:
                     description: |-
                       The Map entry the alert resolved to, when the Map knows it: the

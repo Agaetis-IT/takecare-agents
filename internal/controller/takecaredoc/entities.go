@@ -185,7 +185,7 @@ func (r *Reconciler) cacheEntry(conn, revision string, key v1alpha1.EntityKey, i
 // sources is in a readable namespace; environment/<ns> when the namespace
 // is readable; team, observability, runbook and external are never blind
 // spots. It returns how many entities are covered.
-func (b *binding) coverEntities(d *v1alpha1.TakeCareDoc, f findings, readable map[v1alpha1.Namespace]bool) int {
+func (b *binding) coverEntities(d *v1alpha1.TakeCareDoc, f findings, readable map[place]bool) int {
 	covered := 0
 	spot := func(k v1alpha1.EntityKey, reason v1alpha1.BlindSpotReason, why string) {
 		b.blindSpots = append(b.blindSpots, v1alpha1.BlindSpot{Entity: k, Reason: reason, Message: fmt.Sprintf("The entity `%s`: %s.", k, why)})
@@ -196,10 +196,10 @@ func (b *binding) coverEntities(d *v1alpha1.TakeCareDoc, f findings, readable ma
 		switch {
 		case t == typeEnvironment && slices.Contains(d.Spec.Scope.Namespaces, ns):
 			// Counted with the namespaces.
-		case t == typeEnvironment && readable[ns]:
+		case t == typeEnvironment && readable[place{"", ns}]:
 			covered++
 		case t == typeEnvironment:
-			reason, why := f.unread(ns)
+			reason, why := f.unread(place{"", ns})
 			spot(k, reason, why)
 		case !onGround(t):
 		case f.mapProblem.why != "":
@@ -211,7 +211,7 @@ func (b *binding) coverEntities(d *v1alpha1.TakeCareDoc, f findings, readable ma
 	return covered
 }
 
-func (b *binding) coverEntry(k v1alpha1.EntityKey, f findings, readable map[v1alpha1.Namespace]bool, spot func(v1alpha1.EntityKey, v1alpha1.BlindSpotReason, string)) int {
+func (b *binding) coverEntry(k v1alpha1.EntityKey, f findings, readable map[place]bool, spot func(v1alpha1.EntityKey, v1alpha1.BlindSpotReason, string)) int {
 	info := f.entities[k]
 	switch {
 	case info.err != "":
@@ -222,10 +222,11 @@ func (b *binding) coverEntry(k v1alpha1.EntityKey, f findings, readable map[v1al
 		spot(k, v1alpha1.BlindSpotNotValidated, "proposed in the Map, not validated")
 	case len(info.namespaces) == 0:
 		spot(k, v1alpha1.BlindSpotNoAccess, "no kubernetes source in the Map, so no connector reads it")
-	case slices.ContainsFunc(info.namespaces, func(ns v1alpha1.Namespace) bool { return readable[ns] }):
+	// Map sources name no cluster yet: they are on the unnamed one.
+	case slices.ContainsFunc(info.namespaces, func(ns v1alpha1.Namespace) bool { return readable[place{"", ns}] }):
 		return 1
 	default:
-		reason, why := f.unread(info.namespaces[0])
+		reason, why := f.unread(place{"", info.namespaces[0]})
 		spot(k, reason, fmt.Sprintf("its namespace `%s`: %s", info.namespaces[0], why))
 	}
 	return 0

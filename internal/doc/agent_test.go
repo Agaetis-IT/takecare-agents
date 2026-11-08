@@ -18,17 +18,21 @@ const shopNS = "shop"
 func TestInstructions(t *testing.T) {
 	for _, tc := range []struct {
 		golden string
-		scope  []v1alpha1.Namespace
+		scope  []string
 		types  []v1alpha1.ConnectorType
 		blind  []string
 	}{
-		{"instructions-all-types.md", []v1alpha1.Namespace{appsNS, "ack-system"}, []v1alpha1.ConnectorType{
+		{"instructions-all-types.md", []string{string(appsNS), "ack-system"}, []v1alpha1.ConnectorType{
 			v1alpha1.ConnectorCluster, v1alpha1.ConnectorMetrics, v1alpha1.ConnectorLogs, v1alpha1.ConnectorKnowledge, v1alpha1.ConnectorChanges, v1alpha1.ConnectorTickets, v1alpha1.ConnectorMap,
 		}, nil},
-		{"instructions-required-only.md", []v1alpha1.Namespace{shopNS}, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster, v1alpha1.ConnectorMetrics}, nil},
-		{"instructions-blind-spots.md", []v1alpha1.Namespace{shopNS}, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, []string{
+		{"instructions-required-only.md", []string{string(shopNS)}, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster, v1alpha1.ConnectorMetrics}, nil},
+		{"instructions-blind-spots.md", []string{string(shopNS)}, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, []string{
 			"The namespace `payments` (environment/payments): no connector reads it.",
 			"The namespace `billing` (environment/billing): its connector kubernetes-billing is not given to the agent (never discovered, or no read tool).",
+		}},
+		// ADR 0016 §5: on named clusters, the namespaces are cluster/namespace.
+		{"instructions-named-clusters.md", []string{"east/" + string(shopNS), "west/" + string(shopNS)}, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster, v1alpha1.ConnectorMetrics}, []string{
+			"The namespace `west/payments` (environment/west.payments): no connector reads it.",
 		}},
 	} {
 		t.Run(tc.golden, func(t *testing.T) {
@@ -89,10 +93,10 @@ func TestRender(t *testing.T) {
 func TestRenderNamesTheReadableNamespaces(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
-		readable []v1alpha1.Namespace
+		readable []string
 		want     string
 	}{
-		{"a connector wider than the scope", []v1alpha1.Namespace{shopNS, "platform"}, "limited to the namespaces `shop`, `platform`."},
+		{"a connector wider than the scope", []string{string(shopNS), "platform"}, "limited to the namespaces `shop`, `platform`."},
 		{"no readable namespaces: the scope", nil, "limited to the namespaces `shop`."},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

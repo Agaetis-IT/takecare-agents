@@ -130,3 +130,12 @@ func usesSecret(c v1alpha1.TakeCareConnector, name string) bool {
 	}
 	return c.Spec.Cluster != nil && (c.Spec.Cluster.TLS.CASecretRef.Name == name || c.Spec.Cluster.TLS.ClientCertSecretRef.Name == name)
 }
+
+// ClusterOf is the cluster a connector reads (ADR 0016 §5): its
+// cluster.name, or "" for the unnamed cluster (an add-on, the demo).
+func ClusterOf(c *v1alpha1.TakeCareConnector) string {
+	if c.Spec.Cluster != nil {
+		return c.Spec.Cluster.Name
+	}
+	return ""
+}
