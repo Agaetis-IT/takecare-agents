@@ -1,0 +1,406 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+    helm.sh/resource-policy: keep
+  name: takecarerangers.takecare.agaetis.fr
+spec:
+  group: takecare.agaetis.fr
+  names:
+    categories:
+    - takecare
+    kind: TakeCareRanger
+    listKind: TakeCareRangerList
+    plural: takecarerangers
+    shortNames:
+    - tcranger
+    singular: takecareranger
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.level
+      name: Level
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Enforcing")].status
+      name: Enforcing
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          TakeCareRanger is the guardrail that applies the same rules to every agent
+          through the gateway (spec 09). There is one, named main.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            default: {}
+            description: |-
+              TakeCareRangerSpec is the material of the Ranger's Markers (spec 09 §2):
+              what is masked, filtered, capped and allowed for every agent through the
+              gateway. Which of it is enforced depends on the level (spec 09 §3).
+            properties:
+              caps:
+                description: Token budgets and request limits.
+                properties:
+                  gateway:
+                    description: |-
+                      Budget is a token budget, a request limit, or both. The gateway counts
+                      tokens from the answer: the budget is soft (spec 09 §4).
+                    properties:
+                      burst:
+                        description: Requests allowed above the limit in a burst.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      requestsPerMinute:
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      tokensPerHour:
+                        format: int64
+                        minimum: 1
+                        type: integer
+                    type: object
+                    x-kubernetes-validations:
+                    - message: a budget sets tokensPerHour, requestsPerMinute or both
+                      rule: has(self.tokensPerHour) || has(self.requestsPerMinute)
+                  models:
+                    items:
+                      description: ModelCap is a budget for one of the platform's
+                        models.
+                      properties:
+                        burst:
+                          description: Requests allowed above the limit in a burst.
+                          format: int32
+                          minimum: 1
+                          type: integer
+                        name:
+                          description: The model's name in the platform's spec.models.
+                          maxLength: 63
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                          type: string
+                        requestsPerMinute:
+                          format: int32
+                          minimum: 1
+                          type: integer
+                        tokensPerHour:
+                          format: int64
+                          minimum: 1
+                          type: integer
+                      required:
+                      - name
+                      type: object
+                      x-kubernetes-validations:
+                      - message: a budget sets tokensPerHour, requestsPerMinute or
+                          both
+                        rule: has(self.tokensPerHour) || has(self.requestsPerMinute)
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                type: object
+              extra:
+                description: The customer's additional Markers, at Expert only.
+                properties:
+                  expressions:
+                    description: CEL expressions on the traffic that must hold.
+                    items:
+                      maxLength: 512
+                      type: string
+                    maxItems: 20
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  sourceCIDRs:
+                    description: The networks requests may come from.
+                    items:
+                      type: string
+                    maxItems: 50
+                    type: array
+                    x-kubernetes-list-type: set
+                  webhook:
+                    description: 'A guard of the customer''s: the gateway asks it
+                      about each request.'
+                    properties:
+                      headersFrom:
+                        description: Headers taken from Secrets, for example an Authorization
+                          token.
+                        items:
+                          description: HeaderFrom sets an HTTP header from a Secret
+                            key.
+                          properties:
+                            name:
+                              minLength: 1
+                              type: string
+                            secretKeyRef:
+                              description: SecretKeyRef points at a key of a Secret.
+                              properties:
+                                key:
+                                  minLength: 1
+                                  type: string
+                                name:
+                                  minLength: 1
+                                  type: string
+                              required:
+                              - key
+                              - name
+                              type: object
+                          required:
+                          - name
+                          - secretKeyRef
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                      url:
+                        pattern: ^https://[^\s]+$
+                        type: string
+                    required:
+                    - url
+                    type: object
+                type: object
+              filtering:
+                default: {}
+                description: What makes the request refused.
+                properties:
+                  patterns:
+                    description: The customer's own patterns.
+                    items:
+                      description: |-
+                        NamedPattern is a regular expression with a name the status and the
+                        events quote.
+                      properties:
+                        name:
+                          maxLength: 63
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                          type: string
+                        regex:
+                          maxLength: 512
+                          minLength: 1
+                          type: string
+                      required:
+                      - name
+                      - regex
+                      type: object
+                    maxItems: 50
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                  shipped:
+                    default: true
+                    description: |-
+                      The shipped secret shapes (private keys, cloud access keys, API
+                      tokens of common services). Defaults to true.
+                    type: boolean
+                type: object
+              level:
+                default: Apprentice
+                description: Intervention level. Defaults to Apprentice.
+                enum:
+                - Apprentice
+                - Practitioner
+                - Expert
+                type: string
+              masking:
+                default: {}
+                description: What is replaced before it reaches the model.
+                properties:
+                  builtins:
+                    default:
+                    - CreditCard
+                    - Email
+                    - PhoneNumber
+                    - Ssn
+                    items:
+                      description: MaskingBuiltin is a pattern the gateway ships.
+                      enum:
+                      - CreditCard
+                      - Email
+                      - PhoneNumber
+                      - Ssn
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: set
+                  patterns:
+                    description: The customer's own patterns.
+                    items:
+                      description: |-
+                        NamedPattern is a regular expression with a name the status and the
+                        events quote.
+                      properties:
+                        name:
+                          maxLength: 63
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                          type: string
+                        regex:
+                          maxLength: 512
+                          minLength: 1
+                          type: string
+                      required:
+                      - name
+                      - regex
+                      type: object
+                    maxItems: 50
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                type: object
+              models:
+                description: The models each role kind may call; a kind not listed
+                  may call all.
+                items:
+                  description: RoleModels are the models a role kind may call.
+                  properties:
+                    allowed:
+                      description: The platform's model names.
+                      items:
+                        type: string
+                      minItems: 1
+                      type: array
+                      x-kubernetes-list-type: set
+                    kind:
+                      enum:
+                      - TakeCareDoc
+                      type: string
+                  required:
+                  - allowed
+                  - kind
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - kind
+                x-kubernetes-list-type: map
+              suspend:
+                description: 'Pause without deletion: the guardrail renders nothing.'
+                type: boolean
+            type: object
+            x-kubernetes-validations:
+            - message: extra Markers are the Expert's
+              rule: '!has(self.extra) || self.level == ''Expert'''
+          status:
+            description: TakeCareRangerStatus says what is enforced (spec 09 §5).
+            properties:
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              markers:
+                description: One line per Marker rendered.
+                items:
+                  description: 'Marker is one rendered Marker: its gateway policy,
+                    its target, its action.'
+                  properties:
+                    action:
+                      type: string
+                    level:
+                      description: Level is the intervention level of a role.
+                      enum:
+                      - Apprentice
+                      - Practitioner
+                      - Expert
+                      type: string
+                    name:
+                      type: string
+                    policy:
+                      type: string
+                    target:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                maxItems: 100
+                type: array
+                x-kubernetes-list-type: atomic
+              observedGeneration:
+                format: int64
+                type: integer
+            type: object
+        type: object
+        x-kubernetes-validations:
+        - message: 'the Ranger is named main: there is one per platform'
+          rule: self.metadata.name == 'main'
+    served: true
+    storage: true
+    subresources:
+      status: {}

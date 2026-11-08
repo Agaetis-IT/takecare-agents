@@ -29,6 +29,7 @@ rules:
   - takecare.agaetis.fr
   resources:
   - takecareplatforms
+  - takecarerangers
   verbs:
   - get
   - list
@@ -37,6 +38,7 @@ rules:
   - takecare.agaetis.fr
   resources:
   - takecareplatforms/status
+  - takecarerangers/status
   verbs:
   - get
   - patch

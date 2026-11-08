@@ -191,7 +191,8 @@ func TestEveryNamespacedTakeCareKindIsScoped(t *testing.T) {
 		}
 	}
 	for kind := range scheme.KnownTypes(takecarev1alpha1.GroupVersion) {
-		if !strings.HasPrefix(kind, "TakeCare") || strings.HasSuffix(kind, "List") || kind == reflect.TypeFor[takecarev1alpha1.TakeCarePlatform]().Name() { // the platform is cluster-scoped
+		clusterScoped := kind == reflect.TypeFor[takecarev1alpha1.TakeCarePlatform]().Name() || kind == reflect.TypeFor[takecarev1alpha1.TakeCareRanger]().Name()
+		if !strings.HasPrefix(kind, "TakeCare") || strings.HasSuffix(kind, "List") || clusterScoped {
 			continue
 		}
 		if !scoped[kind] {

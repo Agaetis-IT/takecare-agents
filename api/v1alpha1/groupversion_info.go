@@ -34,6 +34,7 @@ func addKnownTypes(s *runtime.Scheme) error {
 		&TakeCareDoc{}, &TakeCareDocList{},
 		&TakeCareInvestigation{}, &TakeCareInvestigationList{},
 		&TakeCareDemo{}, &TakeCareDemoList{},
+		&TakeCareRanger{}, &TakeCareRangerList{},
 	)
 	metav1.AddToGroupVersion(s, GroupVersion)
 	return nil

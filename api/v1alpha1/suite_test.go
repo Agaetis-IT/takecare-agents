@@ -32,6 +32,8 @@ const (
 	destOnCall    = "on-call"
 	critical      = "critical"
 	colAge        = "Age"
+	wantDuplicate = "Duplicate value"
+	modelDefault  = "default"
 	colReady      = "Ready"
 	currencyUSD   = "USD"
 	wantNamespace = "namespaces"
@@ -133,6 +135,7 @@ func TestCRDsExposeTheStaff(t *testing.T) {
 		{"takecaredocs.takecare.agaetis.fr", "tcdoc", apiextensionsv1.NamespaceScoped, []string{"Level", colReady, colAge}},
 		{"takecareinvestigations.takecare.agaetis.fr", "tcinvestigation", apiextensionsv1.NamespaceScoped, []string{"Alert", "Phase", "Published", colAge}},
 		{"takecaredemos.takecare.agaetis.fr", "tcdemo", apiextensionsv1.NamespaceScoped, []string{"Scenario", "Phase", colReady, colAge}},
+		{"takecarerangers.takecare.agaetis.fr", "tcranger", apiextensionsv1.ClusterScoped, []string{"Level", "Enforcing", colReady, colAge}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.crd, func(t *testing.T) {
