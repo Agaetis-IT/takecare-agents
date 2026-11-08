@@ -6,7 +6,10 @@ The A2A message of one investigation (spec 02 §2), rendered by
 internal/doc from the investigation's alert and the alerts of the same
 incident folded into it before the run started. Golden-tested.
 */ -}}
-An alert just fired on the cluster: {{ .Alert }} on {{ .Service }} (namespace {{ .Namespace }}).
+An alert just fired on the cluster{{ with .Cluster }} {{ . }}{{ end }}: {{ .Alert }} on {{ .Service }} (namespace {{ .Namespace }}).
+{{- with .Entity }}
+Its entry in the Map is {{ . }}: start from it (its entry, then what depends on it).
+{{- end }}
 {{- with .Description }}
 {{ . }}
 {{- end }}

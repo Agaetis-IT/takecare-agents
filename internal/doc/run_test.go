@@ -40,10 +40,18 @@ func TestMessage(t *testing.T) {
 	grouped.Status.Alerts = []v1alpha1.GroupedAlert{{Name: podNotReady, Fingerprint: "5m0ke00000000002", FiredAt: metav1.NewTime(time.Date(2026, 10, 16, 3, 0, 12, 0, time.UTC))}}
 	bare := investigation()
 	bare.Spec.Alert = v1alpha1.AlertRecord{Name: "TargetDown", Namespace: appsNS}
+	// ADR 0015 §4, ADR 0016 §5: the Map entry (the demo's shape), and the
+	// entry on a named cluster.
+	entity := investigation()
+	entity.Spec.Alert.Entity = "service/billing-api"
+	onEast := investigation()
+	onEast.Spec.Alert.Entity, onEast.Spec.Alert.Cluster = "service/billing-api", "east"
 	for name, inv := range map[string]*v1alpha1.TakeCareInvestigation{
 		"message-alert.txt":   investigation(),
 		"message-grouped.txt": grouped,
 		"message-bare.txt":    bare,
+		"message-entity.txt":  entity,
+		"message-cluster.txt": onEast,
 	} {
 		t.Run(name, func(t *testing.T) {
 			got, err := Message(inv)
