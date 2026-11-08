@@ -612,11 +612,11 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=71 install ;;
-  upgrade) CHECKS_EXPECTED=71 upgrade ;;
+  install) CHECKS_EXPECTED=72 install ;;
+  upgrade) CHECKS_EXPECTED=72 upgrade ;;
   status) status ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=4 cluster_chart ;;
-  all) up; CHECKS_EXPECTED=71 install; CHECKS_EXPECTED=71 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
+  all) up; CHECKS_EXPECTED=72 install; CHECKS_EXPECTED=72 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|cluster|status|down|all]"; exit 2 ;;
 esac
