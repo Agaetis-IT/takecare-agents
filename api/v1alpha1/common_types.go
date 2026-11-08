@@ -123,6 +123,20 @@ type EntityKey string
 // +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 type Namespace string
 
+// GuardrailCommonSpec is the spec shared by every guardrail kind (spec 06):
+// a level and a pause, no scope, no model, no connectors; a guardrail is
+// deterministic and runs nothing.
+type GuardrailCommonSpec struct {
+	// Intervention level. Defaults to Apprentice.
+	// +kubebuilder:default=Apprentice
+	// +optional
+	Level Level `json:"level,omitempty"`
+
+	// Pause without deletion: the guardrail renders nothing.
+	// +optional
+	Suspend bool `json:"suspend,omitempty"`
+}
+
 // ModelRef names an entry of the platform's spec.models. Whether the entry
 // exists is checked by the role's controller (condition ModelResolved), since
 // it is a reference across resources.

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Proposed |
+| Status | Accepted (2026-11-08, on #119) |
 | Date | 2026-11-08 |
 | Related decisions | ADR 0004, 0006, 0008, 0009, 0011, 0016; specs 01, 04, 06 (§5), 07 (§02) |
 
@@ -12,13 +12,33 @@ The Ranger applies the same rules to every agent that goes through the gateway: 
 
 ## 2. Resource
 
-`TakeCareRanger`, cluster-scoped, at most one (a second one is `Ready=False`, reason `SingleRangerOnly`), `GuardrailCommonSpec` (level, suspend; no scope, no model, no connectors). Its spec holds what the Markers are made of, each with defaults the chart ships:
+`TakeCareRanger`, cluster-scoped, one, named `main` like the platform (a CEL rule refuses any other name), `GuardrailCommonSpec` (level, suspend; no scope, no model, no connectors). Its spec holds what the Markers are made of, each with defaults the chart ships:
 
 - `masking`: the built-in patterns applied (default: credit card, email, phone number, social security number) and the customer's own named patterns; what matches is replaced before it reaches the provider.
 - `filtering`: the patterns whose match rejects the request (default: a shipped list of secret shapes: private keys, cloud access keys, API tokens of common services) and the customer's own.
 - `caps`: a token budget and a request limit for the whole gateway, and per model; per agent at Expert (§3). Units per minute or per hour.
 - `models`: which of the platform's models each role kind may call (default: all).
 - `extra` (Expert): the customer's additional Markers: a webhook guard (their own logic), allowed source networks, CEL expressions on the traffic.
+
+```yaml
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareRanger
+metadata:
+  name: main
+spec:
+  level: Practitioner                       # Apprentice by default
+  masking:
+    builtins: [CreditCard, Email, PhoneNumber, Ssn]   # the default
+    patterns: [{ name: iban, regex: '[A-Z]{2}\d{2}[A-Z0-9]{11,30}' }]
+  filtering:
+    shipped: true                           # the shipped secret shapes, the default
+    patterns: [{ name: internal-token, regex: 'itk_[A-Za-z0-9]{32}' }]
+  caps:
+    gateway: { tokensPerHour: 2000000, requestsPerMinute: 120, burst: 20 }
+    models: [{ name: default, tokensPerHour: 1000000 }]
+  models: [{ kind: TakeCareDoc, allowed: [default] }]
+  # extra: { webhook: { url: https://... }, sourceCIDRs: [...], expressions: [...] }   # Expert only
+```
 
 Changing the Ranger is a pull request on its resource, like any level change (spec 06 §5); a flaw found by a red-teaming exercise becomes a Marker through a human.
 
@@ -37,9 +57,9 @@ The tool allow-lists of the roles (ADR 0008) are not the Ranger's and exist at e
 | Marker | agentgateway policy | Target | From level |
 |---|---|---|---|
 | Journal | access logging | the Gateway | Apprentice |
-| Masking | prompt guard, regex, `Audit` then `Mask`, on requests (and non-streamed responses) | the model routes (or the Gateway when a gateway-attached model cannot be targeted; R1 settles it) | Apprentice (audit), Practitioner (mask) |
-| Filtering | prompt guard, regex, `Audit` then `Reject` | the model routes | Apprentice (audit), Practitioner (reject) |
-| Budgets | local rate limit, `tokens` per unit | the Gateway, each model route; each agent's routes at Expert | Practitioner |
+| Masking | prompt guard, regex, `Audit` then `Mask`, on requests (and non-streamed responses) | the Gateway (an `AgentgatewayModel` cannot be a policy's target) | Apprentice (audit), Practitioner (mask) |
+| Filtering | prompt guard, regex, `Audit` then `Reject` | the Gateway | Apprentice (audit), Practitioner (reject) |
+| Budgets | local rate limit, `tokens` per unit | the Gateway; per model only through a target that carries one model (§10); each agent's routes at Expert | Practitioner |
 | Request limits | local rate limit, `requests` per unit with a burst | the same | Practitioner |
 | Allowed models | authorization, `Require` by route | each role's model access | Practitioner |
 | Identity | JWT authentication and `Require` on the identity's claims | each agent's routes | Expert, with the Bib |
@@ -73,7 +93,7 @@ An agent of the customer, or of a vendor, is governed once its calls go through 
 
 ## 10. Open questions
 
-- Whether a policy can target a gateway-attached model; else the Gateway carries every model-side Marker (R1 checks on the pinned agentgateway).
+- Per-model caps: checked on agentgateway 1.6 (2026-11-08), a policy's `targetRefs` accept a Gateway, an HTTPRoute, a GRPCRoute, a ListenerSet, a Service, an AgentgatewayBackend or an InferencePool, never an `AgentgatewayModel` (the CRD refuses it); a prompt guard on the Gateway is accepted and attached. The model-side Markers therefore target the Gateway; a cap per model needs a target that carries one model, which R2 settles.
 - Masking of streamed answers: unsupported by the gateway; rejection works; say which the Doc's engine uses.
 - Per-agent budgets before the Bib: the model route is shared by every agent, so a budget per agent needs an identity; the Practitioner caps are per model and gateway-wide.
 - The shipped list of secret shapes: its home (the chart's values, or the operator's defaults) and how a customer extends it.
