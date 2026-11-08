@@ -1,0 +1,36 @@
+# A workload cluster registered on the administration cluster (ADR 0016):
+# the takecare-cluster chart runs in the namespace takecare-east of the same
+# k3d cluster, as the cluster east, and is read through its mTLS front with
+# the client certificate the e2e makes. The Doc east reads demo-apps on
+# east: one namespace name on two clusters, so no ScopeOverlap with the demo
+# Doc. W3 suspends it and routes an alert of east to it.
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareConnector
+metadata:
+  name: east
+  namespace: takecare-system
+spec:
+  types: [cluster]
+  description: The workload cluster east, through its front (read-only)
+  mcp:
+    url: https://takecare-cluster.takecare-east.svc:8443/mcp
+  cluster:
+    name: east
+    tls:
+      caSecretRef: { name: east-ca }
+      clientCertSecretRef: { name: east-client }
+      serverName: takecare-cluster.takecare-east.svc
+  kubernetes:
+    namespaces: [demo-apps]
+---
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareDoc
+metadata:
+  name: east
+  namespace: takecare-system
+spec:
+  level: Apprentice
+  scope:
+    namespaces: [demo-apps]
+  connectors:
+    cluster: [east]

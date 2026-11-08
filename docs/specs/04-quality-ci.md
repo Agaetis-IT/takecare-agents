@@ -50,6 +50,8 @@ Go everywhere (current stable Go, kubebuilder v4 layout, controller-runtime), th
 | End-to-end | k3d in GitHub Actions, fake LLM | `demo-up` → `demo-incident` (short ramp) → diagnosis published to a fake Slack → trace in the collector | PRs labelled `e2e`, and `main` |
 | Accuracy bench | real model, k3d | N investigations, correctness ratio | on demand (`workflow_dispatch`) and before each release |
 
+The end-to-end run (`make e2e`) needs about 5 GB of Docker memory, more than the demo: two Docs' agents, the fakes and the workload-cluster package of the cluster `east` (measured at 4.2 GiB at the end of a run on 2026-11-08).
+
 ### The read-only guard
 
 A dedicated test renders the **connectors'** RBAC and every role's **tool allow-list** for every level and fails if it finds an `act` tool below the `Expert` level, or a verb other than `get`, `list`, `watch`, the resources `secrets`, `pods/exec`, `pods/attach`, `pods/portforward`, or any `*`. It is the executable form of "never in your place"; it must not be weakened without an ADR. A second test snapshots the **operator's** ClusterRole and Roles from the chart (golden file), so that any widening of the operator's own rights shows up in review.

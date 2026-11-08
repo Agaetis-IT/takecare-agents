@@ -81,7 +81,7 @@ images() {
   if [[ "$(cat "${STATE}/images" 2>/dev/null)" != "$tag" ]]; then
     log "building and importing the images (${tag})" >&2
     make docker-build VERSION="$tag" >/dev/null
-    k3d image import -c "$CLUSTER" "${IMAGE_REGISTRY}"/takecare-agents-{operator,mcp-report-slack,mcp-corpus,mcp-map,demo-app}:"$tag" >/dev/null
+    k3d image import -c "$CLUSTER" "${IMAGE_REGISTRY}"/takecare-agents-{operator,mcp-report-slack,mcp-corpus,mcp-map,mcp-front,demo-app}:"$tag" >/dev/null
     echo "$tag" >"${STATE}/images"
   fi
   echo "$tag"

@@ -34,7 +34,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=14
+CHECKS_EXPECTED=20
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -74,11 +74,45 @@ fake_get() {
   kill "$pf" 2>/dev/null || true
 }
 
+# workload_cluster installs the takecare-cluster chart in takecare-east as
+# the cluster east (ADR 0016), with a CA, the front's certificate and the
+# administration cluster's client certificate made here (in a temporary
+# directory, never kept), and registers it with test/e2e/east.yaml.
+workload_cluster() {
+  local ens=takecare-east host=takecare-cluster.takecare-east.svc dir
+  dir="$(mktemp -d)"
+  log "the workload cluster east (takecare-cluster in ${ens})"
+  (
+    cd "$dir"
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 -subj /CN=e2e-ca -keyout ca.key -out ca.crt
+    leaf() { # NAME SAN USAGE
+      openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj "/CN=$1" -keyout "$1.key" -out "$1.csr"
+      printf 'subjectAltName=DNS:%s\nextendedKeyUsage=%s\n' "$2" "$3" >"$1.ext"
+      openssl x509 -req -in "$1.csr" -CA ca.crt -CAkey ca.key -CAcreateserial -days 1 -extfile "$1.ext" -out "$1.crt"
+    }
+    leaf front "$host" serverAuth
+    leaf admin admin.e2e.internal clientAuth
+  ) >/dev/null 2>&1
+  kubectl create namespace "$ens" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  kubectl -n "$ens" create secret tls front-tls --cert="$dir/front.crt" --key="$dir/front.key" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  kubectl -n "$ens" create secret generic front-client-ca --from-file=ca.crt="$dir/ca.crt" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  kubectl -n "$NS" create secret generic east-ca --from-file=ca.crt="$dir/ca.crt" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  kubectl -n "$NS" create secret tls east-client --cert="$dir/admin.crt" --key="$dir/admin.key" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  rm -rf "$dir"
+  # k3s serves the API on 6443, the port the package's egress policy admits.
+  bin/helm-"${HELM_VERSION}" upgrade --install takecare-cluster charts/takecare-cluster -n "$ens" \
+    --set cluster.name=east --set 'cluster.namespaces={demo-apps}' --set service.type=ClusterIP --set apiServer.port=6443 \
+    --set tls.secretName=front-tls --set tls.clientCASecretName=front-client-ca --set 'tls.clientNames={admin.e2e.internal}' \
+    --set front.image.registry="$IMAGE_REGISTRY" --set front.image.tag="$(cat bin/demo/images)" --wait --timeout 3m >/dev/null
+  kubectl apply -f test/e2e/east.yaml >/dev/null
+}
+
 run() {
   hack/demo.sh cluster
   fakes
   hack/demo.sh up
   kubectl apply -f test/e2e/doc-ops.yaml >/dev/null
+  workload_cluster
   # A short ramp: the alert in about 2 minutes instead of 3.
   kubectl -n "$NS" patch takecaredemo demo --type=merge -p '{"spec":{"rampMinutes":2}}' >/dev/null
   # The patch restarts billing-api: wait for the status of the new
@@ -120,6 +154,21 @@ run() {
     bash -c "[[ \$(kubectl -n $NS get takecareinvestigations -l takecare.agaetis.fr/alert-namespace=demo-apps -o name | wc -l) -eq 1 && \$($get='{.status.phase} {.spec.alert.name} {.spec.roleRef.name}') == 'Completed HighErrorRate doc' ]]"
   check "a second Doc with a disjoint scope (ack-system) is Ready beside it and took nothing (ADR 0015 §5)" \
     bash -c "[[ \$(kubectl -n $NS get takecaredoc ops doc -o jsonpath='{range .items[*]}{.status.conditions[?(@.type==\"Ready\")].status} {end}') == 'True True ' && -z \$(kubectl -n $NS get takecareinvestigations -o jsonpath='{.items[?(@.spec.roleRef.name==\"ops\")].metadata.name}') ]]"
+  # The workload cluster east (ADR 0016), registered by URL with its client
+  # certificate.
+  local conn="kubectl -n $NS get takecareconnector east -o jsonpath"
+  check "connector east is Ready, its read-only guard read from the front's /guardz (ADR 0016 §4)" \
+    bash -c "[[ \$($conn='{.status.conditions[?(@.type==\"Ready\")].status}') == True && \$($conn='{.status.conditions[?(@.type==\"ReadOnlyGuard\")].message}') == *'/guardz'* ]]"
+  check "connector east discovered the read tools of the workload cluster (pods_list read)" \
+    bash -c "[[ \$($conn='{.status.tools[?(@.name==\"pods_list\")].class}') == read ]]"
+  check "the gateway's backend mcp-east is Accepted with the client certificate's TLS (sni the front's name)" \
+    bash -c "[[ \$(kubectl -n $NS get agentgatewaybackend mcp-east -o jsonpath='{.status.conditions[?(@.type==\"Accepted\")].status} {.spec.policies.tls.sni} {.spec.policies.tls.mtlsCertificateRef[0].name}') == 'True takecare-cluster.takecare-east.svc east-client' ]]"
+  check "the Doc east (demo-apps on east) is Ready, no blind spot, no ScopeOverlap with the demo Doc (ADR 0016 §5)" \
+    bash -c "[[ \$(kubectl -n $NS get takecaredoc east -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}{.status.blindSpots}') == True && \$(kubectl -n $NS get takecaredoc doc east -o jsonpath='{.items[*].status.conditions[?(@.type==\"Ready\")].reason}') != *ScopeOverlap* ]]"
+  check "the Doc east's agent is given the east connector's tools (pods_list)" \
+    bash -c "[[ \$(kubectl -n kagent get agent takecare-doc-east -o jsonpath='{.spec.declarative.tools[?(@.mcpServer.name==\"takecare-doc-east-east\")].mcpServer.toolNames}') == *pods_list* ]]"
+  check "no investigation routes to the Doc east yet (the alerts are on the unnamed cluster)" \
+    bash -c "[[ -z \$(kubectl -n $NS get takecareinvestigations -o jsonpath='{.items[?(@.spec.roleRef.name==\"east\")].metadata.name}') ]]"
   check "the alert resolved to its Map entry at intake: spec.alert.entity and its label (ADR 0015 §4)" \
     bash -c "[[ \$($get='{.spec.alert.entity} {.metadata.labels.takecare\\.agaetis\\.fr/alert-entity}') == 'service/billing-api service.billing-api' ]]"
   check "completed less than 3 minutes after the alert fired (spec 02 AC 1)" \
