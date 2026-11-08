@@ -6,6 +6,7 @@ package ranger
 import (
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	shapes "github.com/agaetis-it/takecare-agents/internal/ranger"
+	"github.com/agaetis-it/takecare-agents/internal/telemetry/semconv"
 )
 
 // The Ranger's policies on the gateway (spec 09 §4), in the operator
@@ -17,11 +18,6 @@ const (
 	policyJournal = "ranger-journal"
 	policyGuards  = "ranger-guards"
 	policyCaps    = "ranger-caps"
-
-	// JournalAttribute marks the access log lines the journal keeps: the
-	// gateway logs requests without it too, so the mark is what says the
-	// journal is in place (spec 09 §7).
-	JournalAttribute = "takecare.journal"
 
 	// RejectMessage is what a caller reads when the filtering Marker refuses
 	// its request.
@@ -41,10 +37,12 @@ const (
 )
 
 // journal is the access log's configuration: the gateway's default fields,
-// never the content (ADR 0006), and the journal's mark.
+// never the content (ADR 0006), and the journal's mark. The gateway logs
+// requests without it too, so the mark is what says the journal is in
+// place (spec 09 §7).
 func journal() map[string]any {
 	return map[string]any{"attributes": map[string]any{"add": []any{
-		map[string]any{"name": JournalAttribute, "expression": `"ranger"`},
+		map[string]any{"name": semconv.Journal, "expression": `"ranger"`},
 	}}}
 }
 
