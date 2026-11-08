@@ -98,13 +98,25 @@ chart-check: ## Fail if the charts drifted from config/crd or hack/versions.env.
 	hack/chart-sync.sh --check
 
 .PHONY: chart-deps
-chart-deps: helm ## Download the charts' dependencies (Chart.lock is committed).
-	# Classic (https) repositories must be registered before `dependency build`
-	# resolves them; OCI dependencies need nothing. Registered in ./bin only.
-	$(HELM_RUN) repo add --force-update prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null
-	$(HELM_RUN) repo add --force-update open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts >/dev/null
-	$(HELM_RUN) dependency build charts/takecare-crds
-	$(HELM_RUN) dependency build charts/takecare
+
+# Nothing is downloaded when the archives in charts/*/charts already match
+# Chart.lock (`dependency list` says ok): the CI caches them, keyed by the
+# pins. Otherwise the build is retried, three attempts 20 s apart: third
+# parties' registries fail by intermittence. Classic (https) repositories must
+# be registered before `dependency build` resolves them; OCI dependencies need
+# nothing. Registered in ./bin only.
+chart-deps: helm ## Download the charts' dependencies (Chart.lock is committed), only when missing.
+	@set -e; for c in charts/takecare-crds charts/takecare; do \
+	  if $(HELM_RUN) dependency list $$c | awk 'NR > 1 && NF { if ($$NF != "ok") bad = 1 } END { exit bad }'; then \
+	    echo "$$c: dependencies present, nothing to download"; continue; fi; \
+	  for i in 1 2 3; do \
+	    if $(HELM_RUN) repo add --force-update prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null && \
+	      $(HELM_RUN) repo add --force-update open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts >/dev/null && \
+	      $(HELM_RUN) dependency build $$c; then break; fi; \
+	    if [ $$i = 3 ]; then echo "$$c: dependency build failed 3 times" >&2; exit 1; fi; \
+	    echo "$$c: dependency build failed (attempt $$i of 3), retrying in 20 s" >&2; sleep 20; \
+	  done; \
+	done
 
 .PHONY: chart-docs
 chart-docs: ## Generate the charts' README.md from README.md.gotmpl and the values' comments (helm-docs).
