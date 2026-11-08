@@ -22,10 +22,14 @@ import (
 )
 
 // IncidentKey is a label-safe digest of the alert's Map entry when it
-// resolved to one, of its namespace and workload otherwise (spec 02 §1).
+// resolved to one (an entity lies on one cluster), of its namespace and
+// workload otherwise, prefixed by its cluster when named (spec 02 §1).
 func IncidentKey(r v1alpha1.AlertRecord) string {
 	if r.Entity != "" {
 		return digest("entity:"+string(r.Entity), 16)
+	}
+	if r.Cluster != "" {
+		return digest(r.Cluster+"/"+r.Namespace+"/"+r.Workload, 16)
 	}
 	return digest(r.Namespace+"/"+r.Workload, 16)
 }

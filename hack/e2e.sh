@@ -34,7 +34,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=20
+CHECKS_EXPECTED=22
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -98,6 +98,8 @@ workload_cluster() {
   kubectl -n "$ens" create secret generic front-client-ca --from-file=ca.crt="$dir/ca.crt" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   kubectl -n "$NS" create secret generic east-ca --from-file=ca.crt="$dir/ca.crt" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   kubectl -n "$NS" create secret tls east-client --cert="$dir/admin.crt" --key="$dir/admin.key" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  # East's Alertmanager token: the intake knows the cluster by it.
+  openssl rand -hex 24 | tr -d '\n' | kubectl -n "$NS" create secret generic east-alerts --from-file=token=/dev/stdin --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   rm -rf "$dir"
   # k3s serves the API on 6443, the port the package's egress policy admits.
   bin/helm-"${HELM_VERSION}" upgrade --install takecare-cluster charts/takecare-cluster -n "$ens" \
@@ -105,6 +107,30 @@ workload_cluster() {
     --set tls.secretName=front-tls --set tls.clientCASecretName=front-client-ca --set 'tls.clientNames={admin.e2e.internal}' \
     --set front.image.registry="$IMAGE_REGISTRY" --set front.image.tag="$(cat bin/demo/images)" --wait --timeout 3m >/dev/null
   kubectl apply -f test/e2e/east.yaml >/dev/null
+}
+
+# east_alert posts HighErrorRate of demo-apps with east's token, once the
+# Doc east cannot run (Practitioner without a report connector): its record
+# waits Queued and the fake model sees nothing new.
+east_alert() {
+  kubectl -n "$NS" patch takecaredoc east --type=merge -p '{"spec":{"level":"Practitioner"}}' >/dev/null
+  for _ in $(seq 24); do
+    [[ "$(kubectl -n "$NS" get takecaredoc east -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')" == False ]] && break
+    sleep 5
+  done
+  kubectl -n "$NS" port-forward svc/takecare-alerts 18980:8080 >/dev/null 2>&1 &
+  local pf=$! now
+  sleep 3
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  curl -sf -o /dev/null -X POST -H @- -H 'Content-Type: application/json' http://localhost:18980/v1/alerts \
+    --data-binary "{\"version\":\"4\",\"status\":\"firing\",\"alerts\":[{\"status\":\"firing\",\"fingerprint\":\"e2e-east-1\",\"startsAt\":\"${now}\",\"labels\":{\"alertname\":\"HighErrorRate\",\"namespace\":\"demo-apps\",\"service\":\"billing-api\",\"severity\":\"critical\"},\"annotations\":{}}]}" \
+    <<<"Authorization: Bearer $(kubectl -n "$NS" get secret east-alerts -o jsonpath='{.data.token}' | base64 -d)" || log "the intake refused east's alert"
+  kill "$pf" 2>/dev/null || true
+  wait "$pf" 2>/dev/null || true
+  for _ in $(seq 12); do
+    [[ -n "$(kubectl -n "$NS" get takecareinvestigations -l takecare.agaetis.fr/alert-cluster=east -o name)" ]] && break
+    sleep 5
+  done
 }
 
 run() {
@@ -169,6 +195,12 @@ run() {
     bash -c "[[ \$(kubectl -n kagent get agent takecare-doc-east -o jsonpath='{.spec.declarative.tools[?(@.mcpServer.name==\"takecare-doc-east-east\")].mcpServer.toolNames}') == *pods_list* ]]"
   check "no investigation routes to the Doc east yet (the alerts are on the unnamed cluster)" \
     bash -c "[[ -z \$(kubectl -n $NS get takecareinvestigations -o jsonpath='{.items[?(@.spec.roleRef.name==\"east\")].metadata.name}') ]]"
+  east_alert
+  local east_get="kubectl -n $NS get takecareinvestigations -l takecare.agaetis.fr/alert-cluster=east -o jsonpath"
+  check "an alert posted with east's token routes to the Doc east, cluster east, Queued; the demo's investigation still Completed (ADR 0016 §5)" \
+    bash -c "[[ \$($east_get='{range .items[*]}{.spec.alert.cluster} {.spec.roleRef.name} {.status.phase}{end}') == 'east east Queued' && \$($get='{.status.phase}') == Completed ]]"
+  check "east's alert is its own incident, not the demo's (one workload on two clusters)" \
+    bash -c "[[ -n \$($east_get='{.items[0].metadata.labels.takecare\\.agaetis\\.fr/incident}') && \$($east_get='{.items[0].metadata.labels.takecare\\.agaetis\\.fr/incident}') != \$($get='{.metadata.labels.takecare\\.agaetis\\.fr/incident}') ]]"
   check "the alert resolved to its Map entry at intake: spec.alert.entity and its label (ADR 0015 §4)" \
     bash -c "[[ \$($get='{.spec.alert.entity} {.metadata.labels.takecare\\.agaetis\\.fr/alert-entity}') == 'service/billing-api service.billing-api' ]]"
   check "completed less than 3 minutes after the alert fired (spec 02 AC 1)" \

@@ -19,5 +19,19 @@ operator version that ships the cluster block):
         caSecretRef: { name: <the Secret holding the CA of this front's certificate> }
         clientCertSecretRef: { name: <the Secret holding the client certificate, one of {{ join ", " .Values.tls.clientNames }}> }
         serverName: <the DNS name of this front's certificate>
+      alertTokenSecretRef: { name: <the Secret holding this cluster's alert token, key token> }
     kubernetes:
       namespaces: [{{ join ", " .Values.cluster.namespaces }}]
+
+Send this cluster's alerts to the administration cluster with this receiver in
+its Alertmanager (the token in a file mounted from a Secret, the same value as
+the connector's alertTokenSecretRef; no AlertmanagerConfig is rendered here):
+
+  receivers:
+    - name: takecare
+      webhook_configs:
+        - url: {{ .Values.alerting.url | default "<the administration cluster's alert endpoint>/v1/alerts" }}
+          send_resolved: true
+          http_config:
+            authorization:
+              credentials_file: /etc/alertmanager/secrets/takecare-alerts/token

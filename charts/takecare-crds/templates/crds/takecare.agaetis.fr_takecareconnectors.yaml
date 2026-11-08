@@ -64,6 +64,18 @@ spec:
                   A workload cluster read through its front (ADR 0016): type cluster by
                   mcp.url only, reached with mTLS.
                 properties:
+                  alertTokenSecretRef:
+                    description: |-
+                      The Secret (key token, in the connector's namespace) holding the
+                      bearer token this cluster's Alertmanager presents to the intake: it
+                      identifies the alert's cluster (ADR 0016 §5).
+                    properties:
+                      name:
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
                   name:
                     description: |-
                       The name the cluster is registered under, unique among the
