@@ -39,6 +39,9 @@ func TestRangerValidation(t *testing.T) {
 		{"a model cap", func(r *v1alpha1.TakeCareRanger) {
 			r.Spec.Caps.Models = []v1alpha1.ModelCap{{Name: modelDefault, TokensPerHour: new(int64(100000))}}
 		}, ""},
+		{"a model cap without a rate", func(r *v1alpha1.TakeCareRanger) {
+			r.Spec.Caps.Models = []v1alpha1.ModelCap{{Name: modelDefault, Burst: new(int32(5))}}
+		}, "a budget sets tokensPerHour, requestsPerMinute or both"},
 		{"a duplicate model cap", func(r *v1alpha1.TakeCareRanger) {
 			b := v1alpha1.Budget{RequestsPerMinute: new(int32(60))}
 			r.Spec.Caps.Models = []v1alpha1.ModelCap{{Name: modelDefault, Budget: b}, {Name: modelDefault, Budget: b}}
