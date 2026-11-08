@@ -56,6 +56,9 @@ type Endpoint struct {
 	// ReadTools are the tools discovery classed read on this endpoint: the
 	// probe is called only when it is one of them.
 	ReadTools map[string]bool
+	// HTTP, when set, replaces the client's for this endpoint: a remote
+	// cluster's client certificate (ADR 0016).
+	HTTP *http.Client
 }
 
 // Tool is a discovered tool and what its annotations say.
@@ -155,6 +158,9 @@ func (c *Client) Call(ctx context.Context, ep Endpoint, tool string, args map[st
 
 func (c *Client) connect(ctx context.Context, ep Endpoint) (*sdk.ClientSession, error) {
 	httpClient := c.HTTP
+	if ep.HTTP != nil {
+		httpClient = ep.HTTP
+	}
 	if len(ep.Headers) > 0 {
 		httpClient = withHeaders(httpClient, ep.Headers)
 	}

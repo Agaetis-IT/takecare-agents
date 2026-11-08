@@ -45,6 +45,12 @@ func reportConnector() *v1alpha1.TakeCareConnector {
 }
 
 func TestConnectorValidation(t *testing.T) {
+	const needsHTTPS, addonKubernetes = "cluster needs an https mcp.url", "kubernetes"
+	remote := func(c *v1alpha1.TakeCareConnector) {
+		c.Spec.MCP = v1alpha1.MCPSpec{URL: "https://east.example.internal:8443/mcp"}
+		c.Spec.Cluster = &v1alpha1.ClusterSpec{Name: "east", TLS: v1alpha1.ClusterTLS{
+			CASecretRef: v1alpha1.SecretRef{Name: "east-ca"}, ClientCertSecretRef: v1alpha1.SecretRef{Name: "east-client"}}}
+	}
 	tests := []struct {
 		name   string
 		base   func() *v1alpha1.TakeCareConnector
@@ -53,6 +59,24 @@ func TestConnectorValidation(t *testing.T) {
 	}{
 		{"cluster connector", clusterConnector, func(*v1alpha1.TakeCareConnector) {}, ""},
 		{"report connector", reportConnector, func(*v1alpha1.TakeCareConnector) {}, ""},
+		{"remote cluster", clusterConnector, remote, ""},
+		{"remote cluster on an add-on", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
+			remote(c)
+			c.Spec.MCP = v1alpha1.MCPSpec{Addon: addonKubernetes}
+		}, needsHTTPS},
+		{"remote cluster over http", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
+			remote(c)
+			c.Spec.MCP.URL = "http://east.example.internal:8443/mcp"
+		}, needsHTTPS},
+		{"remote cluster without the cluster type", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
+			remote(c)
+			c.Spec.Types = []v1alpha1.ConnectorType{v1alpha1.ConnectorLogs}
+			c.Spec.Kubernetes = nil
+		}, needsHTTPS},
+		{"remote cluster name not a DNS label", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
+			remote(c)
+			c.Spec.Cluster.Name = "East_1"
+		}, "cluster.name"},
 		{"external server with a header from a Secret", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
 			c.Spec.Types = []v1alpha1.ConnectorType{v1alpha1.ConnectorTickets}
 			c.Spec.Kubernetes = nil

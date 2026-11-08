@@ -97,6 +97,31 @@ A cluster that a TakeCare administration cluster supervises (ADR 0011, ADR 0016)
 - **Registration**: the chart prints the `TakeCareConnector` to apply on the administration cluster: type `cluster`, `mcp.url` on the front, the `cluster` block (name, TLS references), `kubernetes.namespaces` (ADR 0016 §3; the operator side is the next step).
 - **The guard is proven at the data** (ADR 0016 §4): by the chart's render test (every rule passes the read-only guard) and by `/guardz` at run time.
 
+## Remote cluster connectors
+
+A workload cluster runs the `takecare-cluster` chart (above) and is registered on the administration cluster as a connector of type `cluster` by `mcp.url` (`https://` only, no add-on) with a `cluster` block (ADR 0016 §3):
+
+```yaml
+spec:
+  types: [cluster]
+  mcp:
+    url: https://east.example.internal:8443/mcp
+  cluster:
+    name: east                                  # a DNS label
+    tls:
+      caSecretRef: { name: east-ca }            # ca.crt: the CA the front's certificate chains to
+      clientCertSecretRef: { name: east-client } # tls.crt and tls.key: the administration cluster's identity
+      serverName: east.example.internal         # optional: the SNI and the name verified; the URL's host by default
+  kubernetes:
+    namespaces: [apps, billing]
+```
+
+- **The material**: the two Secrets live in the connector's namespace and are watched; a missing Secret or key gives `Reachable=False`, reason `TLSMaterialMissing`, naming the Secret and the key, never a value.
+- **The operator** calls the front (discovery, the read probe) with one client per connector: the connector's CA as its only trust, its client certificate, the server name; the client is built again when a Secret changes.
+- **The gateway** gets the same material on the connector's `AgentgatewayBackend`: `spec.policies.tls` with `mtlsCertificateRef` (the client Secret), `caCertificateRefs` (the CA Secret), `sni` and `verifySubjectAltNames` (the server name). The agentgateway controller reads them with the Secret rights its chart already grants. Agents reach the cluster only through the gateway and their routes; the tool allow-list stays enforced there (ADR 0008).
+- **The guard**: until the operator reads the front's `/guardz`, a remote cluster connector is `ReadOnlyGuard=False`, reason `GuardPending`, and never `Ready`.
+- **Egress**: the main chart restricts neither the operator's egress nor the gateway's; a customer's own egress policy on the administration cluster must admit the fronts' addresses and port.
+
 ## Status
 
 ```yaml
