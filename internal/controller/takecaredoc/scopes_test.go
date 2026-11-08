@@ -19,31 +19,35 @@ import (
 
 const shopAPI = v1alpha1.EntityKey("service/shop-api")
 
-// The three kinds of overlap of ADR 0015 §5.
+// The three kinds of overlap of ADR 0015 §5, by place (ADR 0016 §5).
 func TestSharedScope(t *testing.T) {
-	docOf := func(namespaces []v1alpha1.Namespace, entities ...v1alpha1.EntityKey) *v1alpha1.TakeCareDoc {
-		d := &v1alpha1.TakeCareDoc{}
-		d.Spec.Scope = v1alpha1.Scope{Namespaces: namespaces, Entities: entities}
-		return d
+	on := func(cluster string, nss ...v1alpha1.Namespace) []place {
+		out := make([]place, 0, len(nss))
+		for _, ns := range nss {
+			out = append(out, place{cluster, ns})
+		}
+		return out
 	}
-	inShop := map[v1alpha1.EntityKey][]v1alpha1.Namespace{shopAPI: {scope}}
+	inShop := map[v1alpha1.EntityKey][]place{shopAPI: on("", scope)}
 	for _, tc := range []struct {
 		name string
-		a, b *v1alpha1.TakeCareDoc
-		aNS  map[v1alpha1.EntityKey][]v1alpha1.Namespace
+		a, b docScope
 		want []string
 	}{
-		{"a shared namespace", docOf([]v1alpha1.Namespace{scope, billingNS}), docOf([]v1alpha1.Namespace{billingNS}), nil, []string{"namespace billing"}},
-		{"a shared entity", docOf(nil, shopAPI), docOf(nil, shopAPI, "service/other"), nil, []string{"entity service/shop-api"}},
-		{"an entity in the other's namespace", docOf(nil, shopAPI), docOf([]v1alpha1.Namespace{scope}), inShop, []string{"entity service/shop-api in namespace shop"}},
-		{"disjoint", docOf([]v1alpha1.Namespace{billingNS}, shopAPI), docOf([]v1alpha1.Namespace{"ops"}), inShop, nil},
+		{"a shared namespace", docScope{places: on("", scope, billingNS)}, docScope{places: on("", billingNS)}, []string{"namespace billing"}},
+		{"one namespace on two clusters is not shared", docScope{places: on("east", billingNS)}, docScope{places: on("west", billingNS)}, nil},
+		{"a shared namespace of a named cluster", docScope{places: on("east", billingNS)}, docScope{places: append(on("east", billingNS), on("west", billingNS)...)}, []string{"namespace east/billing"}},
+		{"a shared entity", docScope{entities: []v1alpha1.EntityKey{shopAPI}}, docScope{entities: []v1alpha1.EntityKey{shopAPI, "service/other"}}, []string{"entity service/shop-api"}},
+		{"an entity in the other's namespace", docScope{entities: []v1alpha1.EntityKey{shopAPI}, entityPlaces: inShop}, docScope{places: on("", scope)}, []string{"entity service/shop-api in namespace shop"}},
+		{"an entity of the unnamed cluster and the namespace of a named one", docScope{entityPlaces: inShop}, docScope{places: on("east", scope)}, nil},
+		{"disjoint", docScope{places: on("", billingNS), entities: []v1alpha1.EntityKey{shopAPI}, entityPlaces: inShop}, docScope{places: on("", "ops")}, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := sharedScope(tc.a, tc.b, tc.aNS, nil)
+			got := sharedScope(tc.a, tc.b)
 			if diff := cmp.Diff(tc.want, got); diff != "" {
 				t.Errorf("shared (-want +got):\n%s", diff)
 			}
-			if back := sharedScope(tc.b, tc.a, nil, tc.aNS); !cmp.Equal(back, got) {
+			if back := sharedScope(tc.b, tc.a); !cmp.Equal(back, got) {
 				t.Errorf("not symmetric: %v", back)
 			}
 		})

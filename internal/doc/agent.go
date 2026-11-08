@@ -61,10 +61,10 @@ var sources = []struct {
 // Instructions renders the Doc's system message for the namespaces it can
 // read, the types of the connectors it is given and its blind spots (ADR
 // 0014 §2), one sentence each.
-func Instructions(readable []v1alpha1.Namespace, types map[v1alpha1.ConnectorType]bool, blindSpots []string) (string, error) {
+func Instructions(readable []string, types map[v1alpha1.ConnectorType]bool, blindSpots []string) (string, error) {
 	namespaces := make([]string, len(readable))
 	for i, n := range readable {
-		namespaces[i] = "`" + string(n) + "`"
+		namespaces[i] = "`" + n + "`"
 	}
 	var lines []string
 	for _, s := range sources {
@@ -93,7 +93,8 @@ type Agent struct {
 	// Readable are the namespaces the cluster connectors read, a superset of
 	// the Doc's scope (spec 02): a dependency of an alerting workload may
 	// live in another of them. Empty means the scope.
-	Readable []v1alpha1.Namespace
+	// cluster/namespace on a named cluster (ADR 0016 §5).
+	Readable []string
 	// BlindSpots are what the Doc cannot check, one sentence each.
 	BlindSpots []string
 	// CaptureContent follows the platform (ADR 0006).
@@ -104,7 +105,9 @@ type Agent struct {
 func (a Agent) Render() (engine.Agent, error) {
 	readable := a.Readable
 	if len(readable) == 0 {
-		readable = a.Doc.Spec.Scope.Namespaces
+		for _, ns := range a.Doc.Spec.Scope.Namespaces {
+			readable = append(readable, string(ns))
+		}
 	}
 	text, err := Instructions(readable, a.Types, a.BlindSpots)
 	if err != nil {

@@ -43,6 +43,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/recorder"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/controller/connector"
 	"github.com/agaetis-it/takecare-agents/internal/doc"
 	"github.com/agaetis-it/takecare-agents/internal/engine"
 	"github.com/agaetis-it/takecare-agents/internal/routes"
@@ -537,7 +538,7 @@ type binding struct {
 	types    map[v1alpha1.ConnectorType]bool
 	// readable are the namespaces the cluster connectors given to the agent
 	// read, in their order, for the instructions.
-	readable []v1alpha1.Namespace
+	readable []string
 	// blindSpots are the scope's namespaces nothing given reads.
 	blindSpots []v1alpha1.BlindSpot
 	// blocking explains why the Doc cannot run; empty when it can.
@@ -565,7 +566,33 @@ type findings struct {
 
 type declared struct {
 	connector  string
+	cluster    string
 	namespaces []v1alpha1.Namespace
+}
+
+// place is a namespace of a cluster (ADR 0016 §5); the unnamed cluster is
+// "" (an add-on, the demo).
+type place struct {
+	cluster string
+	ns      v1alpha1.Namespace
+}
+
+// String is the namespace as the instructions name it: cluster/namespace
+// on a named cluster, the namespace alone on the unnamed one.
+func (p place) String() string {
+	if p.cluster == "" {
+		return string(p.ns)
+	}
+	return p.cluster + "/" + string(p.ns)
+}
+
+// key is the namespace's Map key: environment/<cluster>.<ns> on a named
+// cluster, environment/<ns> on the unnamed one.
+func (p place) key() v1alpha1.EntityKey {
+	if p.cluster == "" {
+		return v1alpha1.EntityKey("environment/" + string(p.ns))
+	}
+	return v1alpha1.EntityKey("environment/" + p.cluster + "." + string(p.ns))
 }
 
 // typedNames lists the Doc's connector names by type, report aside.
@@ -636,7 +663,7 @@ func (r *Reconciler) inspect(ctx context.Context, d *v1alpha1.TakeCareDoc, t v1a
 		return nil
 	}
 	if t == v1alpha1.ConnectorCluster && c.Spec.Kubernetes != nil {
-		f.declared = append(f.declared, declared{connector: name, namespaces: c.Spec.Kubernetes.Namespaces})
+		f.declared = append(f.declared, declared{connector: name, cluster: connector.ClusterOf(c), namespaces: c.Spec.Kubernetes.Namespaces})
 	}
 	if f.seen[name] {
 		if slices.ContainsFunc(b.rendered, func(x boundConnector) bool { return x.name == name }) {
@@ -709,24 +736,29 @@ func (b *binding) cover(d *v1alpha1.TakeCareDoc, f findings) int {
 	for _, c := range b.rendered {
 		given[c.name] = true
 	}
-	readable := map[v1alpha1.Namespace]bool{}
+	readable := map[place]bool{}
 	for _, dc := range f.declared {
 		for _, ns := range dc.namespaces {
-			if given[dc.connector] && !readable[ns] {
-				readable[ns] = true
-				b.readable = append(b.readable, ns)
+			p := place{dc.cluster, ns}
+			if given[dc.connector] && !readable[p] {
+				readable[p] = true
+				b.readable = append(b.readable, p.String())
 			}
 		}
 	}
+	// A namespace of the scope names no cluster: it is wanted on every
+	// cluster the Doc's cluster connectors read (ADR 0016 §5).
 	covered := 0
 	for _, ns := range d.Spec.Scope.Namespaces {
-		if readable[ns] {
-			covered++
-			continue
+		for _, cl := range f.clusters() {
+			p := place{cl, ns}
+			if readable[p] {
+				covered++
+				continue
+			}
+			reason, why := f.unread(p)
+			b.blindSpots = append(b.blindSpots, v1alpha1.BlindSpot{Entity: p.key(), Reason: reason, Message: fmt.Sprintf("The namespace `%s` (%s): %s.", p, p.key(), why)})
 		}
-		key := v1alpha1.EntityKey("environment/" + ns)
-		reason, why := f.unread(ns)
-		b.blindSpots = append(b.blindSpots, v1alpha1.BlindSpot{Entity: key, Reason: reason, Message: fmt.Sprintf("The namespace `%s` (%s): %s.", ns, key, why)})
 	}
 	covered += b.coverEntities(d, f, readable)
 	slices.SortFunc(b.blindSpots, func(x, y v1alpha1.BlindSpot) int { return strings.Compare(string(x.Entity), string(y.Entity)) })
@@ -736,10 +768,10 @@ func (b *binding) cover(d *v1alpha1.TakeCareDoc, f findings) int {
 // unread says why a namespace nothing given reads is not read: NoAccess
 // when no bound cluster connector declares it, ConnectorNotReady when the
 // ones that do are not given.
-func (f findings) unread(ns v1alpha1.Namespace) (v1alpha1.BlindSpotReason, string) {
+func (f findings) unread(p place) (v1alpha1.BlindSpotReason, string) {
 	var by []string
 	for _, dc := range f.declared {
-		if slices.Contains(dc.namespaces, ns) && !slices.Contains(by, dc.connector) {
+		if dc.cluster == p.cluster && slices.Contains(dc.namespaces, p.ns) && !slices.Contains(by, dc.connector) {
 			by = append(by, dc.connector)
 		}
 	}
@@ -747,6 +779,22 @@ func (f findings) unread(ns v1alpha1.Namespace) (v1alpha1.BlindSpotReason, strin
 		return v1alpha1.BlindSpotNoAccess, "no connector reads it"
 	}
 	return v1alpha1.BlindSpotConnectorNotReady, fmt.Sprintf("its connector %s is not given to the agent (never discovered, or no read tool)", strings.Join(by, ", "))
+}
+
+// clusters are the clusters the Doc's cluster connectors read, sorted; the
+// unnamed one when it has none.
+func (f findings) clusters() []string {
+	var out []string
+	for _, dc := range f.declared {
+		if !slices.Contains(out, dc.cluster) {
+			out = append(out, dc.cluster)
+		}
+	}
+	if len(out) == 0 {
+		return []string{""}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // blindSpotLines are the blind spots' sentences, for the instructions.

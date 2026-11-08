@@ -109,3 +109,50 @@ func (f *fixture) billingConnector(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// remoteCluster is a cluster connector by URL on a named cluster (ADR
+// 0016), declaring namespaces, its tools known.
+func (f *fixture) remoteCluster(t *testing.T, name string, namespaces ...v1alpha1.Namespace) {
+	t.Helper()
+	c := &v1alpha1.TakeCareConnector{Name: name, Namespace: ns}
+	c.Spec.Types = []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}
+	c.Spec.MCP.URL = "https://" + name + ".example.internal:8443/mcp"
+	c.Spec.Kubernetes = &v1alpha1.KubernetesSpec{Namespaces: namespaces}
+	c.Spec.Cluster = &v1alpha1.ClusterSpec{Name: name, TLS: v1alpha1.ClusterTLS{
+		CASecretRef: v1alpha1.SecretRef{Name: name + "-ca"}, ClientCertSecretRef: v1alpha1.SecretRef{Name: name + "-client"}}}
+	if err := f.c.Create(context.Background(), c); err != nil {
+		t.Fatal(err)
+	}
+	f.setConnector(t, name, read("pods_list"), true)
+}
+
+// ADR 0016 §5: a namespace of the scope is wanted on every cluster the
+// Doc reads; a named cluster's blind spot is keyed environment/<cluster>.<ns>
+// and the instructions name cluster/namespace.
+func TestCoverageOnNamedClusters(t *testing.T) {
+	f := start(t)
+	f.platform(t)
+	f.connector(t, "report", []v1alpha1.ConnectorType{v1alpha1.ConnectorReport}, nil, true)
+	f.remoteCluster(t, "east", scope)
+	f.remoteCluster(t, "west", billingNS)
+	f.doc(t, "doc", func(d *v1alpha1.TakeCareDoc) {
+		d.Spec.Scope.Namespaces = []v1alpha1.Namespace{scope}
+		d.Spec.Connectors.Cluster = []string{"east", "west"}
+		d.Spec.Connectors.Metrics = nil
+	})
+	d := f.waitCondition(t, "doc", ConditionDegraded, metav1.ConditionTrue, v1alpha1.ReasonBlindSpots)
+	if got := blindSpots(d); got != "environment/west.shop=NoAccess" {
+		t.Errorf("blind spots = %s", got)
+	}
+	if s := d.Status.BlindSpots[0].Message; s != "The namespace `west/shop` (environment/west.shop): no connector reads it." {
+		t.Errorf("message %q", s)
+	}
+	eventually(t, "the instructions name cluster/namespace", func() (bool, string) {
+		cm, err := f.get(schema.GroupVersionKind{Version: "v1", Kind: kindConfigMap}, engineNS, agent+"-instructions")
+		if err != nil {
+			return false, err.Error() + "; " + describe(f.getDoc(t, "doc"))
+		}
+		text, _, _ := unstructured.NestedString(cm.Object, "data", "instructions.md")
+		return strings.Contains(text, "limited to the namespaces `east/shop`, `west/billing`."), text
+	})
+}

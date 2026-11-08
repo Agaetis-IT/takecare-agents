@@ -96,6 +96,9 @@ func (r *MapResolver) ask(ctx context.Context, base string, a v1alpha1.AlertReco
 	ctx, cancel := context.WithTimeout(ctx, resolveTimeout)
 	defer cancel()
 	q := url.Values{"namespace": {a.Namespace}, "workload": {a.Workload}, "service": {a.Service}, "alert": {a.Name}}
+	if a.Cluster != "" {
+		q.Set("cluster", a.Cluster)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"?"+q.Encode(), nil)
 	if err != nil {
 		return "", "", err
