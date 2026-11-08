@@ -249,16 +249,14 @@ verify() {
 
   log "the platform controller (spec 01)"
   check "TakeCarePlatform main reaches Ready=True" platform_ready
-  check "one AgentgatewayModel per model, in ${NS}" \
-    test "$(kubectl -n "$NS" get agentgatewaymodels -o name | wc -l | tr -d ' ')" = "1"
-  check "one engine ModelConfig per model, in kagent, pointing at the gateway" \
-    test "$(kubectl -n kagent get modelconfigs default -o jsonpath='{.spec.openAI.baseUrl}')" = "http://agentgateway-proxy.${NS}.svc/v1"
+  check "one model backend per model, in ${NS}, and no AgentgatewayModel" \
+    bash -c "[[ \$(kubectl -n ${NS} get agentgatewaybackends model-default -o jsonpath='{.spec.ai.provider.openai.model}') != '' && -z \$(kubectl -n ${NS} get agentgatewaymodels -o name) ]]"
   check "the tracing policy targets the Gateway" \
     test "$(kubectl -n "$NS" get agentgatewaypolicies takecare-tracing -o jsonpath='{.spec.targetRefs[0].name}')" = "agentgateway-proxy"
   check_not "no generated object carries the provider key" \
-    bash -c "{ kubectl -n ${NS} get agentgatewaymodels,agentgatewaypolicies -o yaml; kubectl -n kagent get modelconfigs -o yaml; } | grep -q smoke-placeholder"
-  check "status.models[0].route is the gateway's Service" \
-    test "$(kubectl get takecareplatform main -o jsonpath='{.status.models[0].route}')" = "http://agentgateway-proxy.${NS}.svc/v1"
+    bash -c "{ kubectl -n ${NS} get agentgatewaybackends,agentgatewaypolicies -o yaml; kubectl -n kagent get modelconfigs -o yaml; } | grep -q smoke-placeholder"
+  check "status.models[0].route names the model's backend" \
+    test "$(kubectl get takecareplatform main -o jsonpath='{.status.models[0].route}')" = "model-default"
   # The demo profile's stable production gaps (spec 01, AC 6); the gateway
   # scrape gap is transient there and NetworkPolicies are on.
   check "ProductionReady=False in the demo, listing content-capture-on and single-replica" \
@@ -377,6 +375,10 @@ EOF
     test "$(kubectl -n "$NS" get agentgatewaypolicy role-doc-smoke-doc-mcp-map -o jsonpath='{.spec.backend.mcp.authorization.policy.matchExpressions[0]}')" = 'mcp.tool.name in ["blast_radius", "entry", "map_at", "neighbours", "path"]'
   check "the Agent's content-capture switches follow the platform" \
     bash -c "want=\$(kubectl get takecareplatform main -o jsonpath='{.spec.observability.captureContent}'); for v in ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS TRACELOOP_TRACE_CONTENT; do [[ \$(kubectl -n kagent get agent ${agent} -o jsonpath=\"{.spec.declarative.deployment.env[?(@.name=='\$v')].value}\") == \"\${want:-false}\" ]] || exit 1; done"
+  check "the Doc's own ModelConfig goes through its model route (spec 01)" \
+    test "$(kubectl -n kagent get modelconfig ${agent} -o jsonpath='{.spec.openAI.baseUrl}')" = "${gw}/roles/doc.smoke-doc/models/default/v1"
+  check "the Doc's model route leads to the model's backend" \
+    test "$(kubectl -n "$NS" get httproute role-doc-smoke-doc-model-default -o jsonpath='{.spec.rules[0].backendRefs[0].name}')" = "model-default"
   check "EngineReady=True: the agent's card answers through the gateway's A2A route" \
     wait_condition_long takecaredoc smoke-doc EngineReady True 300
   check "the smoke Doc's scope.entities is covered through the Map's entry tool: no blind spot (spec 08 §7)" \
@@ -436,7 +438,7 @@ EOF
   kubectl -n kagent delete pod smoke-a2a --now >/dev/null
   kubectl -n "$NS" delete takecaredoc smoke-doc --timeout=60s >/dev/null
   check "deleting the Doc removed its agent, tool servers and instructions in kagent, and its routes" \
-    bash -c "[[ -z \$(kubectl -n kagent get agents,remotemcpservers,configmaps -l takecare.agaetis.fr/owner=smoke-doc -o name) && -z \$(kubectl -n ${NS} get httproutes,agentgatewaypolicies -l takecare.agaetis.fr/role-instance=doc.smoke-doc -o name) ]]"
+    bash -c "[[ -z \$(kubectl -n kagent get agents,modelconfigs,remotemcpservers,configmaps -l takecare.agaetis.fr/owner=smoke-doc -o name) && -z \$(kubectl -n ${NS} get httproutes,agentgatewaypolicies -l takecare.agaetis.fr/role-instance=doc.smoke-doc -o name) ]]"
 
   # The agent's image is the largest the smoke pulls: the host's room after it.
   log "host after the Doc's agent: disk $(df -h / | awk 'NR==2 {print $4" free of "$2}'), memory $(free -m 2>/dev/null | awk '/^Mem:/ {print $7" MiB available"}')"
@@ -610,11 +612,11 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=71 install ;;
-  upgrade) CHECKS_EXPECTED=71 upgrade ;;
+  install) CHECKS_EXPECTED=72 install ;;
+  upgrade) CHECKS_EXPECTED=72 upgrade ;;
   status) status ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=4 cluster_chart ;;
-  all) up; CHECKS_EXPECTED=71 install; CHECKS_EXPECTED=71 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
+  all) up; CHECKS_EXPECTED=72 install; CHECKS_EXPECTED=72 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|cluster|status|down|all]"; exit 2 ;;
 esac

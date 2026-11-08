@@ -122,11 +122,17 @@ func (a Agent) Render() (engine.Agent, error) {
 		Tools:          a.Tools,
 		Skill:          Skill,
 		CaptureContent: a.CaptureContent,
-		Labels: map[string]string{
-			"app.kubernetes.io/part-of":    "takecare",
-			"takecare.agaetis.fr/role":     Kind,
-			"takecare.agaetis.fr/owner-ns": a.Doc.Namespace,
-			"takecare.agaetis.fr/owner":    a.Doc.Name,
-		},
+		Labels:         OwnerLabels(a.Doc),
 	}, nil
+}
+
+// OwnerLabels mark the Doc's objects in the engine namespace, which cannot
+// carry an owner reference to it: its agent and its model configuration.
+func OwnerLabels(d *v1alpha1.TakeCareDoc) map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/part-of":    "takecare",
+		"takecare.agaetis.fr/role":     Kind,
+		"takecare.agaetis.fr/owner-ns": d.Namespace,
+		"takecare.agaetis.fr/owner":    d.Name,
+	}
 }

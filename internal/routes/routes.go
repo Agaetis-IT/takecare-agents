@@ -88,6 +88,19 @@ func mcpName(r Role, connector string) string {
 	return fmt.Sprintf("role-%s-%s-mcp-%s", r.Kind, r.Name, connector)
 }
 func a2aName(r Role) string { return fmt.Sprintf("role-%s-%s-a2a", r.Kind, r.Name) }
+func modelName(r Role, model string) string {
+	return fmt.Sprintf("role-%s-%s-model-%s", r.Kind, r.Name, model)
+}
+
+// ModelPath is the role's route to one of the platform's models (spec 01):
+// its own path, so that a policy can cap or allow a role's model calls.
+// The engine's OpenAI client appends /v1/chat/completions below it.
+func ModelPath(r Role, model string) string {
+	return fmt.Sprintf("/roles/%s/models/%s", r.Key(), model)
+}
+
+// ModelBackend names the platform's backend of a model (spec 01).
+func ModelBackend(model string) string { return "model-" + model }
 
 // Expression is the gateway's authorization rule for an allow-list: one
 // expression per policy, action Require (spike 001 report §13). An empty
@@ -135,13 +148,7 @@ func EnsureMCP(ctx context.Context, c client.Client, g Gateway, r Role, m MCP) e
 		return fmt.Errorf("apply policy %s: %w", name, err)
 	}
 	route := r.object(HTTPRouteGVK, name)
-	route.Object["spec"] = map[string]any{
-		"parentRefs": g.parentRefs(),
-		"rules": []any{map[string]any{
-			"matches":     []any{map[string]any{"path": map[string]any{"type": "PathPrefix", "value": MCPPath(r, m.Connector)}}},
-			"backendRefs": []any{map[string]any{keyGroup: agentgatewayGroup, keyKind: backendKind, keyName: m.Backend}},
-		}},
-	}
+	route.Object["spec"] = g.routeSpec(MCPPath(r, m.Connector), m.Backend)
 	if err := apply.Strict(ctx, c, route); err != nil {
 		return fmt.Errorf("apply route %s: %w", name, err)
 	}
@@ -164,25 +171,48 @@ func EnsureA2A(ctx context.Context, c client.Client, g Gateway, r Role, ep engin
 		return fmt.Errorf("apply backend %s: %w", name, err)
 	}
 	route := r.object(HTTPRouteGVK, name)
-	route.Object["spec"] = map[string]any{
-		"parentRefs": g.parentRefs(),
-		"rules": []any{map[string]any{
-			"matches":     []any{map[string]any{"path": map[string]any{"type": "PathPrefix", "value": ep.Path}}},
-			"backendRefs": []any{map[string]any{keyGroup: agentgatewayGroup, keyKind: backendKind, keyName: name}},
-		}},
-	}
+	route.Object["spec"] = g.routeSpec(ep.Path, name)
 	if err := apply.Strict(ctx, c, route); err != nil {
 		return fmt.Errorf("apply route %s: %w", name, err)
 	}
 	return nil
 }
 
+// EnsureModel writes the role's route to a model's backend, which the
+// platform renders: the backend holds the provider key (ADR 0004), the
+// route only says which role calls it.
+func EnsureModel(ctx context.Context, c client.Client, g Gateway, r Role, model string) error {
+	name := modelName(r, model)
+	route := r.object(HTTPRouteGVK, name)
+	route.Object["spec"] = g.routeSpec(ModelPath(r, model), ModelBackend(model))
+	if err := apply.Strict(ctx, c, route); err != nil {
+		return fmt.Errorf("apply route %s: %w", name, err)
+	}
+	return nil
+}
+
+// routeSpec is an HTTPRoute's spec on the gateway: one path prefix to one
+// agentgateway backend.
+func (g Gateway) routeSpec(prefix, backend string) map[string]any {
+	return map[string]any{
+		"parentRefs": g.parentRefs(),
+		"rules": []any{map[string]any{
+			"matches":     []any{map[string]any{"path": map[string]any{"type": "PathPrefix", "value": prefix}}},
+			"backendRefs": []any{map[string]any{keyGroup: agentgatewayGroup, keyKind: backendKind, keyName: backend}},
+		}},
+	}
+}
+
 // Prune deletes the role's MCP routes and policies whose connector is not in
-// keep; with keep nil and a2a false it deletes every object of the role.
-func Prune(ctx context.Context, c client.Client, r Role, keep map[string]bool, a2a bool) error {
+// keep and its model routes whose model is not in models; with keep and
+// models nil and a2a false it deletes every object of the role.
+func Prune(ctx context.Context, c client.Client, r Role, keep map[string]bool, models []string, a2a bool) error {
 	wanted := map[string]bool{}
 	for connector := range keep {
 		wanted[mcpName(r, connector)] = true
+	}
+	for _, m := range models {
+		wanted[modelName(r, m)] = true
 	}
 	if a2a {
 		wanted[a2aName(r)] = true

@@ -44,6 +44,7 @@ import (
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/controller/connector"
+	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
 	"github.com/agaetis-it/takecare-agents/internal/doc"
 	"github.com/agaetis-it/takecare-agents/internal/engine"
 	"github.com/agaetis-it/takecare-agents/internal/routes"
@@ -117,7 +118,10 @@ type Reconciler struct {
 	OperatorNamespace string
 	EngineNamespace   string
 	Engine            engine.Agents
-	Probe             CardProbe
+	// Models writes the Doc's own model configuration in the engine (spec
+	// 01: one per role, on the role's model route).
+	Models engine.Models
+	Probe  CardProbe
 	// MCP calls the Map's entry tool to cover scope.entities.
 	MCP MapCaller
 	// Now is replaceable in tests.
@@ -332,12 +336,19 @@ func (r *Reconciler) reconcileDoc(ctx context.Context, d *v1alpha1.TakeCareDoc, 
 	if err := routes.EnsureA2A(ctx, r.Client, gw, role, ep); err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := routes.Prune(ctx, r.Client, role, keep, true); err != nil {
+	if err := routes.EnsureModel(ctx, r.Client, gw, role, model); err != nil {
+		return ctrl.Result{}, err
+	}
+	if err := routes.Prune(ctx, r.Client, role, keep, []string{model}, true); err != nil {
+		return ctrl.Result{}, err
+	}
+	modelConfig, err := r.ensureModelConfig(ctx, d, p, role, model, st)
+	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	desired, err := doc.Agent{
-		Doc: d, EngineNamespace: r.EngineNamespace, Model: model, Tools: servers,
+		Doc: d, EngineNamespace: r.EngineNamespace, Model: modelConfig, Tools: servers,
 		Types: bound.types, Readable: bound.readable, BlindSpots: bound.blindSpotLines(), CaptureContent: p.Spec.Observability.CaptureContent,
 	}.Render()
 	if err != nil {
@@ -488,7 +499,10 @@ func (r *Reconciler) removeAll(ctx context.Context, d *v1alpha1.TakeCareDoc, rol
 	if err := r.Engine.DeleteAgent(ctx, r.EngineNamespace, doc.AgentName(d)); err != nil {
 		return err
 	}
-	return routes.Prune(ctx, r.Client, role, nil, false)
+	if err := r.Models.DeleteModel(ctx, r.EngineNamespace, doc.AgentName(d)); err != nil {
+		return err
+	}
+	return routes.Prune(ctx, r.Client, role, nil, nil, false)
 }
 
 // platform returns the platform (cluster-scoped), nil when there is none.
@@ -502,6 +516,32 @@ func (r *Reconciler) platform(ctx context.Context) (*v1alpha1.TakeCarePlatform, 
 	}
 	slices.SortFunc(list.Items, func(a, b v1alpha1.TakeCarePlatform) int { return strings.Compare(a.Name, b.Name) })
 	return &list.Items[0], nil
+}
+
+// ensureModelConfig writes the Doc's own model configuration in the engine:
+// the platform model's identifier, reached through the Doc's model route
+// (spec 01), with the engine's dummy key (ADR 0004). It is named after the
+// agent, which is unique per Doc; one model per Doc today. ModelResolved
+// adds the engine's verdict on it.
+func (r *Reconciler) ensureModelConfig(ctx context.Context, d *v1alpha1.TakeCareDoc, p *v1alpha1.TakeCarePlatform, role routes.Role, model string, st *status) (string, error) {
+	name := doc.AgentName(d)
+	i := slices.IndexFunc(p.Spec.Models, func(m v1alpha1.ModelSpec) bool { return m.Name == model })
+	if err := r.Models.EnsureModel(ctx, engine.Model{
+		Name: name, Namespace: r.EngineNamespace, Model: p.Spec.Models[i].Model,
+		GatewayURL:     p.Status.GatewayURL + routes.ModelPath(role, model) + "/v1",
+		DummyKeySecret: platform.DummyKeySecretName, DummyKeyField: platform.DummyKeyField,
+		Labels: doc.OwnerLabels(d),
+	}); err != nil {
+		return "", err
+	}
+	readiness, err := r.Models.ModelReadiness(ctx, r.EngineNamespace, name)
+	if err != nil {
+		return "", err
+	}
+	if !readiness.Ready {
+		st.set(v1alpha1.ConditionModelResolved, false, readiness.Reason, fmt.Sprintf("model %s: the engine's configuration %s: %s", model, name, readiness.Message))
+	}
+	return name, nil
 }
 
 // resolveModel returns the engine's model name for the Doc, empty when it
@@ -928,7 +968,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		u.SetGroupVersionKind(gvk)
 		b = b.Owns(u)
 	}
-	for _, gvk := range r.Engine.AgentTypes() {
+	for _, gvk := range append(r.Engine.AgentTypes(), r.Models.OwnedTypes()...) {
 		u := &unstructured.Unstructured{}
 		u.SetGroupVersionKind(gvk)
 		b = b.Watches(u, handler.EnqueueRequestsFromMapFunc(func(_ context.Context, o client.Object) []reconcile.Request {

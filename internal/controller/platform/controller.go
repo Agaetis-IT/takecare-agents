@@ -39,7 +39,7 @@ import (
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/apply"
-	"github.com/agaetis-it/takecare-agents/internal/engine"
+	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/telemetry/semconv"
 )
 
@@ -101,13 +101,17 @@ const (
 	agentgatewayGroup   = "agentgateway.dev"
 	agentgatewayVersion = "v1alpha1"
 	fieldName           = "name"
+	fieldPort           = "port"
 )
 
 var (
 	gatewayGVK = schema.GroupVersionKind{Group: gatewayAPIGroup, Version: "v1", Kind: gatewayKind}
-	modelGVK   = schema.GroupVersionKind{Group: agentgatewayGroup, Version: agentgatewayVersion, Kind: "AgentgatewayModel"}
 	policyGVK  = schema.GroupVersionKind{Group: agentgatewayGroup, Version: agentgatewayVersion, Kind: "AgentgatewayPolicy"}
 	backendGVK = schema.GroupVersionKind{Group: agentgatewayGroup, Version: agentgatewayVersion, Kind: "AgentgatewayBackend"}
+	// What the platform rendered before the per-role model routes (spec 01),
+	// retired on upgrade.
+	retiredModelGVK       = schema.GroupVersionKind{Group: agentgatewayGroup, Version: agentgatewayVersion, Kind: "AgentgatewayModel"}
+	retiredModelConfigGVK = schema.GroupVersionKind{Group: "kagent.dev", Version: "v1alpha2", Kind: "ModelConfig"}
 )
 
 // gatewayRefMap renders a Gateway API parent or target reference.
@@ -120,7 +124,7 @@ func gatewayRefMap(name string, extra map[string]any) map[string]any {
 // OperatorNamespaceKinds lists the third-party kinds the controller reads or
 // writes in the operator namespace, for the manager to scope its cache.
 func OperatorNamespaceKinds() []schema.GroupVersionKind {
-	return []schema.GroupVersionKind{gatewayGVK, modelGVK, policyGVK, backendGVK}
+	return []schema.GroupVersionKind{gatewayGVK, policyGVK, backendGVK}
 }
 
 // Rights are Roles in the two namespaces the operator works in (spec 02 §3):
@@ -155,7 +159,6 @@ type Reconciler struct {
 	OperatorNamespace string
 	// EngineNamespace is the one namespace the operator writes engine objects in.
 	EngineNamespace string
-	Engine          engine.Models
 	// OperatorDeployment names the operator's own Deployment, for the
 	// single-replica gap.
 	OperatorDeployment string
@@ -198,7 +201,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			return ctrl.Result{}, err
 		}
 		st.gatewayURL = route
-		if err := r.reconcileModels(ctx, &platform, st, route); err != nil {
+		if err := r.reconcileModels(ctx, &platform, st); err != nil {
 			return ctrl.Result{}, err
 		}
 		if err := r.reconcileTracing(ctx, &platform, st, gatewayNS, gatewayName); err != nil {
@@ -322,7 +325,7 @@ func (r *Reconciler) gatewayBaseURL(ctx context.Context, gw *unstructured.Unstru
 // declared model, and sets ModelsReady from the Secrets and the objects'
 // statuses. Objects are applied whatever the Secrets' state: the condition
 // names what is missing, and restoring it needs no other action (spec 01).
-func (r *Reconciler) reconcileModels(ctx context.Context, p *v1alpha1.TakeCarePlatform, st *status, route string) error {
+func (r *Reconciler) reconcileModels(ctx context.Context, p *v1alpha1.TakeCarePlatform, st *status) error {
 	if p.Spec.Engine.Namespace != r.EngineNamespace {
 		st.set(v1alpha1.ConditionModelsReady, false, ReasonEngineNamespaceForbidden,
 			fmt.Sprintf("spec.engine.namespace is %q but the operator may only write engine objects in %q (chart value kagent.namespaceOverride, which also places its Roles)", p.Spec.Engine.Namespace, r.EngineNamespace))
@@ -338,11 +341,6 @@ func (r *Reconciler) reconcileModels(ctx context.Context, p *v1alpha1.TakeCarePl
 	} else if _, ok := dummy.Data[DummyKeyField]; !ok {
 		problems = append(problems, fmt.Sprintf("Secret %s/%s has no key %s", r.EngineNamespace, DummyKeySecretName, DummyKeyField))
 	}
-	if route == "" {
-		st.set(v1alpha1.ConditionModelsReady, false, ReasonGatewayNotProgrammed, "waiting for the gateway's route")
-		return nil
-	}
-
 	owner := *metav1.NewControllerRef(p, v1alpha1.GroupVersion.WithKind("TakeCarePlatform"))
 	labels := r.labels(p)
 	pending := []string{}
@@ -360,28 +358,18 @@ func (r *Reconciler) reconcileModels(ctx context.Context, p *v1alpha1.TakeCarePl
 				problems = append(problems, fmt.Sprintf("model %s: Secret %s/%s has no key %s", m.Name, r.OperatorNamespace, m.APIKeySecretRef.Name, m.APIKeySecretRef.Key))
 			}
 		}
-		if err := r.applyGatewayModel(ctx, p, m, owner, labels); err != nil {
+		if err := r.applyModelBackend(ctx, m, owner, labels); err != nil {
 			return err
 		}
-		if err := r.Engine.EnsureModel(ctx, engine.Model{
-			Name: m.Name, Namespace: r.EngineNamespace, Model: m.Model, GatewayURL: route + "/v1",
-			DummyKeySecret: DummyKeySecretName, DummyKeyField: DummyKeyField, Owner: owner, Labels: labels,
-		}); err != nil {
-			return err
-		}
-		if ready, msg := r.gatewayModelReadiness(ctx, m.Name); !ready {
+		if ready, msg := r.modelBackendReadiness(ctx, m.Name); !ready {
 			pending = append(pending, fmt.Sprintf("model %s: gateway: %s", m.Name, msg))
 		}
-		readiness, err := r.Engine.ModelReadiness(ctx, r.EngineNamespace, m.Name)
-		if err != nil {
-			return err
-		}
-		if !readiness.Ready {
-			pending = append(pending, fmt.Sprintf("model %s: engine: %s %s", m.Name, readiness.Reason, readiness.Message))
-		}
-		models = append(models, v1alpha1.ModelStatus{Name: m.Name, Route: route + "/v1"})
+		models = append(models, v1alpha1.ModelStatus{Name: m.Name, Route: routes.ModelBackend(m.Name)})
 	}
 	st.models = models
+	if err := r.retireModels(ctx, p); err != nil {
+		return err
+	}
 	switch {
 	case len(problems) > 0:
 		reason := ReasonSecretMissing
@@ -392,56 +380,113 @@ func (r *Reconciler) reconcileModels(ctx context.Context, p *v1alpha1.TakeCarePl
 	case len(pending) > 0:
 		st.set(v1alpha1.ConditionModelsReady, false, ReasonModelsPending, strings.Join(pending, "; "))
 	default:
-		st.set(v1alpha1.ConditionModelsReady, true, ReasonReady, fmt.Sprintf("%d model(s) accepted by the gateway and the engine", len(models)))
+		st.set(v1alpha1.ConditionModelsReady, true, ReasonReady, fmt.Sprintf("%d model backend(s) accepted by the gateway", len(models)))
 	}
 	return nil
 }
 
-// applyGatewayModel renders one AgentgatewayModel: an OpenAI-compatible
-// provider at the declared base URL, authenticated with the customer's
-// Secret, which the gateway alone reads (ADR 0004).
-func (r *Reconciler) applyGatewayModel(ctx context.Context, p *v1alpha1.TakeCarePlatform, m v1alpha1.ModelSpec, owner metav1.OwnerReference, labels map[string]string) error {
+// retireModels deletes what the platform rendered for models before the
+// per-role routes and for models no longer declared: the gateway's
+// AgentgatewayModels (whose /v1 would bypass the roles' routes), the
+// engine's shared ModelConfigs, and the backends of removed models. Only
+// objects carrying the platform's label are touched; a kind the cluster
+// does not serve has nothing to retire.
+func (r *Reconciler) retireModels(ctx context.Context, p *v1alpha1.TakeCarePlatform) error {
+	declared := map[string]bool{}
+	for _, m := range p.Spec.Models {
+		declared[routes.ModelBackend(m.Name)] = true
+	}
+	for _, t := range []struct {
+		gvk       schema.GroupVersionKind
+		namespace string
+		keep      func(string) bool
+	}{
+		{retiredModelGVK, r.OperatorNamespace, func(string) bool { return false }},
+		{retiredModelConfigGVK, r.EngineNamespace, func(string) bool { return false }},
+		{backendGVK, r.OperatorNamespace, func(n string) bool { return !strings.HasPrefix(n, routes.ModelBackend("")) || declared[n] }},
+	} {
+		list := &unstructured.UnstructuredList{}
+		list.SetGroupVersionKind(t.gvk.GroupVersion().WithKind(t.gvk.Kind + "List"))
+		err := r.APIReader.List(ctx, list, client.InNamespace(t.namespace), client.MatchingLabels{"takecare.agaetis.fr/platform": p.Name})
+		if meta.IsNoMatchError(err) || apierrors.IsForbidden(err) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("list %s to retire: %w", t.gvk.Kind, err)
+		}
+		for i := range list.Items {
+			if t.keep(list.Items[i].GetName()) {
+				continue
+			}
+			if err := r.Delete(ctx, &list.Items[i]); client.IgnoreNotFound(err) != nil {
+				return fmt.Errorf("retire %s %s: %w", t.gvk.Kind, list.Items[i].GetName(), err)
+			}
+		}
+	}
+	return nil
+}
+
+// applyModelBackend renders one model's AgentgatewayBackend, model-<name>:
+// an OpenAI-compatible provider at the declared base URL (host, port, the
+// URL's path joined with /chat/completions, TLS with its SNI over https),
+// the model fixed, authenticated with the customer's Secret, which the
+// gateway alone reads (ADR 0004). The roles route to it (spec 01).
+func (r *Reconciler) applyModelBackend(ctx context.Context, m v1alpha1.ModelSpec, owner metav1.OwnerReference, labels map[string]string) error {
 	obj := &unstructured.Unstructured{}
-	obj.SetGroupVersionKind(modelGVK)
-	obj.SetName(m.Name)
+	obj.SetGroupVersionKind(backendGVK)
+	obj.SetName(routes.ModelBackend(m.Name))
 	obj.SetNamespace(r.OperatorNamespace)
 	obj.SetLabels(labels)
 	obj.SetOwnerReferences([]metav1.OwnerReference{owner})
-	_, gatewayName := r.gatewayRef(p)
-	obj.Object["spec"] = map[string]any{
-		"parentRefs": []any{gatewayRefMap(gatewayName, map[string]any{"sectionName": "http"})},
-		"match":      map[string]any{"model": m.Model},
-		"provider":   "OpenAI",
-		"baseURL":    m.BaseURL,
-		"policies": map[string]any{"auth": map[string]any{"secretRef": map[string]any{
-			fieldName: m.APIKeySecretRef.Name, "key": m.APIKeySecretRef.Key,
-		}}},
+	spec, err := modelBackendSpec(m)
+	if err != nil {
+		return err
 	}
+	obj.Object["spec"] = spec
 	return apply.Strict(ctx, r.Client, obj)
 }
 
-// gatewayModelReadiness reads the Accepted and ResolvedRefs conditions the
-// gateway sets per parent.
-func (r *Reconciler) gatewayModelReadiness(ctx context.Context, name string) (bool, string) {
+// modelBackendSpec is the backend's spec for a model, from its base URL.
+func modelBackendSpec(m v1alpha1.ModelSpec) (map[string]any, error) {
+	u, err := url.Parse(m.BaseURL)
+	if err != nil || u.Hostname() == "" {
+		return nil, fmt.Errorf("model %s: baseURL %q is not a URL", m.Name, m.BaseURL)
+	}
+	port := int64(80)
+	if u.Scheme == "https" {
+		port = 443
+	}
+	if p := u.Port(); p != "" {
+		if port, err = strconv.ParseInt(p, 10, 32); err != nil {
+			return nil, fmt.Errorf("model %s: baseURL port %q: %w", m.Name, p, err)
+		}
+	}
+	policies := map[string]any{"auth": map[string]any{"secretRef": map[string]any{
+		fieldName: m.APIKeySecretRef.Name, "key": m.APIKeySecretRef.Key,
+	}}}
+	if u.Scheme == "https" {
+		policies["tls"] = map[string]any{"sni": u.Hostname()}
+	}
+	return map[string]any{
+		"ai": map[string]any{"provider": map[string]any{
+			"openai":  map[string]any{"model": m.Model},
+			"host":    u.Hostname(),
+			fieldPort: port,
+			"path":    strings.TrimSuffix(u.Path, "/") + "/chat/completions",
+		}},
+		"policies": policies,
+	}, nil
+}
+
+// modelBackendReadiness reads the backend's Accepted condition.
+func (r *Reconciler) modelBackendReadiness(ctx context.Context, name string) (bool, string) {
 	obj := &unstructured.Unstructured{}
-	obj.SetGroupVersionKind(modelGVK)
-	if err := r.Get(ctx, client.ObjectKey{Namespace: r.OperatorNamespace, Name: name}, obj); err != nil {
-		return false, fmt.Sprintf("AgentgatewayModel not readable: %v", err)
+	obj.SetGroupVersionKind(backendGVK)
+	if err := r.Get(ctx, client.ObjectKey{Namespace: r.OperatorNamespace, Name: routes.ModelBackend(name)}, obj); err != nil {
+		return false, fmt.Sprintf("AgentgatewayBackend not readable: %v", err)
 	}
-	parents, _, _ := unstructured.NestedSlice(obj.Object, "status", "parents")
-	if len(parents) == 0 {
-		return false, "not attached to the gateway yet"
-	}
-	for _, par := range parents {
-		parent, ok := par.(map[string]any)
-		if !ok {
-			continue
-		}
-		for _, t := range []string{"Accepted", "ResolvedRefs"} {
-			if !conditionTrue(parent, t) {
-				return false, fmt.Sprintf("%s is not True: %s", t, conditionMessage(parent, t))
-			}
-		}
+	if !conditionTrue(obj.Object, "Accepted") {
+		return false, "Accepted is not True: " + conditionMessage(obj.Object, "Accepted")
 	}
 	return true, ""
 }
@@ -478,7 +523,7 @@ func (r *Reconciler) reconcileTracing(ctx context.Context, p *v1alpha1.TakeCareP
 	backend.SetNamespace(gatewayNS)
 	backend.SetLabels(labels)
 	backend.SetOwnerReferences([]metav1.OwnerReference{owner})
-	backend.Object["spec"] = map[string]any{"static": map[string]any{"host": host, "port": port}}
+	backend.Object["spec"] = map[string]any{"static": map[string]any{"host": host, fieldPort: port}}
 	if err := apply.Strict(ctx, r.Client, backend); err != nil {
 		return err
 	}
@@ -496,7 +541,7 @@ func (r *Reconciler) reconcileTracing(ctx context.Context, p *v1alpha1.TakeCareP
 	policy.Object["spec"] = map[string]any{
 		"targetRefs": []any{gatewayRefMap(gatewayName, nil)},
 		"frontend": map[string]any{"tracing": map[string]any{
-			"backendRef": map[string]any{"group": agentgatewayGroup, "kind": "AgentgatewayBackend", fieldName: tracingObjectName, "port": port},
+			"backendRef": map[string]any{"group": agentgatewayGroup, "kind": "AgentgatewayBackend", fieldName: tracingObjectName, fieldPort: port},
 			"protocol":   protocol,
 			// Only the traces the gateway starts are sampled at the platform's
 			// ratio: a request that arrives with a traceparent keeps its
@@ -784,7 +829,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		b = b.WatchesRawSource(source.TypedChannel(r.Probe.Events(), handler.TypedEnqueueRequestsFromMapFunc(
 			func(_ context.Context, req reconcile.Request) []reconcile.Request { return []reconcile.Request{req} })))
 	}
-	for _, gvk := range append([]schema.GroupVersionKind{modelGVK, policyGVK, backendGVK}, r.Engine.OwnedTypes()...) {
+	for _, gvk := range []schema.GroupVersionKind{policyGVK, backendGVK} {
 		obj := &unstructured.Unstructured{}
 		obj.SetGroupVersionKind(gvk)
 		b = b.Owns(obj)

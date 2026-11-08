@@ -76,14 +76,16 @@ Deployment concerns are **chart values**, not API fields, because they are about
 
 | Generated resource | From | Notes |
 |---|---|---|
-| `AgentgatewayModel` (`agentgateway.dev/v1alpha1`), one per model | `spec.models[]` | Attached to the gateway's HTTP listener; provider key from a Secret copied into the gateway namespace |
-| kagent `ModelConfig`, one per model | `spec.models[]` | OpenAI provider, `baseUrl` = the gateway route, dummy key: kagent never sees the provider key (ADR 0004, 0007) |
+| `AgentgatewayBackend` (`agentgateway.dev/v1alpha1`) `model-<name>`, one per model | `spec.models[]` | An OpenAI-compatible AI backend: host, port and path from `baseURL` (`<path>/chat/completions`, TLS with its SNI over `https`), the model fixed, the provider key read by the gateway from the Secret in its namespace |
+| `AgentgatewayModel`s and kagent `ModelConfig`s carrying the platform's label | the previous model wiring | Deleted (retired on upgrade), with the backend of a model no longer declared |
 | `AgentgatewayPolicy` for tracing | `spec.observability` | Targets the gateway, `spec.frontend.tracing` to the OTLP endpoint |
 | Telemetry settings for kagent and the operator | `spec.observability` | OTLP endpoint, sampling (`samplingPerMille`), content capture flag |
 
+**One model route per role.** The platform renders no route to a model. Each role renders its own: an `HTTPRoute` `/roles/<kind>.<name>/models/<model>` (path prefix, the role's labels and owner, pruned with its MCP routes) to the model's backend, and its own kagent `ModelConfig`, named after its agent, with the OpenAI provider, `baseUrl` = the gateway + that prefix + `/v1` and the dummy key: kagent never sees the provider key (ADR 0004, 0007). A role's model traffic is thus a route of its own, which a gateway policy can target (an `AgentgatewayModel` cannot be one, spec 09 §10). The role's `ModelResolved` adds the engine's `Accepted` on its `ModelConfig`.
+
 The gateway's Service is the one agentgateway creates for the Gateway; the controller finds it by the `gateway.networking.k8s.io/gateway-name` label agentgateway sets rather than assuming a name, and falls back to the Gateway's status addresses. The chart names its Gateway `agentgateway-proxy`.
 
-> **Limitation (PR 3')**: the Gateway must live in the operator namespace, `takecare-system`. The `AgentgatewayModel`s the operator generates sit in the Gateway's namespace and reference the provider key Secret from the same namespace; the operator never copies that Secret elsewhere (it has no right to write Secrets outside its namespace). A `gatewayRef` in another namespace gives `Ready=False`, reason `GatewayOutsideOperatorNamespace`. The engine namespace is likewise fixed at install time (`platform.engine.namespace` must equal the chart's `kagent.namespaceOverride`); another value gives `ModelsReady=False`, reason `EngineNamespaceForbidden`.
+> **Limitation (PR 3')**: the Gateway must live in the operator namespace, `takecare-system`. The model backends the operator generates sit in the Gateway's namespace and reference the provider key Secret from the same namespace; the operator never copies that Secret elsewhere (it has no right to write Secrets outside its namespace). A `gatewayRef` in another namespace gives `Ready=False`, reason `GatewayOutsideOperatorNamespace`. The engine namespace is likewise fixed at install time (`platform.engine.namespace` must equal the chart's `kagent.namespaceOverride`); another value gives `ModelsReady=False`, reason `EngineNamespaceForbidden`.
 
 ## Validation
 
@@ -112,7 +114,7 @@ status:
     - { id: gateway-metrics-not-scraped, detail: "no scrape of agentgateway metrics found; usage and cost will be unknown" }
   models:
     - name: default
-      route: http://agentgateway-proxy.takecare-system.svc/v1
+      route: model-default        # the model's backend; each role routes to it
 ```
 
 ### `ProductionReady`
@@ -138,10 +140,10 @@ In the demo, `ProductionReady` stays `False` with its list: useful in a meeting 
 
 ## Acceptance criteria
 
-1. With the chart installed and the example values, the platform reaches `Ready=True` within 60 s, with one `AgentgatewayModel` and one kagent `ModelConfig` per model, and a tracing `AgentgatewayPolicy`.
-2. A request to `status.models[0].route` with a dummy key reaches the provider through the gateway (checked against the fake provider in CI).
+1. With the chart installed and the example values, the platform reaches `Ready=True` within 60 s, with one model backend per model, and a tracing `AgentgatewayPolicy`; a Doc gets its own model route and `ModelConfig`.
+2. A request through a role's model route with a dummy key reaches the provider of `status.models[0].route` (checked against the fake provider in CI: the Doc's runs).
 3. A second `TakeCarePlatform`, or one not named `main`, is rejected at admission.
 4. Removing the provider key Secret flips `ModelsReady` and `Ready` to `False`, naming the missing Secret; restoring it brings `Ready=True` back without manual action.
-5. No generated resource contains a provider key in clear text outside a `Secret`; the kagent `ModelConfig` holds only the dummy key.
+5. No generated resource contains a provider key in clear text outside a `Secret`; each role's kagent `ModelConfig` holds only the dummy key.
 6. With `values-demo.yaml`, `ProductionReady` is `False` and lists at least `content-capture-on` and `single-replica` (`gateway-metrics-not-scraped` is transient there: the demo Prometheus scrapes the gateway; NetworkPolicies are on in the demo since ADR 0007); with a complete `values-prod.yaml` and the gateway scraped, it is `True`.
 7. envtest covers: validation rules, generated resources for one and two models, condition transitions on missing Secrets, each `ProductionReady` check.

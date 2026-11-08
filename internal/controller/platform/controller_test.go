@@ -15,6 +15,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -28,7 +29,6 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
-	"github.com/agaetis-it/takecare-agents/internal/engine/kagent0103"
 	"github.com/agaetis-it/takecare-agents/internal/testenv"
 )
 
@@ -88,7 +88,6 @@ func start(t *testing.T) *harness {
 	r := &Reconciler{
 		Client: mgr.GetClient(), APIReader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("test"),
 		OperatorNamespace: operatorNS, EngineNamespace: engineNS,
-		Engine:             &kagent0103.Models{Client: mgr.GetClient()},
 		OperatorDeployment: operatorName,
 		Probe:              probe,
 	}
@@ -169,7 +168,7 @@ func (h *harness) platform(models ...v1alpha1.ModelSpec) {
 func model(name, secret string) v1alpha1.ModelSpec {
 	return v1alpha1.ModelSpec{
 		Name: name, BaseURL: "https://openrouter.ai/api/v1", Model: "google/gemini-3.7-flash",
-		APIKeySecretRef: v1alpha1.SecretKeyRef{Name: secret, Key: "apiKey"},
+		APIKeySecretRef: v1alpha1.SecretKeyRef{Name: secret, Key: apiKeyField},
 	}
 }
 
@@ -226,26 +225,30 @@ func (h *harness) waitCondition(condType string, status metav1.ConditionStatus, 
 	return got
 }
 
+// The customer's provider key Secret and its key in the tests.
+const (
+	providerSecret = "takecare-model"
+	apiKeyField    = "apiKey"
+)
+
 // promURL is the fake Prometheus of the current harness.
 var promURL string
 
 var (
-	modelGVKTest  = schema.GroupVersionKind{Group: "agentgateway.dev", Version: "v1alpha1", Kind: "AgentgatewayModel"}
-	policyGVKTest = schema.GroupVersionKind{Group: "agentgateway.dev", Version: "v1alpha1", Kind: "AgentgatewayPolicy"}
-	mcGVKTest     = schema.GroupVersionKind{Group: "kagent.dev", Version: "v1alpha2", Kind: "ModelConfig"}
+	backendGVKTest = schema.GroupVersionKind{Group: "agentgateway.dev", Version: "v1alpha1", Kind: "AgentgatewayBackend"}
+	policyGVKTest  = schema.GroupVersionKind{Group: "agentgateway.dev", Version: "v1alpha1", Kind: "AgentgatewayPolicy"}
 )
 
 func TestPlatformBecomesReadyWithTwoModels(t *testing.T) {
 	h := start(t)
 	h.gateway()
 	h.secret(engineNS, DummyKeySecretName, DummyKeyField, "dummy")
-	h.secret(operatorNS, "takecare-model", "apiKey", "sk-real-key-never-copied")
-	h.secret(operatorNS, "local-model", "apiKey", "local-key")
-	h.platform(model(defaultModel, "takecare-model"), model("local", "local-model"))
+	h.secret(operatorNS, providerSecret, apiKeyField, "sk-real-key-never-copied")
+	h.secret(operatorNS, "local-model", apiKeyField, "local-key")
+	h.platform(model(defaultModel, providerSecret), model("local", "local-model"))
 
 	for _, name := range []string{defaultModel, "local"} {
-		h.accept(modelGVKTest, operatorNS, name, true)
-		h.accept(mcGVKTest, engineNS, name, false)
+		h.accept(backendGVKTest, operatorNS, "model-"+name, false)
 	}
 	h.waitCondition(v1alpha1.ConditionReady, metav1.ConditionTrue, ReasonReady)
 
@@ -254,40 +257,39 @@ func TestPlatformBecomesReadyWithTwoModels(t *testing.T) {
 	if p.Status.ObservedGeneration != p.Generation {
 		t.Errorf("observedGeneration = %d, want %d", p.Status.ObservedGeneration, p.Generation)
 	}
-	if len(p.Status.Models) != 2 || p.Status.Models[0].Route != "http://agentgateway-proxy.takecare-system.svc/v1" {
+	if len(p.Status.Models) != 2 || p.Status.Models[0].Route != "model-"+defaultModel {
 		t.Errorf("status.models = %+v", p.Status.Models)
 	}
 	if p.Status.GatewayURL != "http://agentgateway-proxy.takecare-system.svc" {
 		t.Errorf("status.gatewayURL = %q, want the gateway's Service without a path", p.Status.GatewayURL)
 	}
 
-	t.Run("generated objects carry what the spike validated, and no provider key", func(t *testing.T) {
-		gm := &unstructured.Unstructured{}
-		gm.SetGroupVersionKind(modelGVKTest)
-		h.must(h.c.Get(h.ctx, client.ObjectKey{Namespace: operatorNS, Name: defaultModel}, gm))
-		spec := gm.Object["spec"].(map[string]any)
-		if spec["provider"] != "OpenAI" || spec["baseURL"] != "https://openrouter.ai/api/v1" {
-			t.Errorf("AgentgatewayModel spec = %v", spec)
+	if c := h.condition(v1alpha1.ConditionModelsReady); c == nil || c.Message != "2 model backend(s) accepted by the gateway" {
+		t.Errorf("ModelsReady = %+v", c)
+	}
+
+	t.Run("generated objects carry the provider's endpoint and model, and no provider key", func(t *testing.T) {
+		b := &unstructured.Unstructured{}
+		b.SetGroupVersionKind(backendGVKTest)
+		h.must(h.c.Get(h.ctx, client.ObjectKey{Namespace: operatorNS, Name: "model-" + defaultModel}, b))
+		provider, _, _ := unstructured.NestedMap(b.Object, "spec", "ai", "provider")
+		if provider["host"] != "openrouter.ai" || provider["port"] != int64(443) || provider["path"] != "/api/v1/chat/completions" {
+			t.Errorf("AgentgatewayBackend provider = %v", provider)
 		}
-		if m, _, _ := unstructured.NestedString(gm.Object, "spec", "match", "model"); m != "google/gemini-3.7-flash" {
-			t.Errorf("match.model = %q", m)
+		if m, _, _ := unstructured.NestedString(b.Object, "spec", "ai", "provider", "openai", "model"); m != "google/gemini-3.7-flash" {
+			t.Errorf("openai.model = %q", m)
 		}
-		if ref, _, _ := unstructured.NestedMap(gm.Object, "spec", "policies", "auth", "secretRef"); ref["name"] != "takecare-model" || ref["key"] != "apiKey" {
+		if ref, _, _ := unstructured.NestedMap(b.Object, "spec", "policies", "auth", "secretRef"); ref["name"] != providerSecret || ref["key"] != apiKeyField {
 			t.Errorf("secretRef = %v", ref)
 		}
-		if refs := gm.GetOwnerReferences(); len(refs) != 1 || refs[0].Kind != "TakeCarePlatform" || refs[0].Controller == nil || !*refs[0].Controller {
+		if sni, _, _ := unstructured.NestedString(b.Object, "spec", "policies", "tls", "sni"); sni != "openrouter.ai" {
+			t.Errorf("tls.sni = %q", sni)
+		}
+		if refs := b.GetOwnerReferences(); len(refs) != 1 || refs[0].Kind != "TakeCarePlatform" || refs[0].Controller == nil || !*refs[0].Controller {
 			t.Errorf("owner references = %v", refs)
 		}
-		mc := &unstructured.Unstructured{}
-		mc.SetGroupVersionKind(mcGVKTest)
-		h.must(h.c.Get(h.ctx, client.ObjectKey{Namespace: engineNS, Name: defaultModel}, mc))
-		if u, _, _ := unstructured.NestedString(mc.Object, "spec", "openAI", "baseUrl"); u != "http://agentgateway-proxy.takecare-system.svc/v1" {
-			t.Errorf("ModelConfig baseUrl = %q", u)
-		}
-		for _, obj := range []*unstructured.Unstructured{gm, mc} {
-			if s := fmt.Sprint(obj.Object); strings.Contains(s, "sk-real-key") {
-				t.Errorf("%s carries the provider key in clear", obj.GetKind())
-			}
+		if s := fmt.Sprint(b.Object); strings.Contains(s, "sk-real-key") {
+			t.Error("the backend carries the provider key in clear")
 		}
 		pol := &unstructured.Unstructured{}
 		pol.SetGroupVersionKind(policyGVKTest)
@@ -304,7 +306,7 @@ func TestPlatformBecomesReadyWithTwoModels(t *testing.T) {
 			t.Errorf("message does not name the Secret: %s", c.Message)
 		}
 		h.waitCondition(v1alpha1.ConditionReady, metav1.ConditionFalse, ReasonNotReady)
-		h.secret(operatorNS, "local-model", "apiKey", "local-key")
+		h.secret(operatorNS, "local-model", apiKeyField, "local-key")
 		h.waitCondition(v1alpha1.ConditionReady, metav1.ConditionTrue, ReasonReady)
 	})
 
@@ -353,11 +355,11 @@ func TestPlatformRefusesWhatItCannotDoSafely(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			h := start(t)
 			h.gateway()
-			h.secret(operatorNS, "takecare-model", "apiKey", "k")
+			h.secret(operatorNS, providerSecret, apiKeyField, "k")
 			p := &v1alpha1.TakeCarePlatform{
 				Name: PlatformName,
 				Spec: v1alpha1.TakeCarePlatformSpec{
-					Models:  []v1alpha1.ModelSpec{model(defaultModel, "takecare-model")},
+					Models:  []v1alpha1.ModelSpec{model(defaultModel, providerSecret)},
 					Gateway: v1alpha1.GatewaySpec{GatewayRef: &v1alpha1.ObjectRef{Name: gatewayNm, Namespace: operatorNS}},
 					Engine:  v1alpha1.EngineSpec{Namespace: engineNS},
 				},
@@ -373,7 +375,7 @@ func TestPlatformRefusesWhatItCannotDoSafely(t *testing.T) {
 			var secrets corev1.SecretList
 			h.must(h.c.List(h.ctx, &secrets))
 			for _, s := range secrets.Items {
-				if s.Namespace != operatorNS && s.Name == "takecare-model" {
+				if s.Namespace != operatorNS && s.Name == providerSecret {
 					t.Errorf("the provider Secret was copied to %s", s.Namespace)
 				}
 			}
@@ -381,18 +383,66 @@ func TestPlatformRefusesWhatItCannotDoSafely(t *testing.T) {
 	}
 }
 
+// An upgrade retires what the platform rendered before the per-role model
+// routes, and the backend of a model no longer declared; a Doc's own
+// ModelConfig (no platform label) stays.
+func TestPlatformRetiresSharedModels(t *testing.T) {
+	h := start(t)
+	h.gateway()
+	h.secret(engineNS, DummyKeySecretName, DummyKeyField, "dummy")
+	h.secret(operatorNS, providerSecret, apiKeyField, "k")
+	labels := map[string]string{"takecare.agaetis.fr/platform": PlatformName}
+	old := func(gvk schema.GroupVersionKind, ns, name string, labels map[string]string, spec map[string]any) {
+		obj := &unstructured.Unstructured{}
+		obj.SetGroupVersionKind(gvk)
+		obj.SetNamespace(ns)
+		obj.SetName(name)
+		obj.SetLabels(labels)
+		obj.Object["spec"] = spec
+		h.must(h.c.Create(h.ctx, obj))
+	}
+	mcSpec := map[string]any{"provider": "OpenAI", "model": "m", "openAI": map[string]any{"baseUrl": "http://x/v1"}}
+	old(retiredModelGVK, operatorNS, defaultModel, labels, map[string]any{
+		"parentRefs": []any{map[string]any{fieldName: gatewayNm}},
+		"provider":   "OpenAI", "baseURL": "https://x/v1",
+		"policies": map[string]any{"auth": map[string]any{"secretRef": map[string]any{fieldName: providerSecret, "key": apiKeyField}}},
+	})
+	old(retiredModelConfigGVK, engineNS, defaultModel, labels, mcSpec)
+	old(retiredModelConfigGVK, engineNS, "takecare-doc-doc", map[string]string{"takecare.agaetis.fr/role": "doc"}, mcSpec)
+	removed, err := modelBackendSpec(model("removed", providerSecret))
+	h.must(err)
+	old(backendGVK, operatorNS, "model-removed", labels, removed)
+	h.platform(model(defaultModel, providerSecret))
+
+	gone := func(gvk schema.GroupVersionKind, ns, name string) func() bool {
+		return func() bool {
+			obj := &unstructured.Unstructured{}
+			obj.SetGroupVersionKind(gvk)
+			return apierrors.IsNotFound(h.c.Get(h.ctx, client.ObjectKey{Namespace: ns, Name: name}, obj))
+		}
+	}
+	h.eventually("the shared AgentgatewayModel is retired", gone(retiredModelGVK, operatorNS, defaultModel))
+	h.eventually("the shared ModelConfig is retired", gone(retiredModelConfigGVK, engineNS, defaultModel))
+	h.eventually("the removed model's backend is retired", gone(backendGVK, operatorNS, "model-removed"))
+	if gone(retiredModelConfigGVK, engineNS, "takecare-doc-doc")() {
+		t.Error("a Doc's ModelConfig, not the platform's, was deleted")
+	}
+	if gone(backendGVK, operatorNS, "model-"+defaultModel)() {
+		t.Error("the declared model's backend is gone")
+	}
+}
+
 func TestEngineDummySecretMissingIsNamed(t *testing.T) {
 	h := start(t)
 	h.gateway()
-	h.secret(operatorNS, "takecare-model", "apiKey", "k")
-	h.platform(model(defaultModel, "takecare-model"))
+	h.secret(operatorNS, providerSecret, apiKeyField, "k")
+	h.platform(model(defaultModel, providerSecret))
 	c := h.waitCondition(v1alpha1.ConditionModelsReady, metav1.ConditionFalse, ReasonEngineSecretMissing)
 	if !strings.Contains(c.Message, "kagent/"+DummyKeySecretName) {
 		t.Errorf("message = %s", c.Message)
 	}
 	h.secret(engineNS, DummyKeySecretName, DummyKeyField, "dummy")
-	h.accept(modelGVKTest, operatorNS, defaultModel, true)
-	h.accept(mcGVKTest, engineNS, defaultModel, false)
+	h.accept(backendGVKTest, operatorNS, "model-"+defaultModel, false)
 	h.waitCondition(v1alpha1.ConditionReady, metav1.ConditionTrue, ReasonReady)
 }
 
@@ -441,14 +491,14 @@ func TestProductionGaps(t *testing.T) {
 	h := start(t)
 	h.gateway()
 	h.secret(engineNS, DummyKeySecretName, DummyKeyField, "dummy")
-	h.secret(operatorNS, "takecare-model", "apiKey", "k")
+	h.secret(operatorNS, providerSecret, apiKeyField, "k")
 	h.operatorDeployment(1)
 	h.promMode.Store("empty")
 	one := int32(1000)
 	p := &v1alpha1.TakeCarePlatform{
 		Name: PlatformName,
 		Spec: v1alpha1.TakeCarePlatformSpec{
-			Models:  []v1alpha1.ModelSpec{model(defaultModel, "takecare-model")},
+			Models:  []v1alpha1.ModelSpec{model(defaultModel, providerSecret)},
 			Gateway: v1alpha1.GatewaySpec{GatewayRef: &v1alpha1.ObjectRef{Name: gatewayNm, Namespace: operatorNS}},
 			Engine:  v1alpha1.EngineSpec{Namespace: engineNS},
 			Observability: v1alpha1.ObservabilitySpec{
@@ -459,8 +509,7 @@ func TestProductionGaps(t *testing.T) {
 		},
 	}
 	h.must(h.c.Create(h.ctx, p))
-	h.accept(modelGVKTest, operatorNS, defaultModel, true)
-	h.accept(mcGVKTest, engineNS, defaultModel, false)
+	h.accept(backendGVKTest, operatorNS, "model-"+defaultModel, false)
 	h.waitCondition(v1alpha1.ConditionReady, metav1.ConditionTrue, ReasonReady)
 
 	h.waitGaps(GapNoTelemetryExport, GapContentCaptureOn, GapSingleReplica, GapGatewayMetricsNotScraped, GapNoNetworkPolicies)
