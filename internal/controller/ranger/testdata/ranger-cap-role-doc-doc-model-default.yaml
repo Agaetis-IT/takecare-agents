@@ -1,0 +1,16 @@
+markers:
+- action: Limit
+  level: Practitioner
+  name: budget
+  policy: ranger-cap-role-doc-doc-model-default
+  target: HTTPRoute/role-doc-doc-model-default
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: role-doc-doc-model-default
+  traffic:
+    rateLimit:
+      local:
+      - tokens: 2000000
+        unit: Hours

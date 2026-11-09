@@ -10,6 +10,7 @@ package ranger
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/apply"
+	"github.com/agaetis-it/takecare-agents/internal/routes"
 )
 
 // Name is the one Ranger's name (the API refuses any other).
@@ -50,13 +52,20 @@ const (
 	ReasonIdentityPending  = "IdentityPending"
 	ReasonLevelChanged     = "LevelChanged"
 	ReasonEnforcingChanged = "EnforcingChanged"
+	// ReasonModelNotAllowed: a role's route to a model its kind may not
+	// call is refused (spec 09 §4, allowed models).
+	ReasonModelNotAllowed = "ModelNotAllowed"
 
 	labelRanger = "takecare.agaetis.fr/ranger"
 )
 
 var policyGVK = schema.GroupVersionKind{Group: "agentgateway.dev", Version: "v1alpha1", Kind: "AgentgatewayPolicy"}
 
-// +kubebuilder:rbac:groups=agentgateway.dev,resources=agentgatewaypolicies,verbs=get;list;watch;create;update;patch;delete,namespace=takecare-system
+// roleKinds maps the role of a route (routes.RoleLabel, "<role>.<name>")
+// to the kind spec.models names.
+var roleKinds = map[string]string{"doc": v1alpha1.KindTakeCareDoc}
+
+// +kubebuilder:rbac:groups=agentgateway.dev,resources=agentgatewaypolicies;agentgatewaybackends,verbs=get;list;watch;create;update;patch;delete,namespace=takecare-system
 
 // Reconciler renders the Ranger's Markers.
 type Reconciler struct {
@@ -85,8 +94,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	switch {
 	case rg.Spec.Suspend:
-		if err := r.prune(ctx, nil); err != nil {
-			return ctrl.Result{}, err
+		for _, gvk := range []schema.GroupVersionKind{policyGVK, routes.BackendGVK} {
+			if err := r.prune(ctx, gvk, nil); err != nil {
+				return ctrl.Result{}, err
+			}
 		}
 		st.set(v1alpha1.ConditionReady, false, ReasonSuspended, "spec.suspend is set: no Marker is rendered")
 		st.set(ConditionEnforcing, false, ReasonSuspended, "spec.suspend is set: nothing is logged, masked, filtered or capped")
@@ -110,18 +121,34 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	owner := *metav1.NewControllerRef(&rg, v1alpha1.GroupVersion.WithKind("TakeCareRanger"))
-	desired := render(&rg, gateway)
+	modelRoutes, err := r.modelRoutes(ctx)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	object := func(gvk schema.GroupVersionKind, name string, spec map[string]any) *unstructured.Unstructured {
+		obj := &unstructured.Unstructured{}
+		obj.SetGroupVersionKind(gvk)
+		obj.SetName(name)
+		obj.SetNamespace(r.OperatorNamespace)
+		obj.SetLabels(map[string]string{"app.kubernetes.io/part-of": "takecare", labelRanger: rg.Name})
+		obj.SetOwnerReferences([]metav1.OwnerReference{owner})
+		obj.Object["spec"] = spec
+		return obj
+	}
+	// The webhook guard's backend goes first: the guards reference it.
+	backends := map[string]bool{}
+	if spec, ok := webhook(&rg); ok {
+		backends[backendWebhook] = true
+		if err := apply.Strict(ctx, r.Client, object(routes.BackendGVK, backendWebhook, spec)); err != nil {
+			return ctrl.Result{}, fmt.Errorf("apply backend %s: %w", backendWebhook, err)
+		}
+	}
+	desired := render(&rg, gateway, modelRoutes)
 	keep := map[string]bool{}
 	var pending, refused []string
 	for _, p := range desired {
 		keep[p.name] = true
-		obj := &unstructured.Unstructured{}
-		obj.SetGroupVersionKind(policyGVK)
-		obj.SetName(p.name)
-		obj.SetNamespace(r.OperatorNamespace)
-		obj.SetLabels(map[string]string{"app.kubernetes.io/part-of": "takecare", labelRanger: rg.Name})
-		obj.SetOwnerReferences([]metav1.OwnerReference{owner})
-		obj.Object["spec"] = p.spec
+		obj := object(policyGVK, p.name, p.spec)
 		if err := apply.Strict(ctx, r.Client, obj); err != nil {
 			return ctrl.Result{}, fmt.Errorf("apply policy %s: %w", p.name, err)
 		}
@@ -133,7 +160,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			refused = append(refused, fmt.Sprintf("%s: %s", p.name, message))
 		}
 	}
-	if err := r.prune(ctx, keep); err != nil {
+	if err := r.prune(ctx, policyGVK, keep); err != nil {
+		return ctrl.Result{}, err
+	}
+	if err := r.prune(ctx, routes.BackendGVK, backends); err != nil {
 		return ctrl.Result{}, err
 	}
 	switch {
@@ -162,7 +192,7 @@ func (r *Reconciler) gateway(ctx context.Context) (name, reason, message string,
 		return "", ReasonGatewayMissing, "the platform names no Gateway in " + r.OperatorNamespace, nil
 	}
 	gw := &unstructured.Unstructured{}
-	gw.SetGroupVersionKind(schema.GroupVersionKind{Group: "gateway.networking.k8s.io", Version: "v1", Kind: "Gateway"})
+	gw.SetGroupVersionKind(schema.GroupVersionKind{Group: gatewayAPIGroup, Version: "v1", Kind: "Gateway"})
 	if err := r.Get(ctx, client.ObjectKey{Namespace: r.OperatorNamespace, Name: ref.Name}, gw); err != nil {
 		if apierrors.IsNotFound(err) {
 			return "", ReasonGatewayMissing, fmt.Sprintf("Gateway %s/%s does not exist", r.OperatorNamespace, ref.Name), nil
@@ -197,19 +227,38 @@ func acceptance(obj *unstructured.Unstructured) (*bool, string) {
 	return verdict, strings.Join(messages, "; ")
 }
 
-// prune deletes the Ranger's policies not in keep (all with keep nil).
-func (r *Reconciler) prune(ctx context.Context, keep map[string]bool) error {
+// modelRoutes are the roles' routes to the platform's models, which the
+// per-model Markers target (spec 01: one model route per role).
+func (r *Reconciler) modelRoutes(ctx context.Context) ([]modelRoute, error) {
 	list := &unstructured.UnstructuredList{}
-	list.SetGroupVersionKind(policyGVK.GroupVersion().WithKind(policyGVK.Kind + "List"))
+	list.SetGroupVersionKind(routes.HTTPRouteGVK.GroupVersion().WithKind(routes.HTTPRouteGVK.Kind + "List"))
+	if err := r.List(ctx, list, client.InNamespace(r.OperatorNamespace), client.HasLabels{routes.ModelLabel}); err != nil {
+		return nil, fmt.Errorf("list the model routes: %w", err)
+	}
+	var out []modelRoute
+	for _, o := range list.Items {
+		role, _, _ := strings.Cut(o.GetLabels()[routes.RoleLabel], ".")
+		if kind, ok := roleKinds[role]; ok {
+			out = append(out, modelRoute{name: o.GetName(), kind: kind, model: o.GetLabels()[routes.ModelLabel]})
+		}
+	}
+	slices.SortFunc(out, func(a, b modelRoute) int { return strings.Compare(a.name, b.name) })
+	return out, nil
+}
+
+// prune deletes the Ranger's objects of a kind not in keep (all with keep nil).
+func (r *Reconciler) prune(ctx context.Context, gvk schema.GroupVersionKind, keep map[string]bool) error {
+	list := &unstructured.UnstructuredList{}
+	list.SetGroupVersionKind(gvk.GroupVersion().WithKind(gvk.Kind + "List"))
 	if err := r.List(ctx, list, client.InNamespace(r.OperatorNamespace), client.HasLabels{labelRanger}); err != nil {
-		return fmt.Errorf("list the Ranger's policies: %w", err)
+		return fmt.Errorf("list the Ranger's %s: %w", gvk.Kind, err)
 	}
 	for i := range list.Items {
 		if keep[list.Items[i].GetName()] {
 			continue
 		}
 		if err := r.Delete(ctx, &list.Items[i]); client.IgnoreNotFound(err) != nil {
-			return fmt.Errorf("delete policy %s: %w", list.Items[i].GetName(), err)
+			return fmt.Errorf("delete %s %s: %w", gvk.Kind, list.Items[i].GetName(), err)
 		}
 	}
 	return nil
@@ -251,6 +300,11 @@ func (r *Reconciler) writeStatus(ctx context.Context, before, rg *v1alpha1.TakeC
 	if ready != nil && ready.Reason == ReasonMarkerRefused && (old == nil || old.Reason != ReasonMarkerRefused || old.Message != ready.Message) {
 		r.Recorder.Eventf(rg, nil, corev1.EventTypeWarning, ReasonMarkerRefused, "Reconcile", "%s", ready.Message)
 	}
+	for _, m := range st.markers {
+		if m.Name == "allowed-models" && !slices.ContainsFunc(before.Status.Markers, func(b v1alpha1.Marker) bool { return b.Policy == m.Policy }) {
+			r.Recorder.Eventf(rg, nil, corev1.EventTypeWarning, ReasonModelNotAllowed, "Reconcile", "%s refuses every call: the role's kind may not call its model (spec.models)", m.Target)
+		}
+	}
 	enforcing := meta.FindStatusCondition(rg.Status.Conditions, ConditionEnforcing)
 	wasEnforcing := meta.FindStatusCondition(before.Status.Conditions, ConditionEnforcing)
 	if enforcing != nil && wasEnforcing != nil && enforcing.Status != wasEnforcing.Status {
@@ -289,10 +343,19 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	})
 	pol := &unstructured.Unstructured{}
 	pol.SetGroupVersionKind(policyGVK)
+	backend := &unstructured.Unstructured{}
+	backend.SetGroupVersionKind(routes.BackendGVK)
+	// The roles' model routes come and go with the roles: the per-model
+	// Markers follow them.
+	route := &unstructured.Unstructured{}
+	route.SetGroupVersionKind(routes.HTTPRouteGVK)
+	modelRoute := predicate.NewPredicateFuncs(func(o client.Object) bool { return o.GetLabels()[routes.ModelLabel] != "" })
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.TakeCareRanger{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Owns(pol).
+		Owns(backend).
 		Watches(&v1alpha1.TakeCarePlatform{}, toMain, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(route, toMain, builder.WithPredicates(modelRoute, predicate.Or(predicate.GenerationChangedPredicate{}, predicate.LabelChangedPredicate{}))).
 		Named("ranger").
 		Complete(r)
 }

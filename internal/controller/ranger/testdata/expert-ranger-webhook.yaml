@@ -1,0 +1,6 @@
+policies:
+  tls:
+    sni: guard.example.internal
+static:
+  host: guard.example.internal
+  port: 8443

@@ -44,6 +44,10 @@ const (
 // deletion; its value is Role.Key().
 const RoleLabel = "takecare.agaetis.fr/role-instance"
 
+// ModelLabel names the platform model a role's model route leads to, so
+// that the Ranger finds the routes its per-model Markers target (spec 09).
+const ModelLabel = "takecare.agaetis.fr/model"
+
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete,namespace=takecare-system
 // +kubebuilder:rbac:groups=agentgateway.dev,resources=agentgatewaypolicies;agentgatewaybackends,verbs=get;list;watch;create;update;patch;delete,namespace=takecare-system
 
@@ -184,6 +188,9 @@ func EnsureA2A(ctx context.Context, c client.Client, g Gateway, r Role, ep engin
 func EnsureModel(ctx context.Context, c client.Client, g Gateway, r Role, model string) error {
 	name := modelName(r, model)
 	route := r.object(HTTPRouteGVK, name)
+	labels := route.GetLabels()
+	labels[ModelLabel] = model
+	route.SetLabels(labels)
 	route.Object["spec"] = g.routeSpec(ModelPath(r, model), ModelBackend(model))
 	if err := apply.Strict(ctx, c, route); err != nil {
 		return fmt.Errorf("apply route %s: %w", name, err)
