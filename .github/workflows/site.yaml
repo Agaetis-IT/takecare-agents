@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 Agaetis
+# SPDX-License-Identifier: Apache-2.0
+
+# The product site (site/), built and published to GitHub Pages on every
+# release tag, so that its Reference always matches the released CRDs and
+# charts; or by hand (workflow_dispatch), from the ref it is run on. On pull
+# requests touching the site, a build checks that the English rendering
+# still applies (site/src/i18n_en.py) and that the Reference reads.
+#
+# Pages must use the source "GitHub Actions" (repository settings); the
+# github-pages environment must allow the v* tags to deploy.
+name: site
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - site/**
+      - config/crd/**
+      - charts/*/README.md
+      - charts/takecare/values-prod.yaml
+      - hack/versions.env
+      - Makefile
+      - .github/workflows/site.yaml
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build the site
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - run: make site
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site/dist
+
+  deploy:
+    name: publish to GitHub Pages
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

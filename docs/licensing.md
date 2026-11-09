@@ -4,7 +4,7 @@ TakeCare Agents is licensed under the **Apache License 2.0** (see `LICENSE`), co
 
 ## 1. Our own files carry an SPDX header
 
-Every source file we write (`*.go`, `*.py`, `*.sh`, `Makefile`, `Dockerfile`) starts with:
+Every source file we write (`*.go`, `*.py`, `*.sh`, `*.js`, `*.html`, `Makefile`, `Dockerfile`) starts with:
 
 ```go
 // SPDX-FileCopyrightText: 2026 Agaetis
@@ -44,7 +44,17 @@ The Doc's instructions (`internal/doc/instructions.md`, PR 4) are adapted from t
 
 This rule applies from PR 4; it is written here so that it binds whoever writes that file.
 
-## 5. Opening the repository
+## 5. The product site's assets
+
+The product site (`site/`, published to GitHub Pages) carries files that cannot hold an SPDX header. `REUSE.toml` at the root records their copyright and licence, and `LICENSES/` holds the licence texts:
+
+- **Fonts** (`site/assets/fonts/`): Poppins (© 2020 The Poppins Project Authors) and IBM Plex Mono (© 2017 IBM Corp.), under the **SIL Open Font License 1.1** (`OFL-1.1`). Their licence files, taken from `google/fonts`, sit beside them and are published with the site.
+- **Card art, avatars, illustrations, video and poster** (`site/assets/img/*.webp`, `site/assets/video/`): © Agaetis, made with the help of AI tools, **all rights reserved** (`LicenseRef-Agaetis-All-Rights-Reserved`). They are not under Apache-2.0: the repository keeps them to build the site, and nothing grants a right to reuse them.
+- **Third-party logos** (`site/assets/img/lg/`): trademarks of their respective owners (`LicenseRef-Third-Party-Trademarks`), shown only to name the tools TakeCare works with; no endorsement or affiliation.
+
+The site's code and text (`site/src/`) are ours under Apache-2.0, with their SPDX headers. The built site loads nothing from a third party: the fonts are served from the site itself.
+
+## 6. Opening the repository
 
 The repository was licensed under Apache-2.0 on 2026-11-03 by the PR `chore: license TakeCare Agents under Apache-2.0`, which:
 

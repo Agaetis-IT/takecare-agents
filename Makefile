@@ -232,6 +232,15 @@ licenses: go-licenses ## Check dependency licenses and regenerate NOTICE; fail i
 
 ##@ Build
 
+SITE_VENV := $(LOCALBIN)/site-venv-pyyaml-$(PYYAML_VERSION)
+
+$(SITE_VENV):
+	python3 -m venv "$@" && "$@/bin/pip" install --quiet --disable-pip-version-check "pyyaml==$(PYYAML_VERSION)"
+
+.PHONY: site
+site: $(SITE_VENV) ## Build the product site into site/dist (French and English; the Reference from config/crd and the charts).
+	"$(SITE_VENV)/bin/python" site/src/build.py --out site/dist $(if $(SITE_URL),--site-url $(SITE_URL))
+
 .PHONY: build
 build: ## Build the operator binary.
 	go build -trimpath -o bin/operator ./cmd/operator

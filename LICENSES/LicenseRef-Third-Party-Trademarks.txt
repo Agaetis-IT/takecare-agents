@@ -1,0 +1,4 @@
+The logos under site/assets/img/lg/ are trademarks of their respective
+owners. The product site shows them only to name the tools and services
+TakeCare Agents works with; this implies no endorsement or affiliation. They
+are not licensed under the Apache License 2.0 of this repository.

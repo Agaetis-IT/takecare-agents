@@ -16,7 +16,7 @@ while IFS= read -r -d '' file; do
     missing=1
   fi
 done < <(git ls-files -z --cached --others --exclude-standard \
-  -- '*.go' '*.py' '*.sh' 'Makefile' '**/Dockerfile' 'Dockerfile' ':!:spikes/**')
+  -- '*.go' '*.py' '*.sh' '*.js' '*.html' 'Makefile' '**/Dockerfile' 'Dockerfile' ':!:spikes/**')
 
 if [ "$missing" -ne 0 ]; then
   echo "add the header described in docs/licensing.md"
