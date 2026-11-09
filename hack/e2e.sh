@@ -34,7 +34,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=22
+CHECKS_EXPECTED=24
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -107,6 +107,30 @@ workload_cluster() {
     --set tls.secretName=front-tls --set tls.clientCASecretName=front-client-ca --set 'tls.clientNames={admin.e2e.internal}' \
     --set front.image.registry="$IMAGE_REGISTRY" --set front.image.tag="$(cat bin/demo/images)" --wait --timeout 3m >/dev/null
   kubectl apply -f test/e2e/east.yaml >/dev/null
+}
+
+# masked_alert posts, with the demo's token, an alert of another service
+# of demo-apps (its own incident) whose description carries a card number
+# and an email, and waits for its investigation to end: the same
+# conversation shape, so the fixtures serve it.
+MASKED_CARD="4111 1111 1111 1111" MASKED_EMAIL="oncall.e2e@example.com"
+masked_alert() {
+  kubectl -n "$NS" port-forward svc/takecare-alerts 18981:8080 >/dev/null 2>&1 &
+  local pf=$! now
+  sleep 3
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  curl -sf -o /dev/null -X POST -H @- -H 'Content-Type: application/json' http://localhost:18981/v1/alerts \
+    --data-binary "{\"version\":\"4\",\"status\":\"firing\",\"alerts\":[{\"status\":\"firing\",\"fingerprint\":\"e2e-masked-1\",\"startsAt\":\"${now}\",\"labels\":{\"alertname\":\"HighErrorRate\",\"namespace\":\"demo-apps\",\"service\":\"e2e-masking\",\"severity\":\"critical\"},\"annotations\":{\"description\":\"Payments refused for card ${MASKED_CARD}; customer ${MASKED_EMAIL} reported it.\"}}]}" \
+    <<<"Authorization: Bearer $(kubectl -n "$NS" get secret takecare-alerting -o jsonpath='{.data.token}' | base64 -d)" || log "the intake refused the masked alert"
+  kill "$pf" 2>/dev/null || true
+  wait "$pf" 2>/dev/null || true
+  for _ in $(seq 60); do
+    [[ "$(masked_phase)" =~ ^(Completed|Failed|TimedOut)$ ]] && break
+    sleep 5
+  done
+}
+masked_phase() {
+  kubectl -n "$NS" get takecareinvestigations -o jsonpath='{range .items[?(@.spec.alert.service=="e2e-masking")]}{.status.phase}{end}'
 }
 
 # east_alert posts HighErrorRate of demo-apps with east's token, once the
@@ -227,6 +251,13 @@ run() {
   stats="$(fake_get fake-llm /stats)"
   check "the fake model served fixtures only (${stats})" \
     bash -c "jq -e '.unknown == 0 and .served > 0' <<<'$stats' >/dev/null"
+  # Last, so that its run touches none of the counts above.
+  masked_alert
+  check "an alert whose description carries a card number and an email runs to Completed" \
+    bash -c "[[ \$(kubectl -n $NS get takecareinvestigations -o jsonpath='{range .items[?(@.spec.alert.service==\"e2e-masking\")]}{.status.phase}{end}') == Completed ]]"
+  fake_get fake-llm /last >bin/demo/fakellm-last.json
+  check "the model got that run's request with neither the card number nor the email: masked by the gateway (spec 09 §9)" \
+    bash -c "grep -q e2e-masking bin/demo/fakellm-last.json && grep -q 'card <CREDIT_CARD>; customer <EMAIL_ADDRESS>' bin/demo/fakellm-last.json && ! grep -qF '${MASKED_CARD}' bin/demo/fakellm-last.json && ! grep -qF '${MASKED_EMAIL}' bin/demo/fakellm-last.json"
   if [[ "$checks" -ne "$CHECKS_EXPECTED" || "$failed" -ne 0 ]]; then
     echo "checks: ${checks} run (expected ${CHECKS_EXPECTED}), ${failed} failed"
     exit 1
