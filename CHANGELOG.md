@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0-rc.1] - 2026-11-09
+
+The step 2 prerelease: the Map, the multi-cluster package, the Ranger at Practitioner by default in the demo, one model route per role, the product site; the bench of 2026-11-09 scores 5 out of 5 (`test/bench/report-2026-11-09T2042Z.json`).
+
 ### Added
 
 - The Ranger's alerts (spec 09 §5): at Practitioner and above, the operator reads the gateway's guard and limit counters through the platform's Prometheus once a minute, and says what was masked, refused or rate-limited in `RequestsMasked`, `RequestsRejected` and `RequestsRateLimited` Warning events on the Ranger, with the count and the routes, and in `takecare_ranger_alerts_total{kind}`. The condition `AlertsSource` says whether the counters are read.
