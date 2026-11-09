@@ -85,7 +85,7 @@ Thresholds: at least 4 out of 5 correct to merge a change of prompt, engine, mod
 
 | Workflow | Trigger | Jobs |
 |---|---|---|
-| `ci.yaml` | push, PR | lint (golangci-lint, shellcheck, markdownlint, SPDX headers), unit + golden + envtest, chart lint, image builds (no push on PRs), gitleaks |
+| `ci.yaml` | push, PR | lint (golangci-lint, shellcheck, markdownlint, SPDX headers), unit + golden + envtest, chart lint, image builds (no push; amd64 only on PRs, and skipped when a PR touches none of their inputs; layers in the Actions cache), gitleaks |
 | `e2e.yaml` | PR touching the paths it lists, push to `main` | k3d end-to-end with fake LLM and fake Slack |
 | `bench.yaml` | `workflow_dispatch` | accuracy bench with a real model (repository secret), report as an artifact |
 | `release.yaml` | tag `v*` | multi-arch images (amd64, arm64), charts packaged and pushed as OCI, GitHub release with CHANGELOG excerpt |
