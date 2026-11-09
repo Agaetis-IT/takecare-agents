@@ -47,7 +47,7 @@ Go everywhere (current stable Go, kubebuilder v4 layout, controller-runtime), th
 | Golden | `go test` with `testdata/*.golden`, `-update` flag | prompt, Slack message, generated manifests | every push |
 | Controller | envtest | validation (CEL), reconciliation, conditions, level transitions, owner references, no write verbs | every push |
 | Chart | `helm lint` on both profiles, `helm template` + kubeconform, and the packaged charts linted at a release version by the release dry run | both profiles render and validate | every push |
-| End-to-end | k3d in GitHub Actions, fake LLM | `demo-up` → `demo-incident` (short ramp) → diagnosis published to a fake Slack → trace in the collector | PRs labelled `e2e`, and `main` |
+| End-to-end | k3d in GitHub Actions, fake LLM | `demo-up` → `demo-incident` (short ramp) → diagnosis published to a fake Slack → trace in the collector | PRs touching the code, charts, scripts or tests (paths in `e2e.yaml`), and `main` |
 | Accuracy bench | real model, k3d | N investigations, correctness ratio | on demand (`workflow_dispatch`) and before each release |
 
 The pinned chart archives are cached by the CI, keyed by the pins (`hack/versions.env` and the `Chart.lock` files); `make chart-deps` downloads only what is missing, a download retried three times.
@@ -86,7 +86,7 @@ Thresholds: at least 4 out of 5 correct to merge a change of prompt, engine, mod
 | Workflow | Trigger | Jobs |
 |---|---|---|
 | `ci.yaml` | push, PR | lint (golangci-lint, shellcheck, markdownlint, SPDX headers), unit + golden + envtest, chart lint, image builds (no push on PRs), gitleaks |
-| `e2e.yaml` | PR label `e2e`, push to `main` | k3d end-to-end with fake LLM and fake Slack |
+| `e2e.yaml` | PR touching the paths it lists, push to `main` | k3d end-to-end with fake LLM and fake Slack |
 | `bench.yaml` | `workflow_dispatch` | accuracy bench with a real model (repository secret), report as an artifact |
 | `release.yaml` | tag `v*` | multi-arch images (amd64, arm64), charts packaged and pushed as OCI, GitHub release with CHANGELOG excerpt |
 
