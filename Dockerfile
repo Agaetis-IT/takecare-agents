@@ -11,30 +11,37 @@ ARG RUNTIME_IMAGE
 ARG GO_LICENSES_VERSION
 ARG COMPONENT=operator
 
+# Full license texts (and NOTICE files) of every third-party module of every
+# command, once per build on the build platform: each image ships the union
+# (docs/licensing.md). The Go caches are BuildKit cache mounts, shared by the
+# six images of one build.
+FROM --platform=$BUILDPLATFORM ${GO_BUILD_IMAGE} AS licenses
+ARG GO_LICENSES_VERSION
+WORKDIR /workspace
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY . .
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    go install github.com/google/go-licenses/v2@${GO_LICENSES_VERSION} && \
+    go-licenses save ./cmd/... --ignore github.com/agaetis-it/takecare-agents --save_path /workspace/licenses && \
+    mkdir -p /workspace/licenses
+
 # Cross-compile on the build platform instead of emulating the target one.
 FROM --platform=$BUILDPLATFORM ${GO_BUILD_IMAGE} AS builder
 ARG TARGETOS
 ARG TARGETARCH
-ARG GO_LICENSES_VERSION
 ARG COMPONENT
 WORKDIR /workspace
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags="-s -w" -o component ./cmd/${COMPONENT}
-# Full license texts (and NOTICE files) of every third-party module in the
-# binary, shipped in the image (docs/licensing.md). go-licenses itself is built
-# for the build platform; only the analysis targets the image's platform. A
-# binary with no third-party module gets an empty directory.
-RUN go install github.com/google/go-licenses/v2@${GO_LICENSES_VERSION} && \
-    GOOS=${TARGETOS} GOARCH=${TARGETARCH} go-licenses save ./cmd/${COMPONENT} \
-    --ignore github.com/agaetis-it/takecare-agents --save_path /workspace/licenses && \
-    mkdir -p /workspace/licenses
 
 FROM ${RUNTIME_IMAGE}
 WORKDIR /
 COPY --from=builder /workspace/component /component
-COPY --from=builder /workspace/licenses /licenses
+COPY --from=licenses /workspace/licenses /licenses
 USER 65532:65532
 ENTRYPOINT ["/component"]

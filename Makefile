@@ -266,19 +266,24 @@ docker-build-e2e: ## Build the end-to-end tests' fakes (model provider, Slack) f
 	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=fake-llm -t $(FAKE_LLM_IMG) .
 	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=fake-slack -t $(FAKE_SLACK_IMG) .
 
+# In GitHub Actions, once the runtime token is exposed (the ci workflow does
+# it), the layers go to the Actions cache, one scope per image.
+comma := ,
+BUILDX_CACHE = $(if $(ACTIONS_RUNTIME_TOKEN),--cache-from type=gha$(comma)scope=$(1) --cache-to type=gha$(comma)mode=max$(comma)scope=$(1))
+
 .PHONY: docker-buildx
-docker-buildx: ## Build every image for amd64 and arm64 (pushed only with PUSH=true).
-	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=operator -t $(OPERATOR_IMG) \
+docker-buildx: ## Build every image for IMAGE_PLATFORMS (amd64 and arm64; pushed only with PUSH=true).
+	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=operator $(call BUILDX_CACHE,operator) -t $(OPERATOR_IMG) \
 		$(if $(filter true,$(PUSH)),--push,) .
-	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-report-slack -t $(REPORT_SLACK_IMG) \
+	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-report-slack $(call BUILDX_CACHE,mcp-report-slack) -t $(REPORT_SLACK_IMG) \
 		$(if $(filter true,$(PUSH)),--push,) .
-	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=demo-app -t $(DEMO_APP_IMG) \
+	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=demo-app $(call BUILDX_CACHE,demo-app) -t $(DEMO_APP_IMG) \
 		$(if $(filter true,$(PUSH)),--push,) .
-	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-corpus -t $(MCP_CORPUS_IMG) \
+	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-corpus $(call BUILDX_CACHE,mcp-corpus) -t $(MCP_CORPUS_IMG) \
 		$(if $(filter true,$(PUSH)),--push,) .
-	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-map -t $(MCP_MAP_IMG) \
+	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-map $(call BUILDX_CACHE,mcp-map) -t $(MCP_MAP_IMG) \
 		$(if $(filter true,$(PUSH)),--push,) .
-	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-front -t $(MCP_FRONT_IMG) \
+	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-front $(call BUILDX_CACHE,mcp-front) -t $(MCP_FRONT_IMG) \
 		$(if $(filter true,$(PUSH)),--push,) .
 
 
