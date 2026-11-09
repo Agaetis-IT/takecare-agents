@@ -19,8 +19,8 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
   '{agent:["Agent","--c-agent"],guard:["Garde-fou","--c-guard"],exp:["Stage","--c-exp"],exo:["Exercice","--c-exo"],mat:["Matériel","--c-mat"],lieu:["Lieu","--c-lieu"],hum:["Humain","--c-hum"]};',
   'const TY = '
   '{agent:["Agent","--c-agent"],guard:["Guardrail","--c-guard"],exp:["Stage","--c-exp"],exo:["Exercise","--c-exo"],mat:["Equipment","--c-mat"],lieu:["Place","--c-lieu"],hum:["Human","--c-hum"]};'),
- ('const STATUS = {doc:["v0.1.0 · livré","live"], ranger:["v0.2.0-rc.1 · livré","live"], intendant:["Étape 2 · à spécifier",""], psy:["Étape 2 · spécifié",""], kine:["Étape 2 · spécifié",""]};',
-  'const STATUS = {doc:["v0.1.0 · shipped","live"], ranger:["v0.2.0-rc.1 · shipped","live"], intendant:["Step 2 · to be specified",""], psy:["Step 2 · specified",""], kine:["Step 2 · specified",""]};'),
+ ('const STATUS = {doc:["v0.1.0 · livré","live"], ranger:["v0.2.0-rc.1 · livré","live"], carte:["v0.2.0-rc.1 · livrée","live"], intendant:["Étape 2 · à spécifier",""], psy:["Étape 2 · spécifié",""], kine:["Étape 2 · spécifié",""]};',
+  'const STATUS = {doc:["v0.1.0 · shipped","live"], ranger:["v0.2.0-rc.1 · shipped","live"], carte:["v0.2.0-rc.1 · shipped","live"], intendant:["Step 2 · to be specified",""], psy:["Step 2 · specified",""], kine:["Step 2 · specified",""]};'),
  ('`<span class="st">Spécifié</span>`', '`<span class="st">Specified</span>`'),
  ('alt="Carte : ${esc(r.nick)}" loading="lazy">${st(k)}', 'alt="Card: ${esc(r.nick)}" loading="lazy">${st(k)}'),
  (' doc:"TakeCareDoc, avec un enregistrement TakeCareInvestigation par alerte. Sur une alerte Alertmanager, l\'opérateur ouvre l\'enquête et la confie à l\'agent kagent par A2A. Lecture seule ; le '
@@ -355,10 +355,11 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
  ('sub:"Une enquête par alerte : sa phase, son diagnostic, son coût et sa trace."', 'sub:"One investigation per alert: its phase, its diagnosis, its cost and its trace."'),
  ('sub:"Un accès du Sac : un serveur MCP derrière la passerelle, avec ses outils classés read, propose ou act."',
   'sub:"One access in the Bag: an MCP server behind the gateway, with its tools classed read, propose or act."'),
+ ('sub:"Le Ranger : son niveau, et de quoi sont faites ses Balises : masquage, filtrage, plafonds, modèles autorisés."', 'sub:"The Ranger: its level, and what its Markers are made of: masking, filtering, caps, allowed models."'),
  ('sub:"Le Terrain d\'entraînement de la démo : le décor billing-api et l\'incident à rejouer."', 'sub:"The demo\'s Training ground: the billing-api scenery and the incident to replay."'),
- ('const PLANNED = [["ranger","TakeCareRanger","Livré · v0.2.0-rc.1"],["intendant","TakeCareIntendant","Étape 2 · à spécifier"],["psy","TakeCarePsy","Étape 2"],["kine","TakeCareKine","Étape '
+ ('const PLANNED = [["intendant","TakeCareIntendant","Étape 2 · à spécifier"],["psy","TakeCarePsy","Étape 2"],["kine","TakeCareKine","Étape '
   '2"],["mecano","TakeCareMecano","Spécifié"],["coach","TakeCareCoach","Spécifié"],["nutri","TakeCareNutri","Spécifié"],["guide","TakeCareGuide","Spécifié"]];',
-  'const PLANNED = [["ranger","TakeCareRanger","Shipped · v0.2.0-rc.1"],["intendant","TakeCareIntendant","Step 2 · to be specified"],["psy","TakeCarePsy","Step 2"],["kine","TakeCareKine","Step '
+  'const PLANNED = [["intendant","TakeCareIntendant","Step 2 · to be specified"],["psy","TakeCarePsy","Step 2"],["kine","TakeCareKine","Step '
   '2"],["mecano","TakeCareMecano","Specified"],["coach","TakeCareCoach","Specified"],["nutri","TakeCareNutri","Specified"],["guide","TakeCareGuide","Specified"]];'),
  ('aria-label="Retourner la carte ${x.kind}"', 'aria-label="Flip the ${x.kind} card"'),
  ('data-kind="${x.kind}">Copier</button>', 'data-kind="${x.kind}">Copy</button>'),

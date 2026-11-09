@@ -2,8 +2,8 @@ apiVersion: v2
 name: takecare-cluster
 description: The workload-cluster package of TakeCare Agents (ADR 0016) — the read-only kubernetes MCP server and its mTLS front, the cluster's one inbound endpoint for the administration cluster. No operator, no CRD.
 type: application
-version: 0.1.0
-appVersion: 0.1.0
+version: 0.2.0-rc.1
+appVersion: 0.2.0-rc.1
 kubeVersion: ">=1.33.0-0"
 home: https://github.com/Agaetis-IT/takecare-agents
 maintainers:

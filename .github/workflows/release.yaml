@@ -87,6 +87,17 @@ jobs:
             exit 1
           fi
           version="${TAG#v}"
+          # The cut sets the charts' version (docs/release.md step 2): a tag
+          # whose charts say another version publishes nothing.
+          for chart in takecare-crds takecare takecare-cluster; do
+            for key in version appVersion; do
+              got="$(sed -nE "s/^${key}: *//p" "charts/${chart}/Chart.yaml")"
+              if [[ "$got" != "$version" ]]; then
+                echo "charts/${chart}/Chart.yaml has ${key} ${got}, the tag says ${version}: cut the charts first (docs/release.md step 2)" >&2
+                exit 1
+              fi
+            done
+          done
           hack/release-notes.sh "$version" >"$RUNNER_TEMP/notes.md"
           # The registry is a pinned constant: hack/versions.env only.
           source hack/versions.env

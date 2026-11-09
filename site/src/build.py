@@ -9,7 +9,7 @@ to the default language (French for now), assets shared under /assets/.
 The site is served at its GitHub Pages address for now; --site-url switches
 the canonical and social links to a custom domain later.
 """
-import argparse, json, pathlib, shutil, sys
+import argparse, json, pathlib, re, shutil, sys
 SRC = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(SRC))
 import gen_ref, i18n_en
@@ -63,6 +63,16 @@ def page(lang, tpl, data, ref, site):
 </html>
 '''
 
+def check_version(tpl, changelog):
+    """The hero badge names the newest released version of the CHANGELOG
+    (docs/release.md step 2): a release cut that forgets the site fails."""
+    badge = re.search(r'<b class="m">v([^ <]+) · ', tpl)
+    released = re.search(r'^## \[(?!Unreleased\])([^\]]+)\]', changelog, re.M)
+    if not badge or not released or badge.group(1) != released.group(1):
+        sys.exit(f'template.html: the hero badge says v{badge.group(1) if badge else "?"} but the newest CHANGELOG section is '
+                 f'{released.group(1) if released else "?"}: update the site in the release cut (docs/release.md step 2)')
+
+
 def main():
     a = argparse.ArgumentParser(); a.add_argument('--out', default=str(SRC.parent / 'dist')); a.add_argument('--default', default='fr', choices=['fr', 'en'])
     a.add_argument('--site-url', default=SITE)
@@ -70,6 +80,7 @@ def main():
     root = str(SRC.parent.parent)
     ref = gen_ref.reference(root)
     tpl = (SRC / 'template.html').read_text()
+    check_version(tpl, (SRC.parent.parent / 'CHANGELOG.md').read_text())
     # the head of the template only serves the claude.ai previews: drop its font links
     shutil.rmtree(out, ignore_errors=True); (out / 'fr').mkdir(parents=True); (out / 'en').mkdir()
     (out / 'fr' / 'index.html').write_text(page('fr', tpl, (SRC / 'data.fr.js').read_text(), ref, site))

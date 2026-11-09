@@ -20,6 +20,7 @@ Deferred criteria (and the PR that will close them):
 - [ ] Read-only guard green; no secret, token, prompt or model answer in logs, status or fixtures
 - [ ] Docs updated (README, CHANGELOG "Unreleased", new ADR if a decision changed)
 - [ ] Every commit signed off (`git commit -s`, see CONTRIBUTING.md)
+- [ ] Release cut only: CHANGELOG section, the three charts' `version` and `appVersion`, the site's status, badge and roadmap (`docs/release.md` step 2)
 
 ## Open questions
 

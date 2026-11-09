@@ -2,8 +2,8 @@ apiVersion: v2
 name: takecare
 description: TakeCare Agents, an AIOps staff delivered as a Kubernetes operator, with the third-party building blocks it configures (ADR 0001, 0002). Requires the takecare-crds chart.
 type: application
-version: 0.1.0
-appVersion: 0.1.0
+version: 0.2.0-rc.1
+appVersion: 0.2.0-rc.1
 kubeVersion: ">=1.33.0-0"
 home: https://github.com/Agaetis-IT/takecare-agents
 maintainers:

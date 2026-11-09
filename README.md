@@ -12,7 +12,7 @@
 
 TakeCare Agents is a collection of specialised roles (AI agents and guardrails) that take care of your production alongside your teams: Kubernetes and the managed cloud services around it. They govern every AI agent, prepare for the peaks and heal incidents down to their cause. It installs at the customer's site as a **Kubernetes operator**, on an open source stack (agentgateway, kagent, agentregistry, MCP), with the model of their choice. A built-in **demo mode** runs the same product on a local cluster, with a scenery and replayable incidents.
 
-> **Status: first prerelease.** The **Doc** works end to end: an alert in, a sourced diagnosis published, with its trace and its cost, on the demo or on your cluster. [`v0.1.0-rc.1`](CHANGELOG.md) is the first prerelease: its images are public on `ghcr.io/agaetis-it`, the charts follow with `0.1.0`. To try it today, build the demo from this tree with `make demo-up DEMO_IMAGES=build`. The eight other roles are specified, not coded yet.
+> **Status.** The **Doc** works end to end: an alert in, a sourced diagnosis published, with its trace and its cost, on the demo or on your cluster. The **Ranger** puts the same rules on every agent at the gateway: a journal, masking, filtering, caps and allowed models. The images and charts of the latest release are on `ghcr.io/agaetis-it` (see the [CHANGELOG](CHANGELOG.md)); `make demo-up` installs them. The other roles are specified, not coded yet.
 
 ## The staff
 
@@ -115,7 +115,7 @@ make demo-reset                     # puts the scenery back in shape, ready for 
 make demo-down                      # deletes the cluster and the demo's working files
 ```
 
-`DEMO_IMAGES=build` builds the images from this tree and imports them into the cluster. Until the first release publishes them, it is the only way. Without it, `demo-up` pulls the release images from the registry. A second `make demo-up` changes nothing and takes seconds. With `TAKECARE_SLACK_BOT_TOKEN` and `TAKECARE_SLACK_ONCALL_CHANNEL` (and optionally `TAKECARE_SLACK_REVIEW_CHANNEL`), diagnoses are posted to Slack; without them they go to the report server's log, and `make demo-verdict` reads them from the investigation. `make demo-bench N=5` runs the accuracy bench on the ongoing incident (see `test/bench/README.md`).
+`DEMO_IMAGES=build` builds the images from this tree and imports them into the cluster. Without it, `demo-up` pulls the images of the version the charts name, the latest release, from the registry. A second `make demo-up` changes nothing and takes seconds. With `TAKECARE_SLACK_BOT_TOKEN` and `TAKECARE_SLACK_ONCALL_CHANNEL` (and optionally `TAKECARE_SLACK_REVIEW_CHANNEL`), diagnoses are posted to Slack; without them they go to the report server's log, and `make demo-verdict` reads them from the investigation. `make demo-bench N=5` runs the accuracy bench on the ongoing incident (see `test/bench/README.md`).
 
 Prerequisites: Docker with at least 4 GB of memory (the stack uses about 3.5 GiB in an incident), k3d, kubectl, make; Helm 4 is downloaded by the Makefile.
 
