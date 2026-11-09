@@ -128,8 +128,13 @@ chart-docs-check: chart-docs ## Fail if a chart's README.md drifted from its val
 	@if [ -n "$$(git status --porcelain charts/*/README.md)" ]; then \
 		git --no-pager diff charts/*/README.md; echo "run make chart-docs and commit the README"; exit 1; fi
 
+.PHONY: chart-versions-check
+chart-versions-check: ## Fail unless the three charts carry one version, as appVersion too.
+	@n=$$(sed -nE 's/^(version|appVersion): *//p' charts/takecare-crds/Chart.yaml charts/takecare/Chart.yaml charts/takecare-cluster/Chart.yaml | sort -u | wc -l | tr -d ' '); \
+	test "$$n" = 1 || { echo "the three charts' version and appVersion differ: one version for all (docs/release.md step 2)"; exit 1; }
+
 .PHONY: chart-lint
-chart-lint: chart-check chart-docs-check chart-deps ## Drift checks, then helm lint, the three charts, both profiles.
+chart-lint: chart-check chart-docs-check chart-versions-check chart-deps ## Drift checks, then helm lint, the three charts, both profiles.
 	$(HELM_RUN) lint charts/takecare-crds
 	$(HELM_RUN) lint charts/takecare-crds --set demo.enabled=true
 	$(HELM_RUN) lint charts/takecare -f charts/takecare/values-prod.yaml
