@@ -217,9 +217,16 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		return nil, fmt.Errorf("set up the platform controller: %w", err)
 	}
 	// The Ranger's Markers on the platform's Gateway (spec 09).
+	rangerAlerts, err := ranger.NewAlertsMetric(crmetrics.Registry)
+	if err != nil {
+		return nil, err
+	}
 	if err := (&ranger.Reconciler{
 		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("takecare-operator"),
 		OperatorNamespace: cfg.operatorNamespace,
+		Alerts: &ranger.Alerts{Total: rangerAlerts, Source: func(url string) ranger.Querier {
+			return usage.Prometheus{HTTP: promClient, URL: url}
+		}},
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up the Ranger controller: %w", err)
 	}

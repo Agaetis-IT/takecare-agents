@@ -75,6 +75,8 @@ Conditions `Ready` (the Markers rendered and accepted by the gateway), `LevelSup
 
 The source is two counters of the gateway (agentgateway v1.6, read on k3d): `agentgateway_guardrail_checks_total{phase, action}` counts the guard's decisions (`Allow`, `Reject`, and `Mask` for a masked request), and `agentgateway_requests_total{status, reason, route}` counts the refused requests by reason (`Guardrail` with status 403, `RateLimit` with status 429), with the role route that carried them.
 
+The operator reads both through the platform's Prometheus (`spec.observability.metrics.prometheusURL`) once a minute while the Markers enforce: the masked requests (`phase="Request"`, `action="Mask"`), the refused ones (`reason="Guardrail"`) and the limited ones (`reason="RateLimit"`), each series collapsed to its identity first so that a gateway scraped twice counts once. It keeps the last totals in memory: the first read after a start seeds them and says nothing, and a counter going down (the gateway restarted) seeds them again. Each kind that moved gives one `Warning` event, `RequestsMasked`, `RequestsRejected` or `RequestsRateLimited`, with the count and the routes when the counter has them, and adds the count to `takecare_ranger_alerts_total{kind}` (`masked`, `rejected`, `rate-limited`). The condition `AlertsSource` says whether the counters are read: False with `PrometheusNotConfigured` or `PrometheusUnreachable` (no event, the Markers untouched), and False with `AuditOnly` or `Suspended` below Practitioner.
+
 ## 6. What the Ranger does not do
 
 It does not read any request (the gateway does); it does not evaluate answers (the Psy); it does not hand identities (the Intendant); it does not publish to Slack (a later PR through a report connector); it does not protect what bypasses the gateway: an agent that keeps a provider key of its own escapes it, and only the customer's egress rules make the gateway the only way out (a documented requirement).
@@ -99,7 +101,8 @@ Proven so far, at `Practitioner`:
 
 - criterion 2, the mask: the e2e posts an alert whose description carries a card number and an email; the request the fake model receives (`GET /last`) holds `<CREDIT_CARD>` and `<EMAIL_ADDRESS>` instead (`hack/e2e.sh`).
 - criterion 2, the refusal: the chart smoke's request carrying a private key on the Doc's model route gets 403 with the Ranger's message (`hack/chart-smoke.sh`).
-- criterion 2, the limit: with a per-model cap of 2 requests a minute and a burst of 1 on the smoke, a run of quick calls on the Doc's model route gets 429. The gateway lets three through before it. The token budget's 429 and the events and counts follow with the Ranger's alerts.
+- criterion 2, the limit: with a per-model cap of 2 requests a minute and a burst of 1 on the smoke, a run of quick calls on the Doc's model route gets 429. The gateway lets three through before it. The token budget's 429 is not proven yet.
+- criterion 2, the warning and the count: the e2e finds the masked request on the gateway's guardrail counter (`action="Mask"`) and a `RequestsMasked` Warning event on the Ranger; the envtest covers the three kinds, the metric and the conditions.
 
 ## 10. Open questions
 

@@ -43,7 +43,9 @@ type harness struct {
 	ctx context.Context
 }
 
-func start(t *testing.T) *harness {
+func start(t *testing.T) *harness { t.Helper(); return startWith(t, nil) }
+
+func startWith(t *testing.T, alerts *Alerts) *harness {
 	t.Helper()
 	cfg := testenv.Start(t)
 	scheme := runtime.NewScheme()
@@ -57,7 +59,7 @@ func start(t *testing.T) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := &Reconciler{Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("test"), OperatorNamespace: operatorNS}
+	r := &Reconciler{Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("test"), OperatorNamespace: operatorNS, Alerts: alerts}
 	if err := r.SetupWithManager(mgr); err != nil {
 		t.Fatal(err)
 	}
