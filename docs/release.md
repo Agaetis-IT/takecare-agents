@@ -6,6 +6,8 @@ A release is a tag `v<SemVer>` on `main`. The `release` workflow then publishes,
 - the three charts as OCI artifacts, `oci://ghcr.io/agaetis-it/charts/takecare-crds`, `oci://ghcr.io/agaetis-it/charts/takecare` and `oci://ghcr.io/agaetis-it/charts/takecare-cluster` (the workload-cluster package, ADR 0016), with chart version = app version = the release's version (spec 04); the `Chart.yaml` files keep their development version;
 - the GitHub release: the tag's `CHANGELOG.md` section, the image and chart references, and the three chart packages attached.
 
+On the same tag, the `site` workflow builds the product site (`make site`) from the tagged tree, so that its Reference describes the released CRDs and charts, and publishes it to GitHub Pages at `https://agaetis-it.github.io/takecare-agents/`. A prerelease tag publishes it too. It can also be published by hand (`workflow_dispatch`, from `main` or a tag).
+
 The workflow refuses a tag that is not `v<major>.<minor>.<patch>` with an optional prerelease (`v0.1.0-rc.1`; no build metadata), a tag whose commit is not on `main`, a tag without its `CHANGELOG.md` section, and a version already in the registry. Nothing published is ever replaced.
 
 ## Procedure
@@ -23,7 +25,8 @@ The workflow refuses a tag that is not `v<major>.<minor>.<patch>` with an option
    - the images pull on both architectures: `docker pull --platform linux/arm64 ghcr.io/agaetis-it/takecare-agents-operator:x.y.z`, then `linux/amd64`;
    - the charts pull: `helm pull oci://ghcr.io/agaetis-it/charts/takecare --version x.y.z`;
    - `make demo-up` without `DEMO_IMAGES=build` installs the released images;
-   - the release page lists the notes, the images and the three charts.
+   - the release page lists the notes, the images and the three charts;
+   - the site's Reference names the tag's commit.
 
 **The first release of a milestone goes through a prerelease** (`v0.1.0-rc.1`, with its own `## [0.1.0-rc.1]` section): it rehearses the whole chain (registry login, six images on two architectures, three charts, the release page), which cannot be proven otherwise. The GitHub release is then marked as a prerelease.
 

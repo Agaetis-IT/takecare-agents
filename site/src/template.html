@@ -1,0 +1,999 @@
+<!-- SPDX-FileCopyrightText: 2026 Agaetis -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<title>TakeCare Agents</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,500;0,600;0,700;0,800;1,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Concept : un deck de jeu de cartes posé sur un terminal. Fond nuit, cartes en lumière, la mono pour tout ce qui est « machine ».
+   Un seul monde visuel (sombre), assumé : c'est le site des techs. */
+:root{
+  color-scheme:dark;
+  --night:#131417; --panel:#1C1D22; --panel-2:#24262C; --line:#34363E;
+  --ink:#EDE9E5; --mute:#A39E97; --dim:#6F6B66;
+  --orange:#FC693A; --orange-soft:rgba(252,105,58,.14);
+  --mint:#7FD9B3;
+  /* familles de cartes : la couleur dit le type */
+  --c-agent:#FC693A; --c-guard:#7FD9B3; --c-exp:#E9C46A; --c-exo:#8DB7FF; --c-mat:#C6A4FF; --c-lieu:#E89BC4; --c-hum:#C9C4BE;
+  --display:"Poppins",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --r:14px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{animation:none!important;transition:none!important}}
+body{background:var(--night);color:var(--ink);font:400 16px/1.6 var(--display);margin:0}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:60;background:var(--night)}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--orange);outline-offset:3px;border-radius:4px}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{text-wrap:balance;margin:0;line-height:1.12}
+p{margin:0}
+.mono{font-family:var(--mono)}
+.eyebrow{font:500 .78rem/1.3 var(--mono);letter-spacing:.06em;color:var(--orange);text-transform:uppercase}
+.eyebrow::before{content:"// "}
+.lead{color:var(--mute);font-size:1.08rem;max-width:62ch}
+section{padding-block:clamp(3rem,7vw,5.5rem)}
+section.tight{padding-top:0}
+.sec-head{display:grid;gap:.7rem;margin-bottom:2.2rem}
+.sec-head h2{font:800 clamp(1.7rem,3.6vw,2.6rem)/1.1 var(--display);letter-spacing:-.02em}
+
+/* barre */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:50;background:rgba(19,20,23,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;gap:1rem;min-height:64px;flex-wrap:wrap;padding-block:.5rem}
+.brand{display:flex;align-items:center;gap:.6rem;text-decoration:none;margin-right:auto}
+.brand b{font:700 1.05rem var(--display)}.brand b span{font-weight:400}
+.brand small{display:block;font:500 .66rem var(--mono);color:var(--mute);letter-spacing:.04em}
+.nav{display:flex;gap:.2rem;flex-wrap:wrap;align-items:center;min-width:0}
+.nav a{font:500 .82rem var(--mono);text-decoration:none;color:var(--mute);padding:.4rem .6rem;border-radius:8px}
+.nav a:hover{color:var(--ink);background:var(--panel)}
+.nav a[aria-current="page"]{color:var(--ink);background:var(--panel-2)}
+.nav a.gh{color:var(--night);background:var(--ink);font-weight:600}
+.nav .soon-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--c-exp);margin-left:.35rem;vertical-align:middle}
+@media (max-width:760px){.nav{width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:.2rem}.nav a{white-space:nowrap}}
+
+.btn{display:inline-flex;align-items:center;gap:.5rem;font:600 .95rem var(--display);text-decoration:none;padding:.75rem 1.2rem;border-radius:10px;border:1px solid var(--line);cursor:pointer;background:none;color:var(--ink)}
+.btn.pri{background:var(--orange);border-color:var(--orange);color:#1A0E08}
+.btn:hover{border-color:var(--ink)}
+.btn.pri:hover{filter:brightness(1.08);border-color:var(--orange)}
+.acts{display:flex;gap:.8rem;flex-wrap:wrap}
+
+/* héros */
+.hero{padding-block:clamp(2.5rem,6vw,4.5rem) clamp(2rem,5vw,3.5rem)}
+.hero .wrap{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:3rem;align-items:center}
+.hero h1{font:800 clamp(2.2rem,5.4vw,4rem)/1.04 var(--display);letter-spacing:-.03em;margin-top:1rem}
+.hero h1 em{font-style:normal;color:var(--orange)}
+.hero .lead{margin-block:1.3rem 1.8rem}
+.badges{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1.6rem}
+.badge{font:500 .74rem var(--mono);border:1px solid var(--line);border-radius:6px;overflow:hidden;display:inline-flex}
+.badge span{padding:.25rem .5rem;background:var(--panel-2);color:var(--mute)}
+.badge b{padding:.25rem .5rem;font-weight:500}
+.badge b.o{background:var(--orange-soft);color:var(--orange)}.badge b.m{background:rgba(127,217,179,.12);color:var(--mint)}.badge b.y{background:rgba(233,196,106,.12);color:var(--c-exp)}
+@media (max-width:900px){.hero .wrap{grid-template-columns:minmax(0,1fr)}}
+#clone{overflow-wrap:anywhere}
+
+.term{background:#0C0D0F;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;font:400 .86rem/1.7 var(--mono);box-shadow:0 30px 60px rgba(0,0,0,.35)}
+.term .bar{display:flex;align-items:center;gap:.45rem;padding:.6rem .8rem;border-bottom:1px solid var(--line);background:var(--panel)}
+.term .bar i{width:10px;height:10px;border-radius:50%;background:var(--line)}
+.term .bar i:first-child{background:var(--orange)}
+.term .bar span{margin-left:auto;color:var(--dim);font-size:.74rem}
+.term pre{margin:0;padding:1rem 1.1rem;overflow-x:auto;white-space:pre}
+.term .p{color:var(--mint)}.term .c{color:var(--dim)}.term .o{color:var(--orange)}
+.cursor{display:inline-block;width:.6em;height:1.1em;background:var(--ink);vertical-align:-.2em;animation:blink 1.1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.copy{font:500 .74rem var(--mono);background:var(--panel-2);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:.2rem .55rem;cursor:pointer}
+
+/* main de cartes */
+.hand{position:relative;height:340px;margin-top:1.4rem}
+.hand a{position:absolute;left:50%;bottom:0;width:170px;transform-origin:50% 120%;transform:translateX(-50%) rotate(var(--a)) translateY(var(--y));transition:transform .25s}
+.hand a:hover{transform:translateX(-50%) rotate(var(--a)) translateY(calc(var(--y) - 22px))}
+.hand img{width:100%;border-radius:12px;box-shadow:0 14px 30px rgba(0,0,0,.45);display:block}
+@media (max-width:520px){.hand{height:260px}.hand a{width:128px}}
+
+/* grille de cartes */
+.deckbar{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.6rem}
+.chip{font:500 .8rem var(--mono);border:1px solid var(--line);background:none;color:var(--mute);border-radius:999px;padding:.38rem .8rem;cursor:pointer;display:inline-flex;align-items:center;gap:.45rem}
+.chip i{width:8px;height:8px;border-radius:50%;background:var(--k,var(--mute))}
+.chip[aria-pressed="true"]{color:var(--ink);border-color:var(--k,var(--ink));background:var(--panel-2)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:1.4rem 1.1rem}
+.tc{display:grid;gap:.55rem;text-decoration:none;align-content:start}
+.tc .im{position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--line);transition:transform .2s,border-color .2s;background:var(--panel)}
+.tc img{display:block;width:100%;aspect-ratio:5/7;object-fit:cover}
+.tc:hover .im{transform:translateY(-4px);border-color:var(--k)}
+.tc b{font:600 .95rem/1.25 var(--display)}
+.tc small{font:400 .76rem/1.4 var(--mono);color:var(--mute)}
+.type{font:500 .7rem var(--mono);color:var(--k);display:inline-flex;align-items:center;gap:.35rem;letter-spacing:.03em;text-transform:uppercase}
+.type::before{content:"";width:7px;height:7px;border-radius:2px;background:var(--k)}
+.tc.wip .im img{filter:grayscale(1) brightness(.8);transition:filter .25s}
+.tc.wip:hover .im img,.tc.wip:focus-visible .im img{filter:none}
+.st{position:absolute;top:8px;right:8px;font:600 .66rem var(--mono);padding:.18rem .45rem;border-radius:5px;background:rgba(12,13,15,.85);color:var(--mute);border:1px solid var(--line)}
+.st.live{color:var(--night);background:var(--mint);border-color:var(--mint)}
+
+.dgrp{margin-top:2.6rem;display:grid;gap:1.2rem}
+.dgrp:first-child{margin-top:.6rem}
+.dgh{display:flex;align-items:baseline;gap:1rem;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:.6rem}
+.dgh h3{font:700 1.35rem var(--display)}
+.dgh span{font:500 .78rem var(--mono);color:var(--mute)}
+.prow2{display:grid;grid-template-columns:170px minmax(0,1fr);gap:1.2rem;align-items:start}
+.plab{padding-top:.4rem;display:grid;gap:.2rem}
+.plab b{font:700 1.05rem var(--display)}
+.plab small{font:500 .74rem var(--mono);color:var(--mute)}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr));max-width:620px}
+@media (max-width:700px){.prow2{grid-template-columns:1fr}.g3{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.flips{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:2rem 1.6rem}
+.fl{display:grid;gap:.8rem;align-content:start}
+.flip{all:unset;cursor:pointer;display:block;perspective:1600px;width:100%;aspect-ratio:5/7}
+.flip:focus-visible{outline:2px solid var(--orange);outline-offset:4px;border-radius:14px}
+.fin{position:relative;display:block;width:100%;height:100%;transition:transform .7s cubic-bezier(.2,.7,.2,1);transform-style:preserve-3d}
+.flip[aria-pressed="true"] .fin{transform:rotateY(180deg)}
+.face{position:absolute;inset:0;border-radius:14px;overflow:hidden;backface-visibility:hidden;-webkit-backface-visibility:hidden;border:1px solid var(--line);box-shadow:0 18px 40px rgba(0,0,0,.4)}
+.front img{width:100%;height:100%;object-fit:cover;display:block}
+.fk{position:absolute;left:10px;right:10px;bottom:42px;font:600 .95rem var(--mono);color:#fff;background:rgba(12,13,15,.85);padding:.45rem .7rem;border-radius:8px;text-align:center}
+.fh{position:absolute;top:44px;right:10px;font:600 .72rem var(--mono);color:var(--night);background:var(--ink);padding:.22rem .5rem;border-radius:6px}
+.fkn{display:block;font:600 .95rem var(--mono);color:var(--ink);margin-bottom:.25rem}
+.back{transform:rotateY(180deg);background:#0C0D0F;display:flex;flex-direction:column}
+.bh{display:flex;justify-content:space-between;align-items:center;padding:.7rem .9rem;border-bottom:1px solid var(--line);font:600 .85rem var(--mono);color:var(--orange)}
+.bh span{color:var(--mute)}
+.bha{display:flex;align-items:center;gap:.6rem}
+.bh{gap:.6rem}.bh b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bha{flex:none;gap:.4rem}.fld{white-space:nowrap;margin-left:0;padding:.2rem .5rem}
+.cpy{font:600 .72rem var(--mono);background:var(--ink);color:var(--night);border:0;border-radius:6px;padding:.25rem .55rem;cursor:pointer}
+.cpy:hover{background:#fff}
+.fld{display:inline-block;text-decoration:none;background:none;color:var(--ink);border:1px solid var(--line);margin-left:.35rem}.fld:hover{background:var(--panel-2);color:var(--ink)}
+.back pre{cursor:text;user-select:text}
+.back pre{margin:0;padding:.8rem .9rem;font:400 .7rem/1.5 var(--mono);color:var(--ink);overflow:auto;flex:1;white-space:pre}
+.yk{color:var(--mint)}.yc{color:var(--dim)}
+.fsub{font-size:.9rem;color:var(--mute)}
+.lg{display:grid;gap:1rem;max-width:820px}.lg-b b{display:block;font-size:1.05rem;margin-bottom:.4rem}.lg-b p{color:var(--mute);line-height:1.6}.lg-b p b{display:inline;font-size:inherit;color:var(--ink);margin:0}.lg-b a{color:var(--orange)}
+.flink{display:inline-block;margin-top:.45rem;font:600 .85rem var(--display);color:var(--orange);text-decoration:none}.flink:hover{text-decoration:underline}
+.rtabs{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem}
+.chip.on{border-color:var(--orange);color:var(--ink);background:var(--orange-soft)}
+.rkind{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:1.2rem 1.3rem}
+.rk-h{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:1.4rem;align-items:start}
+.rk-h b{font-size:1.15rem}.rk-h p{color:var(--mute);margin-top:.3rem;font-size:.95rem}
+.rk-h dl{display:grid;grid-template-columns:repeat(2,auto);gap:.4rem 1.4rem;margin:0;font-size:.85rem}
+.rk-h dt{font:500 .7rem var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.06em}.rk-h dd{margin:0}
+.rk-h dd a{color:var(--mute);font:500 .8rem var(--mono)}
+.rk-cols{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;margin:1rem 0 .4rem;font-size:.82rem}
+.rk-cols span{font:500 .78rem var(--mono);color:var(--orange);margin-right:.4rem}
+.rk-cols code{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:.1rem .45rem;font-size:.76rem}
+.rtw{overflow-x:auto;margin-top:.8rem}
+.rt{width:100%;border-collapse:collapse;font-size:.86rem;min-width:640px}
+.rt th{text-align:left;font:500 .72rem var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--dim);padding:.5rem .6rem;border-bottom:1px solid var(--line)}
+.rt td{padding:.55rem .6rem;border-bottom:1px solid var(--line);vertical-align:top}
+.rt td.fp{font-family:var(--mono);font-size:.8rem;white-space:nowrap;padding-left:calc(.6rem + var(--d,0) * .9rem)}
+.rt td.fp .pp{color:var(--dim)}.rt td.fp b{color:var(--ink);font-weight:600}
+.rt td.ft{white-space:nowrap}.rt td.ft code{font-size:.76rem;color:var(--mint)}
+.rt td.fd{color:var(--mute);line-height:1.5;min-width:280px}
+.rt code{font-family:var(--mono);font-size:.8em}
+.fm{display:flex;flex-wrap:wrap;gap:.35rem .6rem;margin-bottom:.3rem;font-size:.76rem}
+.rq{font:600 .66rem var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--orange);border:1px solid var(--orange);border-radius:999px;padding:.05rem .45rem;margin-left:.4rem;white-space:nowrap}
+.fm .rq{margin-left:0}
+.en,.df{color:var(--ink)}.en code,.df code{color:var(--mint)}
+.rst{margin-top:1rem}.rst summary{cursor:pointer;font-weight:600}.rst summary span{font:500 .75rem var(--mono);color:var(--dim);margin-left:.5rem}
+.rbar{display:flex;flex-wrap:wrap;gap:1rem;justify-content:space-between;align-items:center}
+.rbar .rtabs{margin:0}
+.rsearch input{font:inherit;font-size:.9rem;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:.55rem .8rem;min-width:260px}
+.rsearch input:focus-visible{outline:2px solid var(--orange)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.rv tr.vg td{font:600 .78rem var(--mono);color:var(--orange);padding-top:1.1rem;border-bottom-color:var(--orange-soft)}
+.rv td.fp{white-space:normal;word-break:break-word;min-width:200px}
+.rv td.ft{white-space:normal;width:190px;max-width:190px}.rv td.ft code{white-space:nowrap}
+.vd{margin-top:.25rem}.vd code{color:var(--mute)!important;white-space:normal;word-break:break-all}
+@media (max-width:700px){.rk-h{grid-template-columns:minmax(0,1fr)}.rsearch input{min-width:0;width:100%}.rsearch{flex:1}}
+.fsub a{font:500 .78rem var(--mono);color:var(--mute)}
+.scene2{background:#0C0D0F;border:1px solid var(--line);border-left:3px solid var(--orange);border-radius:0 12px 12px 0;padding:1rem 1.2rem;display:grid;gap:.4rem}
+.scene2 .sc-t{font:500 .72rem var(--mono);color:var(--dim)}
+.scene2 p{font-size:1rem;font-style:italic;color:var(--ink)}
+code.api{font-size:.68rem;color:var(--mute);background:var(--panel-2);margin-left:.35rem;text-transform:none}
+.pg-f{font:500 .74rem var(--mono);color:var(--dim)}
+.pill-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.2rem}
+.pcol{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:1.3rem;display:grid;gap:1rem;align-content:start}
+.pcol h3{font:700 1.25rem var(--display)}
+.pcol h3 small{display:block;font:500 .74rem var(--mono);color:var(--mute);margin-top:.2rem;letter-spacing:.03em}
+.pcol .cards3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.6rem}
+.pcol .cards3 .tc b{font-size:.8rem}
+@media (max-width:900px){.pill-row{grid-template-columns:1fr}}
+
+/* progression */
+.xp{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.2rem}
+.lv{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:1.4rem;display:grid;gap:.75rem;align-content:start}
+.lv .n{font:600 .74rem var(--mono);color:var(--mute)}
+.lv h3{font:800 1.5rem var(--display)}
+.meter{height:8px;border-radius:99px;background:var(--panel-2);overflow:hidden}
+.meter i{display:block;height:100%;background:linear-gradient(90deg,var(--orange),#FFB08F);border-radius:99px}
+.lv ul{margin:0;padding:0;list-style:none;display:grid;gap:.4rem;font:400 .84rem/1.5 var(--mono);color:var(--mute)}
+.lv li::before{content:"› ";color:var(--orange)}
+.lv .spec{justify-self:start;margin-top:-.4rem;font:500 .74rem var(--mono);color:var(--mute);background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:.15rem .45rem}
+.lv .how a{color:inherit;text-decoration:underline;text-underline-offset:3px}
+.lv .how a:hover{color:var(--ink)}
+.lv .how{font:500 .76rem var(--mono);color:var(--c-exp);border-top:1px dashed var(--line);padding-top:.7rem}
+.note{margin-top:1.4rem;border-left:3px solid var(--orange);background:var(--panel);padding:1rem 1.2rem;border-radius:0 10px 10px 0;font-size:.95rem;color:var(--mute)}
+.note b{color:var(--ink)}
+.note code,code{font-family:var(--mono);font-size:.88em;background:var(--panel-2);padding:.08rem .35rem;border-radius:5px;color:var(--ink)}
+@media (max-width:900px){.xp{grid-template-columns:1fr}}
+
+/* règle du jeu */
+.rules{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:2rem;align-items:center}
+.rules ol{margin:0;padding:0;list-style:none;display:grid;gap:1rem;counter-reset:r}
+.rules li{display:grid;grid-template-columns:auto 1fr;gap:1rem;align-items:start}
+.rules li img{width:58px;height:58px;border-radius:50%;border:2px solid var(--c-guard)}
+.rules li b{display:block;font-weight:700}
+.rules li p{color:var(--mute);font-size:.94rem}
+@media (max-width:900px){.rules{grid-template-columns:1fr}}
+.rnote{display:grid;grid-template-columns:auto 1fr;gap:1rem;align-items:start;margin-top:1.4rem;padding-top:1.2rem;border-top:1px dashed var(--line,rgba(0,0,0,.15));color:var(--mute);font-size:.94rem}
+.rnote img{width:46px;height:46px;border-radius:50%;border:2px solid var(--c-agent)}
+.rnote b{color:var(--ink,inherit)}
+
+
+/* pile technique */
+.stack{display:flex;gap:.7rem;flex-wrap:wrap}
+.brick{display:flex;align-items:center;gap:.6rem;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.55rem .85rem;font:500 .86rem var(--mono)}
+.brick img{width:24px;height:24px;object-fit:contain;background:#fff;border-radius:6px;padding:2px}
+.brick small{color:var(--mute);font-size:.74rem}
+
+/* feuille de route */
+.road{display:grid;gap:0;border-left:2px solid var(--line);margin-left:.4rem;padding-left:1.6rem}
+.road div{position:relative;padding-bottom:1.4rem}
+.road div::before{content:"";position:absolute;left:calc(-1.6rem - 7px);top:.3rem;width:12px;height:12px;border-radius:50%;background:var(--night);border:2px solid var(--line)}
+.road div.now::before{background:var(--mint);border-color:var(--mint);box-shadow:0 0 0 5px rgba(127,217,179,.18)}
+.road b{display:block}
+.road span{font:500 .74rem var(--mono);color:var(--mute)}
+.road p{color:var(--mute);font-size:.94rem;margin-top:.2rem}
+
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:2.5rem}
+@media (max-width:900px){.split{grid-template-columns:minmax(0,1fr)}}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:1.5rem}
+.agaetis{display:flex;gap:1.5rem;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.agaetis p{color:var(--mute);max-width:60ch}
+
+/* fiche de carte */
+.crumb{font:500 .8rem var(--mono);color:var(--mute);display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.5rem}
+.crumb a{color:var(--mute)}
+.sheet{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:3rem;align-items:start}
+.sheet .big{position:sticky;top:90px}
+.sheet .big img{width:100%;border-radius:16px;border:1px solid var(--line);box-shadow:0 24px 50px rgba(0,0,0,.4);display:block}
+.sheet h1{font:800 clamp(2rem,4.4vw,3rem)/1.05 var(--display);letter-spacing:-.02em;margin-block:.5rem .4rem}
+.aka{font:500 .9rem var(--mono);color:var(--mute)}
+.aka b{color:var(--ink)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.6rem;margin-block:1.6rem}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.7rem .9rem;display:grid;gap:.2rem}
+.stat span{font:500 .68rem var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
+.stat b{font:600 .92rem/1.35 var(--display)}
+.blk{margin-top:2rem;display:grid;gap:.8rem}
+.blk h2{font:500 .8rem var(--mono);color:var(--orange);text-transform:uppercase;letter-spacing:.06em}
+.blk h2::before{content:"## ";color:var(--dim)}
+.blk .lead{color:var(--ink)}
+.tech{background:#0C0D0F;border:1px solid var(--line);border-radius:12px;padding:1rem 1.1rem;font:400 .88rem/1.65 var(--mono);color:var(--ink)}
+.tech .k{color:var(--mint)}
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.7rem}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.9rem;display:grid;gap:.35rem;align-content:start}
+.step .k{font:600 .7rem var(--mono);color:var(--orange);text-transform:uppercase}
+.step b{font-size:.95rem;line-height:1.3}
+.step p{font-size:.86rem;color:var(--mute)}
+.mini{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:.6rem}
+.mini a{display:flex;gap:.7rem;align-items:center;text-decoration:none;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.5rem}
+.mini img{width:44px;border-radius:6px}
+.mini b{display:block;font-size:.9rem}
+.mini span{font:400 .74rem var(--mono);color:var(--mute)}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.5rem;border-top:1px solid var(--line);padding-top:1.2rem}
+.pager a{text-decoration:none;font:500 .86rem var(--mono);color:var(--mute)}
+.pager a:hover{color:var(--ink)}
+@media (max-width:800px){.sheet{grid-template-columns:1fr}.sheet .big{position:static;max-width:300px}.steps{grid-template-columns:1fr}}
+
+/* lexique */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r)}
+table{border-collapse:collapse;width:100%;min-width:720px}
+th,td{text-align:left;padding:.85rem 1rem;border-bottom:1px solid var(--line);vertical-align:top;font-size:.93rem}
+th{font:500 .72rem var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.06em;background:var(--panel)}
+tr:last-child td{border-bottom:none}
+td.c a{display:flex;gap:.7rem;align-items:center;text-decoration:none;font-weight:600}
+td.c img{width:40px;border-radius:5px}
+td.t{font-family:var(--mono);font-size:.84rem;color:var(--ink)}
+td.g{color:var(--mute)}
+tr.lgh th{background:var(--panel-2);font:600 .72rem var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--orange);text-align:left;padding:.6rem 1rem}
+tr.lgh th span{color:var(--dim);text-transform:none;letter-spacing:0}
+
+/* architecture */
+.arch{display:grid;gap:.9rem}
+.layer{display:grid;grid-template-columns:200px minmax(0,1fr);gap:1.2rem;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:1.1rem 1.2rem}
+.layer>div:first-child b{display:block;font:700 1.05rem var(--display)}
+.layer>div:first-child span{font:500 .74rem var(--mono);color:var(--mute)}
+.layer .cont{display:flex;gap:.55rem;flex-wrap:wrap;align-items:center}
+.layer .cont p{color:var(--mute);font-size:.9rem;flex-basis:100%;margin-top:.3rem}
+.dgw{background:#0C0D0F;border:1px solid var(--line);border-radius:12px;padding:1.2rem;margin-bottom:1.6rem;overflow-x:auto}
+.dg{display:block;width:100%;min-width:860px;height:auto}
+.dg .b,.dg .gw,.dg .chip,.dg .pill,.dg .badge{fill:var(--panel);stroke:var(--line);stroke-width:1.2}
+.dg .pill{fill:var(--panel-2)}
+.dg .gw{fill:var(--orange-soft);stroke:var(--orange);stroke-width:1.6}
+.dg .chip.live{stroke:var(--mint);stroke-width:1.6}
+.dg .chip,.dg .badge,.dg .plan{stroke-dasharray:4 3}
+.dg .chip.live{stroke-dasharray:none}
+.dg .badge{fill:var(--panel)}
+.dg text{fill:var(--ink);font-family:var(--mono)}
+.dg .th{font:700 15px var(--display);fill:var(--ink)}
+.dg .ts{font-size:11.5px;fill:var(--mute)}
+.dg .tc{font-size:12.5px}
+.dg .tc.live{fill:var(--mint);font-weight:700}
+.dg .tl{font-size:10.5px;fill:var(--dim)}
+.dg .tp{font-size:11.5px;fill:var(--mute);font-style:italic}
+.dg .cap{font-size:10.5px;letter-spacing:.08em;fill:var(--orange)}
+.dg .a{fill:none;stroke:var(--mute);stroke-width:1.4}
+.dg .a.d{stroke-dasharray:4 3}
+.dg .ahp{fill:var(--mute)}
+.gs3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;margin-top:1.4rem;align-items:start}
+@media (max-width:900px){.gs3{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:700px){.layer{grid-template-columns:minmax(0,1fr)}}
+.avs{flex-wrap:wrap;row-gap:4px}
+.issues{list-style:none;margin:.8rem 0 0;padding:0;display:grid;gap:.4rem}
+.issues a{display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap;text-decoration:none;color:var(--ink);font-size:.92rem;padding:.45rem .6rem;border:1px solid var(--line);border-radius:8px;background:var(--panel-2)}
+.issues a:hover{border-color:var(--orange)}
+.inum{font:600 .78rem var(--mono);color:var(--mint)}
+.ilab{font:500 .7rem var(--mono);color:var(--c-exp);margin-left:auto}
+.h2c{font:inherit;background:none;padding:0;color:var(--orange)}
+.legend{display:flex;gap:1.2rem;flex-wrap:wrap;font:500 .76rem var(--mono);color:var(--mute);margin:-.4rem 0 .9rem}
+.legend span{display:flex;gap:.45rem;align-items:center}
+.dot{width:10px;height:10px;border-radius:50%;border:1.5px solid var(--dim);display:inline-block}
+.dot.live{background:var(--mint);border-color:var(--mint)}
+.tech b.live{color:var(--mint);font-weight:700}
+.avs a.wip img{opacity:.45;filter:grayscale(.6)}
+.layer.hl{border-color:var(--orange);background:linear-gradient(90deg,var(--orange-soft),var(--panel) 60%)}
+.down{font:500 .76rem var(--mono);color:var(--dim);padding-left:1.2rem}
+.side{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.9rem;margin-top:.9rem}
+.avs{display:flex}.avs img{width:34px;height:34px;border-radius:50%;border:2px solid var(--panel);margin-left:-8px}.avs img:first-child{margin-left:0}
+.models{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.9rem}
+.mb{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:1.1rem;display:grid;gap:.5rem;align-content:start}
+.mb .n{font:500 .74rem var(--mono);color:var(--mute)}
+.mb p{font-size:.88rem;color:var(--mute)}
+@media (max-width:900px){.layer{grid-template-columns:1fr}.side{grid-template-columns:1fr}.models{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.models{grid-template-columns:1fr}}
+
+/* bientôt */
+.soon{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:2.5rem;align-items:start}
+.loading{font:500 .86rem var(--mono);color:var(--mute);display:grid;gap:.6rem}
+.loading .meter i{background:repeating-linear-gradient(45deg,var(--c-exp) 0 10px,#c9a54f 10px 20px);background-size:28px 28px;animation:stripes 1s linear infinite}
+@keyframes stripes{to{background-position:28px 0}}
+.todo{list-style:none;margin:0;padding:0;display:grid;gap:.6rem;font:400 .92rem/1.5 var(--mono)}
+.todo li{display:flex;gap:.7rem;align-items:baseline}
+.todo li::before{content:"[ ]";color:var(--dim);flex-shrink:0;white-space:nowrap}
+@media (max-width:900px){.soon{grid-template-columns:minmax(0,1fr)}}
+
+.contrib{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+.contrib .panel b{display:block;font-size:1.05rem;margin-bottom:.35rem}
+.contrib .panel p{color:var(--mute);font-size:.94rem}
+@media (max-width:700px){.contrib{grid-template-columns:1fr}}
+
+.hero1{padding-block:0}
+.hero1 .wrap{min-height:calc(100svh - 66px);box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:1.1rem;padding-block:1.2rem;text-align:center}
+.hero1 h1{font:800 clamp(1.7rem,3.2vw,2.6rem)/1.08 var(--display);letter-spacing:-.03em;margin-top:.4rem}
+.hero1 h1 em{font-style:normal;color:var(--orange)}
+.hero1 .lead{margin-block:.9rem 1.2rem}
+.hvid{margin:0 auto;position:relative;width:fit-content;max-width:100%}
+.vend{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:1.2rem;background:rgba(12,13,15,.78);border-radius:16px;backdrop-filter:blur(3px);padding:1rem}
+.vend[hidden]{display:none}
+.vend{background:none;backdrop-filter:none;display:block;padding:0;pointer-events:none}
+.vend>*{pointer-events:auto}
+.vend .acts{position:absolute;left:0;right:0;bottom:6.5%;display:flex;justify-content:center;gap:.7rem}
+.vend{container-type:inline-size}
+.vend .vframe{position:absolute;inset:0;width:100%;height:100%;border-radius:15px;pointer-events:none}
+.vend .vgh{position:absolute;left:50%;top:63.06%;height:6.39%;transform:translateX(-50%);display:flex;align-items:center;gap:.75cqw;padding:0 1.3cqw;white-space:nowrap;background:#19181B;color:#F4F1EE;border-radius:.65cqw;font:400 1.62cqw/1 "DejaVu Sans Mono",var(--mono);text-decoration:none;box-shadow:0 0 0 rgba(0,0,0,0);transition:transform .2s ease,box-shadow .2s ease}
+.vend .vgh .vd{color:#7FD9B3}
+.vend .vgh .vai{width:1.85cqw;height:1.85cqw;margin-left:.2cqw;padding-left:.75cqw;box-sizing:content-box;border-left:1px solid rgba(244,241,238,.22);color:rgba(244,241,238,.9);transition:color .2s ease,transform .2s ease}
+.vend .vgh:hover,.vend .vgh:focus-visible{transform:translate(-50%,-.45cqw);box-shadow:0 1.2cqw 2.4cqw rgba(26,20,30,.38)}
+.vend .vgh:hover .vai,.vend .vgh:focus-visible .vai{color:var(--orange);transform:translate(.15cqw,-.15cqw)}
+.vend .vgh:focus-visible{outline:2px solid var(--orange);outline-offset:3px}
+.vend .btn.vb{background:#1A1A1A;border-color:#1A1A1A;color:#F4F1EE}.vend .btn.vb:hover{background:#000}
+.vend .replay{position:absolute;top:12px;right:12px;background:rgba(26,26,26,.72);color:#F4F1EE;border-radius:999px;padding:.35rem .75rem;font-size:.8rem}.vend .replay:hover{background:#1A1A1A;color:#fff}
+.acts.under .uend{display:none;gap:.6rem;flex-wrap:wrap;justify-content:center}.acts.under.ended .skip{display:none}.acts.under.ended{visibility:hidden}
+.btn.skip{color:var(--mute);border-color:var(--line);background:none}.btn.skip:hover{color:var(--ink);border-color:var(--mute)}
+@media (max-width:700px){.vend .acts{display:none}.acts.under.ended{visibility:visible}.acts.under.ended .uend{display:flex}.vend .replay{top:8px;right:8px;font-size:.72rem}}
+.vend p{font:800 clamp(1.3rem,2.6vw,2rem) var(--display)}
+.vend .acts{justify-content:center}
+.replay{background:none;border:0;color:var(--mute);font:500 .9rem var(--mono);cursor:pointer}
+.replay:hover{color:var(--ink)}
+.acts.under{justify-content:center}
+.btn.sm{padding:.5rem .9rem;font-size:.85rem}
+.btn.light{background:var(--ink);border-color:var(--ink);color:var(--night)}
+.btn.light:hover{background:#fff;border-color:#fff}
+.ghi{width:1.05em;height:1.05em;flex:none;vertical-align:-.15em}
+.nav a.gh{display:inline-flex;align-items:center;gap:.4rem}
+.nav a.lang{margin-left:.35rem;font:600 .8rem var(--mono);color:var(--orange);border:1.5px solid var(--orange);border-radius:8px;padding:.32rem .6rem;line-height:1;text-decoration:none}.nav a.lang:hover{background:var(--orange);color:#1A1A1A}
+@media (max-width:900px){.top .wrap{position:relative}.top a.lang{position:absolute;right:16px;top:16px;margin:0;background:var(--night)}}
+.hvid video{display:block;width:min(calc(100vw - 32px),1180px,calc((100svh - 66px - 210px) * 16 / 9));min-width:min(calc(100vw - 32px),560px);aspect-ratio:16/9;border-radius:16px;border:1px solid var(--line);background:#0C0D0F;box-shadow:0 30px 60px rgba(0,0,0,.4)}
+body.is-home .foot{display:none}
+.foot{border-top:1px solid var(--line);padding-block:2.2rem 3rem;margin-top:2rem}
+.foot .wrap{display:flex;justify-content:space-between;gap:1.5rem;flex-wrap:wrap;font:400 .82rem/1.7 var(--mono);color:var(--mute)}
+.foot b{color:var(--ink);font-weight:500}
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#accueil" aria-label="TakeCare Agents, accueil">
+      <svg width="28" height="32" viewBox="0 0 30 34" aria-hidden="true"><ellipse cx="15" cy="29" rx="14" ry="4.6" fill="#EDE9E5"/><ellipse cx="15" cy="20.5" rx="10.5" ry="4" fill="#EDE9E5"/><ellipse cx="15" cy="12.6" rx="7.4" ry="3.4" fill="#EDE9E5"/><ellipse cx="15" cy="5.4" rx="4.6" ry="3" fill="#FC693A"/></svg>
+      <div><b>TakeCare <span>Agents</span></b><small>open source · by Agaetis</small></div>
+    </a>
+    <nav class="nav" aria-label="Navigation principale">
+      <a href="#deck" data-r="deck">Le deck</a>
+      <a href="#regles" data-r="regles">Les règles</a>
+      <a href="#lexique" data-r="lexique">Lexique</a>
+      <a href="#architecture" data-r="architecture">Architecture</a>
+      <a href="#demarrer" data-r="demarrer">Getting started</a>
+      <a href="#reference" data-r="reference">Référence</a>
+      <a href="#contribuer" data-r="contribuer">Contribuer</a>
+      <a class="gh" href="https://github.com/Agaetis-IT/takecare-agents" target="_blank" rel="noopener"><svg class="ghi" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>GitHub ↗</a>
+      <a class="lang" id="lang" href="__OTHERLANG__" hreflang="en" lang="en" title="English version">EN</a>
+    </nav>
+  </div>
+</header>
+
+<main id="app"></main>
+
+<footer class="foot"><div class="wrap">
+  <div><b>TakeCare Agents</b> · opérateur Kubernetes open source<br>Maintenu par Agaetis · <a href="https://github.com/Agaetis-IT/takecare-agents" target="_blank" rel="noopener">github.com/Agaetis-IT/takecare-agents</a></div>
+  <div>Toujours là, jamais à votre place.<br><a href="__VITRINE__" target="_blank" rel="noopener">Se faire accompagner par Agaetis ↗</a> · <a href="#mentions">Mentions légales</a></div>
+</div></footer>
+
+<script>
+/*DATA*/
+const REPO = "https://github.com/Agaetis-IT/takecare-agents";
+const VITRINE = "__VITRINE__";
+const OTHERLANG = "__OTHERLANG__";
+const REF = /*REF*/null;
+const byK = Object.fromEntries(R.map(r=>[r.k,r]));
+const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const ASSETS = "__ASSETS__";
+const img = k => `${ASSETS}img/${k}.webp`, av = k => `${ASSETS}img/av-${k}.webp`, lg = n => `${ASSETS}img/lg/${n}.webp`;
+const nick = r => r.nick.replace(/^(Le |La |Les |L')/,m=>m.toLowerCase());
+const bare = r => r.nick.replace(/^(Les |Le |La |L')/,"");
+const tOf = r => r.fam==="role" ? r.nat : r.fam;
+const TY = {agent:["Agent","--c-agent"],guard:["Garde-fou","--c-guard"],exp:["Stage","--c-exp"],exo:["Exercice","--c-exo"],mat:["Matériel","--c-mat"],lieu:["Lieu","--c-lieu"],hum:["Humain","--c-hum"]};
+const kv = r => `--k:var(${TY[tOf(r)][1]})`;
+const type = r => `<span class="type" style="${kv(r)}">${TY[tOf(r)][0]}</span>`;
+/* état d'avancement : seul le Doc est en cours (jalon 1) */
+const STATUS = {doc:["v0.1.0-rc.1","live"], ranger:["Étape 2",""], intendant:["Étape 2",""], psy:["Étape 2",""], kine:["Étape 2",""]};
+const SOON = new Set(["kine","mecano","coach","nutri","guide","intendant","ranger","psy","carte","dossard","plan","ration","trousse","reeduc","carnet"]);
+const st = k => STATUS[k] ? `<span class="st ${STATUS[k][1]}">${STATUS[k][0]}</span>` : (byK[k].fam==="role" ? `<span class="st">Spécifié</span>` : "");
+const tcard = k => { const r = byK[k]; return `<a class="tc${SOON.has(k)?" wip":""}" href="#carte-${k}" style="${kv(r)}" data-t="${tOf(r)}"><span class="im"><img src="${img(k)}" alt="Carte : ${esc(r.nick)}" loading="lazy">${st(k)}</span>${type(r)}<b>${esc(r.nick)}</b><small>${esc(r.job)}</small></a>`; };
+
+/* La carte côté cluster : le vocabulaire du jeu traduit en objets techniques.
+   Les noms exacts des ressources Kubernetes arriveront avec la Référence. */
+const TECH = {
+ doc:"TakeCareDoc, avec un enregistrement TakeCareInvestigation par alerte. Sur une alerte Alertmanager, l'opérateur ouvre l'enquête et la confie à l'agent kagent par A2A. Lecture seule ; le diagnostic sourcé part sur Slack avec sa trace et son coût. Fonctionne de bout en bout, sur la démo comme sur votre cluster.",
+ ranger:"TakeCareRanger : les politiques d'agentgateway, la passerelle par laquelle passent déjà tous les appels (modèles, outils MCP, A2A). Pas de boucle LLM : un garde-fou déterministe. Étape 2, avec l'Intendant et le Psy.",
+ psy:"TakeCarePsy : évalue les traces des agents avec un modèle juge, jamais celui qu'il juge (une règle CEL le refuse). Il évalue, il n'agit pas. Spécifié, étape 2.",
+ intendant:"Un agent, pas un simple registre : il recense agents, serveurs MCP et outils, propose chaque entrée sur la plateforme et tient la cartographie de l'infra. S'appuiera sur agentregistry. En cours de spécification, étape 2.",
+ kine:"TakeCareKine, enregistrements TakeCareReview : part des enquêtes du Doc pour remonter aux causes récurrentes et suivre les actions correctives. Spécifié, étape 2.",
+ mecano:"TakeCareMecano, enregistrements TakeCareMaintenance : état du parc, plan de montée de version (une PR au niveau Practitioner). Spécifié.",
+ coach:"TakeCareCoach, enregistrements TakeCarePeakReview : rejoue vos derniers pics, prépare capacité et quotas. Spécifié.",
+ nutri:"TakeCareNutri, enregistrements TakeCareCostReview : sources de coût et usage des modèles mesuré par la passerelle. Spécifié.",
+ guide:"TakeCareGuide, enregistrements TakeCareConversation : répond depuis vos runbooks, pas à pas. Spécifié.",
+ campdebase:"TakeCarePlatform, le cœur : modèles, passerelle, moteur et télémétrie. Une seule instance par cluster, rendue par le chart. Le registre des agents (agentregistry) est prévu.",
+ terrain:"Le décor de rejeu. Le mode démo en fournit un premier : un cluster k3d, le décor billing-api et l'incident scénarisé proxy-timeout. Rejouer votre propre historique demande le connecteur d'historique : prévu à l'étape 2.",
+ sac:"La spec du rôle : son niveau, son périmètre, ses connecteurs par type, où partent ses résultats, son modèle. Pour le Doc, c'est la ressource TakeCareDoc.",
+ dossard:"Aujourd'hui, l'identité d'un agent à la passerelle, c'est sa route : chaque rôle joint chaque connecteur par une route à lui, dont la politique n'autorise que ses outils. Le Dossard remis par l'Intendant et vérifié par jeton arrive avec le pilier Encadrer, à l'étape 2.",
+ balises:"Les politiques d'agentgateway : chaque outil autorisé un par un selon le niveau, la clé du fournisseur de modèle jamais exposée, le coût de chaque appel mesuré. Les mêmes pour tous les agents.",
+ journal:"Une trace OpenTelemetry par enquête, selon les conventions GenAI, exportée en OTLP (Jaeger dans la démo). En production, le contenu des messages n'est pas capturé par défaut.",
+ carte:"La cartographie de l'infra que partagent les agents : ce qui tourne, qui en répond, ce qui en dépend. Tenue par l'Intendant.",
+ trousse:"Les actions qu'un agent peut faire seul au niveau Expert, autorisées une par une. Pas encore livré : après la v0.1.",
+ agaetis:"Le mainteneur du projet open source. Mène les stages avec vos équipes : c'est là que les Sacs sont cousus main.",
+ equipes:"Ceux qui décident : ils relisent et valident chaque PR de niveau, chaque entrée au Camp de base et chaque action confiée à un agent.",
+ ration:"L'enveloppe de coût validée, que le Nutri ne dépasse jamais.",
+ plan:"Le plan de capacité d'un temps fort : seuils, marges et corrections prêtes.",
+ topo:"Vos runbooks et votre doc, branchés comme connecteur de type knowledge.",
+ reeduc:"Les actions correctives issues des post-mortems, suivies jusqu'au bout.",
+ carnet:"Versions, fins de support et mises à jour planifiées, composant par composant.",
+ reco:"Passage Apprentice → Practitioner : on modifie spec.level dans la ressource du rôle, par une PR relue et validée par vos équipes.",
+ qualif:"Passage Practitioner → Expert, action par action, après rejeu sur le Terrain d'entraînement.",
+ kickoff:"L'installation : le chart takecare-crds, puis le chart takecare avec le profil prod (values-prod.yaml).",
+ ravito:"Mise à jour des connecteurs et des specs quand l'infra change.",
+ sparring:"Un stage, pas une ressource : attaquer les agents sur une copie. Chaque faille devient une politique de la passerelle.",
+ bootcamp:"Un exercice, pas une ressource : du décor et des scénarios de panne, comme le mode démo, avec le Doc, le Kiné et le Mécano.",
+ stresstest:"Un exercice, pas une ressource : montée en charge sur une copie, avec le Coach et le Nutri.",
+ relais:"Un exercice, pas une ressource : transmission du savoir avec le Guide et le Mécano."
+};
+const LEX = [
+ ["Apprenti, Compagnon, Maître","Les niveaux","spec.level: Apprentice | Practitioner | Expert. Le niveau décide des outils autorisés. Le changer, c'est modifier la ressource : une PR relue et validée par vos équipes, un changement tracé."]
+];
+const LEXHD = [
+ ["Une enquête","Hors deck","TakeCareInvestigation : un enregistrement par alerte, avec sa phase, son usage et son traceID."],
+ ["Les outils","Hors deck","TakeCareConnector : des serveurs MCP derrière la passerelle (kubernetes, prometheus, runbooks, Slack…)."],
+ ["Le staff","Hors deck","kubectl get takecare -A : tous les rôles, avec leur niveau et leur état."]
+];
+
+
+const pick = (html, txt) => { const x = html.split(/(?=<section)/).find(t=>t.includes(txt)); return x ? x.slice(0, x.lastIndexOf("</section>")+10) : ""; };
+function home(){
+  const acts = big => `<a class="btn pri${big?"":" sm"}" href="#deck">Ouvrir le deck</a><a class="btn${big?"":" sm"}" href="#demarrer">Lancer la démo</a><a class="btn light${big?"":" sm"}" href="${REPO}" target="_blank" rel="noopener"><svg class="ghi" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>GitHub ↗</a>`;
+  return `<section class="hero1"><div class="wrap">
+    <div class="h1txt"><p class="eyebrow">Opérateur Kubernetes · open source</p><h1>Des agents SRE <em>à l'épreuve du terrain.</em></h1></div>
+    <figure class="hvid">
+      <video id="hv" autoplay muted playsinline controls preload="auto" poster="${ASSETS}video/poster.jpg" aria-label="Vidéo TakeCare Agents, 1 minute, sans voix, avec musique"><source src="${ASSETS}video/staff.mp4" type="video/mp4"></video>
+      <div class="vend" id="vend" hidden><img class="vframe" src="${ASSETS}img/end-frame.webp" alt=""><a class="vgh" href="${REPO}" target="_blank" rel="noopener" aria-label="Le dépôt GitHub"><span class="vd">$</span> git clone github.com/Agaetis-IT/takecare-agents<svg class="vai" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 11 11 5M6 5h5v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a><div class="acts"><a class="btn pri" href="#deck">Ouvrir le deck</a><a class="btn vb" href="#demarrer">Lancer la démo</a></div><button class="replay" id="replay" type="button">↺ Revoir la vidéo</button></div>
+    </figure>
+    <div class="acts under"><button class="btn sm skip" id="skip" type="button">Passer la vidéo ›</button><span class="uend"><a class="btn pri sm" href="#deck">Ouvrir le deck</a><a class="btn sm" href="#demarrer">Lancer la démo</a></span></div>
+  </div></section>`;
+}
+function bindHome(){
+  const v=document.getElementById("hv"); if(!v) return;
+  const end=document.getElementById("vend");
+  const under=document.querySelector(".acts.under");
+  const fit=()=>{ const a=v.getBoundingClientRect(), f=v.parentElement.getBoundingClientRect(), b=parseFloat(getComputedStyle(v).borderLeftWidth)||0; Object.assign(end.style,{inset:"auto",left:(a.left-f.left+b)+"px",top:(a.top-f.top+b)+"px",width:(a.width-2*b)+"px",height:(a.height-2*b)+"px"}); };
+  const show=on=>{ if(on) fit(); end.hidden=!on; v.controls=!on; if(under) under.classList.toggle("ended",on); };
+  addEventListener("resize",()=>{ if(!end.hidden) fit(); });
+  v.addEventListener("ended",()=>show(true));
+  v.addEventListener("play",()=>show(false));
+  document.getElementById("skip").addEventListener("click",()=>{ v.pause(); if(isFinite(v.duration)) v.currentTime=v.duration; show(true); });
+  document.getElementById("replay").addEventListener("click",()=>{ show(false); v.currentTime=0; v.play().catch(()=>{}); });
+  const p=v.play(); if(p) p.catch(()=>{});
+}
+
+function regles(){ const h = oldHome(); return pick(h,"Les règles · la progression") + pick(h,"Les règles · l'encadrement"); }
+
+function oldHome(){
+  const roleCols = ["soigner","preparer","encadrer"].map(p=>`<div class="pcol"><h3>${PIL[p].name}<small>${PIL[p].sub}</small></h3><div class="cards3">${ROLES.filter(r=>r.p===p).map(r=>tcard(r.k)).join("")}</div></div>`).join("");
+  const hand = ["guide","doc","ranger","nutri","psy"].map((k,i)=>{const a=(i-2)*9, y=Math.abs(i-2)*12; return `<a href="#carte-${k}" style="--a:${a}deg;--y:${y}px;z-index:${i===2?5:3-Math.abs(i-2)}" aria-label="${esc(byK[k].nick)}"><img src="${img(k)}" alt="Carte : ${esc(byK[k].nick)}"></a>`}).join("");
+  return `
+  <section class="hero"><div class="wrap">
+    <div>
+      <p class="eyebrow">Opérateur Kubernetes · open source</p>
+      <h1>Des agents SRE <em>en période d'essai.</em></h1>
+      <p class="lead">TakeCare Agents fait tourner un staff d'exploitation en agents IA dans votre cluster : neuf rôles, chacun son métier. Chaque agent commence Apprenti, en lecture seule, et gagne son autonomie palier par palier. Et tous vos agents passent par les mêmes règles, ceux des éditeurs compris.</p>
+      <div class="acts"><a class="btn pri" href="${REPO}" target="_blank" rel="noopener">Voir le dépôt GitHub ↗</a><a class="btn" href="#deck">Ouvrir le deck</a></div>
+      <div class="badges">
+        <span class="badge"><span>version</span><b class="m">v0.1.0-rc.1 · le Doc</b></span>
+        <span class="badge"><span>moteur</span><b class="o">kagent</b></span>
+        <span class="badge"><span>passerelle</span><b class="o">agentgateway</b></span>
+        <span class="badge"><span>licence</span><b class="y">Apache-2.0</b></span>
+      </div>
+    </div>
+    <div>
+      <div class="term" role="group" aria-label="Terminal">
+        <div class="bar"><i></i><i></i><i></i><span>~/src</span></div>
+<pre><span class="p">$</span> git clone ${REPO}.git && cd takecare-agents
+<span class="p">$</span> export TAKECARE_MODEL_API_KEY=…
+<span class="p">$</span> make demo-up DEMO_IMAGES=build   <span class="c"># k3d, TakeCare, le décor, le Doc</span>
+<span class="p">$</span> make demo-incident                <span class="c"># la panne ; l'alerte ~2 min 30 après</span>
+<span class="p">$</span> make demo-verdict                 <span class="c"># le diagnostic du Doc, avec son coût</span>
+<span class="p">$</span> <span class="cursor"></span></pre>
+      </div>
+      <p style="margin-top:.7rem;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap"><button class="copy" id="cp" type="button">Copier le git clone</button><code id="clone">git clone ${REPO}.git</code></p>
+    </div>
+  </div></section>
+
+  <section style="padding-top:1rem"><div class="wrap">
+    <div class="sec-head"><p class="eyebrow">Le staff</p><h2>Neuf rôles. Trois piliers. Un deck.</h2><p class="lead">Sept agents IA et deux garde-fous, chacun avec son nom métier, son surnom et son matériel. Le Doc fonctionne déjà de bout en bout ; les huit autres rôles sont spécifiés, pas encore codés.</p></div>
+    <div class="pill-row">${roleCols}</div>
+    
+  </div></section>
+
+  <section><div class="wrap">
+    <div class="sec-head"><p class="eyebrow">Les règles · la progression</p><h2>Au départ, personne n'a les clés du camion.</h2><p class="lead">Mis à l'épreuve, pas à pas : un agent gagne son autonomie comme un nouveau dans l'équipe, en faisant ses preuves action par action.</p></div>
+    <div class="xp">
+      <div class="lv"><span class="n">niveau 1</span><h3>Apprenti</h3><code class="spec">spec.level: Apprentice</code><div class="meter"><i style="width:22%"></i></div><ul><li>lecture seule</li><li>à blanc ; votre historique à l'étape 2</li><li>diagnostics vers un canal de relecture</li></ul><span class="how">→ chaque agent arrive comme ça au <a href="#carte-campdebase">Camp de base</a></span></div>
+      <div class="lv"><span class="n">niveau 2</span><h3>Compagnon</h3><code class="spec">spec.level: Practitioner</code><div class="meter"><i style="width:58%"></i></div><ul><li>travaille au quotidien</li><li>propose ; vos équipes valident et lancent</li><li>diagnostics vers l'astreinte</li></ul><span class="how">→ devient Compagnon après <a href="#carte-reco">la Reco</a></span></div>
+      <div class="lv"><span class="n">niveau 3</span><h3>Maître</h3><code class="spec">spec.level: Expert</code><div class="meter"><i style="width:100%"></i></div><ul><li>agit seul, action par action</li><li>rend compte après coup</li><li>jamais hors du cadre validé</li></ul><span class="how">→ devient Maître, geste par geste, après <a href="#carte-qualif">la Qualif</a></span></div>
+    </div>
+    <p class="note"><b>Sous le capot :</b> le niveau est déclaré dans la ressource du rôle, champ <code>spec.level</code> (<code>Apprentice</code>, <code>Practitioner</code> ou <code>Expert</code>). L'opérateur en déduit les outils autorisés, et la passerelle les applique outil par outil. Changer de niveau, c'est modifier la ressource : une PR relue et validée par vos équipes, un changement tracé.</p>
+  </div></section>
+
+  <section class="tight"><div class="wrap rules">
+    <div class="sec-head" style="margin:0"><p class="eyebrow">Les règles · l'encadrement</p><h2>Les mêmes règles pour tous les agents.</h2><p class="lead">Le pilier Encadrer : un agent et deux garde-fous. Les garde-fous n'agissent jamais sur votre infra : le Ranger fixe ce que chaque agent a le droit d'appeler, le Psy vérifie après coup ce qu'il a fait. Le but : les appliquer aussi aux agents de vos éditeurs, en faisant passer leurs appels par la même passerelle (à venir).</p><p><a class="btn" href="#lexique">Le lexique complet ›</a></p></div>
+    <div>
+    <ol>
+      ${["ranger","psy"].map(k=>`<li><a href="#carte-${k}"><img src="${av(k)}" alt="${esc(byK[k].nick)}"></a><div><b>${esc(byK[k].nick)} · ${esc(byK[k].job)}</b><p>${esc(TECH[k])}</p></div></li>`).join("")}
+    </ol>
+    <p class="rnote"><a href="#carte-intendant"><img src="${av("intendant")}" alt="${esc(byK.intendant.nick)}"></a><span><b>Et l'Intendant ?</b> Il est dans le pilier Encadrer, mais c'est un agent comme les autres : il tient la Carte et propose chaque entrée sur la plateforme. Il passe donc lui aussi par le Ranger et le Psy.</span></p>
+    </div>
+  </div></section>
+
+  <section><div class="wrap split">
+    <div>
+      <div class="sec-head"><p class="eyebrow">La pile</p><h2>Des briques reconnues, assemblées.</h2><p class="lead">Pas de réinvention : TakeCare orchestre des projets open source et y ajoute les rôles, les paliers et le cadre.</p></div>
+      <div class="stack">
+        ${[["kagent","kagent","moteur des agents"],["agentgateway","agentgateway","passerelle"],["kubernetes","Kubernetes","opérateur Go"],[null,"MCP","connecteurs"],[null,"OpenTelemetry","traces"],["agentregistry","agentregistry","prévu"],["langfuse","Langfuse","à l'étude"]].map(([l,t,sub])=>`<span class="brick">${l?`<img src="${lg(l)}" alt="">`:""}${t} <small>${sub}</small></span>`).join("")}
+      </div>
+      <p style="margin-top:1.4rem"><a class="btn" href="#architecture">Voir l'architecture ›</a></p>
+    </div>
+    <div>
+      <div class="sec-head"><p class="eyebrow">Feuille de route</p><h2>Où on en est.</h2></div>
+      <div class="road">
+        <div class="now"><span>maintenant · v0.1.0-rc.1</span><b>Le Doc</b><p>Diagnostic d'incident de bout en bout : alerte, enquête en lecture seule, diagnostic sourcé sur Slack, trace et coût.</p></div>
+        <div><span>bientôt</span><b>Chart 0.1.0</b><p>Les images sont déjà sur ghcr.io ; les charts suivent avec la 0.1.0.</p></div>
+        <div><span>étape 2</span><b>Encadrer, et le Kiné</b><p>Le Ranger, l'Intendant et le Psy, avec le connecteur d'historique ; le Kiné prolonge les enquêtes du Doc.</p></div>
+        <div><span>ensuite</span><b>Le Mécano, puis le Guide, puis le Coach et le Nutri</b><p>Ordre de la feuille de route actuelle ; il peut bouger.</p></div>
+      </div>
+    </div>
+  </div></section>
+
+  <section style="padding-top:0"><div class="wrap"><div class="panel agaetis">
+    <div><p class="eyebrow">Maintenu par Agaetis</p><p style="margin-top:.6rem">Notre métier, c'est de faire tourner la production de nos clients. TakeCare, c'est l'outil qu'on voulait avoir pour mieux le faire. On le construit en open source, et on accompagne ceux qui veulent le déployer.</p></div>
+    <a class="btn" href="${VITRINE}" target="_blank" rel="noopener">Se faire accompagner ↗</a>
+  </div></div></section>`;
+}
+
+const FILTERS = [["all","Tout",null],["agent","Agents","--c-agent"],["guard","Garde-fous","--c-guard"],["exp","Stages","--c-exp"],["exo","Exercices","--c-exo"],["mat","Matériel","--c-mat"],["lieu","Lieux","--c-lieu"],["hum","Humains","--c-hum"]];
+let FLT = "all";
+try{ FLT = sessionStorage.getItem("tc-flt") || "all"; }catch(e){}
+function deck(){
+  const n = t => t==="all" ? R.length : R.filter(r=>tOf(r)===t).length;
+  const cards = ks => ks.map(k=>tcard(k)).join("");
+  const fam = f => R.filter(r=>f.includes(r.fam)).map(r=>r.k);
+  const grp = (title, sub, ks, cls="") => `<div class="dgrp ${cls}"><div class="dgh"><h3>${title}</h3><span>${sub}</span></div><div class="grid">${cards(ks)}</div></div>`;
+  const staff = `<div class="dgrp"><div class="dgh"><h3>Le staff</h3><span>9 rôles · 7 agents, 2 garde-fous</span></div>
+    ${["soigner","preparer","encadrer"].map(p=>`<div class="prow2"><div class="plab"><b>${PIL[p].name}</b><small>${PIL[p].sub}</small></div><div class="grid g3">${cards(ROLES.filter(r=>r.p===p).map(r=>r.k))}</div></div>`).join("")}</div>`;
+  return `<section><div class="wrap">
+    <div class="sec-head"><p class="eyebrow">Le deck · ${R.length} cartes</p><h2>Toutes les cartes du jeu.</h2><p class="lead">Neuf rôles font le travail ; les stages et les exercices les font progresser ; le matériel, les lieux et les humains sont ce qu'ils partagent. Chaque carte a sa traduction côté cluster. En gris, ce qui n'est pas encore codé.</p></div>
+    <div class="deckbar" role="group" aria-label="Filtrer les cartes">${FILTERS.map(([t,l,c])=>`<button class="chip" type="button" data-f="${t}" aria-pressed="${FLT===t}" style="${c?`--k:var(${c})`:""}">${c?"<i></i>":""}${l} <span style="color:var(--dim)">${n(t)}</span></button>`).join("")}</div>
+    <div id="grid">
+      ${staff}
+      ${grp("Les stages","5 · menés par vos équipes avec Agaetis",fam(["exp"]))}
+      ${grp("Les exercices","3 · ce que les rôles pratiquent ensemble",fam(["exo"]))}
+      ${grp("Le matériel","11 · ce que les rôles préparent et emportent",fam(["mat"]))}
+      ${grp("Les lieux et les humains","4 · d'où tout part, et qui décide",fam(["lieu"]).concat(fam(["hum"])))}
+    </div>
+  </div></section>`;
+}
+function bindDeck(){
+  const apply = () => {
+    document.querySelectorAll("#grid .tc").forEach(c=>{ c.hidden = !(FLT==="all" || c.dataset.t===FLT); });
+    document.querySelectorAll("#grid .prow2, #grid .dgrp").forEach(g=>{ g.hidden = ![...g.querySelectorAll(".tc")].some(c=>!c.hidden); });
+    document.querySelectorAll(".chip").forEach(b=>b.setAttribute("aria-pressed", b.dataset.f===FLT)); };
+  document.querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>{ FLT=b.dataset.f; try{sessionStorage.setItem("tc-flt",FLT)}catch(e){} apply(); }));
+  if(document.getElementById("grid")) apply();
+}
+
+function carte(k){
+  const r = byK[k]; if(!r) return deck();
+  const famOf = y => y.fam==="role" ? "role" : (y.fam==="lieu"||y.fam==="hum" ? "lh" : y.fam);
+  const list = r.fam==="role" ? ["soigner","preparer","encadrer"].flatMap(p=>ROLES.filter(y=>y.p===p)) : R.filter(y=>famOf(y)===famOf(r));
+  const i = list.indexOf(r), prev = list[(i+list.length-1)%list.length], next = list[(i+1)%list.length];
+  const f = F[k], x = X[k] || {};
+  const keyOf = n => (R.find(y=>bare(y)===n.trim())||{}).k;
+  const mini = items => `<div class="mini">${items.filter(it=>it&&it[0]).map(([pk,why])=>`<a href="#carte-${pk}"><img src="${img(pk)}" alt=""><div><b>${esc(byK[pk].nick)}</b><span>${esc(why||byK[pk].job)}</span></div></a>`).join("")}</div>`;
+  const stats = [["Type",TY[tOf(r)][0]], r.p?["Pilier",PIL[r.p].name]:null, ["Nom métier",r.job], r.fam==="role"?["État",k==="doc"?"Fonctionne · v0.1.0-rc.1":k==="intendant"?"En cours de spécification · étape 2":["ranger","psy","kine"].includes(k)?"Spécifié · étape 2":"Spécifié, pas encore codé"]:null, x.pass?["Passage",x.pass]:null, x.when?["Quand",x.when]:null].filter(Boolean);
+  const owner = r.fam==="mat" && r.nat ? byK[r.nat] : null;
+  const rel = r.fam==="role" ? (f.partners||[]).map(([n,why])=>[keyOf(n),why]) : (x.with || (owner?[owner.k]:[])).map(pk=>[pk,null]);
+  const mats = r.fam==="role" ? R.filter(y=>y.fam==="mat" && y.nat===k).map(y=>[y.k,null]).concat(r.nat==="agent"?[["sac",null]]:[]) : [];
+  const fam = r.fam==="role" ? "Les rôles" : FAM[r.fam][0]+"s";
+  const kd = KBYCARD[k];
+  const API = ["Apprentice","Practitioner","Expert"];
+  return `<section><div class="wrap">
+    <div class="crumb"><a href="#deck">Le deck</a><span>/</span><span>${r.fam==="role"?"Le staff":TY[tOf(r)][0]}</span><span>/</span><span>${i+1} sur ${list.length}</span></div>
+    <div class="sheet">
+      <div class="big">${kd?flipCard(kd)+`<p class="fsub" style="margin-top:.7rem">Retournez la carte : derrière, la ressource <code>${kd.kind}</code>.</p>`:`<img src="${img(k)}" alt="Carte : ${esc(r.nick)}, ${esc(r.job)}">`}</div>
+      <div>
+        ${type(r)}
+        <h1>${esc(r.nick)}</h1>
+        ${f&&f.tagline?`<p class="lead">${esc(f.tagline)}</p>`:(r.q?`<p class="lead">${esc(r.q)}</p>`:"")}
+        <div class="stats">${stats.map(([a,b])=>`<div class="stat"><span>${a}</span><b>${esc(b)}</b></div>`).join("")}</div>
+        <div class="blk"><h2>Dans le jeu</h2><p class="lead">${r.does}</p></div>
+        ${TECH[k]?`<div class="blk"><h2>Dans le cluster</h2><div class="tech"><span class="k">›</span> ${esc(TECH[k])}</div></div>`:""}
+        ${f&&f.scene?`<div class="blk"><h2>En action</h2><div class="scene2"><span class="sc-t">// scène</span><p>${esc(f.scene)}</p></div></div>`:""}
+        ${f&&f.levels?`<div class="blk"><h2>Ses paliers</h2><div class="steps">${f.levels.map((l,j)=>`<div class="step"><span class="k">${["Apprenti","Compagnon","Maître"][j]} <code class="api">${API[j]}</code></span><b>${esc(l[0])}</b><p>${esc(l[1])}</p></div>`).join("")}</div></div>`:""}
+        ${mats.length?`<div class="blk"><h2>Son matériel</h2>${mini(mats)}</div>`:""}
+        ${rel.length?`<div class="blk"><h2>${r.fam==="role"?"Joue avec":"Avec"}</h2>${mini(rel)}</div>`:""}
+        <div class="pager"><a href="#carte-${prev.k}">‹ ${esc(prev.nick)}</a><span class="pg-f">${fam}</span><a href="#carte-${next.k}">${esc(next.nick)} ›</a></div>
+      </div>
+    </div>
+  </div></section>`;
+}
+
+function lexique(){
+  return `<section><div class="wrap">
+    <div class="sec-head"><p class="eyebrow">Lexique</p><h2>Du jeu au cluster.</h2><p class="lead">Le vocabulaire des cartes sert à parler du système sans jargon. Voici ce qu'il y a derrière chaque mot. Les ressources elles-mêmes, YAML compris, sont dans la <a href="#reference">Référence</a>.</p></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Dans le jeu</th><th>Ce que c'est</th><th>Dans le cluster</th></tr></thead>
+      <tbody>${LEX.map(([n,fam,t])=>`<tr><td class="c"><b>${n}</b></td><td class="g">${fam}</td><td class="t">${t}</td></tr>`).join("")}
+      ${[["lieu","Les lieux"],["mat","Le matériel"],["exp","Les stages","des prestations menées avec Agaetis, sans ressource Kubernetes"],["exo","Les exercices","de l'outillage, sans ressource Kubernetes"],["hum","Les humains"]].map(([f,t,sub])=>`<tr class="lgh"><th colspan="3">${t}${sub?` <span>· ${sub}</span>`:""}</th></tr>`+R.filter(r=>r.fam===f).map(r=>`<tr><td class="c"><a href="#carte-${r.k}"><img src="${img(r.k)}" alt="">${esc(r.nick)}</a></td><td class="g">${esc(r.job)}</td><td class="t">${esc(TECH[r.k]||"")}</td></tr>`).join("")).join("")}
+      <tr class="lgh"><th colspan="3">Hors deck</th></tr>
+      ${LEXHD.map(([n,fam,t])=>`<tr><td class="c"><b>${n}</b></td><td class="g">${fam}</td><td class="t">${t}</td></tr>`).join("")}</tbody>
+    </table></div>
+    <div class="sec-head" style="margin-top:3.5rem"><p class="eyebrow">Les rôles</p><h2>Qui fait quoi, techniquement.</h2></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Rôle</th><th>Type</th><th>Dans le cluster</th></tr></thead>
+      <tbody>${["soigner","preparer","encadrer"].flatMap(p=>ROLES.filter(r=>r.p===p)).map(r=>`<tr><td class="c"><a href="#carte-${r.k}"><img src="${img(r.k)}" alt="">${esc(r.nick)}</a></td><td class="g">${TY[r.nat][0]}${r.k==="doc"?` · <span style="color:var(--mint)">v0.1.0-rc.1</span>`:""}</td><td class="t">${esc(TECH[r.k])}</td></tr>`).join("")}</tbody>
+    </table></div>
+  </div></section>`;
+}
+
+function archi(){
+  const tools = [["kubernetes","kubernetes"],["prometheus","prometheus"],[null,"runbooks"],[null,"post-mortems"],[null,"Slack (publication)"]];
+  const mb = [["Doc · Kiné",["doc","kine"],"Un modèle puissant","Une enquête longue, beaucoup d'outils à interroger, un raisonnement à tenir."],["Guide",["guide"],"Un modèle rapide","Des réponses tirées de vos procédures, éventuellement sur un modèle hébergé chez vous."],["Coach · Nutri",["coach","nutri"],"Un modèle économe","Des analyses régulières de chiffres, où le coût compte plus que la finesse."],["Psy",["psy"],"Un autre modèle","Celui qui juge les réponses ne doit pas être celui qui les a écrites."]];
+  const br = (l,t) => `<span class="brick">${l?`<img src="${lg(l)}" alt="">`:""}${t}</span>`;
+  const who = ks => `<span class="avs">${ks.map(k=>`<a href="#carte-${k}"${k==="doc"?"":` class="wip"`}><img src="${av(k)}" alt="${esc(byK[k].nick)}" title="${esc(byK[k].nick)}"></a>`).join("")}</span>`;
+  return `<section><div class="wrap">
+    <div class="sec-head"><p class="eyebrow">Architecture</p><h2>Tout passe par la passerelle.</h2><p class="lead">Neuf rôles, une seule plateforme. L'opérateur traduit les ressources TakeCare, kagent fait tourner les agents, et tous leurs appels (modèles, outils, entre agents) traversent agentgateway. Le Ranger y pose les règles, le Psy relit les traces, l'Intendant tient le registre et la Carte.</p></div>
+    <p class="legend"><span><i class="dot live"></i>livré dans la v0.1</span><span><i class="dot"></i>pointillés : spécifié, pas encore codé</span></p>
+    <div class="dgw"><svg class="dg" viewBox="-4 20 1190 426" role="img" aria-label="Architecture de TakeCare Agents : déclencheurs, opérateur, agents kagent, agentgateway, modèles et connecteurs MCP, traces et registre"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ahp"/></marker></defs><text class="cap" x="0" y="48" text-anchor="start">DÉCLENCHEURS</text><rect class="pill" x="0" y="66" width="140" height="34" rx="17"/><text class="ts" x="70" y="88" text-anchor="middle">une alerte</text><path class="a" d="M142 83 C 170 83, 170 130, 196 130" marker-end="url(#ah)"/><rect class="pill" x="0" y="114" width="140" height="34" rx="17"/><text class="ts" x="70" y="136" text-anchor="middle">une échéance</text><path class="a" d="M142 131 C 170 131, 170 130, 196 130" marker-end="url(#ah)"/><rect class="pill" x="0" y="162" width="140" height="34" rx="17"/><text class="ts" x="70" y="184" text-anchor="middle">une question</text><path class="a" d="M142 179 C 170 179, 170 130, 196 130" marker-end="url(#ah)"/><rect class="b" x="200" y="90" width="170" height="80" rx="12"/><text class="th" x="285" y="124" text-anchor="middle">takecare-operator</text><text class="ts" x="285" y="146" text-anchor="middle">traduit les ressources</text><path class="a" d="M285 172 L285 262" marker-end="url(#ah)"/><rect class="b" x="200" y="266" width="170" height="46" rx="12"/><text class="ts" x="285" y="294" text-anchor="middle">publication · Slack…</text><rect class="b" x="420" y="30" width="290" height="240" rx="12"/><text class="th" x="440" y="60" text-anchor="start">Les agents</text><text class="ts" x="440" y="80" text-anchor="start">kagent · ils se parlent en A2A</text><rect class="chip live" x="440" y="98" width="120" height="30" rx="15"/><text class="tc live" x="500" y="118" text-anchor="middle">Doc · v0.1</text><rect class="chip" x="570" y="98" width="120" height="30" rx="15"/><text class="tc" x="630" y="118" text-anchor="middle">Kiné</text><rect class="chip" x="440" y="138" width="120" height="30" rx="15"/><text class="tc" x="500" y="158" text-anchor="middle">Mécano</text><rect class="chip" x="570" y="138" width="120" height="30" rx="15"/><text class="tc" x="630" y="158" text-anchor="middle">Coach</text><rect class="chip" x="440" y="178" width="120" height="30" rx="15"/><text class="tc" x="500" y="198" text-anchor="middle">Nutri</text><rect class="chip" x="570" y="178" width="120" height="30" rx="15"/><text class="tc" x="630" y="198" text-anchor="middle">Guide</text><rect class="chip" x="440" y="218" width="120" height="30" rx="15"/><text class="tc" x="500" y="238" text-anchor="middle">Intendant</text><path class="a" d="M372 118 L416 118" marker-end="url(#ah)"/><text class="tl" x="394" y="108" text-anchor="middle">tâche</text><path class="a" d="M418 150 L376 150" marker-end="url(#ah)"/><text class="tl" x="397" y="166" text-anchor="middle">résultat</text><rect class="gw" x="760" y="30" width="180" height="240" rx="12"/><text class="th" x="850" y="62" text-anchor="middle">agentgateway</text><text class="ts" x="850" y="82" text-anchor="middle">le seul point de contrôle</text><text class="tc" x="850" y="118" text-anchor="middle">appels de modèles</text><text class="tc" x="850" y="144" text-anchor="middle">appels d'outils MCP</text><text class="tc" x="850" y="170" text-anchor="middle">appels entre agents</text><rect class="badge" x="772" y="196" width="156" height="58" rx="10"/><text class="tc" x="850" y="220" text-anchor="middle">Balises du Ranger</text><text class="tl" x="850" y="240" text-anchor="middle">mêmes règles pour tous</text><path class="a" d="M712 150 L756 150" marker-end="url(#ah)"/><text class="tl" x="734" y="140" text-anchor="middle">outils</text><text class="tl" x="734" y="168" text-anchor="middle">du niveau</text><rect class="b" x="990" y="30" width="190" height="100" rx="12"/><text class="th" x="1085" y="64" text-anchor="middle">Modèle par rôle</text><text class="ts" x="1085" y="88" text-anchor="middle">Mistral, Claude, OpenAI,</text><text class="ts" x="1085" y="106" text-anchor="middle">Gemini, vLLM… au choix</text><rect class="b" x="990" y="170" width="190" height="100" rx="12"/><text class="th" x="1085" y="204" text-anchor="middle">Connecteurs MCP</text><text class="ts" x="1085" y="228" text-anchor="middle">kubernetes, prometheus,</text><text class="ts" x="1085" y="246" text-anchor="middle">runbooks, post-mortems…</text><path class="a" d="M942 100 L986 80" marker-end="url(#ah)"/><path class="a" d="M942 200 L986 220" marker-end="url(#ah)"/><rect class="b" x="420" y="340" width="290" height="96" rx="12"/><text class="th" x="440" y="372" text-anchor="start">Traces OpenTelemetry</text><text class="ts" x="440" y="394" text-anchor="start">une par action, conventions GenAI, OTLP</text><text class="tp" x="440" y="418" text-anchor="start">relues par le Psy, avec un modèle juge</text><path class="a" d="M565 272 L565 336" marker-end="url(#ah)"/><rect class="b plan" x="760" y="340" width="420" height="96" rx="12"/><text class="th" x="780" y="372" text-anchor="start">Registre et Carte</text><text class="ts" x="780" y="394" text-anchor="start">agentregistry · agents, serveurs MCP, outils, infra</text><text class="tp" x="780" y="418" text-anchor="start">tenus par l'Intendant, qui remet les Dossards</text><path class="a d" d="M850 338 L850 274" marker-end="url(#ah)"/><text class="tl" x="860" y="312" text-anchor="start">Dossards vérifiés</text></svg></div>
+    <div class="arch">
+      <div class="layer"><div><b>takecare-operator</b><span>Go, kubebuilder</span></div><div class="cont">${br("kubernetes","opérateur")}<p>Traduit les ressources TakeCare en configuration des briques et en RBAC, déclenche le travail des agents et publie leurs résultats. Il n'installe rien et ne raisonne pas.</p></div></div>
+      <div class="layer"><div><b>Les agents</b><span>kagent, en A2A</span></div><div class="cont">${br("kagent","kagent")}${who(["doc","kine","mecano","coach","nutri","guide","intendant"])}<p>kagent fait tourner les sept agents, et ils se parlent en A2A : le Kiné part des enquêtes du Doc, par exemple. Chacun a sa ressource, son niveau et son modèle. Dans la v0.1 : le Doc.</p></div></div>
+      <div class="layer hl"><div><b>agentgateway</b><span>le seul point de contrôle</span></div><div class="cont">${br("agentgateway","agentgateway")}${who(["ranger"])}<p>Chaque appel de modèle (la clé du fournisseur n'est jamais exposée, le coût est mesuré), chaque appel d'outil (autorisé outil par outil), chaque appel entre agents. Le Ranger y pose les Balises : les mêmes règles pour tous les agents. Y faire passer aussi les agents de vos éditeurs est à venir.</p></div></div>
+      <div class="side">
+        <div class="layer" style="grid-template-columns:1fr"><div><b>Le modèle</b><span>compatible OpenAI, au choix</span></div><div class="cont">${[["mistral","Mistral"],["claude","Claude"],["openai","OpenAI"],["gemini","Gemini"],["vllm","vLLM"]].map(([l,t])=>br(l,t)).join("")}<p>Tout fournisseur compatible OpenAI, ou votre vLLM, déclaré dans TakeCarePlatform. À ce jour, un seul modèle a été mesuré au banc : <code>gemini-3.7-flash</code>.</p></div></div>
+        <div class="layer" style="grid-template-columns:1fr"><div><b>Les connecteurs</b><span>TakeCareConnector, en MCP</span></div><div class="cont">${tools.map(([l,t])=>br(l,t)).join("")}<p>Tout ce qu'un agent lit ou écrit est un serveur MCP derrière la passerelle. Le niveau décide des outils autorisés.</p></div></div>
+      </div>
+      <div class="layer"><div><b>Le registre et la Carte</b><span>agentregistry, prévu</span></div><div class="cont">${br("agentregistry","agentregistry")}${who(["intendant"])}<p>L'Intendant recense agents, serveurs MCP et outils, propose chaque entrée au Camp de base, remet son Dossard à chaque agent et tient la Carte de l'infra.</p></div></div>
+      <div class="layer"><div><b>La télémétrie</b><span>OpenTelemetry, dès le premier jour</span></div><div class="cont">${br(null,"OTLP")}${br(null,"Jaeger (démo)")}${who(["psy"])}<p>Une trace par action, selon les conventions GenAI. Le Psy les relit avec un modèle juge, jamais celui qu'il juge.</p></div></div>
+    </div>
+    <p class="note">Le chart <code>takecare</code> installe l'opérateur, ses CRD et les briques tierces, avec un profil <code>prod</code> ou <code>demo</code>. <b>Dans la v0.1 :</b> l'opérateur, le Doc, la passerelle, les connecteurs et la télémétrie. Le reste est spécifié. Les choix et leurs raisons sont dans les <a href="${REPO}/tree/main/docs/adr" target="_blank" rel="noopener">ADR du dépôt</a>.</p>
+
+    <div class="sec-head" style="margin-top:4rem"><p class="eyebrow">Un modèle par rôle</p><h2>Chaque rôle a son travail, donc son modèle.</h2><p class="lead">Le modèle se choisit rôle par rôle (ADR 0004), et la passerelle mesure le coût de chaque appel. Les profils ci-dessous sont une illustration, <b>à mesurer</b> : seule la règle du Psy est écrite dans les specs.</p></div>
+    <div class="models">${mb.map(([n,ks,t,d])=>`<div class="mb"><span class="avs">${ks.map(k=>`<a href="#carte-${k}"><img src="${av(k)}" alt="${esc(byK[k].nick)}"></a>`).join("")}</span><span class="n">${n}</span><b>${t}</b><p>${d}</p></div>`).join("")}</div>
+  </div></section>`;
+}
+
+function demarrer(){
+  return `<section><div class="wrap">
+    <div class="sec-head"><p class="eyebrow">Getting started · mode démo</p><h2>Le Doc en action, sur votre poste.</h2><p class="lead">Le même produit, sur un cluster k3d local, avec un décor (<code>billing-api</code>) et un incident qu'on rejoue (<code>proxy-timeout</code>). La démo ne touche jamais à votre contexte kube : elle a son propre kubeconfig, <code>bin/takecare-demo.kubeconfig</code>.</p></div>
+    <div>
+      <div>
+        <div class="term"><div class="bar"><i></i><i></i><i></i><span>takecare-agents</span></div>
+<pre><span class="p">$</span> git clone ${REPO}.git
+<span class="p">$</span> cd takecare-agents
+<span class="c"># une clé de modèle, ou un fichier .env ignoré par git</span>
+<span class="p">$</span> export TAKECARE_MODEL_API_KEY=…
+<span class="p">$</span> make demo-up DEMO_IMAGES=build    <span class="c"># cluster, TakeCare, décor, Doc</span>
+<span class="p">$</span> make demo-incident                <span class="c"># la panne ; l'alerte ~2 min 30 après</span>
+<span class="p">$</span> make demo-verdict                 <span class="c"># le diagnostic et sa consommation</span>
+<span class="p">$</span> make demo-screens                 <span class="c"># Prometheus, Alertmanager, Jaeger</span>
+<span class="p">$</span> make demo-bench N=5               <span class="c"># le banc de précision, sur l'incident en cours</span>
+<span class="p">$</span> make demo-reset                   <span class="c"># le décor remis en état</span>
+<span class="p">$</span> make demo-down                    <span class="c"># on range tout</span></pre></div>
+        <p class="note"><code>DEMO_IMAGES=build</code> construit les images depuis le code et les importe dans le cluster. Les images de la v0.1.0-rc.1 sont déjà sur <code>ghcr.io/agaetis-it</code>, mais les charts n'arrivent qu'avec la 0.1.0 : d'ici là, c'est la façon de faire. Un second <code>make demo-up</code> ne change rien et prend quelques secondes.</p>
+      </div>
+      <div class="gs3">
+        <div class="panel"><p class="eyebrow" style="margin-bottom:.8rem">Prérequis</p><ul class="todo" style="--x:0"><li>Docker, avec au moins 4 Go de mémoire (la pile en prend 3,5 Gio pendant un incident)</li><li>k3d, kubectl, make</li><li>Helm 4 : téléchargé par le Makefile</li><li>Une clé pour un modèle compatible OpenAI</li></ul></div>
+        <div class="panel"><p class="eyebrow" style="margin-bottom:.8rem">En option : Slack</p><p style="color:var(--mute);font-size:.94rem">Avec <code>TAKECARE_SLACK_BOT_TOKEN</code> et <code>TAKECARE_SLACK_ONCALL_CHANNEL</code> (et <code>TAKECARE_SLACK_REVIEW_CHANNEL</code> pour le canal de relecture d'un Apprenti), les diagnostics partent sur Slack. Sans, ils restent dans le journal du serveur de publication, et <code>make demo-verdict</code> les lit dans l'enquête.</p></div>
+        <div class="panel"><p class="eyebrow" style="margin-bottom:.8rem">En production · bientôt</p><p style="color:var(--mute);font-size:.94rem">Deux charts : <a href="${REPO}/blob/main/charts/takecare-crds/README.md" target="_blank" rel="noopener"><code>takecare-crds</code></a> d'abord (jamais désinstallé tant que TakeCare tourne), puis <a href="${REPO}/blob/main/charts/takecare/README.md" target="_blank" rel="noopener"><code>takecare</code></a> avec <code>values-prod.yaml</code>, chaque valeur à fournir marquée <code>REQUIRED</code>. Lisez le README de chaque chart avant d'installer ; les charts sont publiés avec la 0.1.0.</p></div>
+      </div>
+    </div>
+    <p style="margin-top:1.6rem"><a class="btn pri" href="${REPO}#demo-mode" target="_blank" rel="noopener">Le README, à jour ↗</a></p>
+  </div></section>`;
+}
+
+const SPECS = "https://github.com/Agaetis-IT/takecare-agents/blob/main/docs/specs/";
+const KINDS = [
+ {kind:"TakeCarePlatform", card:"campdebase", sub:"Le Camp de base : modèles, passerelle, moteur, télémétrie. Une seule instance, rendue par le chart. agentregistry, prévu.", spec:"01-platform.md", yaml:`apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCarePlatform
+metadata:
+  name: main
+spec:
+  models:
+    - name: default
+      provider: openai-compatible
+      baseURL: https://openrouter.ai/api/v1
+      model: google/gemini-3.7-flash
+      apiKeySecretRef: { name: takecare-model, key: apiKey }
+  gateway:
+    gatewayRef: { name: agentgateway-proxy, namespace: takecare-system }
+  engine:
+    namespace: kagent
+  observability:
+    metrics:
+      prometheusURL: http://prometheus-server.monitoring.svc
+    otlp:
+      endpoint: http://otel-collector.takecare-system.svc:4317
+    captureContent: false`},
+ {kind:"TakeCareDoc", card:"doc", sub:"Le Doc : son niveau, son périmètre, ses connecteurs, où partent ses diagnostics.", spec:"02-doc.md", yaml:`apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareDoc
+metadata:
+  name: doc
+  namespace: takecare-system
+spec:
+  level: Practitioner     # Apprentice | Practitioner | Expert
+  scope:
+    namespaces: [demo-apps]
+  connectors:
+    cluster: [kubernetes]
+    metrics: [prometheus]
+    knowledge: [incidents, runbooks]
+    report: report
+  report:
+    apprentice: review
+    practitioner: on-call
+  alerts:
+    matchers:
+      - { name: severity, value: critical }
+  investigation:
+    timeout: 300s
+    cooldown: 15m
+    maxConcurrent: 1`},
+ {kind:"TakeCareInvestigation", card:"journal", sub:"Une enquête par alerte : sa phase, son diagnostic, son coût et sa trace.", spec:"02-doc.md", yaml:`apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareInvestigation
+metadata:
+  name: doc-3fa29c1b07-a1b2c3
+  namespace: takecare-system
+spec:
+  roleRef: { kind: TakeCareDoc, name: doc }
+  alert:
+    name: HighErrorRate
+    service: billing-api
+    namespace: demo-apps
+  level: Practitioner
+status:
+  phase: Completed
+  engine: { kind: kagent, agent: takecare-system/doc }
+  published: { connector: report, destination: on-call, ok: true }
+  usage:
+    modelCalls: 7
+    inputTokens: 41250
+    outputTokens: 1310
+    estimatedCost: "0.0093 USD"
+  traceID: 4bf92f3577b34da6a3ce929d0e0e4736`},
+ {kind:"TakeCareConnector", card:"sac", sub:"Un accès du Sac : un serveur MCP derrière la passerelle, avec ses outils classés read, propose ou act.", spec:"05-connectors.md", yaml:`apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareConnector
+metadata:
+  name: kubernetes
+  namespace: takecare-system
+spec:
+  types: [cluster, logs]
+  description: Kubernetes state, events and pod logs (read-only)
+  mcp:
+    addon: kubernetes
+  kubernetes:
+    namespaces: [demo-apps, ack-system]
+  tools:
+    - { name: pods_log, class: read }
+status:
+  conditions:
+    - type: Ready
+    - type: ReadOnlyGuard
+  tools:
+    - { name: pods_list, class: read }
+    - { name: resources_delete, class: act }`},
+ {kind:"TakeCareDemo", card:"terrain", sub:"Le Terrain d'entraînement de la démo : le décor billing-api et l'incident à rejouer.", spec:"03-demo.md", yaml:`apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareDemo
+metadata:
+  name: demo
+  namespace: takecare-system
+spec:
+  scenario: proxy-timeout
+  appNamespace: demo-apps
+  platformNamespace: ack-system
+  rampMinutes: 4
+status:
+  phase: IncidentInProgress  # Ready | IncidentInProgress | Resetting
+  expectedAlertWindow:
+    from: "2026-10-16T02:59:40Z"
+    to: "2026-10-16T03:01:10Z"
+  conditions:
+    - type: Ready
+    - type: SceneryReady`}
+];
+const PLANNED = [["ranger","TakeCareRanger","Étape 2"],["intendant","TakeCareIntendant","En spécification · étape 2"],["psy","TakeCarePsy","Étape 2"],["kine","TakeCareKine","Étape 2"],["mecano","TakeCareMecano","Spécifié"],["coach","TakeCareCoach","Spécifié"],["nutri","TakeCareNutri","Spécifié"],["guide","TakeCareGuide","Spécifié"]];
+const hl = y => esc(y).split("\n").map(l=>{ const m=l.match(/^(\s*-?\s*)([A-Za-z][\w.\/-]*)(:)(.*)$/); let s = m ? `${m[1]}<span class="yk">${m[2]}</span>${m[3]}${m[4]}` : l; return s.replace(/(#.*)$/,'<span class="yc">$1</span>'); }).join("\n");
+const KBYCARD = Object.fromEntries(KINDS.map(x=>[x.card,x]));
+const flipCard = x => `<div class="flip" role="button" tabindex="0" aria-pressed="false" data-kind="${x.kind}" aria-label="Retourner la carte ${x.kind}">
+  <span class="fin">
+    <span class="face front"><img src="${img(x.card)}" alt="" loading="lazy"><span class="fh">↻ YAML</span></span>
+    <span class="face back"><span class="bh"><b>${x.kind}</b><span class="bha"><button class="cpy" type="button" data-kind="${x.kind}">Copier</button>${REF.kinds[x.kind]?`<a class="cpy fld" href="#champs-${x.kind}">Champs ›</a>`:""}<span aria-hidden="true">↻</span></span></span><pre>${hl(x.yaml)}</pre></span>
+  </span></div>`;
+function reference(){
+  return `<section><div class="wrap">
+    <div class="sec-head"><p class="eyebrow">Référence · takecare.agaetis.fr/v1alpha1</p><h2>Retournez la carte : derrière, la ressource.</h2><p class="lead">Chaque ressource Kubernetes a sa carte. Cliquez pour voir son YAML, tiré des specs du dépôt. L'API est en <code>v1alpha1</code> : elle bougera.</p></div>
+    <div class="flips">${KINDS.map(x=>`<div class="fl">${flipCard(x)}
+      <p class="fsub"><b class="fkn">${x.kind}</b>${x.sub} <a href="${SPECS}${x.spec}" target="_blank" rel="noopener">${x.spec} ↗</a></p>
+    </div>`).join("")}</div>
+    <div class="sec-head" style="margin-top:4rem"><p class="eyebrow">Prévues</p><h2>Les prochaines cartes de l'API.</h2><p class="lead">Une ressource par rôle, sur le même modèle que TakeCareDoc. Leur dos s'écrira avec leur spec.</p></div>
+    <div class="grid">${PLANNED.map(([k,kind,st])=>`<a class="tc" href="#carte-${k}" style="${kv(byK[k])}"><span class="im"><img src="${img(k)}" alt="" loading="lazy" style="filter:grayscale(.6) brightness(.75)"><span class="st">${st}</span></span><b class="mono" style="font-size:.85rem">${kind}</b><small>${esc(byK[k].job)}</small></a>`).join("")}</div>
+    ${refFields()}
+    ${refValues()}
+  </div></section>`;
+}
+/* --- le guide de référence, généré depuis le code (CRD et README des charts) --- */
+let REFK = "TakeCareDoc", REFC = "takecare";
+const md = t => esc(t).replace(/`([^`]+)`/g,"<code>$1</code>");
+const fv = v => typeof v==="string" ? v : JSON.stringify(v);
+function fieldRows(rows){
+  return rows.map(f=>{ const parts=f.p.split("."), name=parts.pop(), dep=parts.length-1;
+    const meta=[f.r?'<span class="rq">requis</span>':"", f.e?`<span class="en">${f.e.map(x=>`<code>${esc(x)}</code>`).join(" | ")}</span>`:"", f.def!==undefined?`<span class="df">défaut <code>${esc(fv(f.def))}</code></span>`:"", f.c?`<span class="df">${Object.entries(f.c).map(([k,v])=>`${k} <code>${esc(v)}</code>`).join(" · ")}</span>`:""].join("");
+    return `<tr><td class="fp" style="--d:${dep}"><span class="pp">${esc(parts.join("."))}.</span><b>${esc(name)}</b></td><td class="ft"><code>${esc(f.t)}</code></td><td class="fd">${meta?`<div class="fm">${meta}</div>`:""}${md(f.d||"")}</td></tr>`; }).join("");
+}
+function refFields(){
+  const K = REF.kinds, x = K[REFK], kc = KINDS.find(k=>k.kind===REFK);
+  return `<div class="sec-head" style="margin-top:4rem" id="ref-champs"><p class="eyebrow">Les champs</p><h2>Champ par champ, ressource par ressource.</h2><p class="lead">Tiré des CRD du dépôt : ce que l'API accepte vraiment, avec ses valeurs permises et ses défauts. Les descriptions sont celles du code, en anglais.</p></div>
+    <div class="rtabs" role="tablist" aria-label="Ressources">${Object.keys(K).map(k=>`<button type="button" class="chip${k===REFK?" on":""}" role="tab" aria-selected="${k===REFK}" data-rk="${k}">${k}</button>`).join("")}</div>
+    <div class="rkind">
+      <div class="rk-h"><div><b class="mono">${REFK}</b><p>${md(x.desc)}</p></div>
+        <dl><div><dt>Portée</dt><dd>${x.scope==="Cluster"?"cluster":"namespace"}</dd></div><div><dt>Nom court</dt><dd><code>${x.short.join(", ")||"—"}</code></dd></div><div><dt>Catégories</dt><dd><code>${x.cats.join(", ")||"—"}</code></dd></div>${kc?`<div><dt>Spec</dt><dd><a href="${SPECS}${kc.spec}" target="_blank" rel="noopener">${kc.spec} ↗</a></dd></div>`:""}</dl></div>
+      ${x.cols.length?`<p class="rk-cols"><span>kubectl get ${x.short[0]||REFK.toLowerCase()}</span>${x.cols.map(c=>`<code title="${esc(c.j)}">${esc(c.n)}</code>`).join("")}</p>`:""}
+      <div class="rtw"><table class="rt"><thead><tr><th>Champ</th><th>Type</th><th>Description</th></tr></thead><tbody>${fieldRows(x.spec)}</tbody></table></div>
+      ${x.status.length?`<details class="rst"><summary>Le statut, écrit par l'opérateur <span>${x.status.length} champs</span></summary><div class="rtw"><table class="rt"><tbody>${fieldRows(x.status)}</tbody></table></div></details>`:""}
+    </div>`;
+}
+function valueRows(){
+  const req = new Set(REF.values.required), rows = REF.values[REFC];
+  let top = "";
+  return rows.map(v=>{ const t=v.k.split(".")[0], head = t!==top ? (top=t, `<tr class="vg"><td colspan="3">${esc(t)}</td></tr>`) : "";
+    const isReq = REFC==="takecare" && [...req].some(q=>q===v.k);
+    return head + `<tr data-q="${esc((v.k+" "+v.d).toLowerCase())}"><td class="fp"><b>${esc(v.k)}</b>${isReq?'<span class="rq">requis en prod</span>':""}</td><td class="ft"><code>${esc(v.t)}</code>${v.def&&v.def!=="see the keys below"?`<div class="vd"><code>${esc(v.def.length>90?v.def.slice(0,88)+"…":v.def)}</code></div>`:""}</td><td class="fd">${md(v.d)}</td></tr>`; }).join("");
+}
+function refValues(){
+  return `<div class="sec-head" style="margin-top:4rem" id="ref-valeurs"><p class="eyebrow">Les charts</p><h2>Les valeurs, une par une.</h2><p class="lead">Deux charts : <code>takecare-crds</code> d'abord, puis <code>takecare</code>. En production, <code>values-prod.yaml</code> refuse de s'installer tant qu'une valeur marquée <span class="rq">requis en prod</span> manque.</p></div>
+    <div class="rbar"><div class="rtabs" role="tablist" aria-label="Charts">${["takecare","takecare-crds"].map(c=>`<button type="button" class="chip${c===REFC?" on":""}" role="tab" aria-selected="${c===REFC}" data-rc="${c}">${c}</button>`).join("")}</div>
+      <label class="rsearch"><span class="sr">Filtrer les valeurs</span><input type="search" id="rq" placeholder="Filtrer : slack, otlp, proxy…" autocomplete="off"></label></div>
+    <div class="rtw"><table class="rt rv"><thead><tr><th>Clé</th><th>Type et défaut</th><th>Description</th></tr></thead><tbody id="rv-body">${valueRows()}</tbody></table></div>
+    <p class="note">Généré depuis le dépôt, commit <code>${esc(REF.commit.split("|")[0])}</code> du ${new Date(REF.commit.split("|")[1]).toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})}. Pour tout le contexte (prérequis, profils, exigences de sécurité), lisez le README de chaque chart : <a href="${REPO}/blob/main/charts/takecare/README.md" target="_blank" rel="noopener">takecare ↗</a> · <a href="${REPO}/blob/main/charts/takecare-crds/README.md" target="_blank" rel="noopener">takecare-crds ↗</a>. Et <code>kubectl get takecare -A</code> liste tout le staff, avec le niveau et l'état de chaque rôle.</p>`;
+}
+function bindRefTabs(){
+  document.querySelectorAll("[data-rk]").forEach(b=>b.addEventListener("click",()=>{ REFK=b.dataset.rk; history.replaceState(null,"","#champs-"+REFK); const h=document.getElementById("ref-champs"); const box=h.parentNode; const tmp=document.createElement("div"); tmp.innerHTML=refFields(); const old=[h,h.nextElementSibling,h.nextElementSibling.nextElementSibling]; old[2].replaceWith(tmp.children[2]); old[1].replaceWith(tmp.children[1]); bindRefTabs(); }));
+  document.querySelectorAll("[data-rc]").forEach(b=>b.addEventListener("click",()=>{ REFC=b.dataset.rc; document.querySelectorAll("[data-rc]").forEach(x=>{x.classList.toggle("on",x===b);x.setAttribute("aria-selected",String(x===b));}); document.getElementById("rv-body").innerHTML=valueRows(); filterVals(); }));
+}
+function filterVals(){ const q=(document.getElementById("rq")?.value||"").trim().toLowerCase();
+  document.querySelectorAll("#rv-body tr[data-q]").forEach(tr=>tr.hidden = !!q && !tr.dataset.q.includes(q));
+  document.querySelectorAll("#rv-body tr.vg").forEach(g=>{ let n=g.nextElementSibling, any=false; while(n && !n.classList.contains("vg")){ if(!n.hidden) any=true; n=n.nextElementSibling; } g.hidden=!any; }); }
+function bindRef(){
+  bindRefTabs(); document.getElementById("rq")?.addEventListener("input", filterVals);
+  const tog = b => b.setAttribute("aria-pressed", b.getAttribute("aria-pressed")!=="true");
+  document.querySelectorAll(".flip").forEach(b=>{
+    b.addEventListener("click",e=>{ if(e.target.closest(".cpy")||e.target.closest(".fld")||e.target.closest("pre")) return; tog(b); });
+    b.addEventListener("keydown",e=>{ if(e.target!==b) return; if(e.key==="Enter"||e.key===" "){ e.preventDefault(); tog(b); } });
+  });
+  document.querySelectorAll("button.cpy").forEach(c=>c.addEventListener("click",e=>{ e.stopPropagation();
+    const y=(KINDS.find(x=>x.kind===c.dataset.kind)||{}).yaml||"";
+    navigator.clipboard.writeText(y).then(()=>{c.textContent="Copié ✓"; setTimeout(()=>c.textContent="Copier",1600)}).catch(()=>{ const pre=c.closest(".back").querySelector("pre"), s=getSelection(), rg=document.createRange(); rg.selectNodeContents(pre); s.removeAllRanges(); s.addRange(rg); c.textContent="Sélectionné"; }); }));
+}
+
+function mentions(){
+  const b = (t, body) => `<div class="panel lg-b"><b>${t}</b>${body}</div>`;
+  return `<section><div class="wrap">
+    <div class="sec-head"><p class="eyebrow">Mentions légales</p><h2>Qui publie ce site.</h2><p class="lead">Le site du projet open source TakeCare Agents. Il ne collecte aucune donnée personnelle.</p></div>
+    <div class="lg">
+      ${b("Éditeur",`<p><b>AGAETIS</b>, société par actions simplifiée au capital de 166&nbsp;100&nbsp;€<br>9 allée Évariste Galois, 63170 Aubière, France<br>RCS Clermont-Ferrand 490&nbsp;280&nbsp;435 · TVA intracommunautaire FR53490280435<br>Téléphone : 04&nbsp;73&nbsp;35&nbsp;47&nbsp;51 · <a href="mailto:contact@agaetis.fr">contact@agaetis.fr</a></p>`)}
+      ${b("Directeur de la publication",`<p>Nicolas Roux, directeur général d'Agaetis.</p>`)}
+      ${b("Hébergeur",`<p><b>GitHub, Inc.</b> (GitHub Pages)<br>88 Colin P Kelly Jr St, San Francisco, CA 94107, États-Unis<br><a href="https://github.com" target="_blank" rel="noopener">github.com ↗</a></p>`)}
+      ${b("Données personnelles",`<p>Ce site ne dépose aucun cookie, ne mesure pas l'audience et ne contient aucun formulaire. Les polices, les images et la vidéo sont servies par le site lui-même. Comme tout hébergeur, GitHub enregistre techniquement les connexions au site (adresse IP), selon sa propre <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement" target="_blank" rel="noopener">déclaration de confidentialité ↗</a>. Pour toute question : <a href="mailto:contact@agaetis.fr">contact@agaetis.fr</a>.</p>`)}
+      ${b("Propriété intellectuelle",`<p>Le logiciel TakeCare Agents est open source, sous <a href="${REPO}/blob/main/LICENSE" target="_blank" rel="noopener">licence Apache 2.0 ↗</a>, copyright Agaetis. Les textes, illustrations, vidéos et le nom TakeCare appartiennent à Agaetis ; les illustrations ont été réalisées pour Agaetis avec l'aide d'outils d'IA. Les logos et marques cités appartiennent à leurs propriétaires.</p>`)}
+    </div>
+  </div></section>`;
+}
+function contrib(){
+  const h = oldHome();
+  const iss = (n,t,lab) => `<li><a href="${REPO}/issues/${n}" target="_blank" rel="noopener"><span class="inum">#${n}</span><span>${t}</span>${lab?`<span class="ilab">${lab}</span>`:""}</a></li>`;
+  return `<section><div class="wrap">
+    <div class="sec-head"><p class="eyebrow">Contribuer</p><h2>Un projet maison, qui a besoin de vous pour grandir.</h2><p class="lead">On n'est pas éditeur : TakeCare grandira avec ceux qui l'utilisent. Les specs et les décisions s'écrivent et se relisent avant le code, et tout se fait en PR relue.</p></div>
+    <div class="contrib">
+      <div class="panel"><b>Pour commencer</b><p>Trois issues prêtes à prendre, marquées « good first issue ».</p><ul class="issues">${iss(69,"Démo : le scénario bad-config-rollout")}${iss(70,"Démo : le scénario missing-secret-key")}${iss(71,"Lancer la démo depuis les images publiées, sur Linux amd64")}</ul><p style="margin-top:.9rem;display:flex;gap:.6rem;flex-wrap:wrap"><a class="btn" href="${REPO}/labels/good%20first%20issue" target="_blank" rel="noopener">good first issue ↗</a><a class="btn" href="${REPO}/issues" target="_blank" rel="noopener">Toutes les issues ↗</a></p></div>
+      <div class="panel"><b>Brancher un nouvel outil</b><p>Tout passe par des connecteurs MCP derrière la passerelle : un serveur pour votre outil de tickets, de supervision ou votre cloud élargit le terrain de tous les agents.</p><ul class="issues">${iss(72,"Un connecteur de logs (Loki)","help wanted")}</ul><p style="margin-top:.9rem"><a class="btn" href="${SPECS}05-connectors.md" target="_blank" rel="noopener">La spec des connecteurs ↗</a></p></div>
+      <div class="panel"><b>Proposer un scénario de panne</b><p>Une panne que vous connaissez par cœur peut devenir un scénario rejoué, comme <code>proxy-timeout</code> dans la démo. C'est aussi ce qui nourrit le banc de précision du Doc.</p><p style="margin-top:.9rem"><a class="btn" href="${SPECS}03-demo.md" target="_blank" rel="noopener">La spec de la démo ↗</a></p></div>
+      <div class="panel"><b>Lire avant d'écrire</b><p>Les specs (<code>docs/specs/</code>), les décisions (<code>docs/adr/</code> : une décision qui change donne un nouvel ADR, jamais une réécriture) et <code>AGENTS.md</code>, le règlement du dépôt. Tout est en anglais, sauf les noms des rôles.</p><p style="margin-top:.9rem;display:flex;gap:.6rem;flex-wrap:wrap"><a class="btn" href="${REPO}/tree/main/docs/specs" target="_blank" rel="noopener">Les specs ↗</a><a class="btn" href="${REPO}/tree/main/docs/adr" target="_blank" rel="noopener">Les ADR ↗</a></p></div>
+    </div>
+    <div class="sec-head" style="margin-top:3rem"><p class="eyebrow">Développer</p><h2>Tout passe par <code class="h2c">make</code>.</h2><p class="lead">Go, Docker et make suffisent : chaque version est épinglée dans <code>hack/versions.env</code>, les outils s'installent dans <code>./bin</code>, et Helm y tourne avec sa propre configuration, jamais la vôtre.</p></div>
+    <div class="term"><div class="bar"><i></i><i></i><i></i><span>takecare-agents</span></div>
+<pre><span class="p">$</span> make help            <span class="c"># toutes les cibles</span>
+<span class="p">$</span> make generate        <span class="c"># deepcopy, CRD, RBAC</span>
+<span class="p">$</span> make lint            <span class="c"># golangci-lint, shellcheck, markdownlint, en-têtes SPDX</span>
+<span class="p">$</span> make test            <span class="c"># unitaires, golden, envtest, charts</span>
+<span class="p">$</span> make chart-lint      <span class="c"># dérive des charts + helm lint, deux profils</span>
+<span class="p">$</span> make licenses        <span class="c"># licences des dépendances, NOTICE régénéré</span>
+<span class="p">$</span> make gitleaks        <span class="c"># recherche de secrets</span></pre></div>
+    <p class="note"><b>Les règles du jeu :</b> <a href="${REPO}/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">CONTRIBUTING.md</a> pour l'environnement et la revue, avec signature DCO. Une faille ? Signalez-la en privé, comme l'explique <a href="${REPO}/blob/main/SECURITY.md" target="_blank" rel="noopener">SECURITY.md</a>. Chacun suit le <a href="${REPO}/blob/main/CODE_OF_CONDUCT.md" target="_blank" rel="noopener">code de conduite</a>. Licence Apache 2.0, copyright Agaetis ; les règles de provenance (en-têtes SPDX, pas de copyleft fort) sont dans <code>docs/licensing.md</code>.</p>
+  </div></section>` + pick(h,'<p class="eyebrow">La pile</p>').replace('<section>','<section class="tight">') + pick(h,'Maintenu par Agaetis');
+}
+
+const app = document.getElementById("app");
+function render(){
+  const h = (location.hash||"#accueil").slice(1);
+  let html, cur = h, jump = null;
+  if(h.startsWith("carte-")){ html = carte(h.slice(6)); cur = "deck"; }
+  else if(h.startsWith("champs-") && REF.kinds[h.slice(7)]){ REFK = h.slice(7); html = reference(); cur = "reference"; jump = "ref-champs"; }
+  else html = ({deck, regles, lexique, architecture:archi, demarrer, reference, contribuer:contrib, mentions}[h]||home)();
+  document.body.classList.toggle("is-home", !h.startsWith("carte-") && !h.startsWith("champs-") && !["deck","regles","lexique","architecture","demarrer","reference","contribuer","mentions"].includes(h));
+  app.innerHTML = html;
+  document.querySelectorAll(".nav a[data-r]").forEach(a=>{ if(a.dataset.r===cur) a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current"); });
+  const r = byK[h.slice(6)];
+  document.title = r && h.startsWith("carte-") ? `${r.nick} · TakeCare Agents` : "TakeCare Agents";
+  const lg2=document.getElementById("lang"); if(lg2) lg2.href = OTHERLANG + (location.hash||"");
+  window.scrollTo(0,0);
+  if(jump) requestAnimationFrame(()=>{ const e=document.getElementById(jump); if(e) scrollTo({top:scrollY+e.getBoundingClientRect().top-90}); });
+  bindDeck();
+  bindHome();
+  bindRef();
+  const cp = document.getElementById("cp");
+  if(cp) cp.addEventListener("click",()=>{ const t=document.getElementById("clone").textContent; navigator.clipboard.writeText(t).then(()=>{cp.textContent="Copié"}).catch(()=>{ const s=getSelection(), rg=document.createRange(); rg.selectNodeContents(document.getElementById("clone")); s.removeAllRanges(); s.addRange(rg); cp.textContent="Sélectionné"; }); });
+}
+addEventListener("hashchange", render);
+render();
+</script>

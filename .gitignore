@@ -25,6 +25,9 @@ charts/*/charts/
 *.tgz
 /.chart-out/
 
+# --- The product site's build output (make site) ---
+/site/dist/
+
 # --- Secrets and local config (never commit) ---
 .env
 .env.*

@@ -17,7 +17,7 @@ Specs and ADRs are written and reviewed with the maintainers before the code. A 
 
 ## Ground rules
 
-- **English everywhere**: code, comments, docs, commit messages, PRs, issues, logs, Kubernetes events, and agent messages. Only the role names keep their French flavour (Doc, Kiné, Mécano, Nutri…); kinds are ASCII (`TakeCareKine`, `TakeCareMecano`). Discussions may happen in French; repository content stays in English.
+- **English everywhere**: code, comments, docs, commit messages, PRs, issues, logs, Kubernetes events, and agent messages. Only the role names keep their French flavour (Doc, Kiné, Mécano, Nutri…); kinds are ASCII (`TakeCareKine`, `TakeCareMecano`). Discussions may happen in French; repository content stays in English. One exception, decided by the product owner (2026-11-09): the French version of the product site, that is `site/src/template.html`, `site/src/data.fr.js` and the French side of the pairs in `site/src/i18n_en.py`. The site's code, comments and build stay in English, and every French page has its English counterpart (`data.en.js`, `i18n_en.py`).
 - **Never in your place**: read-only by default. Never add a write verb, `secrets`, `pods/exec`, `pods/attach`, `pods/portforward` or a wildcard to generated RBAC. The read-only guard test (spec 04) must stay green and must not be weakened.
 - **Thin operator** (ADR 0001): the operator configures third-party building blocks; it does not install them and does not investigate.
 - **Everything goes through agentgateway**: model calls (ADR 0004; no engine gets a provider key), MCP tool calls (ADR 0008), agent-to-agent calls (ADR 0009).
@@ -40,6 +40,7 @@ make chart-lint      # chart drift check + helm lint, both charts, both profiles
 make chart-template  # render both profiles, validate with kubeconform
 make test            # unit + golden + envtest + chart tests
 make e2e             # end-to-end on k3d (fake LLM, fake Slack)
+make site            # the product site into site/dist (published to GitHub Pages on release tags)
 make demo-up | demo-incident | demo-verdict | demo-screens | demo-bench N=5 | demo-reset | demo-down
 ```
 

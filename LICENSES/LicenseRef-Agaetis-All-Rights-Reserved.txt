@@ -1,0 +1,7 @@
+Copyright 2026 Agaetis. All rights reserved.
+
+The product site's card art, avatars, illustrations, video and poster
+(site/assets/img/*.webp, site/assets/video/) were made by Agaetis with the
+help of AI tools. They are published on the TakeCare Agents site and kept in
+this repository to build it. No licence to copy, modify or redistribute them
+is granted, under the Apache License 2.0 of this repository or otherwise.
