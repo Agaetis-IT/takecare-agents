@@ -222,7 +222,11 @@ func (r *Reconciler) writeStatus(ctx context.Context, before, rg *v1alpha1.TakeC
 	for _, c := range st.conditions {
 		meta.SetStatusCondition(&rg.Status.Conditions, c)
 	}
-	if err := r.Status().Patch(ctx, rg, client.MergeFrom(before)); err != nil {
+	// The events below are said once per transition only if the transition
+	// is computed from the latest status: a reconcile started from a stale
+	// cache (the Ranger's policies being deleted re-queue it before the
+	// cache sees the first write) is refused here and runs again.
+	if err := r.Status().Patch(ctx, rg, client.MergeFromWithOptions(before, client.MergeFromWithOptimisticLock{})); err != nil {
 		return fmt.Errorf("update status of the Ranger: %w", err)
 	}
 	if was := markersLevel(before.Status.Markers); was != "" && len(st.markers) > 0 && was != level(rg) {
