@@ -450,9 +450,10 @@ const tOf = r => r.fam==="role" ? r.nat : r.fam;
 const TY = {agent:["Agent","--c-agent"],guard:["Garde-fou","--c-guard"],exp:["Stage","--c-exp"],exo:["Exercice","--c-exo"],mat:["Matériel","--c-mat"],lieu:["Lieu","--c-lieu"],hum:["Humain","--c-hum"]};
 const kv = r => `--k:var(${TY[tOf(r)][1]})`;
 const type = r => `<span class="type" style="${kv(r)}">${TY[tOf(r)][0]}</span>`;
-/* état d'avancement : seul le Doc est en cours (jalon 1) */
-const STATUS = {doc:["v0.1.0 · livré","live"], ranger:["v0.2.0-rc.1 · livré","live"], intendant:["Étape 2 · à spécifier",""], psy:["Étape 2 · spécifié",""], kine:["Étape 2 · spécifié",""]};
-const SOON = new Set(["kine","mecano","coach","nutri","guide","intendant","ranger","psy","carte","dossard","plan","ration","trousse","reeduc","carnet"]);
+/* état d'avancement : ce qui est livré porte "live" */
+const STATUS = {doc:["v0.1.0 · livré","live"], ranger:["v0.2.0-rc.1 · livré","live"], carte:["v0.2.0-rc.1 · livrée","live"], intendant:["Étape 2 · à spécifier",""], psy:["Étape 2 · spécifié",""], kine:["Étape 2 · spécifié",""]};
+const LIVE = new Set(Object.keys(STATUS).filter(k=>STATUS[k][1]==="live"));
+const SOON = new Set(["kine","mecano","coach","nutri","guide","intendant","ranger","psy","carte","dossard","plan","ration","trousse","reeduc","carnet"].filter(k=>!LIVE.has(k)));
 const st = k => STATUS[k] ? `<span class="st ${STATUS[k][1]}">${STATUS[k][0]}</span>` : (byK[k].fam==="role" ? `<span class="st">Spécifié</span>` : "");
 const tcard = k => { const r = byK[k]; return `<a class="tc${SOON.has(k)?" wip":""}" href="#carte-${k}" style="${kv(r)}" data-t="${tOf(r)}"><span class="im"><img src="${img(k)}" alt="Carte : ${esc(r.nick)}" loading="lazy">${st(k)}</span>${type(r)}<b>${esc(r.nick)}</b><small>${esc(r.job)}</small></a>`; };
 
@@ -700,7 +701,7 @@ function archi(){
   const tools = [["kubernetes","kubernetes"],["prometheus","prometheus"],[null,"runbooks"],[null,"post-mortems"],[null,"Slack (publication)"]];
   const mb = [["Doc · Kiné",["doc","kine"],"Un modèle puissant","Une enquête longue, beaucoup d'outils à interroger, un raisonnement à tenir."],["Guide",["guide"],"Un modèle rapide","Des réponses tirées de vos procédures, éventuellement sur un modèle hébergé chez vous."],["Coach · Nutri",["coach","nutri"],"Un modèle économe","Des analyses régulières de chiffres, où le coût compte plus que la finesse."],["Psy",["psy"],"Un autre modèle","Celui qui juge les réponses ne doit pas être celui qui les a écrites."]];
   const br = (l,t) => `<span class="brick">${l?`<img src="${lg(l)}" alt="">`:""}${t}</span>`;
-  const who = ks => `<span class="avs">${ks.map(k=>`<a href="#carte-${k}"${k==="doc"?"":` class="wip"`}><img src="${av(k)}" alt="${esc(byK[k].nick)}" title="${esc(byK[k].nick)}"></a>`).join("")}</span>`;
+  const who = ks => `<span class="avs">${ks.map(k=>`<a href="#carte-${k}"${LIVE.has(k)?"":` class="wip"`}><img src="${av(k)}" alt="${esc(byK[k].nick)}" title="${esc(byK[k].nick)}"></a>`).join("")}</span>`;
   return `<section><div class="wrap">
     <div class="sec-head"><p class="eyebrow">Architecture</p><h2>Tout passe par la passerelle.</h2><p class="lead">Neuf rôles, une seule plateforme. L'opérateur traduit les ressources TakeCare, kagent fait tourner les agents, et tous leurs appels (modèles, outils, entre agents) traversent agentgateway. Le Ranger y pose les règles, le Psy relit les traces, l'Intendant tient le registre et la Carte.</p></div>
     <p class="legend"><span><i class="dot live"></i>livré dans la v0.1</span><span><i class="dot"></i>pointillés : spécifié, pas encore codé</span></p>
@@ -842,6 +843,31 @@ status:
   tools:
     - { name: pods_list, class: read }
     - { name: resources_delete, class: act }`},
+ {kind:"TakeCareRanger", card:"ranger", sub:"Le Ranger : son niveau, et de quoi sont faites ses Balises : masquage, filtrage, plafonds, modèles autorisés.", spec:"09-ranger.md", yaml:`apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareRanger
+metadata:
+  name: main              # cluster-scoped, one per platform
+spec:
+  level: Practitioner     # Apprentice: audit only
+  masking:
+    builtins: [CreditCard, Email, PhoneNumber, Ssn]
+    patterns: [{ name: iban, regex: '[A-Z]{2}\\d{2}[A-Z0-9]{11,30}' }]
+  filtering:
+    shipped: true         # the shipped secret shapes
+  caps:
+    gateway: { tokensPerHour: 2000000, requestsPerMinute: 120, burst: 20 }
+    models: [{ name: default, tokensPerHour: 1000000 }]
+  models: [{ kind: TakeCareDoc, allowed: [default] }]
+status:
+  conditions:
+    - type: Ready
+    - type: Enforcing
+    - type: LevelSupported
+  markers:
+    - { name: journal, policy: ranger-journal, target: Gateway/agentgateway-proxy, action: Log }
+    - { name: filtering, policy: ranger-guards, target: Gateway/agentgateway-proxy, action: Reject }
+    - { name: masking, policy: ranger-guards, target: Gateway/agentgateway-proxy, action: Mask }
+    - { name: budget, policy: ranger-caps, target: Gateway/agentgateway-proxy, action: Limit }`},
  {kind:"TakeCareDemo", card:"terrain", sub:"Le Terrain d'entraînement de la démo : le décor billing-api et l'incident à rejouer.", spec:"03-demo.md", yaml:`apiVersion: takecare.agaetis.fr/v1alpha1
 kind: TakeCareDemo
 metadata:
@@ -861,7 +887,7 @@ status:
     - type: Ready
     - type: SceneryReady`}
 ];
-const PLANNED = [["ranger","TakeCareRanger","Livré · v0.2.0-rc.1"],["intendant","TakeCareIntendant","Étape 2 · à spécifier"],["psy","TakeCarePsy","Étape 2"],["kine","TakeCareKine","Étape 2"],["mecano","TakeCareMecano","Spécifié"],["coach","TakeCareCoach","Spécifié"],["nutri","TakeCareNutri","Spécifié"],["guide","TakeCareGuide","Spécifié"]];
+const PLANNED = [["intendant","TakeCareIntendant","Étape 2 · à spécifier"],["psy","TakeCarePsy","Étape 2"],["kine","TakeCareKine","Étape 2"],["mecano","TakeCareMecano","Spécifié"],["coach","TakeCareCoach","Spécifié"],["nutri","TakeCareNutri","Spécifié"],["guide","TakeCareGuide","Spécifié"]];
 const hl = y => esc(y).split("\n").map(l=>{ const m=l.match(/^(\s*-?\s*)([A-Za-z][\w.\/-]*)(:)(.*)$/); let s = m ? `${m[1]}<span class="yk">${m[2]}</span>${m[3]}${m[4]}` : l; return s.replace(/(#.*)$/,'<span class="yc">$1</span>'); }).join("\n");
 const KBYCARD = Object.fromEntries(KINDS.map(x=>[x.card,x]));
 const flipCard = x => `<div class="flip" role="button" tabindex="0" aria-pressed="false" data-kind="${x.kind}" aria-label="Retourner la carte ${x.kind}">
