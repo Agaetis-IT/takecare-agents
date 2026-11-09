@@ -77,20 +77,20 @@ type Prometheus struct {
 // Snapshot implements Source. A series that does not exist yet (no call so
 // far) counts zero.
 func (p Prometheus) Snapshot(ctx context.Context) (Counters, error) {
-	byType, err := p.query(ctx, queryByType)
+	byType, err := p.Query(ctx, queryByType, "gen_ai_token_type")
 	if err != nil {
 		return Counters{}, err
 	}
-	calls, err := p.query(ctx, queryCalls)
+	calls, err := p.Query(ctx, queryCalls, "")
 	if err != nil {
 		return Counters{}, err
 	}
 	return Counters{ModelCalls: calls[""], Input: byType["input"], CacheRead: byType["input_cache_read"], Output: byType["output"]}, nil
 }
 
-// query returns the instant vector by its gen_ai_token_type label (empty
-// for an aggregate without it).
-func (p Prometheus) query(ctx context.Context, promQL string) (map[string]float64, error) {
+// Query returns an instant vector by the value of one of its labels (the
+// empty key for an aggregate without it, or for an empty label name).
+func (p Prometheus) Query(ctx context.Context, promQL, label string) (map[string]float64, error) {
 	u, err := url.Parse(p.URL)
 	if err != nil {
 		return nil, fmt.Errorf("prometheusURL %q is not a URL: %w", p.URL, err)
@@ -132,7 +132,7 @@ func (p Prometheus) query(ctx context.Context, promQL string) (map[string]float6
 		if err != nil {
 			return nil, fmt.Errorf("Prometheus at %s answered a value %q that is not a number", p.URL, s) //nolint:staticcheck // a proper noun
 		}
-		values[r.Metric["gen_ai_token_type"]] = v
+		values[r.Metric[label]] = v
 	}
 	return values, nil
 }

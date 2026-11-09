@@ -34,7 +34,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=24
+CHECKS_EXPECTED=26
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -258,6 +258,13 @@ run() {
   fake_get fake-llm /last >bin/demo/fakellm-last.json
   check "the model got that run's request with neither the card number nor the email: masked by the gateway (spec 09 §9)" \
     bash -c "grep -q e2e-masking bin/demo/fakellm-last.json && grep -q 'card <CREDIT_CARD>; customer <EMAIL_ADDRESS>' bin/demo/fakellm-last.json && ! grep -qF '${MASKED_CARD}' bin/demo/fakellm-last.json && ! grep -qF '${MASKED_EMAIL}' bin/demo/fakellm-last.json"
+  # The Ranger's alerts (spec 09 §5): the masked request shows on the
+  # gateway's guardrail counter, and the Ranger, reading it every minute
+  # through the demo's Prometheus, says it in a Warning event.
+  check "the gateway's guardrail counter has the Mask action of a request (spec 09 §5)" \
+    bash -c "kubectl -n $NS port-forward svc/prometheus-server 18991:80 >/dev/null 2>&1 & pf=\$!; sleep 2; r=1; for _ in \$(seq 24); do curl -s 'http://localhost:18991/api/v1/query?query=agentgateway_guardrail_checks_total%7Bphase%3D%22Request%22%2Caction%3D%22Mask%22%7D' | jq -e '[.data.result[] | select((.value[1] | tonumber) > 0)] | length > 0' >/dev/null && { r=0; break; }; sleep 5; done; kill \$pf; exit \$r"
+  check "the Ranger says the masked request in a RequestsMasked Warning event (spec 09 §5)" \
+    bash -c "for _ in \$(seq 36); do kubectl get events -A --field-selector reason=RequestsMasked,type=Warning -o jsonpath='{range .items[*]}{.involvedObject.kind}{\"\\n\"}{end}' | grep -q TakeCareRanger && exit 0; sleep 5; done; exit 1"
   if [[ "$checks" -ne "$CHECKS_EXPECTED" || "$failed" -ne 0 ]]; then
     echo "checks: ${checks} run (expected ${CHECKS_EXPECTED}), ${failed} failed"
     exit 1

@@ -59,6 +59,10 @@ const (
 	labelRanger = "takecare.agaetis.fr/ranger"
 )
 
+// alertsPeriod is how often the gateway's counters are read while the
+// Markers enforce.
+const alertsPeriod = time.Minute
+
 var policyGVK = schema.GroupVersionKind{Group: "agentgateway.dev", Version: "v1alpha1", Kind: "AgentgatewayPolicy"}
 
 // roleKinds maps the role of a route (routes.RoleLabel, "<role>.<name>")
@@ -73,6 +77,9 @@ type Reconciler struct {
 	Recorder recorder.EventRecorder
 	// OperatorNamespace holds the Gateway and the Ranger's policies.
 	OperatorNamespace string
+	// Alerts reads the gateway's counters while the Markers enforce; nil
+	// turns the alerts off.
+	Alerts *Alerts
 }
 
 // Reconcile renders the Markers the Ranger's level calls for on the
@@ -101,9 +108,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 		st.set(v1alpha1.ConditionReady, false, ReasonSuspended, "spec.suspend is set: no Marker is rendered")
 		st.set(ConditionEnforcing, false, ReasonSuspended, "spec.suspend is set: nothing is logged, masked, filtered or capped")
+		r.alertsOff(st, ReasonSuspended, "spec.suspend is set: the gateway's counters are not read")
 		return statusWritten(r.writeStatus(ctx, before, &rg, st))
 	case lvl == v1alpha1.LevelApprentice:
 		st.set(ConditionEnforcing, false, ReasonAuditOnly, "Apprentice: the guards audit, nothing is masked, refused or capped")
+		r.alertsOff(st, ReasonAuditOnly, "Apprentice: nothing is masked, refused or limited, the gateway's counters are not read")
 	default:
 		st.set(ConditionEnforcing, true, ReasonEnforcing, "masking, filtering and caps are applied")
 	}
@@ -174,7 +183,47 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	default:
 		st.set(v1alpha1.ConditionReady, true, ReasonReady, fmt.Sprintf("%d Marker(s) accepted by the gateway", len(st.markers)))
 	}
-	return statusWritten(r.writeStatus(ctx, before, &rg, st))
+	if lvl == v1alpha1.LevelApprentice || r.Alerts == nil {
+		return statusWritten(r.writeStatus(ctx, before, &rg, st))
+	}
+	r.readAlerts(ctx, &rg, st)
+	res, err := statusWritten(r.writeStatus(ctx, before, &rg, st))
+	if err == nil && res.RequeueAfter == 0 {
+		// The counters move without any change to watch: read them again.
+		res.RequeueAfter = r.Alerts.Period
+		if res.RequeueAfter == 0 {
+			res.RequeueAfter = alertsPeriod
+		}
+	}
+	return res, err
+}
+
+// alertsOff says why the counters are not read, so that a True left by a
+// higher level does not stay.
+func (r *Reconciler) alertsOff(st *status, reason, message string) {
+	if r.Alerts != nil {
+		st.set(ConditionAlertsSource, false, reason, message)
+	}
+}
+
+// readAlerts says, one Warning per kind, what the gateway masked, refused
+// or limited since the last read; without a Prometheus to read, the
+// condition says why and nothing else changes.
+func (r *Reconciler) readAlerts(ctx context.Context, rg *v1alpha1.TakeCareRanger, st *status) {
+	var p v1alpha1.TakeCarePlatform
+	if err := r.Get(ctx, client.ObjectKey{Name: Name}, &p); err != nil || p.Spec.Observability.Metrics == nil || p.Spec.Observability.Metrics.PrometheusURL == "" {
+		st.set(ConditionAlertsSource, false, ReasonPrometheusMissing, "the platform names no Prometheus (spec.observability.metrics.prometheusURL): the gateway's counters are not read")
+		return
+	}
+	alerts, err := r.Alerts.read(ctx, r.Alerts.Source(p.Spec.Observability.Metrics.PrometheusURL))
+	if err != nil {
+		st.set(ConditionAlertsSource, false, ReasonPrometheusUnreachable, err.Error())
+		return
+	}
+	st.set(ConditionAlertsSource, true, ReasonAlertsRead, "the gateway's counters are read from "+p.Spec.Observability.Metrics.PrometheusURL)
+	for _, a := range alerts {
+		r.Recorder.Eventf(rg, nil, corev1.EventTypeWarning, a.reason, "Reconcile", "%s", a.message)
+	}
 }
 
 // gateway returns the platform's Gateway name, or why there is none. The

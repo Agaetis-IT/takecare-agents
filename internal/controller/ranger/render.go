@@ -37,6 +37,7 @@ const (
 	keyTargetRefs = "targetRefs"
 	keyRegex      = "regex"
 	keyName       = "name"
+	keyKind       = "kind"
 	keyAction     = "action"
 	keyGroup      = "group"
 	keyMatch      = "matchExpressions"
@@ -191,7 +192,7 @@ func routePolicies(rg *v1alpha1.TakeCareRanger, routes []modelRoute, lvl v1alpha
 
 // targetRef is a policy's one target: a Gateway or an HTTPRoute.
 func targetRef(kind, name string) []any {
-	return []any{map[string]any{keyGroup: gatewayAPIGroup, "kind": kind, keyName: name}}
+	return []any{map[string]any{keyGroup: gatewayAPIGroup, keyKind: kind, keyName: name}}
 }
 
 // require is an authorization rule: the request passes only if every
@@ -322,7 +323,7 @@ func guards(rg *v1alpha1.TakeCareRanger, enforcing bool) guardEntries {
 	if _, ok := webhook(rg); ok {
 		g.request = append(g.request, map[string]any{"webhook": map[string]any{
 			keyAction:    actionReject,
-			"backendRef": map[string]any{keyGroup: "agentgateway.dev", "kind": "AgentgatewayBackend", keyName: backendWebhook},
+			"backendRef": map[string]any{keyGroup: "agentgateway.dev", keyKind: "AgentgatewayBackend", keyName: backendWebhook},
 		}})
 		g.markers = append(g.markers, [2]string{"webhook", actionReject})
 	}
