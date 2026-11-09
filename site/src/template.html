@@ -451,7 +451,7 @@ const TY = {agent:["Agent","--c-agent"],guard:["Garde-fou","--c-guard"],exp:["St
 const kv = r => `--k:var(${TY[tOf(r)][1]})`;
 const type = r => `<span class="type" style="${kv(r)}">${TY[tOf(r)][0]}</span>`;
 /* état d'avancement : seul le Doc est en cours (jalon 1) */
-const STATUS = {doc:["v0.1.0-rc.1","live"], ranger:["Étape 2",""], intendant:["Étape 2",""], psy:["Étape 2",""], kine:["Étape 2",""]};
+const STATUS = {doc:["v0.1.0 · livré","live"], ranger:["v0.2.0-rc.1 · livré","live"], intendant:["Étape 2 · à spécifier",""], psy:["Étape 2 · spécifié",""], kine:["Étape 2 · spécifié",""]};
 const SOON = new Set(["kine","mecano","coach","nutri","guide","intendant","ranger","psy","carte","dossard","plan","ration","trousse","reeduc","carnet"]);
 const st = k => STATUS[k] ? `<span class="st ${STATUS[k][1]}">${STATUS[k][0]}</span>` : (byK[k].fam==="role" ? `<span class="st">Spécifié</span>` : "");
 const tcard = k => { const r = byK[k]; return `<a class="tc${SOON.has(k)?" wip":""}" href="#carte-${k}" style="${kv(r)}" data-t="${tOf(r)}"><span class="im"><img src="${img(k)}" alt="Carte : ${esc(r.nick)}" loading="lazy">${st(k)}</span>${type(r)}<b>${esc(r.nick)}</b><small>${esc(r.job)}</small></a>`; };
@@ -460,21 +460,21 @@ const tcard = k => { const r = byK[k]; return `<a class="tc${SOON.has(k)?" wip":
    Les noms exacts des ressources Kubernetes arriveront avec la Référence. */
 const TECH = {
  doc:"TakeCareDoc, avec un enregistrement TakeCareInvestigation par alerte. Sur une alerte Alertmanager, l'opérateur ouvre l'enquête et la confie à l'agent kagent par A2A. Lecture seule ; le diagnostic sourcé part sur Slack avec sa trace et son coût. Fonctionne de bout en bout, sur la démo comme sur votre cluster.",
- ranger:"TakeCareRanger : les politiques d'agentgateway, la passerelle par laquelle passent déjà tous les appels (modèles, outils MCP, A2A). Pas de boucle LLM : un garde-fou déterministe. Étape 2, avec l'Intendant et le Psy.",
+ ranger:"TakeCareRanger : les politiques d'agentgateway rendues par niveau sur la passerelle par laquelle passent tous les appels (modèles, outils MCP, A2A) : journal, masquage et filtrage (audit à l'Apprenti, appliqués dès le Compagnon), plafonds de jetons et de requêtes, modèles autorisés par rôle, et à l'Expert les Balises du client. Pas de boucle LLM : un garde-fou déterministe. Livré en 0.2.0-rc.1.",
  psy:"TakeCarePsy : évalue les traces des agents avec un modèle juge, jamais celui qu'il juge (une règle CEL le refuse). Il évalue, il n'agit pas. Spécifié, étape 2.",
- intendant:"Un agent, pas un simple registre : il recense agents, serveurs MCP et outils, propose chaque entrée sur la plateforme et tient la cartographie de l'infra. S'appuiera sur agentregistry. En cours de spécification, étape 2.",
+ intendant:"Un agent, pas un simple registre : il recense agents, serveurs MCP et outils, propose chaque entrée sur la plateforme et tient la cartographie de l'infra. S'appuiera sur agentregistry. Spécification à venir, étape 2.",
  kine:"TakeCareKine, enregistrements TakeCareReview : part des enquêtes du Doc pour remonter aux causes récurrentes et suivre les actions correctives. Spécifié, étape 2.",
  mecano:"TakeCareMecano, enregistrements TakeCareMaintenance : état du parc, plan de montée de version (une PR au niveau Practitioner). Spécifié.",
  coach:"TakeCareCoach, enregistrements TakeCarePeakReview : rejoue vos derniers pics, prépare capacité et quotas. Spécifié.",
  nutri:"TakeCareNutri, enregistrements TakeCareCostReview : sources de coût et usage des modèles mesuré par la passerelle. Spécifié.",
  guide:"TakeCareGuide, enregistrements TakeCareConversation : répond depuis vos runbooks, pas à pas. Spécifié.",
- campdebase:"TakeCarePlatform, le cœur : modèles, passerelle, moteur et télémétrie. Une seule instance par cluster, rendue par le chart. Le registre des agents (agentregistry) est prévu.",
+ campdebase:"TakeCarePlatform, le cœur : modèles, passerelle, moteur et télémétrie. Une seule instance par cluster, rendue par le chart. Un cluster d'administration supervise plusieurs clusters de charge, chacun avec son paquet takecare-cluster et son front mTLS (ADR 0016). Le registre des agents (agentregistry) est prévu.",
  terrain:"Le décor de rejeu. Le mode démo en fournit un premier : un cluster k3d, le décor billing-api et l'incident scénarisé proxy-timeout. Rejouer votre propre historique demande le connecteur d'historique : prévu à l'étape 2.",
  sac:"La spec du rôle : son niveau, son périmètre, ses connecteurs par type, où partent ses résultats, son modèle. Pour le Doc, c'est la ressource TakeCareDoc.",
  dossard:"Aujourd'hui, l'identité d'un agent à la passerelle, c'est sa route : chaque rôle joint chaque connecteur par une route à lui, dont la politique n'autorise que ses outils. Le Dossard remis par l'Intendant et vérifié par jeton arrive avec le pilier Encadrer, à l'étape 2.",
- balises:"Les politiques d'agentgateway : chaque outil autorisé un par un selon le niveau, la clé du fournisseur de modèle jamais exposée, le coût de chaque appel mesuré. Les mêmes pour tous les agents.",
+ balises:"Les politiques d'agentgateway : chaque outil autorisé un par un selon le niveau, la clé du fournisseur de modèle jamais exposée, le coût de chaque appel mesuré. Les mêmes pour tous les agents. Depuis 0.2.0-rc.1, le Ranger les rend par niveau.",
  journal:"Une trace OpenTelemetry par enquête, selon les conventions GenAI, exportée en OTLP (Jaeger dans la démo). En production, le contenu des messages n'est pas capturé par défaut.",
- carte:"La cartographie de l'infra que partagent les agents : ce qui tourne, qui en répond, ce qui en dépend. Tenue par l'Intendant.",
+ carte:"La cartographie de l'infra que partagent les agents : ce qui tourne, qui en répond, ce qui en dépend. Des fichiers YAML dans le Git du client, servis par un serveur MCP à cinq outils en lecture (entrée, voisins, rayon d'impact, chemin, la Carte à une date) ; le Doc la lit pour couvrir son périmètre et l'opérateur y résout l'entité d'une alerte. Tenue par l'Intendant. Livrée en 0.2.0-rc.1.",
  trousse:"Les actions qu'un agent peut faire seul au niveau Expert, autorisées une par une. Pas encore livré : après la v0.1.",
  equipes:"Ceux qui décident : ils relisent et valident chaque PR de niveau, chaque entrée au Camp de base et chaque action confiée à un agent.",
  ration:"L'enveloppe de coût validée, que le Nutri ne dépasse jamais.",
@@ -540,7 +540,7 @@ function oldHome(){
       <p class="lead">TakeCare Agents fait tourner un staff d'exploitation en agents IA dans votre cluster : neuf rôles, chacun son métier. Chaque agent commence Apprenti, en lecture seule, et gagne son autonomie palier par palier. Et tous vos agents passent par les mêmes règles, ceux des éditeurs compris.</p>
       <div class="acts"><a class="btn pri" href="${REPO}" target="_blank" rel="noopener">Voir le dépôt GitHub ↗</a><a class="btn" href="#deck">Ouvrir le deck</a></div>
       <div class="badges">
-        <span class="badge"><span>version</span><b class="m">v0.1.0-rc.1 · le Doc</b></span>
+        <span class="badge"><span>version</span><b class="m">v0.2.0-rc.1 · le Doc et le Ranger</b></span>
         <span class="badge"><span>moteur</span><b class="o">kagent</b></span>
         <span class="badge"><span>passerelle</span><b class="o">agentgateway</b></span>
         <span class="badge"><span>licence</span><b class="y">Apache-2.0</b></span>
@@ -597,9 +597,9 @@ function oldHome(){
     <div>
       <div class="sec-head"><p class="eyebrow">Feuille de route</p><h2>Où on en est.</h2></div>
       <div class="road">
-        <div class="now"><span>maintenant · v0.1.0-rc.1</span><b>Le Doc</b><p>Diagnostic d'incident de bout en bout : alerte, enquête en lecture seule, diagnostic sourcé sur Slack, trace et coût.</p></div>
-        <div><span>bientôt</span><b>Chart 0.1.0</b><p>Les images sont déjà sur ghcr.io ; les charts suivent avec la 0.1.0.</p></div>
-        <div><span>étape 2</span><b>Encadrer, et le Kiné</b><p>Le Ranger, l'Intendant et le Psy, avec le connecteur d'historique ; le Kiné prolonge les enquêtes du Doc.</p></div>
+        <div><span>fait · v0.1.0 (6 novembre 2026)</span><b>Le Doc</b><p>Diagnostic d'incident de bout en bout : alerte, enquête en lecture seule, diagnostic sourcé sur Slack, trace et coût ; images et charts publiés.</p></div>
+        <div class="now"><span>maintenant · v0.2.0-rc.1</span><b>Le Ranger, la Carte, plusieurs clusters</b><p>Le Ranger : les mêmes règles pour tous les agents à la passerelle, journal, masquage, filtrage, plafonds, modèles autorisés. La Carte, lue par le Doc. Un cluster d'administration qui supervise plusieurs clusters de charge. Une route de modèle par rôle.</p></div>
+        <div><span>étape 2, suite</span><b>L'Intendant, le Psy, le Kiné</b><p>L'Intendant (la Carte tenue, la découverte), le Psy, le Kiné : une release par rôle.</p></div>
         <div><span>ensuite</span><b>Le Mécano, puis le Guide, puis le Coach et le Nutri</b><p>Ordre de la feuille de route actuelle ; il peut bouger.</p></div>
       </div>
     </div>
@@ -650,7 +650,7 @@ function carte(k){
   const f = F[k], x = X[k] || {};
   const keyOf = n => (R.find(y=>bare(y)===n.trim())||{}).k;
   const mini = items => `<div class="mini">${items.filter(it=>it&&it[0]).map(([pk,why])=>`<a href="#carte-${pk}"><img src="${img(pk)}" alt=""><div><b>${esc(byK[pk].nick)}</b><span>${esc(why||byK[pk].job)}</span></div></a>`).join("")}</div>`;
-  const stats = [["Type",TY[tOf(r)][0]], r.p?["Pilier",PIL[r.p].name]:null, ["Nom métier",r.job], r.fam==="role"?["État",k==="doc"?"Fonctionne · v0.1.0-rc.1":k==="intendant"?"En cours de spécification · étape 2":["ranger","psy","kine"].includes(k)?"Spécifié · étape 2":"Spécifié, pas encore codé"]:null, x.pass?["Passage",x.pass]:null, x.when?["Quand",x.when]:null].filter(Boolean);
+  const stats = [["Type",TY[tOf(r)][0]], r.p?["Pilier",PIL[r.p].name]:null, ["Nom métier",r.job], r.fam==="role"?["État",k==="doc"?"Fonctionne · v0.1.0":k==="ranger"?"Livré · v0.2.0-rc.1":k==="intendant"?"Étape 2 · à spécifier":["psy","kine"].includes(k)?"Spécifié · étape 2":"Spécifié, pas encore codé"]:null, x.pass?["Passage",x.pass]:null, x.when?["Quand",x.when]:null].filter(Boolean);
   const owner = r.fam==="mat" && r.nat ? byK[r.nat] : null;
   const rel = r.fam==="role" ? (f.partners||[]).map(([n,why])=>[keyOf(n),why]) : (x.with || (owner?[owner.k]:[])).map(pk=>[pk,null]);
   const mats = r.fam==="role" ? R.filter(y=>y.fam==="mat" && y.nat===k).map(y=>[y.k,null]).concat(r.nat==="agent"?[["sac",null]]:[]) : [];
@@ -691,7 +691,7 @@ function lexique(){
     <div class="sec-head" style="margin-top:3.5rem"><p class="eyebrow">Les rôles</p><h2>Qui fait quoi, techniquement.</h2></div>
     <div class="tbl-wrap"><table>
       <thead><tr><th>Rôle</th><th>Type</th><th>Dans le cluster</th></tr></thead>
-      <tbody>${["soigner","preparer","encadrer"].flatMap(p=>ROLES.filter(r=>r.p===p)).map(r=>`<tr><td class="c"><a href="#carte-${r.k}"><img src="${img(r.k)}" alt="">${esc(r.nick)}</a></td><td class="g">${TY[r.nat][0]}${r.k==="doc"?` · <span style="color:var(--mint)">v0.1.0-rc.1</span>`:""}</td><td class="t">${esc(TECH[r.k])}</td></tr>`).join("")}</tbody>
+      <tbody>${["soigner","preparer","encadrer"].flatMap(p=>ROLES.filter(r=>r.p===p)).map(r=>`<tr><td class="c"><a href="#carte-${r.k}"><img src="${img(r.k)}" alt="">${esc(r.nick)}</a></td><td class="g">${TY[r.nat][0]}${r.k==="doc"?` · <span style="color:var(--mint)">v0.1.0</span>`:r.k==="ranger"?` · <span style="color:var(--mint)">v0.2.0-rc.1</span>`:""}</td><td class="t">${esc(TECH[r.k])}</td></tr>`).join("")}</tbody>
     </table></div>
   </div></section>`;
 }
@@ -740,7 +740,7 @@ function demarrer(){
 <span class="p">$</span> make demo-bench N=5               <span class="c"># le banc de précision, sur l'incident en cours</span>
 <span class="p">$</span> make demo-reset                   <span class="c"># le décor remis en état</span>
 <span class="p">$</span> make demo-down                    <span class="c"># on range tout</span></pre></div>
-        <p class="note"><code>DEMO_IMAGES=build</code> construit les images depuis le code et les importe dans le cluster. Les images de la v0.1.0-rc.1 sont déjà sur <code>ghcr.io/agaetis-it</code>, mais les charts n'arrivent qu'avec la 0.1.0 : d'ici là, c'est la façon de faire. Un second <code>make demo-up</code> ne change rien et prend quelques secondes.</p>
+        <p class="note">Les images et les charts de la dernière release sont sur <code>ghcr.io/agaetis-it</code> ; <code>DEMO_IMAGES=build</code> construit les images depuis le code et les importe dans le cluster. Un second <code>make demo-up</code> ne change rien et prend quelques secondes.</p>
       </div>
       <div class="gs3">
         <div class="panel"><p class="eyebrow" style="margin-bottom:.8rem">Prérequis</p><ul class="todo" style="--x:0"><li>Docker, avec au moins 4 Go de mémoire (la pile en prend 3,5 Gio pendant un incident)</li><li>k3d, kubectl, make</li><li>Helm 4 : téléchargé par le Makefile</li><li>Une clé pour un modèle compatible OpenAI</li></ul></div>
@@ -861,7 +861,7 @@ status:
     - type: Ready
     - type: SceneryReady`}
 ];
-const PLANNED = [["ranger","TakeCareRanger","Étape 2"],["intendant","TakeCareIntendant","En spécification · étape 2"],["psy","TakeCarePsy","Étape 2"],["kine","TakeCareKine","Étape 2"],["mecano","TakeCareMecano","Spécifié"],["coach","TakeCareCoach","Spécifié"],["nutri","TakeCareNutri","Spécifié"],["guide","TakeCareGuide","Spécifié"]];
+const PLANNED = [["ranger","TakeCareRanger","Livré · v0.2.0-rc.1"],["intendant","TakeCareIntendant","Étape 2 · à spécifier"],["psy","TakeCarePsy","Étape 2"],["kine","TakeCareKine","Étape 2"],["mecano","TakeCareMecano","Spécifié"],["coach","TakeCareCoach","Spécifié"],["nutri","TakeCareNutri","Spécifié"],["guide","TakeCareGuide","Spécifié"]];
 const hl = y => esc(y).split("\n").map(l=>{ const m=l.match(/^(\s*-?\s*)([A-Za-z][\w.\/-]*)(:)(.*)$/); let s = m ? `${m[1]}<span class="yk">${m[2]}</span>${m[3]}${m[4]}` : l; return s.replace(/(#.*)$/,'<span class="yc">$1</span>'); }).join("\n");
 const KBYCARD = Object.fromEntries(KINDS.map(x=>[x.card,x]));
 const flipCard = x => `<div class="flip" role="button" tabindex="0" aria-pressed="false" data-kind="${x.kind}" aria-label="Retourner la carte ${x.kind}">
