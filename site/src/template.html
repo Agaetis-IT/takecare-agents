@@ -450,7 +450,7 @@ const tOf = r => r.fam==="role" ? r.nat : r.fam;
 const TY = {agent:["Agent","--c-agent"],guard:["Garde-fou","--c-guard"],exp:["Stage","--c-exp"],exo:["Exercice","--c-exo"],mat:["Matériel","--c-mat"],lieu:["Lieu","--c-lieu"],hum:["Humain","--c-hum"]};
 const kv = r => `--k:var(${TY[tOf(r)][1]})`;
 const type = r => `<span class="type" style="${kv(r)}">${TY[tOf(r)][0]}</span>`;
-/* état d'avancement : ce qui est livré porte "live" */
+/* delivery status: what is shipped carries "live" */
 const STATUS = {doc:["v0.1.0 · livré","live"], ranger:["v0.2.0-rc.1 · livré","live"], carte:["v0.2.0-rc.1 · livrée","live"], intendant:["Étape 2 · à spécifier",""], psy:["Étape 2 · spécifié",""], kine:["Étape 2 · spécifié",""]};
 const LIVE = new Set(Object.keys(STATUS).filter(k=>STATUS[k][1]==="live"));
 const SOON = new Set(["kine","mecano","coach","nutri","guide","intendant","ranger","psy","carte","dossard","plan","ration","trousse","reeduc","carnet"].filter(k=>!LIVE.has(k)));

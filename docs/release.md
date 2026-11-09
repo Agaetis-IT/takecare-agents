@@ -3,7 +3,7 @@
 A release is a tag `v<SemVer>` on `main`. The `release` workflow then publishes, from that commit:
 
 - the six images, for `linux/amd64` and `linux/arm64`: `ghcr.io/agaetis-it/takecare-agents-operator`, `-mcp-report-slack`, `-mcp-map`, `-mcp-front`, `-demo-app` and `-mcp-corpus`, tagged with the version without its `v`; the end-to-end fakes are never released;
-- the three charts as OCI artifacts, `oci://ghcr.io/agaetis-it/charts/takecare-crds`, `oci://ghcr.io/agaetis-it/charts/takecare` and `oci://ghcr.io/agaetis-it/charts/takecare-cluster` (the workload-cluster package, ADR 0016), with chart version = app version = the release's version (spec 04); the `Chart.yaml` files keep their development version;
+- the three charts as OCI artifacts, `oci://ghcr.io/agaetis-it/charts/takecare-crds`, `oci://ghcr.io/agaetis-it/charts/takecare` and `oci://ghcr.io/agaetis-it/charts/takecare-cluster` (the workload-cluster package, ADR 0016), with chart version = app version = the release's version (spec 04); the `Chart.yaml` files carry that version since the cut (step 2);
 - the GitHub release: the tag's `CHANGELOG.md` section, the image and chart references, and the three chart packages attached.
 
 On the same tag, the `site` workflow builds the product site (`make site`) from the tagged tree, so that its Reference describes the released CRDs and charts, and publishes it to GitHub Pages at `https://agaetis-it.github.io/takecare-agents/`. A prerelease tag publishes it too, until the site's first version is out; afterwards final tags only. That is why the site's texts are updated in the cut (step 2), before the tag: the tag publishes what the tree says. It can also be published by hand (`workflow_dispatch`, from `main` or a tag).
