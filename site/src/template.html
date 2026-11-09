@@ -446,7 +446,7 @@ const img = k => `${ASSETS}img/${k}.webp`, av = k => `${ASSETS}img/av-${k}.webp`
 const nick = r => r.nick.replace(/^(Le |La |Les |L')/,m=>m.toLowerCase());
 const bare = r => r.nick.replace(/^(Les |Le |La |L')/,"");
 const tOf = r => r.fam==="role" ? r.nat : r.fam;
-const TY = {agent:["Agent","--c-agent"],guard:["Garde-fou","--c-guard"],exo:["Exercice","--c-exo"],mat:["Matériel","--c-mat"],lieu:["Lieu","--c-lieu"],hum:["Humain","--c-hum"]};
+const TY = {agent:["Agent","--c-agent"],guard:["Garde-fou","--c-guard"],exp:["Stage","--c-exp"],exo:["Exercice","--c-exo"],mat:["Matériel","--c-mat"],lieu:["Lieu","--c-lieu"],hum:["Humain","--c-hum"]};
 const kv = r => `--k:var(${TY[tOf(r)][1]})`;
 const type = r => `<span class="type" style="${kv(r)}">${TY[tOf(r)][0]}</span>`;
 /* état d'avancement : seul le Doc est en cours (jalon 1) */
@@ -481,6 +481,11 @@ const TECH = {
  topo:"Vos runbooks et votre doc, branchés comme connecteur de type knowledge.",
  reeduc:"Les actions correctives issues des post-mortems, suivies jusqu'au bout.",
  carnet:"Versions, fins de support et mises à jour planifiées, composant par composant.",
+ reco:"Passage Apprentice → Practitioner : on modifie spec.level dans la ressource du rôle, par une PR relue et validée par vos équipes.",
+ qualif:"Passage Practitioner → Expert, action par action, après rejeu sur le Terrain d'entraînement.",
+ kickoff:"L'installation : le chart takecare-crds, puis le chart takecare avec le profil prod (values-prod.yaml).",
+ ravito:"Mise à jour des connecteurs et des specs quand l'infra change.",
+ sparring:"Un stage, pas une ressource : attaquer les agents sur une copie. Chaque faille devient une politique de la passerelle.",
  bootcamp:"Un exercice, pas une ressource : du décor et des scénarios de panne, comme le mode démo, avec le Doc, le Kiné et le Mécano.",
  stresstest:"Un exercice, pas une ressource : montée en charge sur une copie, avec le Coach et le Nutri.",
  relais:"Un exercice, pas une ressource : transmission du savoir avec le Guide et le Mécano."
@@ -564,8 +569,8 @@ function oldHome(){
     <div class="sec-head"><p class="eyebrow">Les règles · la progression</p><h2>Au départ, personne n'a les clés du camion.</h2><p class="lead">Mis à l'épreuve, pas à pas : un agent gagne son autonomie comme un nouveau dans l'équipe, en faisant ses preuves action par action.</p></div>
     <div class="xp">
       <div class="lv"><span class="n">niveau 1</span><h3>Apprenti</h3><code class="spec">spec.level: Apprentice</code><div class="meter"><i style="width:22%"></i></div><ul><li>lecture seule</li><li>à blanc ; votre historique à l'étape 2</li><li>diagnostics vers un canal de relecture</li></ul><span class="how">→ chaque agent arrive comme ça au <a href="#carte-campdebase">Camp de base</a></span></div>
-      <div class="lv"><span class="n">niveau 2</span><h3>Compagnon</h3><code class="spec">spec.level: Practitioner</code><div class="meter"><i style="width:58%"></i></div><ul><li>travaille au quotidien</li><li>propose ; vos équipes valident et lancent</li><li>diagnostics vers l'astreinte</li></ul><span class="how">→ devient Compagnon par une PR relue sur <code>spec.level</code></span></div>
-      <div class="lv"><span class="n">niveau 3</span><h3>Maître</h3><code class="spec">spec.level: Expert</code><div class="meter"><i style="width:100%"></i></div><ul><li>agit seul, action par action</li><li>rend compte après coup</li><li>jamais hors du cadre validé</li></ul><span class="how">→ devient Maître, geste par geste, par une PR relue sur <code>spec.level</code></span></div>
+      <div class="lv"><span class="n">niveau 2</span><h3>Compagnon</h3><code class="spec">spec.level: Practitioner</code><div class="meter"><i style="width:58%"></i></div><ul><li>travaille au quotidien</li><li>propose ; vos équipes valident et lancent</li><li>diagnostics vers l'astreinte</li></ul><span class="how">→ devient Compagnon après <a href="#carte-reco">la Reco</a>, par une PR relue sur <code>spec.level</code></span></div>
+      <div class="lv"><span class="n">niveau 3</span><h3>Maître</h3><code class="spec">spec.level: Expert</code><div class="meter"><i style="width:100%"></i></div><ul><li>agit seul, action par action</li><li>rend compte après coup</li><li>jamais hors du cadre validé</li></ul><span class="how">→ devient Maître, geste par geste, après <a href="#carte-qualif">la Qualif</a>, par une PR relue sur <code>spec.level</code></span></div>
     </div>
     <p class="note"><b>Sous le capot :</b> le niveau est déclaré dans la ressource du rôle, champ <code>spec.level</code> (<code>Apprentice</code>, <code>Practitioner</code> ou <code>Expert</code>). L'opérateur en déduit les outils autorisés, et la passerelle les applique outil par outil. Changer de niveau, c'est modifier la ressource : une PR relue et validée par vos équipes, un changement tracé.</p>
   </div></section>
@@ -605,7 +610,7 @@ function oldHome(){
   </div></div></section>`;
 }
 
-const FILTERS = [["all","Tout",null],["agent","Agents","--c-agent"],["guard","Garde-fous","--c-guard"],["exo","Exercices","--c-exo"],["mat","Matériel","--c-mat"],["lieu","Lieux","--c-lieu"],["hum","Humains","--c-hum"]];
+const FILTERS = [["all","Tout",null],["agent","Agents","--c-agent"],["guard","Garde-fous","--c-guard"],["exp","Stages","--c-exp"],["exo","Exercices","--c-exo"],["mat","Matériel","--c-mat"],["lieu","Lieux","--c-lieu"],["hum","Humains","--c-hum"]];
 let FLT = "all";
 try{ FLT = sessionStorage.getItem("tc-flt") || "all"; }catch(e){}
 function deck(){
@@ -616,10 +621,11 @@ function deck(){
   const staff = `<div class="dgrp"><div class="dgh"><h3>Le staff</h3><span>9 rôles · 7 agents, 2 garde-fous</span></div>
     ${["soigner","preparer","encadrer"].map(p=>`<div class="prow2"><div class="plab"><b>${PIL[p].name}</b><small>${PIL[p].sub}</small></div><div class="grid g3">${cards(ROLES.filter(r=>r.p===p).map(r=>r.k))}</div></div>`).join("")}</div>`;
   return `<section><div class="wrap">
-    <div class="sec-head"><p class="eyebrow">Le deck · ${R.length} cartes</p><h2>Toutes les cartes du jeu.</h2><p class="lead">Neuf rôles font le travail ; les exercices les font progresser ; le matériel, les lieux et les humains sont ce qu'ils partagent. Chaque carte a sa traduction côté cluster. En gris, ce qui n'est pas encore codé.</p></div>
+    <div class="sec-head"><p class="eyebrow">Le deck · ${R.length} cartes</p><h2>Toutes les cartes du jeu.</h2><p class="lead">Neuf rôles font le travail ; les stages et les exercices les font progresser ; le matériel, les lieux et les humains sont ce qu'ils partagent. Chaque carte a sa traduction côté cluster. En gris, ce qui n'est pas encore codé.</p></div>
     <div class="deckbar" role="group" aria-label="Filtrer les cartes">${FILTERS.map(([t,l,c])=>`<button class="chip" type="button" data-f="${t}" aria-pressed="${FLT===t}" style="${c?`--k:var(${c})`:""}">${c?"<i></i>":""}${l} <span style="color:var(--dim)">${n(t)}</span></button>`).join("")}</div>
     <div id="grid">
       ${staff}
+      ${grp("Les stages","5 · des étapes manuelles, menées par vos équipes",fam(["exp"]))}
       ${grp("Les exercices","3 · ce que les rôles pratiquent ensemble",fam(["exo"]))}
       ${grp("Le matériel","11 · ce que les rôles préparent et emportent",fam(["mat"]))}
       ${grp("Les lieux et les humains","3 · d'où tout part, et qui décide",fam(["lieu"]).concat(fam(["hum"])))}
@@ -677,7 +683,7 @@ function lexique(){
     <div class="tbl-wrap"><table>
       <thead><tr><th>Dans le jeu</th><th>Ce que c'est</th><th>Dans le cluster</th></tr></thead>
       <tbody>${LEX.map(([n,fam,t])=>`<tr><td class="c"><b>${n}</b></td><td class="g">${fam}</td><td class="t">${t}</td></tr>`).join("")}
-      ${[["lieu","Les lieux"],["mat","Le matériel"],["exo","Les exercices","de l'outillage, sans ressource Kubernetes"],["hum","Les humains"]].map(([f,t,sub])=>`<tr class="lgh"><th colspan="3">${t}${sub?` <span>· ${sub}</span>`:""}</th></tr>`+R.filter(r=>r.fam===f).map(r=>`<tr><td class="c"><a href="#carte-${r.k}"><img src="${img(r.k)}" alt="">${esc(r.nick)}</a></td><td class="g">${esc(r.job)}</td><td class="t">${esc(TECH[r.k]||"")}</td></tr>`).join("")).join("")}
+      ${[["lieu","Les lieux"],["mat","Le matériel"],["exp","Les stages","des étapes manuelles, sans ressource Kubernetes"],["exo","Les exercices","de l'outillage, sans ressource Kubernetes"],["hum","Les humains"]].map(([f,t,sub])=>`<tr class="lgh"><th colspan="3">${t}${sub?` <span>· ${sub}</span>`:""}</th></tr>`+R.filter(r=>r.fam===f).map(r=>`<tr><td class="c"><a href="#carte-${r.k}"><img src="${img(r.k)}" alt="">${esc(r.nick)}</a></td><td class="g">${esc(r.job)}</td><td class="t">${esc(TECH[r.k]||"")}</td></tr>`).join("")).join("")}
       <tr class="lgh"><th colspan="3">Hors deck</th></tr>
       ${LEXHD.map(([n,fam,t])=>`<tr><td class="c"><b>${n}</b></td><td class="g">${fam}</td><td class="t">${t}</td></tr>`).join("")}</tbody>
     </table></div>
