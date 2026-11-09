@@ -122,7 +122,7 @@ Refs: docs/specs/02-doc.md
 | `chore`    | anything else (generated files, housekeeping) |
 | `spike`    | throwaway exploration under `spikes/`         |
 
-Scopes: `api`, `platform`, `connector`, `doc`, `investigation`, `engine`, `report`, `telemetry`, `demo`, `chart`, `ci`, `deps`, `spike-001`. Breaking API changes add `!` after the scope and a `BREAKING CHANGE:` footer.
+Scopes: `api`, `platform`, `connector`, `doc`, `investigation`, `engine`, `report`, `telemetry`, `demo`, `chart`, `ci`, `deps`, `site`, `spike-001`. Breaking API changes add `!` after the scope and a `BREAKING CHANGE:` footer.
 
 **Pull requests**
 

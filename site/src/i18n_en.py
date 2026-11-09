@@ -11,14 +11,14 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
  ('data-r="reference">Référence</a>', 'data-r="reference">Reference</a>'),
  ('data-r="contribuer">Contribuer</a>', 'data-r="contribuer">Contribute</a>'),
  ('· opérateur Kubernetes open source<br>Maintenu par Agaetis', '· open source Kubernetes operator<br>Maintained by Agaetis'),
- ('<div>Toujours là, jamais à votre place.<br><a href="__VITRINE__" target="_blank" rel="noopener">Se faire accompagner par Agaetis ↗</a>',
-  '<div>Always there, never in your place.<br><a href="__VITRINE__" target="_blank" rel="noopener">Get support from Agaetis ↗</a>'),
+ ('<div>Toujours là, jamais à votre place.<br>',
+  '<div>Always there, never in your place.<br>'),
  ('const nick = r => r.nick.replace(/^(Le |La |Les |L\')/,m=>m.toLowerCase());\nconst bare = r => r.nick.replace(/^(Les |Le |La |L\')/,"");',
   'const nick = r => r.nick.replace(/^The /,"the ");\nconst bare = r => r.nick.replace(/^The /,"");'),
  ('const TY = '
-  '{agent:["Agent","--c-agent"],guard:["Garde-fou","--c-guard"],exp:["Stage","--c-exp"],exo:["Exercice","--c-exo"],mat:["Matériel","--c-mat"],lieu:["Lieu","--c-lieu"],hum:["Humain","--c-hum"]};',
+  '{agent:["Agent","--c-agent"],guard:["Garde-fou","--c-guard"],exo:["Exercice","--c-exo"],mat:["Matériel","--c-mat"],lieu:["Lieu","--c-lieu"],hum:["Humain","--c-hum"]};',
   'const TY = '
-  '{agent:["Agent","--c-agent"],guard:["Guardrail","--c-guard"],exp:["Stage","--c-exp"],exo:["Exercise","--c-exo"],mat:["Equipment","--c-mat"],lieu:["Place","--c-lieu"],hum:["Human","--c-hum"]};'),
+  '{agent:["Agent","--c-agent"],guard:["Guardrail","--c-guard"],exo:["Exercise","--c-exo"],mat:["Equipment","--c-mat"],lieu:["Place","--c-lieu"],hum:["Human","--c-hum"]};'),
  ('ranger:["Étape 2",""], intendant:["Étape 2",""], psy:["Étape 2",""], kine:["Étape 2",""]}', 'ranger:["Step 2",""], intendant:["Step 2",""], psy:["Step 2",""], kine:["Step 2",""]}'),
  ('`<span class="st">Spécifié</span>`', '`<span class="st">Specified</span>`'),
  ('alt="Carte : ${esc(r.nick)}" loading="lazy">${st(k)}', 'alt="Card: ${esc(r.nick)}" loading="lazy">${st(k)}'),
@@ -67,8 +67,6 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
   ' carte:"The infra mapping the agents share: what runs, who answers for it, what depends on it. Kept by the Intendant.",'),
  (' trousse:"Les actions qu\'un agent peut faire seul au niveau Expert, autorisées une par une. Pas encore livré : après la v0.1.",',
   ' trousse:"The actions an agent may take on its own at the Expert level, allowed one by one. Not delivered yet: after v0.1.",'),
- (' agaetis:"Le mainteneur du projet open source. Mène les stages avec vos équipes : c\'est là que les Sacs sont cousus main.",',
-  ' agaetis:"The maintainer of the open source project. Runs the stages with your teams: that is where the Bags are hand-stitched.",'),
  (' equipes:"Ceux qui décident : ils relisent et valident chaque PR de niveau, chaque entrée au Camp de base et chaque action confiée à un agent.",',
   ' equipes:"The ones who decide: they review and approve every level PR, every entry into Base camp and every action handed to an agent.",'),
  (' ration:"L\'enveloppe de coût validée, que le Nutri ne dépasse jamais.",', ' ration:"The validated cost envelope, which the Nutri never exceeds.",'),
@@ -76,15 +74,6 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
  (' topo:"Vos runbooks et votre doc, branchés comme connecteur de type knowledge.",', ' topo:"Your runbooks and docs, plugged in as a knowledge-type connector.",'),
  (' reeduc:"Les actions correctives issues des post-mortems, suivies jusqu\'au bout.",', ' reeduc:"The corrective actions from the post-mortems, followed through to the end.",'),
  (' carnet:"Versions, fins de support et mises à jour planifiées, composant par composant.",', ' carnet:"Versions, end of support and planned upgrades, component by component.",'),
- (' reco:"Passage Apprentice → Practitioner : on modifie spec.level dans la ressource du rôle, par une PR relue et validée par vos équipes.",',
-  ' reco:"Apprentice → Practitioner: spec.level changes in the role\'s resource, through a PR reviewed and approved by your teams.",'),
- (' qualif:"Passage Practitioner → Expert, action par action, après rejeu sur le Terrain d\'entraînement.",',
-  ' qualif:"Practitioner → Expert, action by action, after a replay on the Training ground.",'),
- (' kickoff:"L\'installation : le chart takecare-crds, puis le chart takecare avec le profil prod (values-prod.yaml).",',
-  ' kickoff:"The installation: the takecare-crds chart, then the takecare chart with the prod profile (values-prod.yaml).",'),
- (' ravito:"Mise à jour des connecteurs et des specs quand l\'infra change.",', ' ravito:"Updating the connectors and specs when the infra changes.",'),
- (' sparring:"Un stage, pas une ressource : attaquer les agents sur une copie. Chaque faille devient une politique de la passerelle.",',
-  ' sparring:"A stage, not a resource: attacking the agents on a copy. Every flaw becomes a gateway policy.",'),
  (' bootcamp:"Un exercice, pas une ressource : du décor et des scénarios de panne, comme le mode démo, avec le Doc, le Kiné et le Mécano.",',
   ' bootcamp:"An exercise, not a resource: scenery and failure scenarios, like demo mode, with the Doc, the Kiné and the Mécano.",'),
  (' stresstest:"Un exercice, pas une ressource : montée en charge sur une copie, avec le Coach et le Nutri.",',
@@ -150,15 +139,11 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
   '<ul><li>read-only</li><li>dry run; your history at step 2</li><li>diagnoses to a review channel</li></ul><span class="how">→ every agent arrives like this at <a href="#carte-campdebase">Base '
   'camp</a></span>'),
  ('<span class="n">niveau 2</span><h3>Compagnon</h3>', '<span class="n">level 2</span><h3>Practitioner</h3>'),
- ('<ul><li>travaille au quotidien</li><li>propose ; vos équipes valident et lancent</li><li>diagnostics vers l\'astreinte</li></ul><span class="how">→ devient Compagnon après <a '
-  'href="#carte-reco">la Reco</a></span>',
-  '<ul><li>works day to day</li><li>proposes; your teams approve and launch</li><li>diagnoses to the on-call</li></ul><span class="how">→ becomes Practitioner after <a href="#carte-reco">the '
-  'Recon</a></span>'),
+ ('<ul><li>travaille au quotidien</li><li>propose ; vos équipes valident et lancent</li><li>diagnostics vers l\'astreinte</li></ul><span class="how">→ devient Compagnon par une PR relue sur <code>spec.level</code></span>',
+  '<ul><li>works day to day</li><li>proposes; your teams approve and launch</li><li>diagnoses to the on-call</li></ul><span class="how">→ becomes Practitioner through a reviewed PR on <code>spec.level</code></span>'),
  ('<span class="n">niveau 3</span><h3>Maître</h3>', '<span class="n">level 3</span><h3>Expert</h3>'),
- ('<ul><li>agit seul, action par action</li><li>rend compte après coup</li><li>jamais hors du cadre validé</li></ul><span class="how">→ devient Maître, geste par geste, après <a '
-  'href="#carte-qualif">la Qualif</a></span>',
-  '<ul><li>acts alone, action by action</li><li>reports afterwards</li><li>never outside the validated frame</li></ul><span class="how">→ becomes Expert, one action at a time, after <a '
-  'href="#carte-qualif">the Qualifier</a></span>'),
+ ('<ul><li>agit seul, action par action</li><li>rend compte après coup</li><li>jamais hors du cadre validé</li></ul><span class="how">→ devient Maître, geste par geste, par une PR relue sur <code>spec.level</code></span>',
+  '<ul><li>acts alone, action by action</li><li>reports afterwards</li><li>never outside the validated frame</li></ul><span class="how">→ becomes Expert, one action at a time, through a reviewed PR on <code>spec.level</code></span>'),
  ('<p class="note"><b>Sous le capot :</b> le niveau est déclaré dans la ressource du rôle, champ <code>spec.level</code> (<code>Apprentice</code>, <code>Practitioner</code> ou <code>Expert</code>). '
   "L'opérateur en déduit les outils autorisés, et la passerelle les applique outil par outil. Changer de niveau, c'est modifier la ressource : une PR relue et validée par vos équipes, un changement "
   'tracé.</p>',
@@ -195,31 +180,30 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
  ('<div><span>ensuite</span><b>Le Mécano, puis le Guide, puis le Coach et le Nutri</b><p>Ordre de la feuille de route actuelle ; il peut bouger.</p></div>',
   '<div><span>next</span><b>The Mécano, then the Guide, then the Coach and the Nutri</b><p>The current roadmap order; it may change.</p></div>'),
  ('<div><p class="eyebrow">Maintenu par Agaetis</p><p style="margin-top:.6rem">Notre métier, c\'est de faire tourner la production de nos clients. TakeCare, c\'est l\'outil qu\'on voulait avoir pour '
-  'mieux le faire. On le construit en open source, et on accompagne ceux qui veulent le déployer.</p></div>\n'
-  '    <a class="btn" href="${VITRINE}" target="_blank" rel="noopener">Se faire accompagner ↗</a>',
+  'mieux le faire. On le construit en open source.</p></div>\n'
+  '    <a class="btn" href="${REPO}" target="_blank" rel="noopener">Le dépôt ↗</a>',
   '<div><p class="eyebrow">Maintained by Agaetis</p><p style="margin-top:.6rem">Our job is running our customers\' production. TakeCare is the tool we wanted to have to do it better. We build it in '
-  'the open, and we support those who want to deploy it.</p></div>\n'
-  '    <a class="btn" href="${VITRINE}" target="_blank" rel="noopener">Get support ↗</a>'),
+  'the open.</p></div>\n'
+  '    <a class="btn" href="${REPO}" target="_blank" rel="noopener">The repository ↗</a>'),
  ('const FILTERS = '
-  '[["all","Tout",null],["agent","Agents","--c-agent"],["guard","Garde-fous","--c-guard"],["exp","Stages","--c-exp"],["exo","Exercices","--c-exo"],["mat","Matériel","--c-mat"],["lieu","Lieux","--c-lieu"],["hum","Humains","--c-hum"]];',
+  '[["all","Tout",null],["agent","Agents","--c-agent"],["guard","Garde-fous","--c-guard"],["exo","Exercices","--c-exo"],["mat","Matériel","--c-mat"],["lieu","Lieux","--c-lieu"],["hum","Humains","--c-hum"]];',
   'const FILTERS = '
-  '[["all","All",null],["agent","Agents","--c-agent"],["guard","Guardrails","--c-guard"],["exp","Stages","--c-exp"],["exo","Exercises","--c-exo"],["mat","Equipment","--c-mat"],["lieu","Places","--c-lieu"],["hum","Humans","--c-hum"]];'),
+  '[["all","All",null],["agent","Agents","--c-agent"],["guard","Guardrails","--c-guard"],["exo","Exercises","--c-exo"],["mat","Equipment","--c-mat"],["lieu","Places","--c-lieu"],["hum","Humans","--c-hum"]];'),
  ('<div class="dgh"><h3>Le staff</h3><span>9 rôles · 7 agents, 2 garde-fous</span></div>', '<div class="dgh"><h3>The staff</h3><span>9 roles · 7 agents, 2 guardrails</span></div>'),
- ('<div class="sec-head"><p class="eyebrow">Le deck · ${R.length} cartes</p><h2>Toutes les cartes du jeu.</h2><p class="lead">Neuf rôles font le travail ; les stages et les exercices les font '
+ ('<div class="sec-head"><p class="eyebrow">Le deck · ${R.length} cartes</p><h2>Toutes les cartes du jeu.</h2><p class="lead">Neuf rôles font le travail ; les exercices les font '
   "progresser ; le matériel, les lieux et les humains sont ce qu'ils partagent. Chaque carte a sa traduction côté cluster. En gris, ce qui n'est pas encore codé.</p></div>",
-  '<div class="sec-head"><p class="eyebrow">The deck · ${R.length} cards</p><h2>Every card in the game.</h2><p class="lead">Nine roles do the work; the stages and exercises make them progress; the '
+  '<div class="sec-head"><p class="eyebrow">The deck · ${R.length} cards</p><h2>Every card in the game.</h2><p class="lead">Nine roles do the work; the exercises make them progress; the '
   'equipment, places and humans are what they share. Every card has its counterpart in the cluster. Greyed out: not coded yet. The card artwork is in French for now.</p></div>'),
  ('aria-label="Filtrer les cartes"', 'aria-label="Filter the cards"'),
- ('${grp("Les stages","5 · menés par vos équipes avec Agaetis",fam(["exp"]))}', '${grp("The stages","5 · run by your teams with Agaetis",fam(["exp"]))}'),
  ('${grp("Les exercices","3 · ce que les rôles pratiquent ensemble",fam(["exo"]))}', '${grp("The exercises","3 · what the roles practise together",fam(["exo"]))}'),
  ('${grp("Le matériel","11 · ce que les rôles préparent et emportent",fam(["mat"]))}', '${grp("The equipment","11 · what the roles prepare and carry",fam(["mat"]))}'),
- ('${grp("Les lieux et les humains","4 · d\'où tout part, et qui décide",fam(["lieu"]).concat(fam(["hum"])))}',
-  '${grp("Places and humans","4 · where it all starts, and who decides",fam(["lieu"]).concat(fam(["hum"])))}'),
+ ('${grp("Les lieux et les humains","3 · d\'où tout part, et qui décide",fam(["lieu"]).concat(fam(["hum"])))}',
+  '${grp("Places and humans","3 · where it all starts, and who decides",fam(["lieu"]).concat(fam(["hum"])))}'),
  ('const stats = [["Type",TY[tOf(r)][0]], r.p?["Pilier",PIL[r.p].name]:null, ["Nom métier",r.job], r.fam==="role"?["État",k==="doc"?"Fonctionne · v0.1.0-rc.1":k==="intendant"?"En cours de '
   'spécification · étape 2":["ranger","psy","kine"].includes(k)?"Spécifié · étape 2":"Spécifié, pas encore codé"]:null, x.pass?["Passage",x.pass]:null, x.when?["Quand",x.when]:null].filter(Boolean);',
   'const stats = [["Type",TY[tOf(r)][0]], r.p?["Pillar",PIL[r.p].name]:null, ["Job",r.job], r.fam==="role"?["State",k==="doc"?"Works · v0.1.0-rc.1":k==="intendant"?"Being specified · step '
   '2":["ranger","psy","kine"].includes(k)?"Specified · step 2":"Specified, not coded yet"]:null, x.pass?["Promotion",x.pass]:null, x.when?["When",x.when]:null].filter(Boolean);'),
- ('const fam = r.fam==="role" ? "Les rôles" : FAM[r.fam][0]+"s";', 'const fam = ({role:"The roles",exp:"Stages",exo:"Exercises",mat:"Equipment",lieu:"Places",hum:"Humans"})[r.fam];'),
+ ('const fam = r.fam==="role" ? "Les rôles" : FAM[r.fam][0]+"s";', 'const fam = ({role:"The roles",exo:"Exercises",mat:"Equipment",lieu:"Places",hum:"Humans"})[r.fam];'),
  ('<div class="crumb"><a href="#deck">Le deck</a><span>/</span><span>${r.fam==="role"?"Le staff":TY[tOf(r)][0]}</span><span>/</span><span>${i+1} sur ${list.length}</span></div>',
   '<div class="crumb"><a href="#deck">The deck</a><span>/</span><span>${r.fam==="role"?"The staff":TY[tOf(r)][0]}</span><span>/</span><span>${i+1} of ${list.length}</span></div>'),
  ('<p class="fsub" style="margin-top:.7rem">Retournez la carte : derrière, la ressource <code>${kd.kind}</code>.</p>`:`<img src="${img(k)}" alt="Carte : ${esc(r.nick)}, ${esc(r.job)}">`}',
@@ -236,9 +220,9 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
   '<div class="sec-head"><p class="eyebrow">Lexicon</p><h2>From the game to the cluster.</h2><p class="lead">The card vocabulary is a way to talk about the system without jargon. Here is what lies '
   'behind each word. The resources themselves, YAML included, are in the <a href="#reference">Reference</a>.</p></div>'),
  ("<thead><tr><th>Dans le jeu</th><th>Ce que c'est</th><th>Dans le cluster</th></tr></thead>", '<thead><tr><th>In the game</th><th>What it is</th><th>In the cluster</th></tr></thead>'),
- ('${[["lieu","Les lieux"],["mat","Le matériel"],["exp","Les stages","des prestations menées avec Agaetis, sans ressource Kubernetes"],["exo","Les exercices","de l\'outillage, sans ressource '
+ ('${[["lieu","Les lieux"],["mat","Le matériel"],["exo","Les exercices","de l\'outillage, sans ressource '
   'Kubernetes"],["hum","Les humains"]]',
-  '${[["lieu","The places"],["mat","The equipment"],["exp","The stages","services run with Agaetis, no Kubernetes resource"],["exo","The exercises","tooling, no Kubernetes resource"],["hum","The '
+  '${[["lieu","The places"],["mat","The equipment"],["exo","The exercises","tooling, no Kubernetes resource"],["hum","The '
   'humans"]]'),
  ('<tr class="lgh"><th colspan="3">Hors deck</th></tr>', '<tr class="lgh"><th colspan="3">Off deck</th></tr>'),
  ('<div class="sec-head" style="margin-top:3.5rem"><p class="eyebrow">Les rôles</p><h2>Qui fait quoi, techniquement.</h2></div>',

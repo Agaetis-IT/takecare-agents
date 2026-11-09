@@ -6,7 +6,7 @@ A release is a tag `v<SemVer>` on `main`. The `release` workflow then publishes,
 - the three charts as OCI artifacts, `oci://ghcr.io/agaetis-it/charts/takecare-crds`, `oci://ghcr.io/agaetis-it/charts/takecare` and `oci://ghcr.io/agaetis-it/charts/takecare-cluster` (the workload-cluster package, ADR 0016), with chart version = app version = the release's version (spec 04); the `Chart.yaml` files keep their development version;
 - the GitHub release: the tag's `CHANGELOG.md` section, the image and chart references, and the three chart packages attached.
 
-On the same tag, the `site` workflow builds the product site (`make site`) from the tagged tree, so that its Reference describes the released CRDs and charts, and publishes it to GitHub Pages at `https://agaetis-it.github.io/takecare-agents/`. A prerelease tag publishes it too. It can also be published by hand (`workflow_dispatch`, from `main` or a tag).
+On the same tag, the `site` workflow builds the product site (`make site`) from the tagged tree, so that its Reference describes the released CRDs and charts, and publishes it to GitHub Pages at `https://agaetis-it.github.io/takecare-agents/`. A prerelease tag publishes it too, until the site's first version is out; afterwards final tags only. It can also be published by hand (`workflow_dispatch`, from `main` or a tag).
 
 The workflow refuses a tag that is not `v<major>.<minor>.<patch>` with an optional prerelease (`v0.1.0-rc.1`; no build metadata), a tag whose commit is not on `main`, a tag without its `CHANGELOG.md` section, and a version already in the registry. Nothing published is ever replaced.
 

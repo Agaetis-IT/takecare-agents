@@ -14,7 +14,6 @@ SRC = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(SRC))
 import gen_ref, i18n_en
 
-SHOWCASE = 'https://takecare.agaetis.fr'
 SITE = 'https://agaetis-it.github.io/takecare-agents'
 META = {
  'fr': ('fr', 'TakeCare Agents · des agents SRE à l\'épreuve du terrain',
@@ -43,7 +42,7 @@ def page(lang, tpl, data, ref, site):
     body = tpl[head_end:]
     body = body.replace('<style>', '<style>\n' + FONTS, 1)
     body = (body.replace('/*DATA*/', data, 1).replace('/*REF*/null', json.dumps(ref, ensure_ascii=False).replace('</', '<\\/'), 1)
-                .replace('__VITRINE__', SHOWCASE).replace('__OTHERLANG__', f'../{other}/').replace('__ASSETS__', '../assets/'))
+                .replace('__OTHERLANG__', f'../{other}/').replace('__ASSETS__', '../assets/'))
     return f'''<!doctype html>
 <html lang="{code}">
 <head>
