@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -89,7 +90,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 		st.set(v1alpha1.ConditionReady, false, ReasonSuspended, "spec.suspend is set: no Marker is rendered")
 		st.set(ConditionEnforcing, false, ReasonSuspended, "spec.suspend is set: nothing is logged, masked, filtered or capped")
-		return ctrl.Result{}, r.writeStatus(ctx, before, &rg, st)
+		return statusWritten(r.writeStatus(ctx, before, &rg, st))
 	case lvl == v1alpha1.LevelApprentice:
 		st.set(ConditionEnforcing, false, ReasonAuditOnly, "Apprentice: the guards audit, nothing is masked, refused or capped")
 	default:
@@ -105,7 +106,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		// the platform is being changed.
 		st.set(v1alpha1.ConditionReady, false, reason, msg)
 		st.markers = rg.Status.Markers
-		return ctrl.Result{}, r.writeStatus(ctx, before, &rg, st)
+		return statusWritten(r.writeStatus(ctx, before, &rg, st))
 	}
 
 	owner := *metav1.NewControllerRef(&rg, v1alpha1.GroupVersion.WithKind("TakeCareRanger"))
@@ -143,7 +144,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	default:
 		st.set(v1alpha1.ConditionReady, true, ReasonReady, fmt.Sprintf("%d Marker(s) accepted by the gateway", len(st.markers)))
 	}
-	return ctrl.Result{}, r.writeStatus(ctx, before, &rg, st)
+	return statusWritten(r.writeStatus(ctx, before, &rg, st))
 }
 
 // gateway returns the platform's Gateway name, or why there is none. The
@@ -212,6 +213,19 @@ func (r *Reconciler) prune(ctx context.Context, keep map[string]bool) error {
 		}
 	}
 	return nil
+}
+
+// conflictRetry is how soon a reconcile refused on a stale status runs again.
+const conflictRetry = time.Second
+
+// statusWritten ends a reconcile after the status write. A conflict is the
+// expected retry of a reconcile started from a stale cache (writeStatus):
+// it is re-queued without being logged as an error.
+func statusWritten(err error) (ctrl.Result, error) {
+	if apierrors.IsConflict(err) {
+		return ctrl.Result{RequeueAfter: conflictRetry}, nil
+	}
+	return ctrl.Result{}, err
 }
 
 // writeStatus writes the status, then says the transitions a human should
