@@ -19,23 +19,20 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
   '{agent:["Agent","--c-agent"],guard:["Garde-fou","--c-guard"],exp:["Stage","--c-exp"],exo:["Exercice","--c-exo"],mat:["Matériel","--c-mat"],lieu:["Lieu","--c-lieu"],hum:["Humain","--c-hum"]};',
   'const TY = '
   '{agent:["Agent","--c-agent"],guard:["Guardrail","--c-guard"],exp:["Stage","--c-exp"],exo:["Exercise","--c-exo"],mat:["Equipment","--c-mat"],lieu:["Place","--c-lieu"],hum:["Human","--c-hum"]};'),
- ('ranger:["Étape 2",""], intendant:["Étape 2",""], psy:["Étape 2",""], kine:["Étape 2",""]}', 'ranger:["Step 2",""], intendant:["Step 2",""], psy:["Step 2",""], kine:["Step 2",""]}'),
+ ('const STATUS = {doc:["v0.1.0 · livré","live"], ranger:["v0.2.0-rc.1 · livré","live"], intendant:["Étape 2 · à spécifier",""], psy:["Étape 2 · spécifié",""], kine:["Étape 2 · spécifié",""]};',
+  'const STATUS = {doc:["v0.1.0 · shipped","live"], ranger:["v0.2.0-rc.1 · shipped","live"], intendant:["Step 2 · to be specified",""], psy:["Step 2 · specified",""], kine:["Step 2 · specified",""]};'),
  ('`<span class="st">Spécifié</span>`', '`<span class="st">Specified</span>`'),
  ('alt="Carte : ${esc(r.nick)}" loading="lazy">${st(k)}', 'alt="Card: ${esc(r.nick)}" loading="lazy">${st(k)}'),
  (' doc:"TakeCareDoc, avec un enregistrement TakeCareInvestigation par alerte. Sur une alerte Alertmanager, l\'opérateur ouvre l\'enquête et la confie à l\'agent kagent par A2A. Lecture seule ; le '
   'diagnostic sourcé part sur Slack avec sa trace et son coût. Fonctionne de bout en bout, sur la démo comme sur votre cluster.",',
   ' doc:"TakeCareDoc, with one TakeCareInvestigation record per alert. On an Alertmanager alert, the operator opens the investigation and hands it to the kagent agent over A2A. Read-only; the '
   'sourced diagnosis goes to Slack with its trace and its cost. Works end to end, on the demo as on your cluster.",'),
- (' ranger:"TakeCareRanger : les politiques d\'agentgateway, la passerelle par laquelle passent déjà tous les appels (modèles, outils MCP, A2A). Pas de boucle LLM : un garde-fou déterministe. Étape '
-  '2, avec l\'Intendant et le Psy.",',
-  ' ranger:"TakeCareRanger: agentgateway policies, the gateway every call already goes through (models, MCP tools, A2A). No LLM loop: a deterministic guardrail. Step 2, with the Intendant and the '
-  'Psy.",'),
+ (' ranger:"TakeCareRanger : les politiques d\'agentgateway rendues par niveau sur la passerelle par laquelle passent tous les appels (modèles, outils MCP, A2A) : journal, masquage et filtrage (audit à l\'Apprenti, appliqués dès le Compagnon), plafonds de jetons et de requêtes, modèles autorisés par rôle, et à l\'Expert les Balises du client. Pas de boucle LLM : un garde-fou déterministe. Livré en 0.2.0-rc.1.",',
+  ' ranger:"TakeCareRanger: agentgateway policies rendered by level on the gateway every call goes through (models, MCP tools, A2A): journal, masking and filtering (audited at Apprentice, applied from Practitioner), token and request caps, the models each role may call, and at Expert the customer\'s own Markers. No LLM loop: a deterministic guardrail. Shipped in 0.2.0-rc.1.",'),
  (' psy:"TakeCarePsy : évalue les traces des agents avec un modèle juge, jamais celui qu\'il juge (une règle CEL le refuse). Il évalue, il n\'agit pas. Spécifié, étape 2.",',
   ' psy:"TakeCarePsy: evaluates the agents\' traces with a judge model, never the one it judges (a CEL rule refuses it). It evaluates, it does not act. Specified, step 2.",'),
- (' intendant:"Un agent, pas un simple registre : il recense agents, serveurs MCP et outils, propose chaque entrée sur la plateforme et tient la cartographie de l\'infra. S\'appuiera sur '
-  'agentregistry. En cours de spécification, étape 2.",',
-  ' intendant:"An agent, not just a registry: it lists agents, MCP servers and tools, proposes every entry on the platform and keeps the infra mapping. Will build on agentregistry. Being specified, '
-  'step 2.",'),
+ (' intendant:"Un agent, pas un simple registre : il recense agents, serveurs MCP et outils, propose chaque entrée sur la plateforme et tient la cartographie de l\'infra. S\'appuiera sur agentregistry. Spécification à venir, étape 2.",',
+  ' intendant:"An agent, not just a registry: it lists agents, MCP servers and tools, proposes every entry on the platform and keeps the infra mapping. Will build on agentregistry. Specification to come, step 2.",'),
  (' kine:"TakeCareKine, enregistrements TakeCareReview : part des enquêtes du Doc pour remonter aux causes récurrentes et suivre les actions correctives. Spécifié, étape 2.",',
   ' kine:"TakeCareKine, TakeCareReview records: starts from the Doc\'s investigations to trace recurring causes and follow up corrective actions. Specified, step 2.",'),
  (' mecano:"TakeCareMecano, enregistrements TakeCareMaintenance : état du parc, plan de montée de version (une PR au niveau Practitioner). Spécifié.",',
@@ -46,8 +43,8 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
   ' nutri:"TakeCareNutri, TakeCareCostReview records: cost sources and model usage measured by the gateway. Specified.",'),
  (' guide:"TakeCareGuide, enregistrements TakeCareConversation : répond depuis vos runbooks, pas à pas. Spécifié.",',
   ' guide:"TakeCareGuide, TakeCareConversation records: answers from your runbooks, step by step. Specified.",'),
- (' campdebase:"TakeCarePlatform, le cœur : modèles, passerelle, moteur et télémétrie. Une seule instance par cluster, rendue par le chart. Le registre des agents (agentregistry) est prévu.",',
-  ' campdebase:"TakeCarePlatform, the core: models, gateway, engine and telemetry. A single instance per cluster, rendered by the chart. The agent registry (agentregistry) is planned.",'),
+ (' campdebase:"TakeCarePlatform, le cœur : modèles, passerelle, moteur et télémétrie. Une seule instance par cluster, rendue par le chart. Un cluster d\'administration supervise plusieurs clusters de charge, chacun avec son paquet takecare-cluster et son front mTLS (ADR 0016). Le registre des agents (agentregistry) est prévu.",',
+  ' campdebase:"TakeCarePlatform, the core: models, gateway, engine and telemetry. A single instance per cluster, rendered by the chart. An administration cluster supervises several workload clusters, each with its takecare-cluster package and its mTLS front (ADR 0016). The agent registry (agentregistry) is planned.",'),
  (' terrain:"Le décor de rejeu. Le mode démo en fournit un premier : un cluster k3d, le décor billing-api et l\'incident scénarisé proxy-timeout. Rejouer votre propre historique demande le '
   'connecteur d\'historique : prévu à l\'étape 2.",',
   ' terrain:"The replay scenery. Demo mode provides a first one: a k3d cluster, the billing-api scenery and the scripted proxy-timeout incident. Replaying your own history needs the history '
@@ -58,13 +55,12 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
   'Dossard remis par l\'Intendant et vérifié par jeton arrive avec le pilier Encadrer, à l\'étape 2.",',
   ' dossard:"Today, an agent\'s identity at the gateway is its route: each role reaches each connector through a route of its own, whose policy allows only its tools. The Bib handed over by the '
   'Intendant and checked by token comes with the Govern pillar, at step 2.",'),
- (' balises:"Les politiques d\'agentgateway : chaque outil autorisé un par un selon le niveau, la clé du fournisseur de modèle jamais exposée, le coût de chaque appel mesuré. Les mêmes pour tous les '
-  'agents.",',
-  ' balises:"agentgateway policies: each tool allowed one by one according to the level, the model provider\'s key never exposed, the cost of every call measured. The same for every agent.",'),
+ (' balises:"Les politiques d\'agentgateway : chaque outil autorisé un par un selon le niveau, la clé du fournisseur de modèle jamais exposée, le coût de chaque appel mesuré. Les mêmes pour tous les agents. Depuis 0.2.0-rc.1, le Ranger les rend par niveau.",',
+  ' balises:"agentgateway policies: each tool allowed one by one according to the level, the model provider\'s key never exposed, the cost of every call measured. The same for every agent. Since 0.2.0-rc.1, the Ranger renders them by level.",'),
  (' journal:"Une trace OpenTelemetry par enquête, selon les conventions GenAI, exportée en OTLP (Jaeger dans la démo). En production, le contenu des messages n\'est pas capturé par défaut.",',
   ' journal:"One OpenTelemetry trace per investigation, following the GenAI conventions, exported over OTLP (Jaeger in the demo). In production, message content is not captured by default.",'),
- (' carte:"La cartographie de l\'infra que partagent les agents : ce qui tourne, qui en répond, ce qui en dépend. Tenue par l\'Intendant.",',
-  ' carte:"The infra mapping the agents share: what runs, who answers for it, what depends on it. Kept by the Intendant.",'),
+ (' carte:"La cartographie de l\'infra que partagent les agents : ce qui tourne, qui en répond, ce qui en dépend. Des fichiers YAML dans le Git du client, servis par un serveur MCP à cinq outils en lecture (entrée, voisins, rayon d\'impact, chemin, la Carte à une date) ; le Doc la lit pour couvrir son périmètre et l\'opérateur y résout l\'entité d\'une alerte. Tenue par l\'Intendant. Livrée en 0.2.0-rc.1.",',
+  ' carte:"The infra mapping the agents share: what runs, who answers for it, what depends on it. YAML files in the customer\'s Git, served by an MCP server with five read tools (entry, neighbours, blast radius, path, the Map at a date); the Doc reads it to cover its scope and the operator resolves an alert\'s entity in it. Kept by the Intendant. Shipped in 0.2.0-rc.1.",'),
  (' trousse:"Les actions qu\'un agent peut faire seul au niveau Expert, autorisées une par une. Pas encore livré : après la v0.1.",',
   ' trousse:"The actions an agent may take on its own at the Expert level, allowed one by one. Not delivered yet: after v0.1.",'),
  (' equipes:"Ceux qui décident : ils relisent et valident chaque PR de niveau, chaque entrée au Camp de base et chaque action confiée à un agent.",',
@@ -126,7 +122,8 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
   '      <p class="lead">TakeCare Agents runs an operations staff of AI agents in your cluster: nine roles, each with its own job. Every agent starts as an Apprentice, read-only, and earns its '
   "autonomy level by level. And all your agents go through the same rules, your vendors' included.</p>\n"
   '      <div class="acts"><a class="btn pri" href="${REPO}" target="_blank" rel="noopener">See the GitHub repository ↗</a><a class="btn" href="#deck">Open the deck</a></div>'),
- ('<span class="badge"><span>version</span><b class="m">v0.1.0-rc.1 · le Doc</b></span>', '<span class="badge"><span>version</span><b class="m">v0.1.0-rc.1 · the Doc</b></span>'),
+ ('<span class="badge"><span>version</span><b class="m">v0.2.0-rc.1 · le Doc et le Ranger</b></span>',
+  '<span class="badge"><span>version</span><b class="m">v0.2.0-rc.1 · the Doc and the Ranger</b></span>'),
  ('<span class="badge"><span>moteur</span>', '<span class="badge"><span>engine</span>'),
  ('<span class="badge"><span>passerelle</span>', '<span class="badge"><span>gateway</span>'),
  ('<span class="badge"><span>licence</span>', '<span class="badge"><span>license</span>'),
@@ -179,13 +176,12 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
   'operator"],[null,"MCP","connectors"],[null,"OpenTelemetry","traces"],["agentregistry","agentregistry","planned"],["langfuse","Langfuse","under study"]]'),
  ('href="#architecture">Voir l\'architecture ›</a>', 'href="#architecture">See the architecture ›</a>'),
  ('<div class="sec-head"><p class="eyebrow">Feuille de route</p><h2>Où on en est.</h2></div>', '<div class="sec-head"><p class="eyebrow">Roadmap</p><h2>Where we stand.</h2></div>'),
- ('<div class="now"><span>maintenant · v0.1.0-rc.1</span><b>Le Doc</b><p>Diagnostic d\'incident de bout en bout : alerte, enquête en lecture seule, diagnostic sourcé sur Slack, trace et '
-  'coût.</p></div>',
-  '<div class="now"><span>now · v0.1.0-rc.1</span><b>The Doc</b><p>Incident diagnosis end to end: alert, read-only investigation, sourced diagnosis on Slack, trace and cost.</p></div>'),
- ('<div><span>bientôt</span><b>Chart 0.1.0</b><p>Les images sont déjà sur ghcr.io ; les charts suivent avec la 0.1.0.</p></div>',
-  '<div><span>soon</span><b>Chart 0.1.0</b><p>The images are already on ghcr.io; the charts follow with 0.1.0.</p></div>'),
- ("<div><span>étape 2</span><b>Encadrer, et le Kiné</b><p>Le Ranger, l'Intendant et le Psy, avec le connecteur d'historique ; le Kiné prolonge les enquêtes du Doc.</p></div>",
-  "<div><span>step 2</span><b>Govern, and the Kiné</b><p>The Ranger, the Intendant and the Psy, with the history connector; the Kiné carries on from the Doc's investigations.</p></div>"),
+ ("<div><span>fait · v0.1.0 (6 novembre 2026)</span><b>Le Doc</b><p>Diagnostic d'incident de bout en bout : alerte, enquête en lecture seule, diagnostic sourcé sur Slack, trace et coût ; images et charts publiés.</p></div>",
+  '<div><span>done · v0.1.0 (6 November 2026)</span><b>The Doc</b><p>Incident diagnosis end to end: alert, read-only investigation, sourced diagnosis on Slack, trace and cost; images and charts published.</p></div>'),
+ ('<div class="now"><span>maintenant · v0.2.0-rc.1</span><b>Le Ranger, la Carte, plusieurs clusters</b><p>Le Ranger : les mêmes règles pour tous les agents à la passerelle, journal, masquage, filtrage, plafonds, modèles autorisés. La Carte, lue par le Doc. Un cluster d\'administration qui supervise plusieurs clusters de charge. Une route de modèle par rôle.</p></div>',
+  '<div class="now"><span>now · v0.2.0-rc.1</span><b>The Ranger, the Map, several clusters</b><p>The Ranger: the same rules for every agent at the gateway, journal, masking, filtering, caps, allowed models. The Map, read by the Doc. An administration cluster supervising several workload clusters. One model route per role.</p></div>'),
+ ("<div><span>étape 2, suite</span><b>L'Intendant, le Psy, le Kiné</b><p>L'Intendant (la Carte tenue, la découverte), le Psy, le Kiné : une release par rôle.</p></div>",
+  '<div><span>step 2, continued</span><b>The Intendant, the Psy, the Kiné</b><p>The Intendant (the Map kept, discovery), the Psy, the Kiné: one release per role.</p></div>'),
  ('<div><span>ensuite</span><b>Le Mécano, puis le Guide, puis le Coach et le Nutri</b><p>Ordre de la feuille de route actuelle ; il peut bouger.</p></div>',
   '<div><span>next</span><b>The Mécano, then the Guide, then the Coach and the Nutri</b><p>The current roadmap order; it may change.</p></div>'),
  ('<div><p class="eyebrow">Maintenu par Agaetis</p><p style="margin-top:.6rem">Notre métier, c\'est de faire tourner la production de nos clients. TakeCare, c\'est l\'outil qu\'on voulait avoir pour '
@@ -209,10 +205,10 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
  ('${grp("Le matériel","11 · ce que les rôles préparent et emportent",fam(["mat"]))}', '${grp("The equipment","11 · what the roles prepare and carry",fam(["mat"]))}'),
  ('${grp("Les lieux et les humains","3 · d\'où tout part, et qui décide",fam(["lieu"]).concat(fam(["hum"])))}',
   '${grp("Places and humans","3 · where it all starts, and who decides",fam(["lieu"]).concat(fam(["hum"])))}'),
- ('const stats = [["Type",TY[tOf(r)][0]], r.p?["Pilier",PIL[r.p].name]:null, ["Nom métier",r.job], r.fam==="role"?["État",k==="doc"?"Fonctionne · v0.1.0-rc.1":k==="intendant"?"En cours de '
-  'spécification · étape 2":["ranger","psy","kine"].includes(k)?"Spécifié · étape 2":"Spécifié, pas encore codé"]:null, x.pass?["Passage",x.pass]:null, x.when?["Quand",x.when]:null].filter(Boolean);',
-  'const stats = [["Type",TY[tOf(r)][0]], r.p?["Pillar",PIL[r.p].name]:null, ["Job",r.job], r.fam==="role"?["State",k==="doc"?"Works · v0.1.0-rc.1":k==="intendant"?"Being specified · step '
-  '2":["ranger","psy","kine"].includes(k)?"Specified · step 2":"Specified, not coded yet"]:null, x.pass?["Promotion",x.pass]:null, x.when?["When",x.when]:null].filter(Boolean);'),
+ ('const stats = [["Type",TY[tOf(r)][0]], r.p?["Pilier",PIL[r.p].name]:null, ["Nom métier",r.job], r.fam==="role"?["État",k==="doc"?"Fonctionne · v0.1.0":k==="ranger"?"Livré · v0.2.0-rc.1":k==="intendant"?"Étape 2 · '
+  'à spécifier":["psy","kine"].includes(k)?"Spécifié · étape 2":"Spécifié, pas encore codé"]:null, x.pass?["Passage",x.pass]:null, x.when?["Quand",x.when]:null].filter(Boolean);',
+  'const stats = [["Type",TY[tOf(r)][0]], r.p?["Pillar",PIL[r.p].name]:null, ["Job",r.job], r.fam==="role"?["State",k==="doc"?"Works · v0.1.0":k==="ranger"?"Shipped · v0.2.0-rc.1":k==="intendant"?"Step 2 · '
+  'to be specified":["psy","kine"].includes(k)?"Specified · step 2":"Specified, not coded yet"]:null, x.pass?["Promotion",x.pass]:null, x.when?["When",x.when]:null].filter(Boolean);'),
  ('const fam = r.fam==="role" ? "Les rôles" : FAM[r.fam][0]+"s";', 'const fam = ({role:"The roles",exp:"Stages",exo:"Exercises",mat:"Equipment",lieu:"Places",hum:"Humans"})[r.fam];'),
  ('<div class="crumb"><a href="#deck">Le deck</a><span>/</span><span>${r.fam==="role"?"Le staff":TY[tOf(r)][0]}</span><span>/</span><span>${i+1} sur ${list.length}</span></div>',
   '<div class="crumb"><a href="#deck">The deck</a><span>/</span><span>${r.fam==="role"?"The staff":TY[tOf(r)][0]}</span><span>/</span><span>${i+1} of ${list.length}</span></div>'),
@@ -332,10 +328,8 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
  ('<span class="c"># le banc de précision, sur l\'incident en cours</span>', '<span class="c"># the accuracy bench, on the current incident</span>'),
  ('<span class="c"># le décor remis en état</span>', '<span class="c"># the scenery restored</span>'),
  ('<span class="c"># on range tout</span>', '<span class="c"># tidy everything up</span>'),
- ('<p class="note"><code>DEMO_IMAGES=build</code> construit les images depuis le code et les importe dans le cluster. Les images de la v0.1.0-rc.1 sont déjà sur <code>ghcr.io/agaetis-it</code>, mais '
-  "les charts n'arrivent qu'avec la 0.1.0 : d'ici là, c'est la façon de faire. Un second <code>make demo-up</code> ne change rien et prend quelques secondes.</p>",
-  '<p class="note"><code>DEMO_IMAGES=build</code> builds the images from the code and imports them into the cluster. The v0.1.0-rc.1 images are already on <code>ghcr.io/agaetis-it</code>, but the '
-  'charts only arrive with 0.1.0: until then, this is the way to go. A second <code>make demo-up</code> changes nothing and takes a few seconds.</p>'),
+ ('<p class="note">Les images et les charts de la dernière release sont sur <code>ghcr.io/agaetis-it</code> ; <code>DEMO_IMAGES=build</code> construit les images depuis le code et les importe dans le cluster. Un second <code>make demo-up</code> ne change rien et prend quelques secondes.</p>',
+  '<p class="note">The images and charts of the latest release are on <code>ghcr.io/agaetis-it</code>; <code>DEMO_IMAGES=build</code> builds the images from the code and imports them into the cluster. A second <code>make demo-up</code> changes nothing and takes a few seconds.</p>'),
  ('<p class="eyebrow" style="margin-bottom:.8rem">Prérequis</p><ul class="todo" style="--x:0"><li>Docker, avec au moins 4 Go de mémoire (la pile en prend 3,5 Gio pendant un incident)</li><li>k3d, '
   'kubectl, make</li><li>Helm 4 : téléchargé par le Makefile</li><li>Une clé pour un modèle compatible OpenAI</li></ul>',
   '<p class="eyebrow" style="margin-bottom:.8rem">Prerequisites</p><ul class="todo" style="--x:0"><li>Docker, with at least 4 GB of memory (the stack uses 3.5 GiB during an incident)</li><li>k3d, '
@@ -362,9 +356,9 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
  ('sub:"Un accès du Sac : un serveur MCP derrière la passerelle, avec ses outils classés read, propose ou act."',
   'sub:"One access in the Bag: an MCP server behind the gateway, with its tools classed read, propose or act."'),
  ('sub:"Le Terrain d\'entraînement de la démo : le décor billing-api et l\'incident à rejouer."', 'sub:"The demo\'s Training ground: the billing-api scenery and the incident to replay."'),
- ('const PLANNED = [["ranger","TakeCareRanger","Étape 2"],["intendant","TakeCareIntendant","En spécification · étape 2"],["psy","TakeCarePsy","Étape 2"],["kine","TakeCareKine","Étape '
+ ('const PLANNED = [["ranger","TakeCareRanger","Livré · v0.2.0-rc.1"],["intendant","TakeCareIntendant","Étape 2 · à spécifier"],["psy","TakeCarePsy","Étape 2"],["kine","TakeCareKine","Étape '
   '2"],["mecano","TakeCareMecano","Spécifié"],["coach","TakeCareCoach","Spécifié"],["nutri","TakeCareNutri","Spécifié"],["guide","TakeCareGuide","Spécifié"]];',
-  'const PLANNED = [["ranger","TakeCareRanger","Step 2"],["intendant","TakeCareIntendant","Being specified · step 2"],["psy","TakeCarePsy","Step 2"],["kine","TakeCareKine","Step '
+  'const PLANNED = [["ranger","TakeCareRanger","Shipped · v0.2.0-rc.1"],["intendant","TakeCareIntendant","Step 2 · to be specified"],["psy","TakeCarePsy","Step 2"],["kine","TakeCareKine","Step '
   '2"],["mecano","TakeCareMecano","Specified"],["coach","TakeCareCoach","Specified"],["nutri","TakeCareNutri","Specified"],["guide","TakeCareGuide","Specified"]];'),
  ('aria-label="Retourner la carte ${x.kind}"', 'aria-label="Flip the ${x.kind} card"'),
  ('data-kind="${x.kind}">Copier</button>', 'data-kind="${x.kind}">Copy</button>'),
