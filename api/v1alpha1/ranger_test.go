@@ -12,6 +12,9 @@ import (
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 )
 
+// wantURL is the field a refused URL is reported on.
+const wantURL = "url"
+
 func ranger(name string) *v1alpha1.TakeCareRanger {
 	return &v1alpha1.TakeCareRanger{Name: name}
 }
@@ -52,12 +55,20 @@ func TestRangerValidation(t *testing.T) {
 		}, "extra Markers are the Expert's"},
 		{"extra Markers at Expert", func(r *v1alpha1.TakeCareRanger) {
 			r.Spec.Level = v1alpha1.LevelExpert
-			r.Spec.Extra = &v1alpha1.ExtraMarkers{SourceCIDRs: []string{"10.0.0.0/8"}, Webhook: &v1alpha1.WebhookGuard{URL: "https://guard.example.internal/check"}}
+			r.Spec.Extra = &v1alpha1.ExtraMarkers{SourceCIDRs: []string{"10.0.0.0/8"}, Webhook: &v1alpha1.WebhookGuard{URL: "https://guard.example.internal:8443"}}
 		}, ""},
+		{"a source network that is not a CIDR", func(r *v1alpha1.TakeCareRanger) {
+			r.Spec.Level = v1alpha1.LevelExpert
+			r.Spec.Extra = &v1alpha1.ExtraMarkers{SourceCIDRs: []string{`10.0.0.0/8") || true || cidr("10.0.0.0/8`}}
+		}, "sourceCIDRs are CIDRs"},
+		{"a webhook with a path", func(r *v1alpha1.TakeCareRanger) {
+			r.Spec.Level = v1alpha1.LevelExpert
+			r.Spec.Extra = &v1alpha1.ExtraMarkers{Webhook: &v1alpha1.WebhookGuard{URL: "https://guard.example.internal/check"}}
+		}, wantURL},
 		{"a webhook over http", func(r *v1alpha1.TakeCareRanger) {
 			r.Spec.Level = v1alpha1.LevelExpert
-			r.Spec.Extra = &v1alpha1.ExtraMarkers{Webhook: &v1alpha1.WebhookGuard{URL: "http://guard.example.internal/check"}}
-		}, "url"},
+			r.Spec.Extra = &v1alpha1.ExtraMarkers{Webhook: &v1alpha1.WebhookGuard{URL: "http://guard.example.internal"}}
+		}, wantURL},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

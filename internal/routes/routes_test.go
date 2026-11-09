@@ -133,21 +133,14 @@ func TestRoutes(t *testing.T) {
 		t.Errorf("A2A backend host = %s", host)
 	}
 
-	for _, m := range []string{"default", "old"} {
+	for _, m := range []string{testModel, "old"} {
 		if err := EnsureModel(ctx, c, gw, r, m); err != nil {
 			t.Fatal(err)
 		}
 	}
-	model := get(t, c, HTTPRouteGVK, "role-doc-doc-model-default")
-	rule := model.Object["spec"].(map[string]any)["rules"].([]any)[0].(map[string]any)
-	if match, _, _ := unstructured.NestedMap(rule["matches"].([]any)[0].(map[string]any), "path"); match["type"] != "PathPrefix" || match["value"] != "/roles/doc.doc/models/default" {
-		t.Errorf("model route match = %v", match)
-	}
-	if ref := rule["backendRefs"].([]any)[0].(map[string]any); ref["kind"] != "AgentgatewayBackend" || ref["name"] != "model-default" {
-		t.Errorf("the model route must lead to the platform's backend, got %v", ref)
-	}
+	checkModelRoute(t, get(t, c, HTTPRouteGVK, "role-doc-doc-model-"+testModel))
 
-	if err := Prune(ctx, c, r, map[string]bool{"kubernetes": true}, []string{"default"}, true); err != nil {
+	if err := Prune(ctx, c, r, map[string]bool{"kubernetes": true}, []string{testModel}, true); err != nil {
 		t.Fatal(err)
 	}
 	if got := names(t, c, HTTPRouteGVK, r); len(got) != 3 || got[0] != "role-doc-doc-a2a" || got[1] != "role-doc-doc-mcp-kubernetes" || got[2] != "role-doc-doc-model-default" {
@@ -163,5 +156,23 @@ func TestRoutes(t *testing.T) {
 		if got := names(t, c, gvk, r); len(got) != 0 {
 			t.Errorf("%s left after a full prune: %v", gvk.Kind, got)
 		}
+	}
+}
+
+const testModel = "default"
+
+// checkModelRoute checks a role's route to the test model: its prefix, its
+// model label, and the platform's backend it leads to.
+func checkModelRoute(t *testing.T, model *unstructured.Unstructured) {
+	t.Helper()
+	rule := model.Object["spec"].(map[string]any)["rules"].([]any)[0].(map[string]any)
+	if match, _, _ := unstructured.NestedMap(rule["matches"].([]any)[0].(map[string]any), "path"); match["type"] != "PathPrefix" || match["value"] != "/roles/doc.doc/models/"+testModel {
+		t.Errorf("model route match = %v", match)
+	}
+	if got := model.GetLabels()[ModelLabel]; got != testModel {
+		t.Errorf("model route label %s = %q", ModelLabel, got)
+	}
+	if ref := rule["backendRefs"].([]any)[0].(map[string]any); ref["kind"] != "AgentgatewayBackend" || ref["name"] != "model-"+testModel {
+		t.Errorf("the model route must lead to the platform's backend, got %v", ref)
 	}
 }

@@ -116,7 +116,7 @@ func TestConnectorValidation(t *testing.T) {
 		}, wantNamespace},
 		{"both addon and url", clusterConnector, func(c *v1alpha1.TakeCareConnector) { c.Spec.MCP.URL = "https://mcp.example.com/mcp" }, "exactly one of addon and url"},
 		{"neither addon nor url", clusterConnector, func(c *v1alpha1.TakeCareConnector) { c.Spec.MCP = v1alpha1.MCPSpec{} }, "exactly one of addon and url"},
-		{"url without scheme", clusterConnector, func(c *v1alpha1.TakeCareConnector) { c.Spec.MCP = v1alpha1.MCPSpec{URL: "mcp.example.com"} }, "url"},
+		{"url without scheme", clusterConnector, func(c *v1alpha1.TakeCareConnector) { c.Spec.MCP = v1alpha1.MCPSpec{URL: "mcp.example.com"} }, wantURL},
 		{"headersFrom with an add-on", clusterConnector, func(c *v1alpha1.TakeCareConnector) {
 			c.Spec.MCP.HeadersFrom = []v1alpha1.HeaderFrom{{Name: "X", SecretKeyRef: v1alpha1.SecretKeyRef{Name: "s", Key: "k"}}}
 		}, "only valid with url"},

@@ -135,49 +135,28 @@ spec:
                     type: array
                     x-kubernetes-list-type: atomic
                   sourceCIDRs:
-                    description: The networks requests may come from.
+                    description: |-
+                      The networks requests may come from, as CIDRs. They are written into
+                      the gateway's network rule, so nothing else is accepted.
                     items:
+                      maxLength: 43
                       type: string
                     maxItems: 50
                     type: array
                     x-kubernetes-list-type: set
+                    x-kubernetes-validations:
+                    - message: sourceCIDRs are CIDRs, such as 10.0.0.0/8
+                      rule: self.all(c, isCIDR(c))
                   webhook:
                     description: 'A guard of the customer''s: the gateway asks it
                       about each request.'
                     properties:
-                      headersFrom:
-                        description: Headers taken from Secrets, for example an Authorization
-                          token.
-                        items:
-                          description: HeaderFrom sets an HTTP header from a Secret
-                            key.
-                          properties:
-                            name:
-                              minLength: 1
-                              type: string
-                            secretKeyRef:
-                              description: SecretKeyRef points at a key of a Secret.
-                              properties:
-                                key:
-                                  minLength: 1
-                                  type: string
-                                name:
-                                  minLength: 1
-                                  type: string
-                              required:
-                              - key
-                              - name
-                              type: object
-                          required:
-                          - name
-                          - secretKeyRef
-                          type: object
-                        type: array
-                        x-kubernetes-list-map-keys:
-                        - name
-                        x-kubernetes-list-type: map
                       url:
-                        pattern: ^https://[^\s]+$
+                        description: |-
+                          The guard's address: https, a host and an optional port, no path.
+                          The gateway reaches it as a backend, which carries no path, and calls
+                          the paths of its own webhook protocol.
+                        pattern: ^https://[^/\s:]+(:[0-9]{1,5})?/?$
                         type: string
                     required:
                     - url

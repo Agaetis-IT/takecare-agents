@@ -13,6 +13,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -26,13 +27,13 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/testenv"
 )
 
 const (
 	operatorNS = "takecare-system"
 	gatewayNm  = "agentgateway-proxy"
-	keyName    = "name"
 	timeout    = 20 * time.Second
 )
 
@@ -80,7 +81,7 @@ func start(t *testing.T) *harness {
 	gw.Object["spec"] = map[string]any{"gatewayClassName": "agentgateway", "listeners": []any{map[string]any{keyName: "http", "protocol": "HTTP", "port": int64(80)}}}
 	h.must(c.Create(ctx, gw))
 	h.must(c.Create(ctx, &v1alpha1.TakeCarePlatform{Name: Name, Spec: v1alpha1.TakeCarePlatformSpec{
-		Models:  []v1alpha1.ModelSpec{{Name: "default", Model: "m", BaseURL: "https://x/v1", APIKeySecretRef: v1alpha1.SecretKeyRef{Name: "k", Key: "k"}}},
+		Models:  []v1alpha1.ModelSpec{{Name: modelDefault, Model: "m", BaseURL: "https://x/v1", APIKeySecretRef: v1alpha1.SecretKeyRef{Name: "k", Key: "k"}}},
 		Gateway: v1alpha1.GatewaySpec{GatewayRef: &v1alpha1.ObjectRef{Name: gatewayNm, Namespace: operatorNS}},
 	}}))
 	return h
@@ -306,4 +307,100 @@ func TestLevelsRefusalAndSuspend(t *testing.T) {
 	if e := h.events(ReasonEnforcingChanged); len(e) != 1 {
 		t.Errorf("EnforcingChanged events %v, want one", e)
 	}
+}
+
+// modelRoute creates a role's route to a model, as the Doc controller does.
+func (h *harness) modelRoute(name, model string) {
+	h.t.Helper()
+	r := &unstructured.Unstructured{}
+	r.SetGroupVersionKind(routes.HTTPRouteGVK)
+	r.SetName(name)
+	r.SetNamespace(operatorNS)
+	r.SetLabels(map[string]string{routes.RoleLabel: "doc.doc", routes.ModelLabel: model})
+	r.Object["spec"] = map[string]any{
+		"parentRefs": []any{map[string]any{keyName: gatewayNm}},
+		"rules": []any{map[string]any{"backendRefs": []any{map[string]any{
+			"group": "agentgateway.dev", "kind": "AgentgatewayBackend", keyName: "model-" + model,
+		}}}},
+	}
+	h.must(h.c.Create(h.ctx, r))
+}
+
+// Per-model Markers follow the roles' model routes: a cap on the route to
+// a capped model, a refusal of a model the kind may not call, said once;
+// a route gone takes its Markers with it.
+func TestPerModelMarkers(t *testing.T) {
+	h := start(t)
+	h.modelRoute("role-doc-doc-model-default", modelDefault)
+	h.modelRoute("role-doc-doc-model-big", modelBig)
+	tokens := int64(1000)
+	h.must(h.c.Create(h.ctx, &v1alpha1.TakeCareRanger{Name: Name, Spec: v1alpha1.TakeCareRangerSpec{
+		Level:  v1alpha1.LevelPractitioner,
+		Caps:   v1alpha1.Caps{Models: []v1alpha1.ModelCap{{Name: modelBig, TokensPerHour: &tokens}}},
+		Models: []v1alpha1.RoleModels{{Kind: v1alpha1.KindTakeCareDoc, Allowed: []string{modelDefault}}},
+	}}))
+	want := []string{"ranger-cap-role-doc-doc-model-big", "ranger-deny-role-doc-doc-model-big", policyGuards, policyJournal}
+	h.eventually("the per-model policies", func() (bool, string) {
+		got := h.policies()
+		return slices.Equal(got, want), strings.Join(got, ",")
+	})
+	deny, err := h.policy("ranger-deny-role-doc-doc-model-big")
+	h.must(err)
+	if refs, _, _ := unstructured.NestedSlice(deny.Object, "spec", "targetRefs"); len(refs) != 1 || refs[0].(map[string]any)["kind"] != "HTTPRoute" {
+		t.Errorf("the refusal targets %v, want the role's route", refs)
+	}
+	h.eventually("one ModelNotAllowed event", func() (bool, string) {
+		e := h.events(ReasonModelNotAllowed)
+		return len(e) == 1 && strings.Contains(e[0], "HTTPRoute/role-doc-doc-model-big"), strings.Join(e, " | ")
+	})
+
+	r := &unstructured.Unstructured{}
+	r.SetGroupVersionKind(routes.HTTPRouteGVK)
+	r.SetName("role-doc-doc-model-big")
+	r.SetNamespace(operatorNS)
+	h.must(h.c.Delete(h.ctx, r))
+	h.eventually("the route's Markers gone with it", func() (bool, string) {
+		got := h.policies()
+		return slices.Equal(got, []string{policyGuards, policyJournal}), strings.Join(got, ",")
+	})
+	if e := h.events(ReasonModelNotAllowed); len(e) != 1 {
+		t.Errorf("ModelNotAllowed events %v, want one", e)
+	}
+}
+
+// The Expert's extra Markers and its webhook's backend exist at Expert
+// only, owned by the Ranger.
+func TestExpertExtraMarkers(t *testing.T) {
+	h := start(t)
+	h.must(h.c.Create(h.ctx, &v1alpha1.TakeCareRanger{Name: Name, Spec: v1alpha1.TakeCareRangerSpec{
+		Level: v1alpha1.LevelExpert,
+		Extra: &v1alpha1.ExtraMarkers{
+			SourceCIDRs: []string{testCIDR},
+			Webhook:     &v1alpha1.WebhookGuard{URL: "https://guard.example.internal"},
+		},
+	}}))
+	backend := func() error {
+		b := &unstructured.Unstructured{}
+		b.SetGroupVersionKind(routes.BackendGVK)
+		return h.c.Get(h.ctx, client.ObjectKey{Namespace: operatorNS, Name: backendWebhook}, b)
+	}
+	h.eventually("ranger-extra and the webhook's backend", func() (bool, string) {
+		got := h.policies()
+		return slices.Contains(got, policyExtra) && backend() == nil, strings.Join(got, ",")
+	})
+	guards, err := h.policy(policyGuards)
+	h.must(err)
+	entries, _, _ := unstructured.NestedSlice(guards.Object, "spec", "backend", "ai", "promptGuard", "request")
+	if last := entries[len(entries)-1].(map[string]any); last["webhook"] == nil {
+		t.Errorf("the guards' last entry is %v, want the webhook", last)
+	}
+
+	h.update(func(rg *v1alpha1.TakeCareRanger) {
+		rg.Spec.Level = v1alpha1.LevelPractitioner
+		rg.Spec.Extra = nil
+	})
+	h.eventually("no extra Marker and no webhook backend below Expert", func() (bool, string) {
+		got := h.policies()
+		return !slices.Contains(got, policyExtra) && apierrors.IsNotFound(backend()), strings.Join(got, ",")
+	})
 }

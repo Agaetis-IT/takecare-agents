@@ -18,7 +18,7 @@ The Ranger applies the same rules to every agent that goes through the gateway: 
 - `filtering`: the patterns whose match rejects the request (default: a shipped list of secret shapes: private keys, cloud access keys, API tokens of common services) and the customer's own.
 - `caps`: a token budget and a request limit for the whole gateway, and per model; per agent at Expert (§3). Units per minute or per hour.
 - `models`: which of the platform's models each role kind may call (default: all).
-- `extra` (Expert): the customer's additional Markers: a webhook guard (their own logic), allowed source networks, CEL expressions on the traffic.
+- `extra` (Expert): the customer's additional Markers: a webhook guard (their own logic, at an `https` address with a host and an optional port, no path: the gateway reaches it as a backend and calls the paths of its own webhook protocol), allowed source networks (CIDRs only: they are written into the gateway's network rule), CEL expressions on the traffic. The webhook is called **without credentials** today: a header value could only reach the gateway written in its policy, where whoever reads policies would read it. When a customer needs the guard authenticated, it is the backend's mTLS, in the shape of the cluster connector's TLS block (ADR 0016): a follow-up, not built.
 
 ```yaml
 apiVersion: takecare.agaetis.fr/v1alpha1
@@ -59,11 +59,11 @@ The tool allow-lists of the roles (ADR 0008) are not the Ranger's and exist at e
 | Journal | access logging | the Gateway | Apprentice |
 | Masking | prompt guard, regex, `Audit` then `Mask`, on requests (and non-streamed responses) | the Gateway (each role's model route could carry it, spec 01) | Apprentice (audit), Practitioner (mask) |
 | Filtering | prompt guard, regex, `Audit` then `Reject` | the Gateway | Apprentice (audit), Practitioner (reject) |
-| Budgets | local rate limit, `tokens` per unit | the Gateway; per model only through a target that carries one model (§10); each agent's routes at Expert | Practitioner |
+| Budgets | local rate limit, `tokens` per unit | the Gateway; per model, each role's route to that model (`ranger-cap-<route>`, counted per route, §10); each agent's routes at Expert | Practitioner |
 | Request limits | local rate limit, `requests` per unit with a burst | the same | Practitioner |
-| Allowed models | authorization, `Require` by route | each role's model route (spec 01) | Practitioner |
+| Allowed models | authorization, `Require` with the expression `false` (every call refused), and a warning event naming the route | each role's route to a model its kind may not call (`ranger-deny-<route>`) | Practitioner |
 | Identity | JWT authentication and `Require` on the identity's claims | each agent's routes | Expert, with the Bib |
-| Extra | webhook guard, network authorization, CEL on the traffic | the Gateway or a route | Expert |
+| Extra | webhook guard (a third prompt guard entry, to the backend `ranger-webhook`), network authorization (`Require` one source network), CEL on the traffic (`Require` every expression) | the Gateway | Expert |
 
 On the Gateway, a request limit counts every request through it, MCP and A2A calls included; a token budget counts only the model answers.
 
@@ -95,7 +95,8 @@ An agent of the customer, or of a vendor, is governed once its calls go through 
 
 ## 10. Open questions
 
-- Per-model caps: checked on agentgateway 1.6 (2026-11-08), a policy's `targetRefs` accept a Gateway, an HTTPRoute, a GRPCRoute, a ListenerSet, a Service, an AgentgatewayBackend or an InferencePool, never an `AgentgatewayModel` (the CRD refuses it); a prompt guard on the Gateway is accepted and attached. The model-side Markers therefore target the Gateway. Since the per-role model routes, each role reaches a model through a route of its own (`/roles/<kind>.<name>/models/<model>`) to one backend per model (`model-<name>`): a cap per model can target that backend, a rule per role its route; R2 settles which.
+- Per-model caps: checked on agentgateway 1.6 (2026-11-08), a policy's `targetRefs` accept a Gateway, an HTTPRoute, a GRPCRoute, a ListenerSet, a Service, an AgentgatewayBackend or an InferencePool, never an `AgentgatewayModel` (the CRD refuses it); a prompt guard on the Gateway is accepted and attached. The model-side Markers therefore target the Gateway. A `traffic` policy (rate limits, authorization) cannot target an `AgentgatewayBackend` either (the CRD's rule: a Gateway, an HTTPRoute, a GRPCRoute, a ListenerSet or an InferencePool), so the per-model caps and the allowed models target each role's route to the model. A cap per model therefore counts per role route, as the gateway counts per route; a budget shared by every role on one model needs the gateway's global rate limit service: open, not built.
+- The webhook guard when it does not answer: the gateway's default, `FailClosed` (agentgateway 1.6 CRD: an unavailable webhook or an error rejects the request), which the Ranger keeps: a customer's guard that is down stops every model call through the gateway. Whether a customer may choose `FailOpen` (an `extra.webhook.failureMode` field) is open.
 - Masking of streamed answers: unsupported by the gateway; rejection works; say which the Doc's engine uses.
 - Per-agent budgets before the Bib: the model route is shared by every agent, so a budget per agent needs an identity; the Practitioner caps are per model and gateway-wide.
 - The shipped list of secret shapes: its home (the chart's values, or the operator's defaults) and how a customer extends it.

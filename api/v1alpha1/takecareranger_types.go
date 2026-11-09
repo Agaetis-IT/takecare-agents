@@ -135,8 +135,11 @@ type ExtraMarkers struct {
 	// +optional
 	Webhook *WebhookGuard `json:"webhook,omitempty"`
 
-	// The networks requests may come from.
+	// The networks requests may come from, as CIDRs. They are written into
+	// the gateway's network rule, so nothing else is accepted.
 	// +kubebuilder:validation:MaxItems=50
+	// +kubebuilder:validation:items:MaxLength=43
+	// +kubebuilder:validation:XValidation:rule="self.all(c, isCIDR(c))",message="sourceCIDRs are CIDRs, such as 10.0.0.0/8"
 	// +listType=set
 	// +optional
 	SourceCIDRs []string `json:"sourceCIDRs,omitempty"`
@@ -149,16 +152,15 @@ type ExtraMarkers struct {
 	Expressions []string `json:"expressions,omitempty"`
 }
 
-// WebhookGuard is the customer's guard service.
+// WebhookGuard is the customer's guard service. The gateway calls it
+// without credentials: a header value could only reach the gateway written
+// in its policy, where whoever reads policies would read it (spec 09 §10).
 type WebhookGuard struct {
-	// +kubebuilder:validation:Pattern=`^https://[^\s]+$`
+	// The guard's address: https, a host and an optional port, no path.
+	// The gateway reaches it as a backend, which carries no path, and calls
+	// the paths of its own webhook protocol.
+	// +kubebuilder:validation:Pattern=`^https://[^/\s:]+(:[0-9]{1,5})?/?$`
 	URL string `json:"url"`
-
-	// Headers taken from Secrets, for example an Authorization token.
-	// +listType=map
-	// +listMapKey=name
-	// +optional
-	HeadersFrom []HeaderFrom `json:"headersFrom,omitempty"`
 }
 
 // TakeCareRangerStatus says what is enforced (spec 09 §5).
