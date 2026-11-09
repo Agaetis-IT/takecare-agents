@@ -11,8 +11,8 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
  ('data-r="reference">Référence</a>', 'data-r="reference">Reference</a>'),
  ('data-r="contribuer">Contribuer</a>', 'data-r="contribuer">Contribute</a>'),
  ('· opérateur Kubernetes open source<br>Maintenu par Agaetis', '· open source Kubernetes operator<br>Maintained by Agaetis'),
- ('<div>Toujours là, jamais à votre place.<br>',
-  '<div>Always there, never in your place.<br>'),
+ ('<div>Toujours là, jamais à votre place.<br><a href="__VITRINE__" target="_blank" rel="noopener">Se faire accompagner par Agaetis ↗</a>',
+  '<div>Always there, never in your place.<br><a href="__VITRINE__" target="_blank" rel="noopener">Get support from Agaetis ↗</a>'),
  ('const nick = r => r.nick.replace(/^(Le |La |Les |L\')/,m=>m.toLowerCase());\nconst bare = r => r.nick.replace(/^(Les |Le |La |L\')/,"");',
   'const nick = r => r.nick.replace(/^The /,"the ");\nconst bare = r => r.nick.replace(/^The /,"");'),
  ('const TY = '
@@ -189,11 +189,11 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
  ('<div><span>ensuite</span><b>Le Mécano, puis le Guide, puis le Coach et le Nutri</b><p>Ordre de la feuille de route actuelle ; il peut bouger.</p></div>',
   '<div><span>next</span><b>The Mécano, then the Guide, then the Coach and the Nutri</b><p>The current roadmap order; it may change.</p></div>'),
  ('<div><p class="eyebrow">Maintenu par Agaetis</p><p style="margin-top:.6rem">Notre métier, c\'est de faire tourner la production de nos clients. TakeCare, c\'est l\'outil qu\'on voulait avoir pour '
-  'mieux le faire. On le construit en open source.</p></div>\n'
-  '    <a class="btn" href="${REPO}" target="_blank" rel="noopener">Le dépôt ↗</a>',
+  'mieux le faire. On le construit en open source, et on accompagne ceux qui veulent le déployer.</p></div>\n'
+  '    <a class="btn" href="${VITRINE}" target="_blank" rel="noopener">Se faire accompagner ↗</a>',
   '<div><p class="eyebrow">Maintained by Agaetis</p><p style="margin-top:.6rem">Our job is running our customers\' production. TakeCare is the tool we wanted to have to do it better. We build it in '
-  'the open.</p></div>\n'
-  '    <a class="btn" href="${REPO}" target="_blank" rel="noopener">The repository ↗</a>'),
+  'the open, and we support those who want to deploy it.</p></div>\n'
+  '    <a class="btn" href="${VITRINE}" target="_blank" rel="noopener">Get support ↗</a>'),
  ('const FILTERS = '
   '[["all","Tout",null],["agent","Agents","--c-agent"],["guard","Garde-fous","--c-guard"],["exp","Stages","--c-exp"],["exo","Exercices","--c-exo"],["mat","Matériel","--c-mat"],["lieu","Lieux","--c-lieu"],["hum","Humains","--c-hum"]];',
   'const FILTERS = '
