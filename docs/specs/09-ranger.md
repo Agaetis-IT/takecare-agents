@@ -73,6 +73,8 @@ The budgets are soft, as the gateway counts tokens from the answer: the request 
 
 Conditions `Ready` (the Markers rendered and accepted by the gateway), `LevelSupported` (Expert: what waits for the Bib), `Enforcing` (True from Practitioner; at Apprentice, False with reason `AuditOnly`). `status.markers[]`: one line per Marker rendered, its policy, its target and its action. Events: a level change, a Marker refused by the gateway, and at Practitioner an alert per mask, rejection or exceeded budget, read from the gateway's metrics at each reconcile (the operator sees no request itself); a metric `takecare_ranger_alerts_total{kind}` carries the same counts.
 
+The source is two counters of the gateway (agentgateway v1.6, read on k3d): `agentgateway_guardrail_checks_total{phase, action}` counts the guard's decisions (`Allow`, `Reject`, and `Mask` for a masked request), and `agentgateway_requests_total{status, reason, route}` counts the refused requests by reason (`Guardrail` with status 403, `RateLimit` with status 429), with the role route that carried them.
+
 ## 6. What the Ranger does not do
 
 It does not read any request (the gateway does); it does not evaluate answers (the Psy); it does not hand identities (the Intendant); it does not publish to Slack (a later PR through a report connector); it does not protect what bypasses the gateway: an agent that keeps a provider key of its own escapes it, and only the customer's egress rules make the gateway the only way out (a documented requirement).
@@ -92,6 +94,12 @@ An agent of the customer, or of a vendor, is governed once its calls go through 
 3. The Doc's tool allow-list and its routes are unchanged by the Ranger at every level (the read-only guard and the e2e's Doc checks stay green).
 4. A level change is an event and re-renders the Markers; deleting the Ranger removes its Markers and nothing else.
 5. At `Expert` with the extra Markers, a call from outside the allowed source networks is refused; the identity criterion comes with the Bib.
+
+Proven so far, at `Practitioner`:
+
+- criterion 2, the mask: the e2e posts an alert whose description carries a card number and an email; the request the fake model receives (`GET /last`) holds `<CREDIT_CARD>` and `<EMAIL_ADDRESS>` instead (`hack/e2e.sh`).
+- criterion 2, the refusal: the chart smoke's request carrying a private key on the Doc's model route gets 403 with the Ranger's message (`hack/chart-smoke.sh`).
+- criterion 2, the limit: with a per-model cap of 2 requests a minute and a burst of 1 on the smoke, a run of quick calls on the Doc's model route gets 429. The gateway lets three through before it. The token budget's 429 and the events and counts follow with the Ranger's alerts.
 
 ## 10. Open questions
 

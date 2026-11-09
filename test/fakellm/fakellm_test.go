@@ -129,6 +129,35 @@ func TestReplay(t *testing.T) {
 	}
 }
 
+// /last shows the latest request as received, unknown ones included: the
+// e2e reads it to prove what the gateway let through.
+func TestLast(t *testing.T) {
+	s, err := NewReplay(fixtures(t), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+	last := func() (int, string) {
+		res, err := http.Get(srv.URL + "/last") //nolint:noctx // a test against httptest
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = res.Body.Close() }()
+		body, _ := io.ReadAll(res.Body)
+		return res.StatusCode, string(body)
+	}
+	if code, body := last(); code != http.StatusNoContent || body != "" {
+		t.Errorf("before any request: %d %q", code, body)
+	}
+	for _, req := range []string{conversation(1, tools, false), conversation(1, `[]`, false)} {
+		post(t, srv.URL, req)
+		if code, body := last(); code != http.StatusOK || body != req {
+			t.Errorf("after a request: %d %q", code, body)
+		}
+	}
+}
+
 func TestReplayRefusesAmbiguousFixtures(t *testing.T) {
 	f := fixtures(t)
 	f[0].Exchanges = append(f[0].Exchanges, f[0].Exchanges[0])

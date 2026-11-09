@@ -36,6 +36,9 @@ type Server struct {
 	mu    sync.Mutex
 	known map[string]json.RawMessage
 	stats Stats
+	// last is the body of the latest completions request, as received:
+	// the e2e reads it to prove what the gateway let through.
+	last []byte
 
 	// Record mode only.
 	upstream string
@@ -109,7 +112,8 @@ func (s *Server) Stats() Stats {
 }
 
 // Handler serves chat completions at /chat/completions (and under /v1),
-// the counts at /stats and the probe at /healthz.
+// the counts at /stats, the latest request at /last and the probe at
+// /healthz.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /chat/completions", s.complete)
@@ -117,6 +121,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(s.Stats())
+	})
+	// The latest request, as the gateway forwarded it; 204 before any.
+	mux.HandleFunc("GET /last", func(w http.ResponseWriter, _ *http.Request) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.last == nil {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(s.last)
 	})
 	// The recorded fixtures, to fetch them out of the pod (record mode).
 	mux.HandleFunc("GET /recorded", func(w http.ResponseWriter, _ *http.Request) {
@@ -137,6 +152,9 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "read the request", http.StatusBadRequest)
 		return
 	}
+	s.mu.Lock()
+	s.last = body
+	s.mu.Unlock()
 	var req Request
 	if err := json.Unmarshal(body, &req); err != nil {
 		http.Error(w, "not a chat completions request", http.StatusBadRequest)
