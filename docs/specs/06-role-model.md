@@ -153,6 +153,7 @@ Steps ordered with the concept (2026-11-04). Step 1 is the Doc alone (v0.1). Ste
 | `history` MCP server exposed by the operator | step 2 (replay at Apprentice; the Kiné) |
 | Spec 00 roadmap replaced by §9 | now, with this spec |
 | The Map as a connector, one internal alert format keyed by Map entity, readiness by ground coverage | two ADRs before step 2 |
+| `TakeCareIntendant`, `TakeCareSurvey`, the Kubernetes import, the registry connector | step 2 (spec 10) |
 
 ## 11. Equipment and places → build
 

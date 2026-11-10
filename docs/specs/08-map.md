@@ -4,7 +4,7 @@
 |---|---|
 | Status | Proposed |
 | Date | 2026-11-05 |
-| Related decisions | ADR 0008, 0014, 0015; specs 02, 05, 06 (§5 invariant 4, §11), 07 (§01 Intendant) |
+| Related decisions | ADR 0008, 0014, 0015; specs 02, 05, 06 (§5 invariant 4, §11), 07 (§01 Intendant), 10 |
 
 ## 1. Purpose
 
@@ -54,7 +54,7 @@ Every entry carries:
 - its **dates**: `created`, `lastValidated`, `lastSeen` (by the discovery);
 - free **`labels`**;
 - an **`owner`**, a team key;
-- its **`sources`**: the cloud or cluster identifiers it maps to. A `kubernetes` source is `[<cluster>/]<namespace>[/<Kind>/<name>]`, the segments' count telling the forms apart: a namespace, a named cluster's namespace, an object, a named cluster's object. Without a cluster, the source is on the unnamed cluster (a single-cluster install, the demo), which coexists with named ones; the cluster is a DNS label and needs its entry `environment/<cluster>`, as a dotted environment key does (ADR 0016 §5).
+- its **`sources`**: the cloud or cluster identifiers it maps to. A `kubernetes` source is `[<cluster>/]<namespace>[/<Kind>/<name>]`, the segments' count telling the forms apart: a namespace, a named cluster's namespace, an object, a named cluster's object. Without a cluster, the source is on the unnamed cluster (a single-cluster install, the demo), which coexists with named ones; the cluster is a DNS label and needs its entry `environment/<cluster>`, as a dotted environment key does (ADR 0016 §5). A `knowledge` source, `<connector>/<recordId>`, names the record of a `knowledge` connector that a runbook entry maps to (`knowledge: runbooks/RB-014`, spec 10 §4).
 
 Only validated entries are used for routing and scope.
 
@@ -85,6 +85,15 @@ relations:
   documentedBy: [runbook/proxy-timeout]
 ```
 
+An `alertedBy` item is the alert's name, or `{name, expr}` when it carries the alert's expression as the alert source defines it (the Intendant's import does, spec 10 §4):
+
+```yaml
+relations:
+  alertedBy:
+    - name: HighErrorRate
+      expr: sum by (service, namespace) (rate(http_requests_total{status="504"}[1m])) / sum by (service, namespace) (rate(http_requests_total[1m])) > 0.02
+```
+
 ## 5. The connector
 
 Type `map`, server `takecare-agents-mcp-map`, an add-on like `report-slack` (spec 05). It reads one repository and one branch, with a read-only deploy key or token from a Secret (spec 05's rules), and polls on an interval; the webhook comes when the open question on its secret is settled.
@@ -107,7 +116,7 @@ The server also answers **`GET /resolve`** for the operator's alert intake (spec
 
 ## 6. Who writes
 
-Never an agent. The Intendant's discovery (operator code) writes proposals as files on a branch, which the Map tooling turns into a pull request. Agents' proposals come from their records' status (spec 06 §5, invariant 4). A human merges.
+Never an agent. The Intendant's survey (spec 10) proposes entries in its record's status, the deterministic import's and the agent's alike (spec 06 §5, invariant 4); a human turns them into a pull request with `takecare review` and merges it. A validated entry that the import no longer sees is not marked: it keeps its `lastSeen`, and the survey proposes its removal.
 
 ## 7. What the Map is used for
 
@@ -124,7 +133,7 @@ Never an agent. The Intendant's discovery (operator code) writes proposals as fi
 
 ## 8. Out of scope for the light Map
 
-Runtime metrics, logs and secrets (they stay in their sources); automatic writes; vendor-specific types; the Intendant's discovery importers (their own spec).
+Runtime metrics, logs and secrets (they stay in their sources); automatic writes; vendor-specific types; the Intendant's discovery importers (spec 10).
 
 ## 9. Acceptance criteria
 
@@ -139,4 +148,3 @@ Runtime metrics, logs and secrets (they stay in their sources); automatic writes
 - A relation declared on one side or on both.
 - The schema's home: `api/map/` in this repository, or a package of its own.
 - The webhook secret's handling.
-- How the discovery marks an entry no longer seen: `lastSeen` only, or a `missing` status.

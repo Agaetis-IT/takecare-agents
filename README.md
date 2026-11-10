@@ -133,6 +133,7 @@ Prerequisites: Docker with at least 4 GB of memory (the stack uses about 3.5 GiB
 | [`docs/specs/07-role-sheets.md`](docs/specs/07-role-sheets.md) | One page per role of the concept |
 | [`docs/specs/08-map.md`](docs/specs/08-map.md) | The Map: ontology, entries, storage in the customer's Git, the `map` connector |
 | [`docs/specs/09-ranger.md`](docs/specs/09-ranger.md) | The Ranger: the same rules for every agent through the gateway (masking, filtering, budgets, allowed models), its Markers by level |
+| [`docs/specs/10-intendant.md`](docs/specs/10-intendant.md) | The Intendant: the survey, discovery through the connectors, proposals for the Map and the Base camp's registry |
 | [`docs/spikes/001-kagent-doc-engine.md`](docs/spikes/001-kagent-doc-engine.md) | Spike 001: can kagent run the Doc as well as HolmesGPT? |
 | [`docs/specs/90-agent-output-localization.md`](docs/specs/90-agent-output-localization.md) | Localized agent output (deferred) |
 | [`docs/adr/`](docs/adr/) | Architecture decisions |
