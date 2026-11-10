@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0-rc.2] - 2026-11-10
+
+### Fixed
+
+- The repository's charts carry the released version (`version` and `appVersion`), so that `make demo-up` from a release tag or from `main` pulls that version's images; `0.2.0-rc.1`'s tree pulled `0.1.0` images and failed on the Map server's, which never existed at that version. The release workflow refuses a tag whose charts name another version, `make chart-lint` requires one version for the three charts, and `make site` requires the site's badge to name the newest CHANGELOG section.
+
+### Changed
+
+- The product site describes 0.2.0 (the status of the Doc, the Ranger and the Map, the roadmap, the Ranger's resource card).
+
 ## [0.2.0-rc.1] - 2026-11-09
 
 The step 2 prerelease: the Map, the multi-cluster package, the Ranger at Practitioner by default in the demo, one model route per role, the product site; the bench of 2026-11-09 scores 5 out of 5 (`test/bench/report-2026-11-09T2042Z.json`).
