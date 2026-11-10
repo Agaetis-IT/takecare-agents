@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-10
+
+### Changed
+
+- The second step's first stable release: everything of `0.2.0-rc.1` and `0.2.0-rc.2`. The Map (spec 08), the workload-cluster package and the remote cluster connectors (ADR 0016), one model route per role, the Ranger at Practitioner by default in the demo (spec 09), and the product site. The accuracy bench of 2026-11-09 on a real model scores 5 correct diagnoses out of 5 (`test/bench/report-2026-11-09T2042Z.json`); the release candidate was validated on a real Slack.
+
 ## [0.2.0-rc.2] - 2026-11-10
 
 ### Fixed

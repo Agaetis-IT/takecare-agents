@@ -451,7 +451,7 @@ const TY = {agent:["Agent","--c-agent"],guard:["Garde-fou","--c-guard"],exp:["St
 const kv = r => `--k:var(${TY[tOf(r)][1]})`;
 const type = r => `<span class="type" style="${kv(r)}">${TY[tOf(r)][0]}</span>`;
 /* delivery status: what is shipped carries "live" */
-const STATUS = {doc:["v0.1.0 · livré","live"], ranger:["v0.2.0-rc.2 · livré","live"], carte:["v0.2.0-rc.2 · livrée","live"], intendant:["Étape 2 · à spécifier",""], psy:["Étape 2 · spécifié",""], kine:["Étape 2 · spécifié",""]};
+const STATUS = {doc:["v0.1.0 · livré","live"], ranger:["v0.2.0 · livré","live"], carte:["v0.2.0 · livrée","live"], intendant:["Étape 2 · à spécifier",""], psy:["Étape 2 · spécifié",""], kine:["Étape 2 · spécifié",""]};
 const LIVE = new Set(Object.keys(STATUS).filter(k=>STATUS[k][1]==="live"));
 const SOON = new Set(["kine","mecano","coach","nutri","guide","intendant","ranger","psy","carte","dossard","plan","ration","trousse","reeduc","carnet"].filter(k=>!LIVE.has(k)));
 const st = k => STATUS[k] ? `<span class="st ${STATUS[k][1]}">${STATUS[k][0]}</span>` : (byK[k].fam==="role" ? `<span class="st">Spécifié</span>` : "");
@@ -461,7 +461,7 @@ const tcard = k => { const r = byK[k]; return `<a class="tc${SOON.has(k)?" wip":
    Les noms exacts des ressources Kubernetes arriveront avec la Référence. */
 const TECH = {
  doc:"TakeCareDoc, avec un enregistrement TakeCareInvestigation par alerte. Sur une alerte Alertmanager, l'opérateur ouvre l'enquête et la confie à l'agent kagent par A2A. Lecture seule ; le diagnostic sourcé part sur Slack avec sa trace et son coût. Fonctionne de bout en bout, sur la démo comme sur votre cluster.",
- ranger:"TakeCareRanger : les politiques d'agentgateway rendues par niveau sur la passerelle par laquelle passent tous les appels (modèles, outils MCP, A2A) : journal, masquage et filtrage (audit à l'Apprenti, appliqués dès le Compagnon), plafonds de jetons et de requêtes, modèles autorisés par rôle, et à l'Expert les Balises du client. Pas de boucle LLM : un garde-fou déterministe. Livré en 0.2.0-rc.2.",
+ ranger:"TakeCareRanger : les politiques d'agentgateway rendues par niveau sur la passerelle par laquelle passent tous les appels (modèles, outils MCP, A2A) : journal, masquage et filtrage (audit à l'Apprenti, appliqués dès le Compagnon), plafonds de jetons et de requêtes, modèles autorisés par rôle, et à l'Expert les Balises du client. Pas de boucle LLM : un garde-fou déterministe. Livré en 0.2.0.",
  psy:"TakeCarePsy : évalue les traces des agents avec un modèle juge, jamais celui qu'il juge (une règle CEL le refuse). Il évalue, il n'agit pas. Spécifié, étape 2.",
  intendant:"Un agent, pas un simple registre : il recense agents, serveurs MCP et outils, propose chaque entrée sur la plateforme et tient la cartographie de l'infra. S'appuiera sur agentregistry. Spécification à venir, étape 2.",
  kine:"TakeCareKine, enregistrements TakeCareReview : part des enquêtes du Doc pour remonter aux causes récurrentes et suivre les actions correctives. Spécifié, étape 2.",
@@ -473,9 +473,9 @@ const TECH = {
  terrain:"Le décor de rejeu. Le mode démo en fournit un premier : un cluster k3d, le décor billing-api et l'incident scénarisé proxy-timeout. Rejouer votre propre historique demande le connecteur d'historique : prévu à l'étape 2.",
  sac:"La spec du rôle : son niveau, son périmètre, ses connecteurs par type, où partent ses résultats, son modèle. Pour le Doc, c'est la ressource TakeCareDoc.",
  dossard:"Aujourd'hui, l'identité d'un agent à la passerelle, c'est sa route : chaque rôle joint chaque connecteur par une route à lui, dont la politique n'autorise que ses outils. Le Dossard remis par l'Intendant et vérifié par jeton arrive avec le pilier Encadrer, à l'étape 2.",
- balises:"Les politiques d'agentgateway : chaque outil autorisé un par un selon le niveau, la clé du fournisseur de modèle jamais exposée, le coût de chaque appel mesuré. Les mêmes pour tous les agents. Depuis 0.2.0-rc.2, le Ranger les rend par niveau.",
+ balises:"Les politiques d'agentgateway : chaque outil autorisé un par un selon le niveau, la clé du fournisseur de modèle jamais exposée, le coût de chaque appel mesuré. Les mêmes pour tous les agents. Depuis 0.2.0, le Ranger les rend par niveau.",
  journal:"Une trace OpenTelemetry par enquête, selon les conventions GenAI, exportée en OTLP (Jaeger dans la démo). En production, le contenu des messages n'est pas capturé par défaut.",
- carte:"La cartographie de l'infra que partagent les agents : ce qui tourne, qui en répond, ce qui en dépend. Des fichiers YAML dans le Git du client, servis par un serveur MCP à cinq outils en lecture (entrée, voisins, rayon d'impact, chemin, la Carte à une date) ; le Doc la lit pour couvrir son périmètre et l'opérateur y résout l'entité d'une alerte. Tenue par l'Intendant. Livrée en 0.2.0-rc.2.",
+ carte:"La cartographie de l'infra que partagent les agents : ce qui tourne, qui en répond, ce qui en dépend. Des fichiers YAML dans le Git du client, servis par un serveur MCP à cinq outils en lecture (entrée, voisins, rayon d'impact, chemin, la Carte à une date) ; le Doc la lit pour couvrir son périmètre et l'opérateur y résout l'entité d'une alerte. Tenue par l'Intendant. Livrée en 0.2.0.",
  trousse:"Les actions qu'un agent peut faire seul au niveau Expert, autorisées une par une. Pas encore livré : après la v0.1.",
  equipes:"Ceux qui décident : ils relisent et valident chaque PR de niveau, chaque entrée au Camp de base et chaque action confiée à un agent.",
  ration:"L'enveloppe de coût validée, que le Nutri ne dépasse jamais.",
@@ -541,7 +541,7 @@ function oldHome(){
       <p class="lead">TakeCare Agents fait tourner un staff d'exploitation en agents IA dans votre cluster : neuf rôles, chacun son métier. Chaque agent commence Apprenti, en lecture seule, et gagne son autonomie palier par palier. Et tous vos agents passent par les mêmes règles, ceux des éditeurs compris.</p>
       <div class="acts"><a class="btn pri" href="${REPO}" target="_blank" rel="noopener">Voir le dépôt GitHub ↗</a><a class="btn" href="#deck">Ouvrir le deck</a></div>
       <div class="badges">
-        <span class="badge"><span>version</span><b class="m">v0.2.0-rc.2 · le Doc et le Ranger</b></span>
+        <span class="badge"><span>version</span><b class="m">v0.2.0 · le Doc et le Ranger</b></span>
         <span class="badge"><span>moteur</span><b class="o">kagent</b></span>
         <span class="badge"><span>passerelle</span><b class="o">agentgateway</b></span>
         <span class="badge"><span>licence</span><b class="y">Apache-2.0</b></span>
@@ -599,7 +599,7 @@ function oldHome(){
       <div class="sec-head"><p class="eyebrow">Feuille de route</p><h2>Où on en est.</h2></div>
       <div class="road">
         <div><span>fait · v0.1.0 (6 novembre 2026)</span><b>Le Doc</b><p>Diagnostic d'incident de bout en bout : alerte, enquête en lecture seule, diagnostic sourcé sur Slack, trace et coût ; images et charts publiés.</p></div>
-        <div class="now"><span>maintenant · v0.2.0-rc.2</span><b>Le Ranger, la Carte, plusieurs clusters</b><p>Le Ranger : les mêmes règles pour tous les agents à la passerelle, journal, masquage, filtrage, plafonds, modèles autorisés. La Carte, lue par le Doc. Un cluster d'administration qui supervise plusieurs clusters de charge. Une route de modèle par rôle.</p></div>
+        <div class="now"><span>maintenant · v0.2.0</span><b>Le Ranger, la Carte, plusieurs clusters</b><p>Le Ranger : les mêmes règles pour tous les agents à la passerelle, journal, masquage, filtrage, plafonds, modèles autorisés. La Carte, lue par le Doc. Un cluster d'administration qui supervise plusieurs clusters de charge. Une route de modèle par rôle.</p></div>
         <div><span>étape 2, suite</span><b>L'Intendant, le Psy, le Kiné</b><p>L'Intendant (la Carte tenue, la découverte), le Psy, le Kiné : une release par rôle.</p></div>
         <div><span>ensuite</span><b>Le Mécano, puis le Guide, puis le Coach et le Nutri</b><p>Ordre de la feuille de route actuelle ; il peut bouger.</p></div>
       </div>
@@ -651,7 +651,7 @@ function carte(k){
   const f = F[k], x = X[k] || {};
   const keyOf = n => (R.find(y=>bare(y)===n.trim())||{}).k;
   const mini = items => `<div class="mini">${items.filter(it=>it&&it[0]).map(([pk,why])=>`<a href="#carte-${pk}"><img src="${img(pk)}" alt=""><div><b>${esc(byK[pk].nick)}</b><span>${esc(why||byK[pk].job)}</span></div></a>`).join("")}</div>`;
-  const stats = [["Type",TY[tOf(r)][0]], r.p?["Pilier",PIL[r.p].name]:null, ["Nom métier",r.job], r.fam==="role"?["État",k==="doc"?"Fonctionne · v0.1.0":k==="ranger"?"Livré · v0.2.0-rc.2":k==="intendant"?"Étape 2 · à spécifier":["psy","kine"].includes(k)?"Spécifié · étape 2":"Spécifié, pas encore codé"]:null, x.pass?["Passage",x.pass]:null, x.when?["Quand",x.when]:null].filter(Boolean);
+  const stats = [["Type",TY[tOf(r)][0]], r.p?["Pilier",PIL[r.p].name]:null, ["Nom métier",r.job], r.fam==="role"?["État",k==="doc"?"Fonctionne · v0.1.0":k==="ranger"?"Livré · v0.2.0":k==="intendant"?"Étape 2 · à spécifier":["psy","kine"].includes(k)?"Spécifié · étape 2":"Spécifié, pas encore codé"]:null, x.pass?["Passage",x.pass]:null, x.when?["Quand",x.when]:null].filter(Boolean);
   const owner = r.fam==="mat" && r.nat ? byK[r.nat] : null;
   const rel = r.fam==="role" ? (f.partners||[]).map(([n,why])=>[keyOf(n),why]) : (x.with || (owner?[owner.k]:[])).map(pk=>[pk,null]);
   const mats = r.fam==="role" ? R.filter(y=>y.fam==="mat" && y.nat===k).map(y=>[y.k,null]).concat(r.nat==="agent"?[["sac",null]]:[]) : [];
@@ -692,7 +692,7 @@ function lexique(){
     <div class="sec-head" style="margin-top:3.5rem"><p class="eyebrow">Les rôles</p><h2>Qui fait quoi, techniquement.</h2></div>
     <div class="tbl-wrap"><table>
       <thead><tr><th>Rôle</th><th>Type</th><th>Dans le cluster</th></tr></thead>
-      <tbody>${["soigner","preparer","encadrer"].flatMap(p=>ROLES.filter(r=>r.p===p)).map(r=>`<tr><td class="c"><a href="#carte-${r.k}"><img src="${img(r.k)}" alt="">${esc(r.nick)}</a></td><td class="g">${TY[r.nat][0]}${r.k==="doc"?` · <span style="color:var(--mint)">v0.1.0</span>`:r.k==="ranger"?` · <span style="color:var(--mint)">v0.2.0-rc.2</span>`:""}</td><td class="t">${esc(TECH[r.k])}</td></tr>`).join("")}</tbody>
+      <tbody>${["soigner","preparer","encadrer"].flatMap(p=>ROLES.filter(r=>r.p===p)).map(r=>`<tr><td class="c"><a href="#carte-${r.k}"><img src="${img(r.k)}" alt="">${esc(r.nick)}</a></td><td class="g">${TY[r.nat][0]}${r.k==="doc"?` · <span style="color:var(--mint)">v0.1.0</span>`:r.k==="ranger"?` · <span style="color:var(--mint)">v0.2.0</span>`:""}</td><td class="t">${esc(TECH[r.k])}</td></tr>`).join("")}</tbody>
     </table></div>
   </div></section>`;
 }
