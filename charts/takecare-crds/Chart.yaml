@@ -2,8 +2,8 @@ apiVersion: v2
 name: takecare-crds
 description: CRDs of TakeCare Agents and of the third-party building blocks it configures (ADR 0002). Install and upgrade it before the takecare chart; never uninstall it while TakeCare resources exist.
 type: application
-version: 0.2.0-rc.1
-appVersion: 0.2.0-rc.1
+version: 0.2.0-rc.2
+appVersion: 0.2.0-rc.2
 kubeVersion: ">=1.33.0-0"
 home: https://github.com/Agaetis-IT/takecare-agents
 maintainers:
