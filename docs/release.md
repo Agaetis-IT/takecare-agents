@@ -15,6 +15,7 @@ The workflow refuses a tag that is not `v<major>.<minor>.<patch>` with an option
 1. **Bench.** Run the accuracy bench on a real model (`make demo-bench N=5`, or the `bench` workflow), as spec 04 asks before each release. Below 4 out of 5 correct, do not release.
 2. **Cut the CHANGELOG, the charts and the site**, in one docs PR:
    - rename `## [Unreleased]` to `## [x.y.z] - YYYY-MM-DD`, and open a new empty `## [Unreleased]` above it;
+   - at a final release (no prerelease suffix), fold the entries of its release candidates' sections into the new section, grouped under Added, Changed, Fixed and Removed, so that it reads as the difference with the previous final release, and remove the release candidates' sections from `CHANGELOG.md`; their tags' release pages keep the notes they were published with. Entries that only fix a release candidate (a defect no final release had) are dropped or merged into the entry they fix. This applies from 0.3.0; earlier sections stay as published;
    - set `version` and `appVersion` of the three charts (`takecare`, `takecare-crds`, `takecare-cluster`) to `x.y.z`, a prerelease included, so that `make demo-up` from `main` installs that version's images (`make chart-docs` follows);
    - update the site: the status of the roles delivered, the hero badge, the roadmap (the `now` entry moves to the new version, the previous one becomes done) and the TECH lines of the roles delivered.
 
@@ -33,7 +34,7 @@ The workflow refuses a tag that is not `v<major>.<minor>.<patch>` with an option
    - the release page lists the notes, the images and the three charts;
    - the site's Reference names the tag's commit, and its hero badge names the tag's version (fr at the root, `/en/`).
 
-**The first release of a milestone goes through a prerelease** (`v0.1.0-rc.1`, with its own `## [0.1.0-rc.1]` section): it rehearses the whole chain (registry login, six images on two architectures, three charts, the release page), which cannot be proven otherwise. The GitHub release is then marked as a prerelease.
+**The first release of a milestone goes through a prerelease** (`v0.1.0-rc.1`, with its own `## [0.1.0-rc.1]` section): it rehearses the whole chain (registry login, six images on two architectures, three charts, the release page), which cannot be proven otherwise. The GitHub release is then marked as a prerelease. The final cut folds that section into the final one (step 2); the release candidates' tags and chart packages stay on GitHub and in the registry.
 
 ## When a release fails
 
