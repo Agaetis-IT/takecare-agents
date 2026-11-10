@@ -46,6 +46,8 @@ Layers, and how they map to spec 08:
 - PrometheusRules → `alertedBy` on the entries their labels select, with the alert's expression carried on the relation (spec 08 §4);
 - the records of the `knowledge` connectors → `runbook` entries with a `knowledge` source (spec 08 §3).
 
+PrometheusRules are read through the `kubernetes` connector too: the `kubernetes` add-on's chart-rendered read-only RBAC gains `get`, `list` and `watch` on `prometheusrules` of `monitoring.coreos.com`, when that API is served. Read verbs only (AGENTS.md); it is the only RBAC change of the Intendant.
+
 Never Secrets, never ConfigMap values, never logs: content tools are not given to it.
 
 Every discovered entry is `provenance: discovered`, `status: proposed`. An existing entry seen again gets `lastSeen`. A validated entry not seen keeps its `lastSeen` and gets a removal proposal.
@@ -62,11 +64,13 @@ After the import, one kagent run, traced `invoke_agent intendant` with the same 
 
 Each proposal carries its evidence: the tool calls that support it.
 
+The agent reads workload specs with the cluster's read tools, so environment values reach the model through the gateway, under the Ranger's Markers (spec 09). A proposal and its evidence carry names and hostnames, never a value; evidence names the tool calls, it never quotes their output.
+
 Tools: the Map's five, the cluster's `read` tools and the knowledge tools; no content tool unless it is listed. The agent's proposals join the import's, with `provenance: proposed`.
 
 ## 6. Levels
 
-- **Apprentice**: the survey and its proposals in status. Nothing is published except to `takecare review` or the status.
+- **Apprentice**: the survey and its proposals in status. Nothing is published; the proposals stay in the status (or go to its `review` destination when one is set, as for the Doc, spec 02).
 - **Practitioner**: the same, plus a digest that the operator publishes to the Intendant's report destination, so that a team reviews the proposals (decided 2026-11-10). The digest holds counts and keys, never content.
 - **Expert**: not implemented in 0.3.0; `LevelSupported` says so.
 
@@ -88,9 +92,21 @@ The status is bounded in size: it keeps the counts and the first N proposals. Th
 
 agentregistry (`agentregistry-dev/agentregistry`, Apache-2.0) is installed by the `takecare` chart from its OCI chart (`oci://ghcr.io/agentregistry-dev/agentregistry/charts/agentregistry`), pinned in `hack/versions.env`, and sits behind the gateway. Its Service exposes an HTTP port (12121) and an MCP port (31313). Its MCP endpoint is registered as a connector of type `registry`, with `read` tools only, listed one by one.
 
-The Intendant's inventory is the kagent `Agent`s and `TakeCareConnector`s on the cluster plus the registry's entries. Every difference between the two (in the cluster but not in the registry, or the reverse) is a proposal.
+The Intendant's inventory has three parts, each read in one place:
 
-**Database** (decided 2026-11-10). agentregistry stores its catalogue in PostgreSQL. By default it is the customer's PostgreSQL, whose connection string comes from a Secret (`registry.database.urlSecretRef`, passed to the upstream chart's external database). When the customer cannot provide one, `registry.database.embedded: true` uses the PostgreSQL that the upstream chart bundles, with its image pinned, and the customer backs it up. The demo profile always embeds it. The upstream chart documents its bundled PostgreSQL as suited to development and evaluation only: a production install takes the customer's database.
+- the kagent `Agent`s of every namespace in scope, through the `kubernetes` connectors (the operator's rights do not grow, §4);
+- the `TakeCareConnector`s, from the operator's own cache (it already watches them);
+- the registry's entries, through the `registry` connector.
+
+Every difference between the cluster and the registry (in the cluster but not in the registry, or the reverse) is a proposal.
+
+**Database** (decided 2026-11-10). agentregistry stores its catalogue in PostgreSQL; it does not need pgvector.
+
+- By default, the customer's PostgreSQL: its connection string comes from a Secret (`registry.database.urlSecretRef`, mapped to the upstream chart's `external.secretRef`).
+- When the customer cannot provide one, `registry.database.embedded: true` makes the `takecare` chart install a durable PostgreSQL of its own: a StatefulSet with a PersistentVolumeClaim, its image pinned in `hack/versions.env`, its password from a Secret, and a NetworkPolicy that admits the registry only. The customer backs up its volume (the `takecare` chart's README says how: a volume snapshot or `pg_dump`); upgrades follow our pin.
+- The demo profile uses the same embedded path: one code path, covered by the e2e.
+
+The upstream chart's bundled PostgreSQL, documented as for development and evaluation only, is never used. No database operator is installed.
 
 No credential is ever generated into values: every key or password the registry needs comes from a Secret.
 
@@ -117,7 +133,7 @@ Metrics: `takecare_survey_proposals_total{action,source}` and `takecare_survey_n
 3. `RB-014` in the corpus lands as a runbook entry with `knowledge: runbooks/RB-014`.
 4. A Deployment deleted from the scenery gives a removal proposal; its entry keeps `lastSeen`.
 5. A namespace no connector reads is a `notSeen` line, not an omission.
-6. The read-only guard test is unchanged; the operator's ClusterRole is unchanged.
+6. The read-only guard test is unchanged and green; the operator's ClusterRole is unchanged; the only RBAC change is the `prometheusrules` read rule on the `kubernetes` add-on (§4).
 7. agentregistry installs from the chart, and its connector is Ready with read tools only.
 8. A new Map revision triggers one survey; two triggers during a run give one more survey, not two.
 
