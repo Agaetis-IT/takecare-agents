@@ -287,7 +287,7 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		return usage.Prometheus{HTTP: promClient, URL: p.Spec.Observability.Metrics.PrometheusURL}
 	}
 	if err := mgr.Add(&investigation.Worker{
-		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("takecare-operator"), Queue: queue,
+		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("takecare-operator"), Queue: queue,
 		Executor:   &runs.Executor{Engine: &kagent0103.Runs{HTTP: a2aClient}, Role: "doc", Metrics: runMetrics},
 		Tracer:     traces.Tracer("github.com/agaetis-it/takecare-agents/internal/controller/investigation"),
 		EngineKind: kagent0103.Kind, EngineNamespace: cfg.engineNamespace, Phases: phases,
