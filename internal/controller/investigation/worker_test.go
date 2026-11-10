@@ -186,7 +186,7 @@ func startWorker(t *testing.T, scripts map[string][]poll) *workerFixture {
 			t.Fatal(err)
 		}
 		w := &Worker{
-			Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("test"), Queue: queue,
+			Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("test"), Queue: queue,
 			Executor:   &runs.Executor{Engine: f.engine, Role: docName, Metrics: f.runs, Interval: 5 * time.Millisecond},
 			Tracer:     tp.Tracer("test"),
 			EngineKind: engineKind, EngineNamespace: engineKind, Phases: f.phases, GateRetry: 50 * time.Millisecond,
@@ -614,5 +614,59 @@ func TestARecordInFlightIsNotRunTwice(t *testing.T) {
 	var got v1alpha1.TakeCareInvestigation
 	if err := c.Get(ctx, key, &got); err != nil || got.Status.Phase != v1alpha1.PhaseCompleted {
 		t.Fatalf("phase %s, %v", got.Status.Phase, err)
+	}
+}
+
+// staleReader answers its first Get with a copy taken before the worker's
+// last write, as a cache that has not caught up would.
+type staleReader struct {
+	client.Reader
+	stale *v1alpha1.TakeCareInvestigation
+	gets  int
+}
+
+func (r *staleReader) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+	r.gets++
+	if r.gets == 1 {
+		r.stale.DeepCopyInto(obj.(*v1alpha1.TakeCareInvestigation))
+		return nil
+	}
+	return r.Reader.Get(ctx, key, obj, opts...)
+}
+
+// A patch computed from a read that misses the worker's last write must not
+// undo it: the retry's increment of attempts lands on the attempt that
+// markRunning wrote, not on the stale zero (TestRunEndings' flake).
+func TestPatchDoesNotUndoAWriteItDidNotSee(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	inv := &v1alpha1.TakeCareInvestigation{Name: "doc-stale", Namespace: ns}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(inv).
+		WithStatusSubresource(&v1alpha1.TakeCareInvestigation{}).Build()
+	ctx := context.Background()
+	key := client.ObjectKeyFromObject(inv)
+	var stale v1alpha1.TakeCareInvestigation
+	if err := c.Get(ctx, key, &stale); err != nil {
+		t.Fatal(err)
+	}
+	w := &Worker{Client: c}
+	if _, err := w.patch(ctx, key, func(i *v1alpha1.TakeCareInvestigation) { i.Status.Attempts = 1 }); err != nil {
+		t.Fatal(err)
+	}
+
+	r := &staleReader{Reader: c, stale: &stale}
+	w.Reader = r
+	got, err := w.patch(ctx, key, func(i *v1alpha1.TakeCareInvestigation) { i.Status.Attempts++ })
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored v1alpha1.TakeCareInvestigation
+	if err := c.Get(ctx, key, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if got.Status.Attempts != 2 || stored.Status.Attempts != 2 || r.gets != 2 {
+		t.Errorf("attempts: returned %d, stored %d, after %d reads; want 2, 2, 2", got.Status.Attempts, stored.Status.Attempts, r.gets)
 	}
 }

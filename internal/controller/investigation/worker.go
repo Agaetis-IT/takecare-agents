@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/recorder"
@@ -74,7 +75,11 @@ const (
 // freed slot or GateRetry) only when every queued record is held back; the
 // blocked Docs are forgotten when a slot frees and after each wait.
 type Worker struct {
-	Client   client.Client
+	Client client.Client
+	// Reader reads a record before the worker patches it, outside the
+	// cache (the manager's API reader): a cached copy may not hold the
+	// worker's own last write yet. Client when nil.
+	Reader   client.Reader
 	Recorder recorder.EventRecorder
 	Queue    *runs.Queue
 	Executor *runs.Executor
@@ -631,21 +636,32 @@ func (w *Worker) degradation(ctx context.Context, d *v1alpha1.TakeCareDoc) (*v1a
 	return &v1alpha1.Degradation{Connectors: down, Reason: "not ready when the run started: " + strings.Join(down, ", ")}, nil
 }
 
-// patch applies change to the record's status, read afresh, as a merge
-// patch of the fields it changes only (the intake folds alerts in
-// concurrently).
+// patch applies change to the record's status, read afresh outside the
+// cache, as a merge patch of the fields it changes only (the intake folds
+// alerts in concurrently). The patch carries the resourceVersion it was
+// computed from: a write in between is a conflict, and the change is
+// applied again to a new read. A cached read could miss the worker's own
+// last write, and an increment from it would undo that write.
 func (w *Worker) patch(ctx context.Context, key types.NamespacedName, change func(*v1alpha1.TakeCareInvestigation)) (v1alpha1.TakeCareInvestigation, error) {
+	reader := w.Reader
+	if reader == nil {
+		reader = w.Client
+	}
 	var inv v1alpha1.TakeCareInvestigation
-	if err := w.Client.Get(ctx, key, &inv); err != nil {
-		return inv, fmt.Errorf("read investigation %s: %w", key.Name, err)
-	}
-	before := inv.DeepCopy()
-	change(&inv)
-	inv.Status.ObservedGeneration = inv.Generation
-	if err := w.Client.Status().Patch(ctx, &inv, client.MergeFrom(before)); err != nil {
-		return inv, fmt.Errorf("update status of %s: %w", key.Name, err)
-	}
-	return inv, nil
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		inv = v1alpha1.TakeCareInvestigation{}
+		if err := reader.Get(ctx, key, &inv); err != nil {
+			return fmt.Errorf("read investigation %s: %w", key.Name, err)
+		}
+		before := inv.DeepCopy()
+		change(&inv)
+		inv.Status.ObservedGeneration = inv.Generation
+		if err := w.Client.Status().Patch(ctx, &inv, client.MergeFromWithOptions(before, client.MergeFromWithOptimisticLock{})); err != nil {
+			return fmt.Errorf("update status of %s: %w", key.Name, err)
+		}
+		return nil
+	})
+	return inv, err
 }
 
 func (w *Worker) count(inv *v1alpha1.TakeCareInvestigation, phase v1alpha1.RunPhase) {
