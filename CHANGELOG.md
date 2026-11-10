@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- `NOTICE` no longer depends on a network probe and carries no links: each package is listed with its name, version and license type, the full texts shipping in the release images. The links came from a probe of GitHub whose failures silently changed them from one run to the next, and three of them were dead (`github.com/blang/semver/v4`, `github.com/evanphx/json-patch/v5`, `gomodules.xyz/jsonpatch/v2`).
+
 ## [0.2.0] - 2026-11-10
 
 ### Changed
