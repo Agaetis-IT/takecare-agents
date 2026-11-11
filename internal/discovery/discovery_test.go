@@ -31,6 +31,9 @@ const (
 	deployment = "Deployment"
 
 	wantUnrecognizedList = "unrecognized resources_list output"
+	oldDate              = "2026-11-01"
+	provDeclared         = "declared"
+	envDemoApps          = "environment/demo-apps"
 )
 
 var today = time.Date(2026, 11, 11, 9, 0, 0, 0, time.UTC)
@@ -240,7 +243,7 @@ func TestCallFailedIsNotSeen(t *testing.T) {
 // list, or a proposed one, stays.
 func TestRemove(t *testing.T) {
 	entry := func(key, status, source string) mapserver.Entry {
-		return mapserver.Entry{Key: key, Provenance: "declared", Status: status, Created: "2026-11-01", LastSeen: "2026-11-01",
+		return mapserver.Entry{Key: key, Provenance: provDeclared, Status: status, Created: oldDate, LastSeen: oldDate,
 			Sources: []map[string]string{{"kubernetes": source}}}
 	}
 	ix := demoIndex(t,
@@ -302,13 +305,13 @@ func TestServiceFromLabels(t *testing.T) {
 // refreshes lastSeen.
 func TestNoUpdateForLastSeenAlone(t *testing.T) {
 	entry := func(key string, relations mapserver.Relations) mapserver.Entry {
-		return mapserver.Entry{Key: key, Provenance: "declared", Status: "validated", Created: "2026-11-01", LastSeen: "2026-11-01",
+		return mapserver.Entry{Key: key, Provenance: provDeclared, Status: "validated", Created: oldDate, LastSeen: oldDate,
 			Sources: []map[string]string{{sourceKubernetes: demoApps + "/Deployment/" + strings.TrimPrefix(key, "compute/")}}, Relations: relations}
 	}
 	ix := NewIndex([]mapserver.Entry{
-		{Key: "environment/demo-apps", Provenance: "declared", Status: "validated", Created: "2026-11-01", LastSeen: "2026-11-01",
+		{Key: envDemoApps, Provenance: provDeclared, Status: "validated", Created: oldDate, LastSeen: oldDate,
 			Sources: []map[string]string{{sourceKubernetes: demoApps}}},
-		entry("compute/billing-api", mapserver.Relations{DeployedIn: []string{"environment/demo-apps"}}),
+		entry("compute/billing-api", mapserver.Relations{DeployedIn: []string{envDemoApps}}),
 		entry("compute/notifications-worker", mapserver.Relations{}),
 	})
 	res := survey(t, fakeGround{}.start(t), ix, demoApps)
@@ -316,7 +319,7 @@ func TestNoUpdateForLastSeenAlone(t *testing.T) {
 	for _, p := range res.Proposals {
 		byKey[p.Key] = p
 	}
-	for _, key := range []string{"environment/demo-apps", "compute/billing-api"} {
+	for _, key := range []string{envDemoApps, "compute/billing-api"} {
 		if p, ok := byKey[key]; ok {
 			t.Errorf("%s, changed only by lastSeen, is proposed: %s", key, p.Action)
 		}
