@@ -31,9 +31,9 @@ Out of scope for 0.3.0: the Bib (its own ADR and spec), cloud importers, any wri
 - **Schedule**: the Intendant's `schedule`.
 - **On demand**: a `TakeCareSurvey` created by hand or by `takecare discover`.
 - **A new Map revision**: the `status.mapRevision` of the map connector changes.
-- **A registration**: a `TakeCareConnector` or a kagent `Agent` appears or changes.
+- **A registration**: a connector the Intendant binds, or a kagent agent of the engine namespace, appears or changes. Agents are watched in the engine namespace only, where the operator already reads them; other namespaces would need new rights.
 
-Triggers are debounced: one survey in flight per Intendant. A trigger during a run queues one more survey, never more than one.
+Triggers are debounced: one survey in flight per Intendant, a survey created by hand included. Triggers that fire together, or while a survey is in flight, give one survey, whose trigger is the first in the order `MapRevision`, `Registration`, `Schedule`; the one waiting is kept in `status.pendingTrigger`, so that a restart does not lose it. A suspended Intendant, or one not Ready, starts no survey: its triggers are recorded the same way, and the one pending survey runs when it is Ready again. The Intendant's first survey starts when it is first Ready.
 
 ## 4. The deterministic import
 

@@ -317,8 +317,9 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	}
 	// The Intendant (spec 10): its conditions, schedule and routes.
 	if err := (&intendant.Reconciler{
-		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("takecare-operator"),
-		OperatorNamespace: cfg.operatorNamespace,
+		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("takecare-operator"),
+		OperatorNamespace: cfg.operatorNamespace, EngineNamespace: cfg.engineNamespace,
+		AgentKinds: (&kagent0103.Agents{}).AgentTypes(),
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up the Intendant controller: %w", err)
 	}
