@@ -124,6 +124,7 @@ spec:
                   kind:
                     enum:
                     - TakeCareDoc
+                    - TakeCareIntendant
                     type: string
                   name:
                     minLength: 1

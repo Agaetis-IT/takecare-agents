@@ -15,10 +15,10 @@ import (
 
 func clusterConnector() *v1alpha1.TakeCareConnector {
 	return &v1alpha1.TakeCareConnector{
-		Name: uniqueName("kubernetes"), Namespace: testNamespace,
+		Name: uniqueName(addonKubernetes), Namespace: testNamespace,
 		Spec: v1alpha1.TakeCareConnectorSpec{
 			Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster, v1alpha1.ConnectorLogs},
-			MCP:   v1alpha1.MCPSpec{Addon: "kubernetes"},
+			MCP:   v1alpha1.MCPSpec{Addon: addonKubernetes},
 			Kubernetes: &v1alpha1.KubernetesSpec{
 				Namespaces:     []v1alpha1.Namespace{nsDemoApps, nsAckSystem},
 				ExtraResources: []v1alpha1.ResourceRef{{Group: "rds.services.k8s.aws", Resource: "dbproxies"}},
@@ -45,7 +45,7 @@ func reportConnector() *v1alpha1.TakeCareConnector {
 }
 
 func TestConnectorValidation(t *testing.T) {
-	const needsHTTPS, addonKubernetes = "cluster needs an https mcp.url", "kubernetes"
+	const needsHTTPS = "cluster needs an https mcp.url"
 	remote := func(c *v1alpha1.TakeCareConnector) {
 		c.Spec.MCP = v1alpha1.MCPSpec{URL: "https://east.example.internal:8443/mcp"}
 		c.Spec.Cluster = &v1alpha1.ClusterSpec{Name: "east", TLS: v1alpha1.ClusterTLS{
@@ -166,12 +166,12 @@ func docFixture() *v1alpha1.TakeCareDoc {
 				Scope: v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{nsDemoApps}},
 			},
 			Connectors: v1alpha1.DocConnectors{
-				Cluster:   []string{"kubernetes"},
+				Cluster:   []string{addonKubernetes},
 				Metrics:   []string{"prometheus"},
 				Knowledge: []string{"incidents", "runbooks", "vendor"},
-				Report:    "report",
+				Report:    connReport,
 			},
-			Report: v1alpha1.DocReport{Apprentice: "review", Practitioner: destOnCall},
+			Report: v1alpha1.ReportDestinations{Apprentice: "review", Practitioner: destOnCall},
 			Alerts: v1alpha1.AlertsSpec{Matchers: []v1alpha1.AlertMatcher{{Name: "severity", Value: critical}}},
 		},
 	}
@@ -190,7 +190,7 @@ func TestDocValidation(t *testing.T) {
 		{"Expert is accepted by the schema", func(d *v1alpha1.TakeCareDoc) { d.Spec.Level = v1alpha1.LevelExpert }, ""},
 		{"model override", func(d *v1alpha1.TakeCareDoc) { d.Spec.Model = &v1alpha1.ModelRef{Name: "local"} }, ""},
 		{"suspended", func(d *v1alpha1.TakeCareDoc) { d.Spec.Suspend = true }, ""},
-		{"unknown level", func(d *v1alpha1.TakeCareDoc) { d.Spec.Level = "expert" }, wantLevel},
+		{caseUnknownLevel, func(d *v1alpha1.TakeCareDoc) { d.Spec.Level = badLevel }, wantLevel},
 		{"the old value trial is rejected", func(d *v1alpha1.TakeCareDoc) { d.Spec.Level = "trial" }, wantLevel},
 		{"empty scope", func(d *v1alpha1.TakeCareDoc) { d.Spec.Scope.Namespaces = nil }, "at least one selector"},
 		{"entities without namespaces: routed by entity", func(d *v1alpha1.TakeCareDoc) {
@@ -210,7 +210,7 @@ func TestDocValidation(t *testing.T) {
 		{"negative concurrency", func(d *v1alpha1.TakeCareDoc) { d.Spec.Investigation.MaxConcurrent = -1 }, "maxConcurrent"},
 		{"matcher without name", func(d *v1alpha1.TakeCareDoc) {
 			d.Spec.Alerts.Matchers = []v1alpha1.AlertMatcher{{Value: critical}}
-		}, "name"},
+		}, wantName},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

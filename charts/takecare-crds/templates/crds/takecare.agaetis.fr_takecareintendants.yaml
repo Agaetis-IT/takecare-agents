@@ -1,0 +1,340 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+    helm.sh/resource-policy: keep
+  name: takecareintendants.takecare.agaetis.fr
+spec:
+  group: takecare.agaetis.fr
+  names:
+    categories:
+    - takecare
+    kind: TakeCareIntendant
+    listKind: TakeCareIntendantList
+    plural: takecareintendants
+    shortNames:
+    - tcintendant
+    singular: takecareintendant
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.level
+      name: Level
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .status.lastSurvey
+      name: Last survey
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          TakeCareIntendant is the Intendant: it surveys the ground and proposes the
+          Map's entries, read-only.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              TakeCareIntendantSpec configures the Intendant, the infra inventory and
+              mapping role (spec 10): it surveys the ground and proposes the Map's
+              entries and the registry's, never writing either.
+            properties:
+              connectors:
+                description: |-
+                  Connectors bound to the Intendant, by type. The map connector is
+                  required: a survey is made against one Map.
+                properties:
+                  cluster:
+                    description: The kubernetes connectors the import reads the ground
+                      through.
+                    items:
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: set
+                  knowledge:
+                    description: The knowledge connectors whose records become runbook
+                      entries.
+                    items:
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: set
+                  map:
+                    description: The Map connector (type map, spec 08) the survey
+                      is made against.
+                    items:
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: set
+                  registry:
+                    description: |-
+                      The registry connector (type registry, spec 10 §8), when the Base
+                      camp's registry is installed.
+                    items:
+                      type: string
+                    maxItems: 1
+                    type: array
+                    x-kubernetes-list-type: set
+                  report:
+                    description: 'The report connector: where the operator publishes
+                      the digest.'
+                    type: string
+                type: object
+                x-kubernetes-validations:
+                - message: the Intendant needs exactly one map connector
+                  rule: has(self.map) && size(self.map) == 1
+              contentTools:
+                description: |-
+                  Tools classed content (their result carries payload: logs, object
+                  contents, ConfigMap data) the role may use, at every level; a
+                  content tool not listed here never enters the role's allow-list
+                  (ADR 0014 §5). Not enforced yet.
+                items:
+                  minLength: 1
+                  type: string
+                maxItems: 50
+                type: array
+                x-kubernetes-list-type: set
+              importers:
+                default:
+                - Kubernetes
+                description: The deterministic importers a survey runs before the
+                  agent pass.
+                items:
+                  description: Importer names a deterministic importer the Intendant
+                    drives (spec 10 §4).
+                  enum:
+                  - Kubernetes
+                  type: string
+                minItems: 1
+                type: array
+                x-kubernetes-list-type: set
+              level:
+                default: Apprentice
+                description: Intervention level. Defaults to Apprentice.
+                enum:
+                - Apprentice
+                - Practitioner
+                - Expert
+                type: string
+              model:
+                description: Overrides the model declared in the TakeCarePlatform.
+                properties:
+                  name:
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    type: string
+                required:
+                - name
+                type: object
+              report:
+                description: |-
+                  Destinations of the report connector, by level: the Practitioner's
+                  digest (counts and keys, never content).
+                properties:
+                  apprentice:
+                    description: 'Destination at the Apprentice level. Unset: diagnoses
+                      stay in status.'
+                    type: string
+                  practitioner:
+                    description: Destination at the Practitioner level.
+                    type: string
+                type: object
+              schedule:
+                default: 0 3 * * *
+                description: |-
+                  When the scheduled survey runs, as a cron expression in UTC. The
+                  controller parses it; a schedule it cannot parse is reported in status.
+                maxLength: 100
+                minLength: 1
+                type: string
+              scope:
+                description: |-
+                  What the role works on: namespaces, Map entries, or both. Each kind
+                  says which selectors it accepts (spec 06 §1).
+                properties:
+                  entities:
+                    description: |-
+                      Map entries in scope, by key (spec 08); only validated entries
+                      count. Routing by entity lands with ADR 0015's intake.
+                    items:
+                      description: |-
+                        EntityKey is a Map entry's key, type/name, with one of spec 08's eleven
+                        type prefixes.
+                      maxLength: 253
+                      pattern: ^(service|compute|datastore|storage|network|identity|external|team|environment|observability|runbook)/[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                      type: string
+                    maxItems: 200
+                    type: array
+                    x-kubernetes-list-type: set
+                  namespaces:
+                    description: Namespaces the role may read (and, at the Expert
+                      level, modify).
+                    items:
+                      description: Namespace is a Kubernetes namespace name.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: set
+                type: object
+                x-kubernetes-validations:
+                - message: 'scope needs at least one selector: namespaces or entities'
+                  rule: (has(self.namespaces) && size(self.namespaces) > 0) || (has(self.entities)
+                    && size(self.entities) > 0)
+              suspend:
+                description: 'Pause without deletion: the role stops handling anything.'
+                type: boolean
+            required:
+            - connectors
+            - scope
+            type: object
+          status:
+            description: TakeCareIntendantStatus is the observed state of the Intendant.
+            properties:
+              blindSpots:
+                description: |-
+                  Entities of the scope the role cannot read, filled from coverage
+                  (ADR 0014 §2); empty until coverage is computed.
+                items:
+                  description: BlindSpot is an entity of the scope the role cannot
+                    read.
+                  properties:
+                    entity:
+                      description: |-
+                        EntityKey is a Map entry's key, type/name, with one of spec 08's eleven
+                        type prefixes.
+                      maxLength: 253
+                      pattern: ^(service|compute|datastore|storage|network|identity|external|team|environment|observability|runbook)/[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                      type: string
+                    message:
+                      type: string
+                    reason:
+                      description: BlindSpotReason says why an entity is not covered.
+                      enum:
+                      - NoAccess
+                      - ConnectorNotReady
+                      - NotInMap
+                      - NotValidated
+                      type: string
+                  required:
+                  - entity
+                  - reason
+                  type: object
+                maxItems: 200
+                type: array
+                x-kubernetes-list-map-keys:
+                - entity
+                x-kubernetes-list-type: map
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              lastSurvey:
+                description: The last TakeCareSurvey started.
+                type: string
+              lastSurveyTime:
+                format: date-time
+                type: string
+              level:
+                description: Effective level, which differs from spec.level when the
+                  requested one is not supported.
+                enum:
+                - Apprentice
+                - Practitioner
+                - Expert
+                type: string
+              nextSurveyTime:
+                description: When the schedule runs the next survey.
+                format: date-time
+                type: string
+              observedGeneration:
+                format: int64
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

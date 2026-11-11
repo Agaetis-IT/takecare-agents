@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The Intendant's kinds `TakeCareIntendant` and `TakeCareSurvey` (spec 10). No controller yet: nothing is surveyed.
+
 ### Fixed
 
 - A retried investigation records its attempts exactly: the worker read the record from the cache before patching its status, and a copy that had not caught up with its own last write made the retry's increment undo it (`attempts: 1` on a run that took two). The worker now reads the record outside the cache and patches it with its resourceVersion, applying the change again on a conflict.

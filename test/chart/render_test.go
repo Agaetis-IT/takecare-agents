@@ -880,8 +880,8 @@ func TestCRDChart(t *testing.T) {
 			other = append(other, c.GetName())
 		}
 	}
-	if len(takecare) != 6 {
-		t.Errorf("want the 6 TakeCare CRDs, got %v", takecare)
+	if len(takecare) != 8 {
+		t.Errorf("want the 8 TakeCare CRDs, got %v", takecare)
 	}
 	if slices.Contains(other, "dbproxies.rds.services.k8s.aws") {
 		t.Error("the demo CRD is rendered without demo.enabled")

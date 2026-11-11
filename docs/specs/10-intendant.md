@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Status | Proposed |
-| Date | 2026-11-10 |
+| Status | Accepted (2026-11-10) |
+| Date | 2026-11-11 |
 | Related decisions | ADR 0008, 0014, 0015, 0016; specs 05, 06 (§3, §5, §11), 07 (§01), 08, 09, 13 |
 
 ## 1. Purpose
@@ -17,11 +17,12 @@ Out of scope for 0.3.0: the Bib (its own ADR and spec), cloud importers, any wri
 ## 2. Resources
 
 - **`TakeCareIntendant`**, namespaced, one per Map scope. It embeds `RoleCommonSpec` (level, scope, connectors, model, report) and adds:
-  - `schedule`: a cron expression, daily by default;
-  - `importers`: `kubernetes` for 0.3.0;
-  - `connectors.map`, required; `connectors.registry`, optional.
+  - `schedule`: a cron expression, daily by default (`0 3 * * *`);
+  - `importers`: `Kubernetes` for 0.3.0, the default;
+  - `connectors`: `cluster`, `knowledge`, `map` (required, exactly one), `registry` (optional, at most one) and `report`;
+  - `report`: the report connector's destinations by level, as the Doc's.
 - **`TakeCareSurvey`**, one record per survey, with a `RunStatus` (spec 06 §3).
-  - Spec: `trigger` (`Schedule`, `OnDemand`, `MapRevision`, `Registration`) and the Map revision surveyed against.
+  - Spec, immutable: `intendantRef`, `trigger` (`Schedule`, `OnDemand`, `MapRevision`, `Registration`; `OnDemand` by default) and `mapRevision`, the Map revision to survey against (empty: the one served when the survey starts).
   - Status: `layers[]` (per layer: seen, matched, proposed, not seen with the reason), `proposals[]` (§7), `inventory` (agents, MCP servers and tools, from the cluster and the registry), `blindSpots`.
   - Printer columns: phase, trigger, revision, proposals, age.
 
@@ -80,9 +81,9 @@ Invariant 4 (spec 06 §5) holds: there is no `propose` tool, and `takecare revie
 
 Each item of `proposals[]` is `{id, action, key, entry, evidence[], source}`:
 
-- `action`: `add`, `update` or `remove`;
+- `action`: `Add`, `Update` or `Remove`;
 - `entry`: the YAML that the file of spec 08 §4 would hold;
-- `source`: `import` or `agent`.
+- `source`: `Import` or `Agent`.
 
 Ids are stable across surveys (a hash of the action and the key), so that `takecare review` can tick what was taken.
 
