@@ -7,6 +7,7 @@ package mcptest
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -24,6 +25,10 @@ type ToolSpec struct {
 	// Reply is the text the tool answers; IsError marks the call failed.
 	Reply   string
 	IsError bool
+	// Handle, when set, answers instead of Reply and IsError, from the
+	// call's arguments: its text, its structured content (nil for none)
+	// and whether the call failed.
+	Handle func(args map[string]any) (text string, structured any, isError bool)
 }
 
 // Server is a running fake MCP server.
@@ -50,9 +55,19 @@ func Start(t *testing.T, tools ...ToolSpec) *Server {
 		if !spec.Unannotated {
 			tool.Annotations = &sdk.ToolAnnotations{ReadOnlyHint: spec.ReadOnly}
 		}
-		server.AddTool(tool, func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
+		server.AddTool(tool, func(_ context.Context, req *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
 			counter.Add(1)
-			return &sdk.CallToolResult{IsError: spec.IsError, Content: []sdk.Content{&sdk.TextContent{Text: spec.Reply}}}, nil
+			if spec.Handle == nil {
+				return &sdk.CallToolResult{IsError: spec.IsError, Content: []sdk.Content{&sdk.TextContent{Text: spec.Reply}}}, nil
+			}
+			var args map[string]any
+			if len(req.Params.Arguments) > 0 {
+				if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+					return nil, err
+				}
+			}
+			text, structured, isError := spec.Handle(args)
+			return &sdk.CallToolResult{IsError: isError, StructuredContent: structured, Content: []sdk.Content{&sdk.TextContent{Text: text}}}, nil
 		})
 	}
 	handler := sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return server }, &sdk.StreamableHTTPOptions{Stateless: true})

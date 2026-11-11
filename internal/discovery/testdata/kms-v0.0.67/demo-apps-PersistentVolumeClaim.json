@@ -1,0 +1,27 @@
+{
+  "content": [
+    {
+      "text": "NAMESPACE   APIVERSION   KIND                    NAME              STATUS    VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE   VOLUMEMODE   LABELS\ndemo-apps   v1           PersistentVolumeClaim   billing-exports   Pending                                                     <unset>                 34s   Filesystem   <none>\n",
+      "type": "text"
+    }
+  ],
+  "structuredContent": {
+    "items": [
+      {
+        "Access Modes": "",
+        "Age": "34s",
+        "Capacity": "",
+        "Labels": "<none>",
+        "Name": "billing-exports",
+        "Namespace": "demo-apps",
+        "Status": "Pending",
+        "StorageClass": "",
+        "Volume": "",
+        "VolumeAttributesClass": "<unset>",
+        "VolumeMode": "Filesystem",
+        "apiVersion": "v1",
+        "kind": "PersistentVolumeClaim"
+      }
+    ]
+  }
+}

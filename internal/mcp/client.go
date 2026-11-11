@@ -3,18 +3,21 @@
 
 // Package mcp is the operator's MCP client (ADR 0008, spec 05): it lists a
 // connector's tools to classify them, and calls a tool only where the product
-// needs the operator to act: publishing through a report connector, and the
-// read probe that tells whether the kubernetes add-on sees a resource kind.
+// needs the operator to act: publishing through a report connector, the
+// read probe that tells whether the kubernetes add-on sees a resource kind,
+// the Map's entry tool, and the Intendant's import (spec 10 §4), which lists
+// the ground through a cluster connector's read tools.
 //
 // The operator reaches the servers directly (the NetworkPolicies admit it
 // next to the gateway); agents only ever reach them through the gateway's
 // per-role routes. That makes this client the one place where the operator
-// could run a customer's tool: Call refuses anything outside the two cases
+// could run a customer's tool: Call refuses anything outside the cases
 // above, whatever the caller asks.
 package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -41,6 +44,12 @@ const ProbeTool = "resources_list"
 // an add-on or a customer's server, when discovery classed it read.
 const MapEntryTool = "entry"
 
+// DiscoveryTools are the kubernetes add-on's tools the Intendant's import
+// calls on a cluster connector (spec 10 §4): the namespaces, and a resource
+// kind's objects. The import lists; it never gets an object, whose spec may
+// carry values.
+var DiscoveryTools = []string{"namespaces_list", ProbeTool}
+
 // Endpoint is a connector's server as the operator reaches it.
 type Endpoint struct {
 	// URL of the MCP endpoint (Streamable HTTP).
@@ -56,6 +65,10 @@ type Endpoint struct {
 	// ReadTools are the tools discovery classed read on this endpoint: the
 	// probe is called only when it is one of them.
 	ReadTools map[string]bool
+	// StateTools are the tools discovery classed read and did not mark
+	// content: the import calls a discovery tool only when it is one of
+	// them. Empty unless the caller fills it.
+	StateTools map[string]bool
 	// HTTP, when set, replaces the client's for this endpoint: a remote
 	// cluster's client certificate (ADR 0016).
 	HTTP *http.Client
@@ -110,9 +123,10 @@ func (c *Client) ListTools(ctx context.Context, ep Endpoint) ([]Tool, error) {
 
 // Allowed says whether the operator may call a tool on this endpoint: any
 // tool of a report connector (the operator publishes, the model never does),
-// the entry tool of a map connector, or the probe tool of a cluster add-on
-// of TakeCare's, each when discovery classed it read; nothing else, whatever
-// the caller asks.
+// the entry tool of a map connector or the probe tool of a cluster add-on
+// of TakeCare's, each when discovery classed it read, or a discovery tool
+// of a cluster connector, when discovery classed it read and not content;
+// nothing else, whatever the caller asks.
 func (ep Endpoint) Allowed(tool string) bool {
 	if slices.Contains(ep.Types, v1alpha1.ConnectorReport) {
 		return true
@@ -120,7 +134,11 @@ func (ep Endpoint) Allowed(tool string) bool {
 	if slices.Contains(ep.Types, v1alpha1.ConnectorMap) && tool == MapEntryTool && ep.ReadTools[tool] {
 		return true
 	}
-	return ep.Addon && slices.Contains(ep.Types, v1alpha1.ConnectorCluster) && tool == ProbeTool && ep.ReadTools[tool]
+	cluster := slices.Contains(ep.Types, v1alpha1.ConnectorCluster)
+	if cluster && slices.Contains(DiscoveryTools, tool) && ep.StateTools[tool] {
+		return true
+	}
+	return ep.Addon && cluster && tool == ProbeTool && ep.ReadTools[tool]
 }
 
 // Result is a tool call's outcome.
@@ -129,6 +147,9 @@ type Result struct {
 	IsError bool
 	// Text is the concatenated text content.
 	Text string
+	// Structured is the call's structuredContent, as the server sent it.
+	// Only the Intendant's import reads it; report and map calls ignore it.
+	Structured json.RawMessage
 }
 
 // Call runs a tool, if Allowed permits it.
@@ -153,6 +174,11 @@ func (c *Client) Call(ctx context.Context, ep Endpoint, tool string, args map[st
 		}
 	}
 	out.Text = strings.Join(parts, "\n")
+	if res.StructuredContent != nil {
+		if out.Structured, err = json.Marshal(res.StructuredContent); err != nil {
+			return Result{}, fmt.Errorf("tools/call %s on %s: structured content: %w", tool, ep.URL, err)
+		}
+	}
 	return out, nil
 }
 

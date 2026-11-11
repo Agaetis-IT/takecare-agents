@@ -1,0 +1,25 @@
+{
+  "content": [
+    {
+      "text": "NAMESPACE   APIVERSION   KIND      NAME          TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)    AGE   SELECTOR          LABELS\ndemo-apps   v1           Service   billing-api   ClusterIP   10.0.0.171   <none>        8080/TCP   34s   app=billing-api   app.kubernetes.io/part-of=takecare-demo\n",
+      "type": "text"
+    }
+  ],
+  "structuredContent": {
+    "items": [
+      {
+        "Age": "34s",
+        "Cluster-IP": "10.0.0.171",
+        "External-IP": "<none>",
+        "Labels": "app.kubernetes.io/part-of=takecare-demo",
+        "Name": "billing-api",
+        "Namespace": "demo-apps",
+        "Port(s)": "8080/TCP",
+        "Selector": "app=billing-api",
+        "Type": "ClusterIP",
+        "apiVersion": "v1",
+        "kind": "Service"
+      }
+    ]
+  }
+}

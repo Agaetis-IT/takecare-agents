@@ -1,0 +1,8 @@
+{
+  "content": [
+    {
+      "text": "APIVERSION   KIND        NAME              STATUS   AGE   LABELS\nv1           Namespace   ack-system        Active   33s   kubernetes.io/metadata.name=ack-system\nv1           Namespace   default           Active   47s   kubernetes.io/metadata.name=default\nv1           Namespace   demo-apps         Active   33s   kubernetes.io/metadata.name=demo-apps\nv1           Namespace   kube-node-lease   Active   47s   kubernetes.io/metadata.name=kube-node-lease\nv1           Namespace   kube-public       Active   47s   kubernetes.io/metadata.name=kube-public\nv1           Namespace   kube-system       Active   47s   kubernetes.io/metadata.name=kube-system\n",
+      "type": "text"
+    }
+  ]
+}

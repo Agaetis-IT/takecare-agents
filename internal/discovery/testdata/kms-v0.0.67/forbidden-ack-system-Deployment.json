@@ -1,0 +1,9 @@
+{
+  "content": [
+    {
+      "text": "failed to list resources: deployments.apps is forbidden: User \"system:serviceaccount:default:limited\" cannot list resource \"deployments\" in API group \"apps\" in the namespace \"ack-system\"",
+      "type": "text"
+    }
+  ],
+  "isError": true
+}

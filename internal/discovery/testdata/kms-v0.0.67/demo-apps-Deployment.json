@@ -1,0 +1,40 @@
+{
+  "content": [
+    {
+      "text": "NAMESPACE   APIVERSION   KIND         NAME                   READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES                                              SELECTOR                   LABELS\ndemo-apps   apps/v1      Deployment   billing-api            0/1     0            0           33s   app          ghcr.io/agaetis-it/takecare-agents-demo-app:0.2.0   app=billing-api            app.kubernetes.io/part-of=takecare-demo,takecare.agaetis.fr/demo=demo\ndemo-apps   apps/v1      Deployment   notifications-worker   0/1     0            0           33s   worker       busybox:1.37                                        app=notifications-worker   app.kubernetes.io/name=notifications\n",
+      "type": "text"
+    }
+  ],
+  "structuredContent": {
+    "items": [
+      {
+        "Age": "33s",
+        "Available": 0,
+        "Containers": "app",
+        "Images": "ghcr.io/agaetis-it/takecare-agents-demo-app:0.2.0",
+        "Labels": "app.kubernetes.io/part-of=takecare-demo,takecare.agaetis.fr/demo=demo",
+        "Name": "billing-api",
+        "Namespace": "demo-apps",
+        "Ready": "0/1",
+        "Selector": "app=billing-api",
+        "Up-to-date": 0,
+        "apiVersion": "apps/v1",
+        "kind": "Deployment"
+      },
+      {
+        "Age": "33s",
+        "Available": 0,
+        "Containers": "worker",
+        "Images": "busybox:1.37",
+        "Labels": "app.kubernetes.io/name=notifications",
+        "Name": "notifications-worker",
+        "Namespace": "demo-apps",
+        "Ready": "0/1",
+        "Selector": "app=notifications-worker",
+        "Up-to-date": 0,
+        "apiVersion": "apps/v1",
+        "kind": "Deployment"
+      }
+    ]
+  }
+}
