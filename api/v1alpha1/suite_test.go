@@ -27,21 +27,30 @@ const (
 	testNamespace = "takecare-system"
 
 	// Values repeated across the test tables.
-	nsDemoApps    = "demo-apps"
-	nsAckSystem   = "ack-system"
-	destOnCall    = "on-call"
-	critical      = "critical"
-	colAge        = "Age"
-	wantDuplicate = "Duplicate value"
-	modelDefault  = "default"
-	colReady      = "Ready"
-	currencyUSD   = "USD"
-	wantNamespace = "namespaces"
-	wantLevel     = "level"
-	wantEntities  = "entities"
-	entityBilling = "service/billing-api"
-	toolPodsLog   = "pods_log"
-	badNamespace  = "namespace not a DNS label"
+	nsDemoApps       = "demo-apps"
+	nsAckSystem      = "ack-system"
+	destOnCall       = "on-call"
+	critical         = "critical"
+	colAge           = "Age"
+	wantDuplicate    = "Duplicate value"
+	modelDefault     = "default"
+	colReady         = "Ready"
+	currencyUSD      = "USD"
+	wantNamespace    = "namespaces"
+	wantLevel        = "level"
+	wantEntities     = "entities"
+	entityBilling    = "service/billing-api"
+	toolPodsLog      = "pods_log"
+	badNamespace     = "namespace not a DNS label"
+	wantName         = "name"
+	badLevel         = "expert"
+	connReport       = "report"
+	connMap          = "map"
+	connRegistry     = "registry"
+	colLevel         = "Level"
+	colPhase         = "Phase"
+	addonKubernetes  = "kubernetes"
+	caseUnknownLevel = "unknown level"
 )
 
 var (
@@ -132,10 +141,12 @@ func TestCRDsExposeTheStaff(t *testing.T) {
 	}{
 		{"takecareplatforms.takecare.agaetis.fr", "tcplatform", apiextensionsv1.ClusterScoped, []string{"Ready", "Production", colAge}},
 		{"takecareconnectors.takecare.agaetis.fr", "tcconnector", apiextensionsv1.NamespaceScoped, []string{"Types", "Tools", colReady, colAge}},
-		{"takecaredocs.takecare.agaetis.fr", "tcdoc", apiextensionsv1.NamespaceScoped, []string{"Level", colReady, colAge}},
-		{"takecareinvestigations.takecare.agaetis.fr", "tcinvestigation", apiextensionsv1.NamespaceScoped, []string{"Alert", "Phase", "Published", colAge}},
-		{"takecaredemos.takecare.agaetis.fr", "tcdemo", apiextensionsv1.NamespaceScoped, []string{"Scenario", "Phase", colReady, colAge}},
-		{"takecarerangers.takecare.agaetis.fr", "tcranger", apiextensionsv1.ClusterScoped, []string{"Level", "Enforcing", colReady, colAge}},
+		{"takecaredocs.takecare.agaetis.fr", "tcdoc", apiextensionsv1.NamespaceScoped, []string{colLevel, colReady, colAge}},
+		{"takecareinvestigations.takecare.agaetis.fr", "tcinvestigation", apiextensionsv1.NamespaceScoped, []string{"Alert", colPhase, "Published", colAge}},
+		{"takecaredemos.takecare.agaetis.fr", "tcdemo", apiextensionsv1.NamespaceScoped, []string{"Scenario", colPhase, colReady, colAge}},
+		{"takecarerangers.takecare.agaetis.fr", "tcranger", apiextensionsv1.ClusterScoped, []string{colLevel, "Enforcing", colReady, colAge}},
+		{"takecareintendants.takecare.agaetis.fr", "tcintendant", apiextensionsv1.NamespaceScoped, []string{colLevel, colReady, "Last survey", colAge}},
+		{"takecaresurveys.takecare.agaetis.fr", "tcsurvey", apiextensionsv1.NamespaceScoped, []string{"Intendant", "Trigger", colPhase, "Revision", "Proposals", colAge}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.crd, func(t *testing.T) {

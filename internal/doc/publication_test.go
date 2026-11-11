@@ -148,9 +148,9 @@ func TestPublicationLaterAlertsWithoutTheSentSet(t *testing.T) {
 
 func TestDestination(t *testing.T) {
 	d := &v1alpha1.TakeCareDoc{}
-	d.Spec.Report = v1alpha1.DocReport{Apprentice: "review", Practitioner: onCall}
+	d.Spec.Report = v1alpha1.ReportDestinations{Apprentice: "review", Practitioner: onCall}
 	noApprentice := &v1alpha1.TakeCareDoc{}
-	noApprentice.Spec.Report = v1alpha1.DocReport{Practitioner: onCall}
+	noApprentice.Spec.Report = v1alpha1.ReportDestinations{Practitioner: onCall}
 	for _, tc := range []struct {
 		name   string
 		doc    *v1alpha1.TakeCareDoc

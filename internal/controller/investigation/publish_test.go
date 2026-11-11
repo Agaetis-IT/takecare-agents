@@ -78,7 +78,7 @@ func (u *fakeUsage) Snapshot(context.Context) (usage.Counters, error) {
 
 // publishing builds a fixture whose Doc publishes through a report
 // connector at the given level's destinations.
-func publishing(t *testing.T, source *fakeUsage, poster *fakePoster, report v1alpha1.DocReport) (*workerFixture, *prometheus.HistogramVec) {
+func publishing(t *testing.T, source *fakeUsage, poster *fakePoster, report v1alpha1.ReportDestinations) (*workerFixture, *prometheus.HistogramVec) {
 	t.Helper()
 	f := startWorker(t, map[string][]poll{task1: {completed}, task2: {completed}, task3: {completed}})
 	duration, err := NewDurationMetric(prometheus.NewRegistry())
@@ -133,7 +133,7 @@ func (f *workerFixture) waitPublished(t *testing.T, name string) *v1alpha1.TakeC
 // Apprentice carries the banner and never reaches on-call.
 func TestPublishByLevel(t *testing.T) {
 	poster := &fakePoster{}
-	f, duration := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Apprentice: "review", Practitioner: onCall})
+	f, duration := publishing(t, &fakeUsage{}, poster, v1alpha1.ReportDestinations{Apprentice: "review", Practitioner: onCall})
 	f.start()
 
 	f.investigationAt(t, "doc-practitioner", v1alpha1.LevelPractitioner, false)
@@ -186,7 +186,7 @@ func TestPublishByLevel(t *testing.T) {
 // nothing to on-call.
 func TestApprenticeWithoutDestinationIsStatusOnly(t *testing.T) {
 	poster := &fakePoster{}
-	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Practitioner: onCall})
+	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.ReportDestinations{Practitioner: onCall})
 	f.start()
 	f.investigationAt(t, "doc-apprentice-only", v1alpha1.LevelApprentice, false)
 	inv := f.waitPublished(t, "doc-apprentice-only")
@@ -200,7 +200,7 @@ func TestApprenticeWithoutDestinationIsStatusOnly(t *testing.T) {
 // touched.
 func TestResumePublishes(t *testing.T) {
 	poster := &fakePoster{}
-	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Practitioner: onCall})
+	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.ReportDestinations{Practitioner: onCall})
 	done := metav1.Now()
 	f.investigation(t, "doc-unpublished", &v1alpha1.TakeCareInvestigationStatus{
 		Phase: v1alpha1.PhaseCompleted, StartedAt: &done, CompletedAt: &done, TraceID: "6bf92f3577b34da6a3ce929d0e0e4736",
@@ -234,7 +234,7 @@ func TestResumePublishes(t *testing.T) {
 // with its reason.
 func TestPublicationFailure(t *testing.T) {
 	poster := &fakePoster{fail: true}
-	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Practitioner: onCall})
+	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.ReportDestinations{Practitioner: onCall})
 	f.start()
 	f.investigationAt(t, "doc-unposted", v1alpha1.LevelPractitioner, false)
 	inv := f.waitPublished(t, "doc-unposted")
@@ -250,7 +250,7 @@ func TestPublicationFailure(t *testing.T) {
 // say why, never a number.
 func TestUsageUnmeasured(t *testing.T) {
 	poster := &fakePoster{}
-	f, _ := publishing(t, &fakeUsage{err: errors.New("Prometheus at http://prometheus is unreachable")}, poster, v1alpha1.DocReport{Practitioner: onCall})
+	f, _ := publishing(t, &fakeUsage{err: errors.New("Prometheus at http://prometheus is unreachable")}, poster, v1alpha1.ReportDestinations{Practitioner: onCall})
 	f.start()
 	f.investigationAt(t, "doc-unmeasured", v1alpha1.LevelPractitioner, false)
 	inv := f.waitPublished(t, "doc-unmeasured")
@@ -267,7 +267,7 @@ func TestUsageUnmeasured(t *testing.T) {
 // publication; one the run's message carried is not.
 func TestPublicationNamesLaterAlerts(t *testing.T) {
 	poster := &fakePoster{}
-	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.DocReport{Practitioner: onCall})
+	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.ReportDestinations{Practitioner: onCall})
 	f.engine.beforeDone = func() {
 		var inv v1alpha1.TakeCareInvestigation
 		if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: "doc-grouped"}, &inv); err != nil {

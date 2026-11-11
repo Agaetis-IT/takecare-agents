@@ -22,7 +22,7 @@ type TakeCareDocSpec struct {
 
 	// Destinations of the report connector, by level.
 	// +optional
-	Report DocReport `json:"report,omitempty"`
+	Report ReportDestinations `json:"report,omitempty"`
 
 	// +optional
 	Alerts AlertsSpec `json:"alerts,omitempty"`
@@ -65,8 +65,9 @@ type DocConnectors struct {
 	Report string `json:"report,omitempty"`
 }
 
-// DocReport names the report connector destination used at each level.
-type DocReport struct {
+// ReportDestinations names the report connector destination used at each
+// level, by the roles that publish (the Doc, the Intendant).
+type ReportDestinations struct {
 	// Destination at the Apprentice level. Unset: diagnoses stay in status.
 	// +optional
 	Apprentice string `json:"apprentice,omitempty"`
