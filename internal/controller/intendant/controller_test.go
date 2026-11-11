@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
@@ -187,6 +188,23 @@ func (f *fixture) wait(t *testing.T, name string, check func(*v1alpha1.TakeCareI
 	return nil
 }
 
+// update changes the Intendant on a fresh read, again on a conflict: the
+// reconciler patches its status meanwhile.
+func (f *fixture) update(t *testing.T, name string, mutate func(*v1alpha1.TakeCareIntendant)) {
+	t.Helper()
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var in v1alpha1.TakeCareIntendant
+		if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: name}, &in); err != nil {
+			return err
+		}
+		mutate(&in)
+		return f.c.Update(context.Background(), &in)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func cond(in *v1alpha1.TakeCareIntendant, typ string) *metav1.Condition {
 	return meta.FindStatusCondition(in.Status.Conditions, typ)
 }
@@ -321,11 +339,7 @@ func TestRoutesPruned(t *testing.T) {
 		_, ok := f.policy(t, "pruned", connMetrics)
 		return ok
 	})
-	in := f.wait(t, "pruned", func(*v1alpha1.TakeCareIntendant) bool { return true })
-	in.Spec.Connectors.Metrics = nil
-	if err := f.c.Update(context.Background(), in); err != nil {
-		t.Fatal(err)
-	}
+	f.update(t, "pruned", func(in *v1alpha1.TakeCareIntendant) { in.Spec.Connectors.Metrics = nil })
 	f.wait(t, "pruned", func(*v1alpha1.TakeCareIntendant) bool {
 		_, ok := f.policy(t, "pruned", connMetrics)
 		return !ok

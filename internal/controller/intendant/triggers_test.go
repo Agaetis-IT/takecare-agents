@@ -96,11 +96,9 @@ func (f *fixture) end(t *testing.T, name string, phase v1alpha1.RunPhase) {
 // real RequeueAfter of hours cannot wait for.
 func (f *fixture) poke(t *testing.T, name string) {
 	t.Helper()
-	in := f.wait(t, name, func(*v1alpha1.TakeCareIntendant) bool { return true })
-	metav1.SetMetaDataAnnotation(&in.ObjectMeta, "test/poke", time.Now().String())
-	if err := f.c.Update(context.Background(), in); err != nil {
-		t.Fatal(err)
-	}
+	f.update(t, name, func(in *v1alpha1.TakeCareIntendant) {
+		metav1.SetMetaDataAnnotation(&in.ObjectMeta, "test/poke", time.Now().String())
+	})
 }
 
 func (f *fixture) pending(t *testing.T, name string, want v1alpha1.SurveyTrigger) {
@@ -207,11 +205,7 @@ func TestSuspended(t *testing.T) {
 	f.wait(t, "suspended", func(in *v1alpha1.TakeCareIntendant) bool { return in.Status.LastMapRevision == rev2 })
 	f.waitSurveys(t, "suspended", 0)
 
-	in := f.wait(t, "suspended", func(*v1alpha1.TakeCareIntendant) bool { return true })
-	in.Spec.Suspend = false
-	if err := f.c.Update(context.Background(), in); err != nil {
-		t.Fatal(err)
-	}
+	f.update(t, "suspended", func(in *v1alpha1.TakeCareIntendant) { in.Spec.Suspend = false })
 	if s := f.waitSurveys(t, "suspended", 1); !hasSurvey(s, v1alpha1.TriggerMapRevision) {
 		t.Errorf("resumed: %+v", s)
 	}
