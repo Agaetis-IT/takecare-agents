@@ -54,6 +54,8 @@ Never Secrets, never ConfigMap values, never logs: content tools are not given t
 
 Every discovered entry is `provenance: discovered`, `status: proposed`. An existing entry seen again is matched; it gets an update only when its sources or relations differ from what the survey sees. A survey never proposes a change of `lastSeen` alone: `lastSeen` is refreshed by an update made for another reason. A validated entry whose kubernetes sources were all surveyed (their kind listed in their namespace) and none seen keeps its `lastSeen` and gets a removal proposal; a source the survey could not list keeps the entry.
 
+The survey reads the Map through the Intendant's map route with `map_at` alone, the list of keys and then each entry at the same date, so that the whole index comes from one revision; N entries cost N+1 calls, four at a time.
+
 What a connector could not read is a `notSeen` line with its reason, never silence.
 
 ## 5. The agent pass
@@ -89,7 +91,7 @@ Each item of `proposals[]` is `{id, action, key, entry, evidence[], source}`:
 
 Ids are stable across surveys (a hash of the action and the key), so that `takecare review` can tick what was taken.
 
-The status is bounded in size: it keeps the counts and the first N proposals. The full set is in a ConfigMap owned by the survey, which never holds content.
+The status is bounded in size: it keeps the counts and the first 20 proposals (20 entries of at most 8 KiB, 160 KiB at worst). The full set is in a ConfigMap owned by the survey, which never holds content.
 
 ## 8. The registry (Base camp)
 

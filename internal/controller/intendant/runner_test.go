@@ -1,0 +1,278 @@
+// SPDX-FileCopyrightText: 2026 Agaetis
+// SPDX-License-Identifier: Apache-2.0
+
+package intendant
+
+import (
+	"context"
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/mapserver"
+	"github.com/agaetis-it/takecare-agents/internal/mcp"
+	"github.com/agaetis-it/takecare-agents/internal/mcp/mcptest"
+)
+
+const (
+	demoApps       = "demo-apps"
+	kmsFixtures    = "../../discovery/testdata/kms-v0.0.67"
+	demoMap        = "../../mapserver/testdata/demo"
+	toolNamespaces = "namespaces_list"
+	toolResources  = "resources_list"
+	clusterTools   = toolNamespaces + "," + toolResources
+)
+
+// gate holds a server's calls until it is released, at the latest when the
+// test ends, before its server closes: a failing test never hangs on it.
+type gate struct {
+	ch   chan struct{}
+	once sync.Once
+}
+
+func newGate() *gate { return &gate{ch: make(chan struct{})} }
+
+func (g *gate) release() { g.once.Do(func() { close(g.ch) }) }
+
+// mapServer serves the demo Map, as the map add-on would behind the route;
+// hold, when set, makes every call wait until it is released.
+func mapServer(t *testing.T, hold *gate) string {
+	t.Helper()
+	s, err := mapserver.New(mapserver.Config{Dir: demoMap, Logger: slog.New(slog.DiscardHandler)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := s.Handler()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hold != nil {
+			<-hold.ch
+		}
+		h.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	if hold != nil {
+		t.Cleanup(hold.release) // runs before srv.Close
+	}
+	return srv.URL + "/mcp"
+}
+
+// clusterServer serves the kubernetes add-on's captured answers: the
+// demo-apps namespace's objects, an empty list elsewhere.
+func clusterServer(t *testing.T) string {
+	t.Helper()
+	answer := func(name string) (string, any, bool) {
+		raw, err := os.ReadFile(filepath.Join(kmsFixtures, name)) //nolint:gosec // a test's own testdata
+		if err != nil {
+			t.Fatal(err)
+		}
+		var a struct {
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+			StructuredContent any  `json:"structuredContent"`
+			IsError           bool `json:"isError"`
+		}
+		if err := json.Unmarshal(raw, &a); err != nil {
+			t.Fatal(err)
+		}
+		return a.Content[0].Text, a.StructuredContent, a.IsError
+	}
+	srv := mcptest.Start(t,
+		mcptest.ToolSpec{Name: toolNamespaces, ReadOnly: true, Handle: func(map[string]any) (string, any, bool) { return answer("namespaces_list.json") }},
+		mcptest.ToolSpec{Name: toolResources, ReadOnly: true, Handle: func(args map[string]any) (string, any, bool) {
+			name := args["namespace"].(string) + "-" + args["kind"].(string) + ".json"
+			if _, err := os.Stat(filepath.Join(kmsFixtures, name)); err == nil {
+				return answer(name)
+			}
+			return answer("empty.json")
+		}},
+	)
+	return srv.URL
+}
+
+// surveyed sets up an Intendant over the demo Map and the demo-apps
+// ground, its map route served by mapURL.
+func (f *fixture) surveyed(t *testing.T, name, mapURL string, mutate func(*v1alpha1.TakeCareIntendant)) {
+	t.Helper()
+	f.routes.Store(name+"/"+connMap, mapURL)
+	f.routes.Store(name+"/"+connCluster, clusterServer(t))
+	f.intendant(t, name, func(in *v1alpha1.TakeCareIntendant) {
+		in.Spec.Scope = v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{demoApps}}
+		in.Spec.Connectors = v1alpha1.IntendantConnectors{Map: []string{connMap}, Cluster: []string{connCluster}}
+		if mutate != nil {
+			mutate(in)
+		}
+	})
+}
+
+// grounded creates the platform and the map and cluster connectors once.
+func (f *fixture) grounded(t *testing.T) {
+	t.Helper()
+	f.platform(t)
+	f.connector(t, connMap, v1alpha1.ConnectorMap, []string{mcp.MapListTool})
+	f.mapRevision(t, rev1)
+	f.connector(t, connCluster, v1alpha1.ConnectorCluster, strings.Split(clusterTools, ","))
+	var c v1alpha1.TakeCareConnector
+	if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: connCluster}, &c); err != nil {
+		t.Fatal(err)
+	}
+	c.Spec.Kubernetes.Namespaces = []v1alpha1.Namespace{demoApps}
+	if err := f.c.Update(context.Background(), &c); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// waitPhase waits until every survey of the Intendant is in phase, n of
+// them.
+func (f *fixture) waitPhase(t *testing.T, name string, n int, phase v1alpha1.RunPhase) []v1alpha1.TakeCareSurvey {
+	t.Helper()
+	deadline := time.Now().Add(waitFor)
+	var got []v1alpha1.TakeCareSurvey
+	for time.Now().Before(deadline) {
+		got = f.surveys(t, name)
+		done := 0
+		for _, s := range got {
+			if s.Status.Phase == phase {
+				done++
+			}
+		}
+		if done == n {
+			return got
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("%s: surveys %+v, want %d %s", name, phases(got), n, phase)
+	return nil
+}
+
+func phases(l []v1alpha1.TakeCareSurvey) []string {
+	out := make([]string, 0, len(l))
+	for _, s := range l {
+		out = append(out, s.Name+"="+string(s.Status.Phase)+" "+s.Status.Reason)
+	}
+	return out
+}
+
+// A survey picked up with no phase is Queued, runs and is Completed with
+// the import's layers, its counts and its first proposals; the next one is
+// not blocked.
+func TestSurveyRuns(t *testing.T) {
+	f := startRunner(t)
+	f.grounded(t)
+	f.surveyed(t, "runs", mapServer(t, nil), nil)
+	s := f.waitPhase(t, "runs", 1, v1alpha1.RunCompleted)[0]
+	st := s.Status
+	if len(st.Layers) != 7 || st.ProposalCounts == nil || st.ProposalCounts.Total == 0 || len(st.Proposals) > maxProposals || st.MapRevision == "" {
+		t.Fatalf("status: layers %d, counts %+v, %d proposals, revision %q", len(st.Layers), st.ProposalCounts, len(st.Proposals), st.MapRevision)
+	}
+	if st.StartedAt == nil || st.CompletedAt == nil || st.Attempts != 1 {
+		t.Errorf("run: started %v, completed %v, attempts %d", st.StartedAt, st.CompletedAt, st.Attempts)
+	}
+	f.mapRevision(t, rev2)
+	f.waitPhase(t, "runs", 2, v1alpha1.RunCompleted)
+}
+
+// An Intendant whose survey runs holds back only its own: another's runs.
+func TestSurveysDoNotStarve(t *testing.T) {
+	f := startRunner(t)
+	f.grounded(t)
+	hold := newGate()
+	f.surveyed(t, "slow", mapServer(t, hold), nil)
+	f.waitPhase(t, "slow", 1, v1alpha1.RunRunning)
+	byHand := &v1alpha1.TakeCareSurvey{Name: "slow-by-hand", Namespace: ns}
+	byHand.Spec.IntendantRef = v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareIntendant, Name: "slow"}
+	if err := f.c.Create(context.Background(), byHand); err != nil {
+		t.Fatal(err)
+	}
+	f.surveyed(t, "fast", mapServer(t, nil), nil)
+	f.waitPhase(t, "fast", 1, v1alpha1.RunCompleted)
+	if got := f.surveys(t, "slow"); len(got) != 2 || f.waitPhase(t, "slow", 1, v1alpha1.RunQueued) == nil {
+		t.Fatalf("slow's surveys %v", phases(got))
+	}
+	hold.release()
+	f.waitPhase(t, "slow", 2, v1alpha1.RunCompleted)
+}
+
+// A Map that does not answer fails the survey, with the reason.
+func TestSurveyMapFailure(t *testing.T) {
+	f := startRunner(t)
+	f.grounded(t)
+	dead := httptest.NewServer(http.NotFoundHandler())
+	dead.Close()
+	f.surveyed(t, "nomap", dead.URL+"/mcp", nil)
+	s := f.waitPhase(t, "nomap", 1, v1alpha1.RunFailed)[0]
+	if !strings.Contains(s.Status.Reason, "the Map could not be read") || s.Status.CompletedAt == nil {
+		t.Errorf("failed survey %+v", s.Status.RunStatus)
+	}
+}
+
+// A survey a stopped operator left Running is run again from the start:
+// no half status is kept.
+func TestSurveyResumed(t *testing.T) {
+	f := startRunner(t)
+	f.grounded(t)
+	f.stop()
+	ctx := context.Background()
+	f.routes.Store("resumed/"+connMap, mapServer(t, nil))
+	f.routes.Store("resumed/"+connCluster, clusterServer(t))
+	in := &v1alpha1.TakeCareIntendant{Name: "resumed", Namespace: ns}
+	in.Spec.Scope = v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{demoApps}}
+	in.Spec.Connectors = v1alpha1.IntendantConnectors{Map: []string{connMap}, Cluster: []string{connCluster}}
+	if err := f.c.Create(ctx, in); err != nil {
+		t.Fatal(err)
+	}
+	left := &v1alpha1.TakeCareSurvey{Name: "left-running", Namespace: ns}
+	left.Spec.IntendantRef = v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareIntendant, Name: "resumed"}
+	if err := f.c.Create(ctx, left); err != nil {
+		t.Fatal(err)
+	}
+	half := metav1.NewTime(time.Date(2026, 11, 11, 9, 0, 0, 0, time.UTC))
+	left.Status = v1alpha1.TakeCareSurveyStatus{
+		Phase: v1alpha1.RunRunning, StartedAt: &half, Attempts: 1,
+		Layers: []v1alpha1.SurveyLayer{{Name: "half", Seen: 99}},
+	}
+	if err := f.c.Status().Update(ctx, left); err != nil {
+		t.Fatal(err)
+	}
+	f.startManager(t)
+	var got v1alpha1.TakeCareSurvey
+	deadline := time.Now().Add(waitFor)
+	for time.Now().Before(deadline) {
+		if err := f.c.Get(ctx, client.ObjectKeyFromObject(left), &got); err == nil && got.Status.Phase == v1alpha1.RunCompleted {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if got.Status.Phase != v1alpha1.RunCompleted || got.Status.Attempts != 2 || len(got.Status.Layers) != 7 || got.Status.Layers[0].Name == "half" {
+		t.Fatalf("resumed survey: %+v", got.Status)
+	}
+}
+
+// Until I1d-3a-2, a scope's entities are not surveyed, and the survey says
+// so: an entity-only scope gives a Completed survey with that line.
+func TestEntitiesSaidNotSurveyed(t *testing.T) {
+	f := startRunner(t)
+	f.grounded(t)
+	f.surveyed(t, "entities", mapServer(t, nil), func(in *v1alpha1.TakeCareIntendant) {
+		in.Spec.Scope = v1alpha1.Scope{Entities: []v1alpha1.EntityKey{"service/billing-api"}}
+	})
+	s := f.waitPhase(t, "entities", 1, v1alpha1.RunCompleted)[0]
+	env := s.Status.Layers[0]
+	for _, n := range env.NotSeen {
+		if n.Ref == "scope.entities" && n.Reason == reasonEntitiesLater {
+			return
+		}
+	}
+	t.Errorf("environment layer %+v", env)
+}

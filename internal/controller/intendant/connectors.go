@@ -27,8 +27,9 @@ const RulesCEL = `mcp.tool.arguments.type == "alert" && mcp.tool.arguments.exclu
 	`(!has(mcp.tool.arguments.rule_name) || (size(mcp.tool.arguments.rule_name) <= 100 && ` +
 	`mcp.tool.arguments.rule_name.all(n, n.matches("^[A-Za-z][A-Za-z0-9_]*$"))))`
 
-// mapTools are the map connector's tools the survey reads the Map with.
-var mapTools = []string{mcp.MapEntryTool, mcp.MapListTool}
+// mapTools are the map connector's tools the survey reads the Map with:
+// map_at alone, the list and each entry at one revision.
+var mapTools = []string{mcp.MapListTool}
 
 // binding is what the Intendant's connectors give: the routes to render,
 // and what is missing.
@@ -50,7 +51,7 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 	var b binding
 	c := in.Spec.Connectors
 	for _, name := range c.Map {
-		tools, problem, conn, err := r.usable(ctx, in.Namespace, name, v1alpha1.ConnectorMap, mapTools, readTools)
+		tools, problem, conn, err := usable(ctx, r.Client, in.Namespace, name, v1alpha1.ConnectorMap, mapTools, readTools)
 		if err != nil {
 			return b, err
 		}
@@ -68,7 +69,7 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 		b.problems = append(b.problems, "no cluster connector is given: nothing on a cluster is surveyed")
 	}
 	for _, name := range c.Cluster {
-		tools, problem, _, err := r.usable(ctx, in.Namespace, name, v1alpha1.ConnectorCluster, mcp.DiscoveryTools, stateTools)
+		tools, problem, _, err := usable(ctx, r.Client, in.Namespace, name, v1alpha1.ConnectorCluster, mcp.DiscoveryTools, stateTools)
 		if err != nil {
 			return b, err
 		}
@@ -82,7 +83,7 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 		b.problems = append(b.problems, "no metrics connector is given: the alerting rules are not surveyed")
 	}
 	for _, name := range c.Metrics {
-		tools, problem, _, err := r.usable(ctx, in.Namespace, name, v1alpha1.ConnectorMetrics, []string{mcp.RulesTool}, stateTools)
+		tools, problem, _, err := usable(ctx, r.Client, in.Namespace, name, v1alpha1.ConnectorMetrics, []string{mcp.RulesTool}, stateTools)
 		if err != nil {
 			return b, err
 		}
@@ -115,9 +116,9 @@ func stateTools(t v1alpha1.ToolStatus) bool { return t.Class == v1alpha1.ToolRea
 // usable checks one connector: it exists, has the type, is Ready and
 // exposes every wanted tool through the filter. It returns the tools to
 // route and the connector, or the problem in one phrase.
-func (r *Reconciler) usable(ctx context.Context, namespace, name string, typ v1alpha1.ConnectorType, want []string, ok toolFilter) ([]string, string, *v1alpha1.TakeCareConnector, error) {
+func usable(ctx context.Context, c client.Reader, namespace, name string, typ v1alpha1.ConnectorType, want []string, ok toolFilter) ([]string, string, *v1alpha1.TakeCareConnector, error) {
 	var conn v1alpha1.TakeCareConnector
-	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, &conn); err != nil {
+	if err := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, &conn); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, fmt.Sprintf("connector %s does not exist", name), nil, nil
 		}
