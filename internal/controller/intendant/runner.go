@@ -18,8 +18,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	mapschema "github.com/agaetis-it/takecare-agents/api/map"
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/controller/connector"
+	"github.com/agaetis-it/takecare-agents/internal/coverage"
 	"github.com/agaetis-it/takecare-agents/internal/discovery"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
 	"github.com/agaetis-it/takecare-agents/internal/routes"
@@ -33,10 +35,8 @@ import (
 const (
 	maxProposals = 20
 	maxNotSeen   = 50
+	maxBlind     = 200
 )
-
-// reasonEntitiesLater says that the scope's entities are not surveyed yet.
-const reasonEntitiesLater = "scope entities are not surveyed yet"
 
 // Why a survey failed, in status.reason: a fixed phrase per class, never a
 // server's or a tool's text (the import's rule); the full error is logged.
@@ -286,7 +286,7 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 	if err != nil {
 		return out, fail(failMap, err)
 	}
-	grounds, err := w.grounds(ctx, &in, route)
+	grounds, blind, err := w.grounds(ctx, &in, idx, route)
 	if err != nil {
 		return out, fail(failImport, err)
 	}
@@ -298,11 +298,7 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 	if err != nil {
 		return out, fail(failImport, err)
 	}
-	if len(in.Spec.Scope.Entities) > 0 {
-		// Never silence: what this survey does not read yet says so.
-		res.Layers[0].NotSeen = append(res.Layers[0].NotSeen, discovery.NotSeen{Ref: "scope.entities", Reason: reasonEntitiesLater})
-	}
-	return outcome(res, idx.revision), nil
+	return outcome(res, idx.revision, blind), nil
 }
 
 type bound struct {
@@ -337,32 +333,83 @@ func (w *Runner) bind(ctx context.Context, in *v1alpha1.TakeCareIntendant, name 
 }
 
 // grounds are the usable cluster connectors, each with the namespaces of
-// the scope it declares; the scope's entities are surveyed from I1d-3a-2.
-func (w *Runner) grounds(ctx context.Context, in *v1alpha1.TakeCareIntendant, route func(string) string) ([]discovery.Ground, error) {
-	var grounds []discovery.Ground
+// the scope it reads: the scope's namespaces and the namespaces of the
+// kubernetes sources of the scope's entities, per cluster (ADR 0016 §5),
+// as the coverage rule decides. What nothing reads is a blind spot.
+func (w *Runner) grounds(ctx context.Context, in *v1alpha1.TakeCareIntendant, idx mapIndex, route func(string) string) ([]discovery.Ground, []v1alpha1.BlindSpot, error) {
+	var declared []coverage.Declared
+	var usableConns []*bound
+	given := map[string]bool{}
 	for _, name := range in.Spec.Connectors.Cluster {
 		b, err := w.bind(ctx, in, name, v1alpha1.ConnectorCluster, mcp.DiscoveryTools, stateTools, route)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		if b == nil || b.conn.Spec.Kubernetes == nil {
+		var conn v1alpha1.TakeCareConnector
+		if b != nil {
+			conn = *b.conn
+			given[name] = true
+			usableConns = append(usableConns, b)
+		} else if err := w.Client.Get(ctx, client.ObjectKey{Namespace: in.Namespace, Name: name}, &conn); client.IgnoreNotFound(err) != nil {
+			return nil, nil, fmt.Errorf("get connector %s: %w", name, err)
+		}
+		if conn.Spec.Kubernetes != nil {
+			declared = append(declared, coverage.Declared{Connector: name, Cluster: connector.ClusterOf(&conn), Namespaces: conn.Spec.Kubernetes.Namespaces})
+		}
+	}
+	entries := map[v1alpha1.EntityKey]coverage.Entry{}
+	places := map[v1alpha1.EntityKey][]coverage.Place{}
+	for _, e := range idx.entries {
+		k := v1alpha1.EntityKey(e.Key)
+		if !slices.Contains(in.Spec.Scope.Entities, k) {
 			continue
 		}
+		entry := coverage.Entry{Found: true, Validated: e.Status == "validated"}
+		for _, src := range e.Sources {
+			if ref, ok := src["kubernetes"]; ok {
+				if p, ok := parsePlace(ref); ok {
+					entry.Places = append(entry.Places, p)
+				}
+			}
+		}
+		entries[k], places[k] = entry, entry.Places
+	}
+	res := coverage.Cover(in.Spec.Scope, declared, given, entries, coverage.MapProblem{})
+	wanted := map[coverage.Place]bool{}
+	for _, cl := range coverage.Clusters(declared) {
+		for _, ns := range in.Spec.Scope.Namespaces {
+			wanted[coverage.Place{Cluster: cl, Namespace: ns}] = true
+		}
+	}
+	for _, ps := range places {
+		for _, p := range ps {
+			wanted[p] = true
+		}
+	}
+	var grounds []discovery.Ground
+	for _, b := range usableConns {
+		cluster := connector.ClusterOf(b.conn)
 		var nss []string
 		for _, ns := range b.conn.Spec.Kubernetes.Namespaces {
-			if slices.Contains(in.Spec.Scope.Namespaces, ns) {
+			if wanted[coverage.Place{Cluster: cluster, Namespace: ns}] {
 				nss = append(nss, string(ns))
 			}
 		}
 		if len(nss) > 0 {
-			grounds = append(grounds, discovery.Ground{Connector: b.name, Cluster: connector.ClusterOf(b.conn), Endpoint: b.ep, Namespaces: nss})
+			grounds = append(grounds, discovery.Ground{Connector: b.name, Cluster: cluster, Endpoint: b.ep, Namespaces: nss})
 		}
 	}
-	return grounds, nil
+	return grounds, res.BlindSpots, nil
+}
+
+// parsePlace reads the namespace of a kubernetes source.
+func parsePlace(ref string) (coverage.Place, bool) {
+	src, ok := mapschema.ParseKubernetes(ref)
+	return coverage.Place{Cluster: src.Cluster, Namespace: v1alpha1.Namespace(src.Namespace)}, ok
 }
 
 // outcome turns the import's result into the survey's status, bounded.
-func outcome(res discovery.Result, revision string) v1alpha1.TakeCareSurveyStatus {
+func outcome(res discovery.Result, revision string, blind []v1alpha1.BlindSpot) v1alpha1.TakeCareSurveyStatus {
 	out := v1alpha1.TakeCareSurveyStatus{MapRevision: revision, ProposalCounts: &v1alpha1.ProposalCounts{}}
 	for _, l := range res.Layers {
 		layer := v1alpha1.SurveyLayer{Name: l.Name, Seen: l.Seen, Matched: l.Matched, Proposed: l.Proposed}
@@ -390,6 +437,10 @@ func outcome(res discovery.Result, revision string) v1alpha1.TakeCareSurveyStatu
 			})
 		}
 	}
+	if len(blind) > maxBlind {
+		blind = blind[:maxBlind]
+	}
+	out.BlindSpots = blind
 	return out
 }
 
