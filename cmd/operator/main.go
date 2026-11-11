@@ -42,6 +42,7 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/alerts"
 	"github.com/agaetis-it/takecare-agents/internal/controller/connector"
 	"github.com/agaetis-it/takecare-agents/internal/controller/demo"
+	"github.com/agaetis-it/takecare-agents/internal/controller/intendant"
 	"github.com/agaetis-it/takecare-agents/internal/controller/investigation"
 	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
 	"github.com/agaetis-it/takecare-agents/internal/controller/ranger"
@@ -313,6 +314,13 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		MCP:    &mcp.Client{HTTP: mcpClient},
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up the Doc controller: %w", err)
+	}
+	// The Intendant (spec 10): its conditions, schedule and routes.
+	if err := (&intendant.Reconciler{
+		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("takecare-operator"),
+		OperatorNamespace: cfg.operatorNamespace,
+	}).SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("set up the Intendant controller: %w", err)
 	}
 	connectorReconciler := &connector.Reconciler{
 		Client:            mgr.GetClient(),

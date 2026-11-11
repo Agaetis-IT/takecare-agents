@@ -171,6 +171,7 @@ rules:
   - takecare.agaetis.fr
   resources:
   - takecareconnectors
+  - takecareintendants
   verbs:
   - get
   - list
@@ -181,6 +182,7 @@ rules:
   - takecareconnectors/status
   - takecaredemos/status
   - takecaredocs/status
+  - takecareintendants/status
   - takecareinvestigations/status
   verbs:
   - get
