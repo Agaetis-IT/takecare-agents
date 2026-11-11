@@ -11,6 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -69,6 +72,9 @@ type fixture struct {
 	// to a connector, by "<intendant>/<connector>", pointing at test servers.
 	runner bool
 	routes sync.Map
+	// spans and metrics are what the runner records.
+	spans   *tracetest.InMemoryExporter
+	metrics *SurveyMetrics
 }
 
 func start(t *testing.T) *fixture { return startWith(t, false) }
@@ -94,7 +100,14 @@ func startWith(t *testing.T, runner bool) *fixture {
 			t.Fatal(err)
 		}
 	}
-	f := &fixture{c: c, clock: &clock{now: time.Date(2026, 11, 11, 10, 0, 0, 0, time.UTC)}, cfg: cfg, scheme: scheme, runner: runner}
+	metrics, err := NewSurveyMetrics(prometheus.NewRegistry())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fixture{
+		c: c, clock: &clock{now: time.Date(2026, 11, 11, 10, 0, 0, 0, time.UTC)}, cfg: cfg, scheme: scheme, runner: runner,
+		spans: tracetest.NewInMemoryExporter(), metrics: metrics,
+	}
 	f.startManager(t)
 	return f
 }
@@ -110,7 +123,7 @@ func (f *fixture) startManager(t *testing.T) {
 	}
 	r := &Reconciler{
 		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("test"), OperatorNamespace: ns,
-		EngineNamespace: engineNS, AgentKinds: (&kagent0103.Agents{}).AgentTypes(), Now: f.clock.Now,
+		EngineNamespace: engineNS, AgentKinds: (&kagent0103.Agents{}).AgentTypes(), Now: f.clock.Now, Metrics: f.metrics,
 	}
 	if err := r.SetupWithManager(mgr); err != nil {
 		t.Fatal(err)
@@ -122,7 +135,8 @@ func (f *fixture) startManager(t *testing.T) {
 		}
 		if err := mgr.Add(&Runner{
 			Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: queue, GateRetry: 100 * time.Millisecond,
-			Caller: &mcp.Client{HTTP: &http.Client{Timeout: time.Minute}}, Now: f.clock.Now,
+			Caller: &mcp.Client{HTTP: &http.Client{Timeout: time.Minute}}, Now: f.clock.Now, Metrics: f.metrics,
+			Tracer: sdktrace.NewTracerProvider(sdktrace.WithSyncer(f.spans)).Tracer("test"),
 			Route: func(_ string, role routes.Role, connector string) string {
 				u, _ := f.routes.Load(role.Name + "/" + connector)
 				s, _ := u.(string)

@@ -131,9 +131,23 @@ The Map's schema (`api/map/entry.schema.json`) follows in the build pull request
 
 ## 10. Telemetry
 
-One trace per survey: `invoke_agent intendant`, with the import as a child span per layer (ADR 0006).
+One trace per survey (ADR 0006), its ID in the survey's `status.traceID` and in the operator's log when the survey fails. Its root is `invoke_agent intendant`, an error span with the survey's fixed reason when it fails; the agent pass will be its child. Under the root:
 
-Metrics: `takecare_survey_proposals_total{action,source}` and `takecare_survey_not_seen_total{layer}`.
+- `read map`, the Map's read at one revision, with the number of entries;
+- one `list <connector>` per ground, timed as the listing ran, with its cluster and number of namespaces;
+- `read rules`, the alerting rules' read, when a metrics connector is bound;
+- one `layer <name>` per layer, carrying its counts: seen, matched, proposed, not seen.
+
+The attribute names (`takecare.survey.*`) live in `internal/telemetry/semconv` like every other.
+
+Metrics are gauges, not counters: the same proposals come back at every survey until a human merges them, so a total would count one proposal many times. Each Intendant's last completed survey sets them, and its series go when the Intendant goes:
+
+- `takecare_survey_proposals{intendant,action,source}`: what awaits review now;
+- `takecare_survey_not_seen{intendant,layer}`: what the survey could not read.
+
+The `intendant` label has a few values per cluster.
+
+Retention: an ended survey (Completed, Failed or Dropped) older than seven days is deleted, every hour, by the leader; each Intendant keeps its newest ended survey however old it is, so that its last outcome stays readable.
 
 ## 11. Acceptance criteria
 
