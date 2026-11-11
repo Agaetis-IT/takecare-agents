@@ -54,7 +54,7 @@ PrometheusRules are read through the `kubernetes` connector too: the `kubernetes
 
 Never Secrets, never ConfigMap values, never logs: content tools are not given to it.
 
-Every discovered entry is `provenance: discovered`, `status: proposed`. An existing entry seen again gets `lastSeen`. A validated entry whose kubernetes sources were all surveyed (their kind listed in their namespace) and none seen keeps its `lastSeen` and gets a removal proposal; a source the survey could not list keeps the entry.
+Every discovered entry is `provenance: discovered`, `status: proposed`. An existing entry seen again is matched; it gets an update only when its sources or relations differ from what the survey sees. A survey never proposes a change of `lastSeen` alone: `lastSeen` is refreshed by an update made for another reason. A validated entry whose kubernetes sources were all surveyed (their kind listed in their namespace) and none seen keeps its `lastSeen` and gets a removal proposal; a source the survey could not list keeps the entry.
 
 What a connector could not read is a `notSeen` line with its reason, never silence.
 

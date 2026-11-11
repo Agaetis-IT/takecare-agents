@@ -4,19 +4,19 @@
       "name": "environment",
       "seen": 3,
       "matched": 2,
-      "proposed": 3
+      "proposed": 1
     },
     {
       "name": "compute",
       "seen": 2,
       "matched": 1,
-      "proposed": 2
+      "proposed": 1
     },
     {
       "name": "service",
       "seen": 2,
       "matched": 2,
-      "proposed": 2
+      "proposed": 0
     },
     {
       "name": "network",
@@ -45,16 +45,6 @@
   ],
   "proposals": [
     {
-      "id": "9f126849a815a46d",
-      "action": "Update",
-      "key": "environment/ack-system",
-      "entry": "created: \"2026-11-05\"\nkey: environment/ack-system\nlastSeen: \"2026-11-11\"\nprovenance: declared\nsources:\n- kubernetes: ack-system\nstatus: validated\n",
-      "evidence": [
-        "kubernetes/namespaces_list"
-      ],
-      "source": "Import"
-    },
-    {
       "id": "072ab18f0296632a",
       "action": "Add",
       "key": "environment/default",
@@ -65,50 +55,10 @@
       "source": "Import"
     },
     {
-      "id": "3b32589c33c80e5c",
-      "action": "Update",
-      "key": "environment/demo-apps",
-      "entry": "created: \"2026-11-05\"\nkey: environment/demo-apps\nlastSeen: \"2026-11-11\"\nprovenance: declared\nsources:\n- kubernetes: demo-apps\nstatus: validated\n",
-      "evidence": [
-        "kubernetes/namespaces_list"
-      ],
-      "source": "Import"
-    },
-    {
-      "id": "8f8bb93649246361",
-      "action": "Update",
-      "key": "compute/billing-api",
-      "entry": "created: \"2026-11-05\"\nkey: compute/billing-api\nlastSeen: \"2026-11-11\"\nlastValidated: \"2026-11-05\"\nowner: team/platform\nprovenance: declared\nrelations:\n  dependsOn:\n  - network/billing-db-proxy\n  deployedIn:\n  - environment/demo-apps\nsources:\n- kubernetes: demo-apps/Deployment/billing-api\nstatus: validated\n",
-      "evidence": [
-        "kubernetes/resources_list"
-      ],
-      "source": "Import"
-    },
-    {
       "id": "e1090c426e0237d4",
       "action": "Add",
       "key": "compute/notifications-worker",
       "entry": "created: \"2026-11-11\"\nkey: compute/notifications-worker\nlastSeen: \"2026-11-11\"\nprovenance: discovered\nrelations:\n  deployedIn:\n  - environment/demo-apps\nsources:\n- kubernetes: demo-apps/Deployment/notifications-worker\nstatus: proposed\n",
-      "evidence": [
-        "kubernetes/resources_list"
-      ],
-      "source": "Import"
-    },
-    {
-      "id": "c99d0a2b8b21007e",
-      "action": "Update",
-      "key": "service/billing-api",
-      "entry": "created: \"2026-11-05\"\ndescription: The billing API, as its users see it.\nkey: service/billing-api\nlabels:\n  tier: critical\nlastSeen: \"2026-11-11\"\nlastValidated: \"2026-11-05\"\nowner: team/platform\nprovenance: declared\nrelations:\n  alertedBy:\n  - HighErrorRate\n  belongsTo:\n  - team/platform\n  dependsOn:\n  - datastore/billing-db\n  - network/billing-db-proxy\n  documentedBy:\n  - runbook/proxy-timeout\n  observedBy:\n  - observability/prometheus\n  runsAs:\n  - compute/billing-api\nsources:\n- kubernetes: demo-apps/Deployment/billing-api\nstatus: validated\n",
-      "evidence": [
-        "kubernetes/resources_list"
-      ],
-      "source": "Import"
-    },
-    {
-      "id": "e8b044e45734cab1",
-      "action": "Update",
-      "key": "service/notifications",
-      "entry": "created: \"2026-11-06\"\nkey: service/notifications\nlastSeen: \"2026-11-11\"\nprovenance: discovered\nsources:\n- kubernetes: demo-apps/Deployment/notifications-worker\nstatus: proposed\n",
       "evidence": [
         "kubernetes/resources_list"
       ],

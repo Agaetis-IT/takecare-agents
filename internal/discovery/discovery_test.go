@@ -296,3 +296,36 @@ func TestServiceFromLabels(t *testing.T) {
 		t.Errorf("no proposal for %v", want)
 	}
 }
+
+// A matched entry whose only difference is an old lastSeen is matched and
+// proposed nothing; one missing its deployedIn gets an Update that also
+// refreshes lastSeen.
+func TestNoUpdateForLastSeenAlone(t *testing.T) {
+	entry := func(key string, relations mapserver.Relations) mapserver.Entry {
+		return mapserver.Entry{Key: key, Provenance: "declared", Status: "validated", Created: "2026-11-01", LastSeen: "2026-11-01",
+			Sources: []map[string]string{{sourceKubernetes: demoApps + "/Deployment/" + strings.TrimPrefix(key, "compute/")}}, Relations: relations}
+	}
+	ix := NewIndex([]mapserver.Entry{
+		{Key: "environment/demo-apps", Provenance: "declared", Status: "validated", Created: "2026-11-01", LastSeen: "2026-11-01",
+			Sources: []map[string]string{{sourceKubernetes: demoApps}}},
+		entry("compute/billing-api", mapserver.Relations{DeployedIn: []string{"environment/demo-apps"}}),
+		entry("compute/notifications-worker", mapserver.Relations{}),
+	})
+	res := survey(t, fakeGround{}.start(t), ix, demoApps)
+	byKey := map[string]Proposal{}
+	for _, p := range res.Proposals {
+		byKey[p.Key] = p
+	}
+	for _, key := range []string{"environment/demo-apps", "compute/billing-api"} {
+		if p, ok := byKey[key]; ok {
+			t.Errorf("%s, changed only by lastSeen, is proposed: %s", key, p.Action)
+		}
+	}
+	p, ok := byKey["compute/notifications-worker"]
+	if !ok || p.Action != v1alpha1.ProposalUpdate || !strings.Contains(p.Entry, "lastSeen: \"2026-11-11\"") || !strings.Contains(p.Entry, "deployedIn:\n  - environment/demo-apps") {
+		t.Errorf("the entry missing its deployedIn: %+v", p)
+	}
+	if res.Layers[0].Matched != 1 || res.Layers[1].Matched != 2 {
+		t.Errorf("matched: environment %d, compute %d", res.Layers[0].Matched, res.Layers[1].Matched)
+	}
+}

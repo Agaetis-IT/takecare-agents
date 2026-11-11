@@ -540,12 +540,13 @@ func (r *run) add(l *Layer, e mapserver.Entry, evidence []string) {
 	r.propose(l, v1alpha1.ProposalAdd, e, evidence)
 }
 
-// update proposes an existing entry seen again, when its lastSeen or the
-// relations the import draws differ.
+// update proposes an existing entry seen again when the relations the
+// import draws differ, with lastSeen refreshed. A survey never proposes a
+// change of lastSeen alone: the review would touch the whole Map every day
+// and hide the real changes.
 func (r *run) update(l *Layer, key string, evidence []string, relations *mapserver.Relations) {
 	e := r.ix.entries[key]
-	changed := e.LastSeen != r.today
-	e.LastSeen = r.today
+	changed := false
 	if relations != nil {
 		for _, to := range relations.DeployedIn {
 			if !slices.Contains(e.Relations.DeployedIn, to) {
@@ -555,6 +556,7 @@ func (r *run) update(l *Layer, key string, evidence []string, relations *mapserv
 		}
 	}
 	if changed {
+		e.LastSeen = r.today
 		r.propose(l, v1alpha1.ProposalUpdate, e, evidence)
 	}
 }
