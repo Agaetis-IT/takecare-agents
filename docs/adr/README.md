@@ -21,5 +21,6 @@ One decision per file, numbered, never rewritten: a decision that changes gives 
 | [0015](0015-map-connector-and-alert-format.md) | The Map is a connector; alerts are one internal format keyed by Map entity | Accepted |
 | [0016](0016-workload-cluster-front-and-registration.md) | A workload cluster is read through its own mTLS front and registered as a cluster connector by URL | Accepted |
 | [0017](0017-embedded-observability-stack.md) | An observability stack ships with TakeCare and watches TakeCare only | Proposed |
+| [0018](0018-grounds-beyond-kubernetes.md) | Grounds beyond Kubernetes: coverage by access type, alerts resolved by source, the Talkie | Proposed |
 
 Format: Context, Decision, Consequences, Rejected alternatives. Statuses: Proposed, Accepted, Superseded.
