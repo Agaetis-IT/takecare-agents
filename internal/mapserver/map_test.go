@@ -15,6 +15,8 @@ const (
 	demoDir      = "testdata/demo"
 	cartFile     = "map/service/cart.yaml"
 	cartNotMatch = cartFile + ": does not match"
+	runbookFile  = "map/runbook/r.yaml"
+	keyOrders    = "service/orders"
 )
 
 // entryFile is a valid entry for a key, with extra YAML lines.
@@ -33,6 +35,22 @@ func TestLoadDemo(t *testing.T) {
 	}
 	if got := m.Entries["service/notifications"].Status; got != "proposed" {
 		t.Errorf("a proposed entry is served with its status, got %q", got)
+	}
+}
+
+// Spec 08 §3-4: an alert's expression on alertedBy, beside a bare name, and
+// a runbook mapped to a knowledge record.
+func TestLoadExpressionsAndKnowledge(t *testing.T) {
+	m, err := Load(os.DirFS("testdata/expressions"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := m.Entries[keyOrders].Relations.AlertedBy
+	if len(got) != 2 || got[0].Name != "HighLatency" || got[0].Expr == "" || got[1] != (Alert{Name: "PodNotReady"}) {
+		t.Errorf("alertedBy = %+v", got)
+	}
+	if src := m.Entries["runbook/orders-latency"].Sources; len(src) != 1 || src[0][sourceKnowledge] != "runbooks/RB-021" {
+		t.Errorf("sources = %v", src)
 	}
 }
 
@@ -80,11 +98,19 @@ func TestLoadRefuses(t *testing.T) {
 		"a four-segment source without its cluster": {fstest.MapFS{cartFile: entryFile("service/cart", "sources: [{kubernetes: east/apps/Deployment/cart}]")}, []string{"the source east/apps/Deployment/cart names the cluster east"}},
 		"a cluster that is not a DNS label":         {fstest.MapFS{cartFile: entryFile("service/cart", "sources: [{kubernetes: East_1/apps/Deployment/cart}]")}, []string{cartNotMatch}},
 		"five segments":                             {fstest.MapFS{cartFile: entryFile("service/cart", "sources: [{kubernetes: a/b/c/d/e}]")}, []string{cartNotMatch}},
+		"an alert named twice, in both forms":       {fstest.MapFS{cartFile: entryFile("service/cart", "relations: {alertedBy: [HighErrorRate, {name: HighErrorRate, expr: up == 0}]}")}, []string{"alertedBy names HighErrorRate twice"}},
+		"an alert named twice with two expressions": {fstest.MapFS{cartFile: entryFile("service/cart", "relations: {alertedBy: [{name: Down, expr: up == 0}, {name: Down, expr: up < 1}]}")}, []string{"alertedBy names Down twice"}},
+		"an alert object without its expression":    {fstest.MapFS{cartFile: entryFile("service/cart", "relations: {alertedBy: [{name: Down}]}")}, []string{cartNotMatch}},
+		"an alert object with another property":     {fstest.MapFS{cartFile: entryFile("service/cart", "relations: {alertedBy: [{name: Down, expr: up == 0, for: 1m}]}")}, []string{cartNotMatch}},
+		"a knowledge source on a service":           {fstest.MapFS{cartFile: entryFile("service/cart", "sources: [{knowledge: runbooks/RB-014}]")}, []string{"the knowledge source runbooks/RB-014 is on a service entry"}},
+		"a knowledge source without a record":       {fstest.MapFS{runbookFile: entryFile("runbook/r", "sources: [{knowledge: runbooks/}]")}, []string{runbookFile + ": does not match"}},
+		"a knowledge source with a bad connector":   {fstest.MapFS{runbookFile: entryFile("runbook/r", "sources: [{knowledge: Run_Books/RB-014}]")}, []string{runbookFile + ": does not match"}},
 		"every fault at once": {fstest.MapFS{
 			"map/service/a.yaml": entryFile("service/b"),
 			"map/service/c.yaml": entryFile("service/c", "relations: {dependsOn: [datastore/none]}"),
-			"map/runbook/r.yaml": entryFile("runbook/r", "lastSeen: 2026-13-01"),
-		}, []string{"service/a.yaml", "datastore/none", "runbook/r.yaml: lastSeen 2026-13-01 is not a date"}},
+			runbookFile:          entryFile("runbook/r", "lastSeen: 2026-13-01"),
+			cartFile:             entryFile("service/cart", "sources: [{knowledge: runbooks/RB-014}]", "relations: {alertedBy: [Down, {name: Down, expr: up == 0}]}"),
+		}, []string{"service/a.yaml", "datastore/none", "runbook/r.yaml: lastSeen 2026-13-01 is not a date", "alertedBy names Down twice", "the knowledge source runbooks/RB-014"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			fsys := base()

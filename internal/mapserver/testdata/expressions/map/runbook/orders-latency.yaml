@@ -1,0 +1,6 @@
+key: runbook/orders-latency
+provenance: discovered
+status: proposed
+created: 2026-11-11
+sources:
+  - knowledge: runbooks/RB-021

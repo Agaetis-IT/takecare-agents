@@ -43,7 +43,7 @@ func (m *Map) resolve(cluster, namespace, workload, service, alert string) (stri
 		return candidates[0], ""
 	}
 	alerted := slices.DeleteFunc(candidates, func(k string) bool {
-		return !slices.Contains(m.Entries[k].Relations[relAlertedBy], alert)
+		return !slices.Contains(m.Entries[k].Relations.alerts(), alert)
 	})
 	if len(alerted) != 1 {
 		return "", missAmbiguous

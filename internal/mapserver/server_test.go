@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/agaetis-it/takecare-agents/internal/golden"
@@ -176,5 +177,33 @@ func TestReload(t *testing.T) {
 	}
 	if got, isError := call(t, s, "entry", map[string]any{argKey: "team/platform"}); isError || !strings.Contains(got, `"status":"validated"`) {
 		t.Errorf("the previous Map is not served: %s", got)
+	}
+}
+
+// `entry` returns an alertedBy item as declared, its expression included,
+// and a runbook's knowledge source (spec 08 §3-4).
+func TestEntryKeepsExpressionsAndKnowledge(t *testing.T) {
+	s, _ := start(t, "testdata/expressions")
+	got, isError := call(t, s, "entry", map[string]any{argKey: keyOrders})
+	if isError {
+		t.Fatal(got)
+	}
+	var e struct {
+		Relations struct {
+			AlertedBy []any `json:"alertedBy"`
+		} `json:"relations"`
+	}
+	if err := json.Unmarshal([]byte(got), &e); err != nil {
+		t.Fatal(err)
+	}
+	want := []any{
+		map[string]any{"name": "HighLatency", "expr": `histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{service="orders"}[5m]))) > 0.5`},
+		"PodNotReady",
+	}
+	if diff := cmp.Diff(want, e.Relations.AlertedBy); diff != "" {
+		t.Errorf("alertedBy (-want +got):\n%s", diff)
+	}
+	if got, _ := call(t, s, "entry", map[string]any{argKey: "runbook/orders-latency"}); !strings.Contains(got, `"sources":[{"knowledge":"runbooks/RB-021"}]`) {
+		t.Errorf("the runbook's knowledge source: %s", got)
 	}
 }

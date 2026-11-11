@@ -1,0 +1,14 @@
+key: service/orders
+provenance: declared
+status: validated
+created: 2026-11-11
+lastValidated: 2026-11-11
+sources:
+  - kubernetes: shop/Deployment/orders
+relations:
+  runsAs: [compute/orders]
+  documentedBy: [runbook/orders-latency]
+  alertedBy:
+    - name: HighLatency
+      expr: histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{service="orders"}[5m]))) > 0.5
+    - PodNotReady

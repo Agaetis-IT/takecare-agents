@@ -38,7 +38,78 @@ type Entry struct {
 	Labels        map[string]string   `json:"labels,omitempty"`
 	Description   string              `json:"description,omitempty"`
 	Sources       []map[string]string `json:"sources,omitempty"`
-	Relations     map[string][]string `json:"relations,omitempty"`
+	Relations     Relations           `json:"relations,omitzero"`
+}
+
+// Relations are an entry's relations, as declared (spec 08 §2, §4).
+type Relations struct {
+	DependsOn    []string `json:"dependsOn,omitempty"`
+	RunsAs       []string `json:"runsAs,omitempty"`
+	BelongsTo    []string `json:"belongsTo,omitempty"`
+	DeployedIn   []string `json:"deployedIn,omitempty"`
+	ObservedBy   []string `json:"observedBy,omitempty"`
+	DocumentedBy []string `json:"documentedBy,omitempty"`
+	AlertedBy    []Alert  `json:"alertedBy,omitempty"`
+}
+
+// keys returns the targets of a relation between entries.
+func (r *Relations) keys(relation string) []string {
+	switch relation {
+	case relDependsOn:
+		return r.DependsOn
+	case relRunsAs:
+		return r.RunsAs
+	case relBelongsTo:
+		return r.BelongsTo
+	case relDeployedIn:
+		return r.DeployedIn
+	case relObservedBy:
+		return r.ObservedBy
+	case relDocumentedBy:
+		return r.DocumentedBy
+	}
+	return nil
+}
+
+// alerts returns the names of the alerts that fire on the entry.
+func (r *Relations) alerts() []string {
+	names := make([]string, 0, len(r.AlertedBy))
+	for _, a := range r.AlertedBy {
+		names = append(names, a.Name)
+	}
+	return names
+}
+
+// Alert is an alertedBy item: the alert's name, as the alert source names
+// it, and its expression when the file carries it. It reads and writes
+// both forms of spec 08 §4: a name alone, or {name, expr}.
+type Alert struct {
+	Name string `json:"name"`
+	Expr string `json:"expr,omitempty"`
+}
+
+// UnmarshalJSON reads a name or {name, expr}.
+func (a *Alert) UnmarshalJSON(data []byte) error {
+	if err := json.Unmarshal(data, &a.Name); err == nil {
+		a.Expr = ""
+		return nil
+	}
+	type plain Alert
+	var p plain
+	if err := json.Unmarshal(data, &p); err != nil {
+		return fmt.Errorf("an alertedBy item is a name or {name, expr}: %w", err)
+	}
+	*a = Alert(p)
+	return nil
+}
+
+// MarshalJSON writes the item in the form it was declared in.
+func (a Alert) MarshalJSON() ([]byte, error) {
+	if a.Expr == "" {
+		return json.Marshal(a.Name)
+	}
+	type plain Alert
+	return json.Marshal(plain(a))
 }
 
 // Type is the entry's type, the key's prefix.
@@ -171,6 +242,7 @@ func build(files map[string][]byte) (*Map, error) {
 	for _, k := range slices.Sorted(maps.Keys(m.Entries)) {
 		errs = append(errs, m.link(m.Entries[k], where[k])...)
 		errs = append(errs, m.clusters(m.Entries[k], where[k])...)
+		errs = append(errs, entryRules(m.Entries[k], where[k])...)
 	}
 	if len(errs) > 0 {
 		return nil, errors.Join(errs...)
@@ -211,6 +283,29 @@ func parse(p string, raw []byte) (*Entry, error) {
 	return &e, nil
 }
 
+// sourceKnowledge names a knowledge connector's record (spec 08 §3).
+const sourceKnowledge = "knowledge"
+
+// entryRules checks what the schema cannot say about one entry: an alert
+// is named once, in either form, and only a runbook maps to a knowledge
+// record.
+func entryRules(e *Entry, file string) []error {
+	var errs []error
+	seen := map[string]bool{}
+	for _, name := range e.Relations.alerts() {
+		if seen[name] {
+			errs = append(errs, fmt.Errorf("%s: alertedBy names %s twice", file, name))
+		}
+		seen[name] = true
+	}
+	for _, s := range e.Sources {
+		if ref, ok := s[sourceKnowledge]; ok && e.Type() != "runbook" {
+			errs = append(errs, fmt.Errorf("%s: the knowledge source %s is on a %s entry; only a runbook maps to a knowledge record", file, ref, e.Type()))
+		}
+	}
+	return errs
+}
+
 // clusters checks that a named cluster an entry refers to exists (ADR
 // 0016 §5): a namespace's key environment/<cluster>.<ns> and a source
 // <cluster>/... both need the entry environment/<cluster>. The unnamed
@@ -242,7 +337,7 @@ func (m *Map) clusters(e *Entry, file string) []error {
 func (m *Map) link(e *Entry, file string) []error {
 	var errs []error
 	for _, r := range relations {
-		for _, to := range e.Relations[r.name] {
+		for _, to := range e.Relations.keys(r.name) {
 			target, ok := m.Entries[to]
 			switch {
 			case !ok:
