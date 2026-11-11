@@ -314,14 +314,23 @@ func TestConnectors(t *testing.T) {
 	f.connector(t, connMap, v1alpha1.ConnectorMap, []string{mcp.MapEntryTool})
 	f.connector(t, connCluster, v1alpha1.ConnectorCluster, []string{toolNamespaces, toolResources}, toolResources)
 	f.intendant(t, "partial", nil)
+	// A connector is created, then its status set: a reconcile in between
+	// sees it not Ready. Wait for the message on the connectors as they end.
+	wants := []string{"connector map does not expose map_at", "connector kubernetes does not expose resources_list", "connector prometheus does not exist"}
 	in := f.wait(t, "partial", func(in *v1alpha1.TakeCareIntendant) bool {
-		return isStatus(in, v1alpha1.ConditionReady, metav1.ConditionFalse)
-	})
-	c := cond(in, v1alpha1.ConditionConnectorsReady)
-	for _, want := range []string{"connector map does not expose map_at", "connector kubernetes does not expose resources_list", "connector prometheus does not exist"} {
-		if c == nil || c.Reason != ReasonMapMissing || !strings.Contains(c.Message, want) {
-			t.Errorf("ConnectorsReady %+v lacks %q", c, want)
+		c := cond(in, v1alpha1.ConditionConnectorsReady)
+		if !isStatus(in, v1alpha1.ConditionReady, metav1.ConditionFalse) || c == nil {
+			return false
 		}
+		for _, want := range wants {
+			if !strings.Contains(c.Message, want) {
+				return false
+			}
+		}
+		return true
+	})
+	if c := cond(in, v1alpha1.ConditionConnectorsReady); c.Reason != ReasonMapMissing {
+		t.Errorf("ConnectorsReady %+v", c)
 	}
 	if _, ok := f.policy(t, "partial", connCluster); ok {
 		t.Error("a cluster connector without its state tools got a route")
