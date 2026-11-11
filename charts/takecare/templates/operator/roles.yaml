@@ -216,3 +216,12 @@ rules:
   - get
   - list
   - watch
+- apiGroups:
+  - takecare.agaetis.fr
+  resources:
+  - takecaresurveys
+  verbs:
+  - create
+  - get
+  - list
+  - watch

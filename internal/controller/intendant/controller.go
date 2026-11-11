@@ -21,6 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -69,10 +70,25 @@ const requeueNotReady = 30 * time.Second
 // Reconciler reconciles TakeCareIntendants.
 type Reconciler struct {
 	client.Client
+	// Reader reads the Intendant and its surveys outside the cache (the
+	// manager's API reader): a cached copy that has not caught up with the
+	// last status patch would fire a trigger twice. Client when nil.
+	Reader            client.Reader
 	Recorder          recorder.EventRecorder
 	OperatorNamespace string
+	// EngineNamespace and AgentKinds are where and what the engine's agents
+	// are: one appearing or changing is a registration (spec 10 §3).
+	EngineNamespace string
+	AgentKinds      []schema.GroupVersionKind
 	// Now is time.Now when nil; tests inject a clock.
 	Now func() time.Time
+}
+
+func (r *Reconciler) reader() client.Reader {
+	if r.Reader != nil {
+		return r.Reader
+	}
+	return r.Client
 }
 
 func (r *Reconciler) now() time.Time {
@@ -85,15 +101,18 @@ func (r *Reconciler) now() time.Time {
 // Reconcile computes the Intendant's conditions, schedule and routes.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var in v1alpha1.TakeCareIntendant
-	if err := r.Get(ctx, req.NamespacedName, &in); err != nil {
+	if err := r.reader().Get(ctx, req.NamespacedName, &in); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil // its routes go with it (ownerReferences)
 		}
 		return ctrl.Result{}, fmt.Errorf("get intendant %s: %w", req.Name, err)
 	}
+	// One instant for the whole reconciliation: the schedule's next time
+	// and the trigger that is due are read from the same clock reading.
+	now := r.now()
 	st := &status{generation: in.Generation}
 	st.level = r.level(&in, st)
-	next := r.schedule(&in, st)
+	next := schedule(&in, st, now)
 	bound, err := r.connectors(ctx, &in, st)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -103,11 +122,19 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 	st.ready(in.Spec.Suspend)
-	if err := r.writeStatus(ctx, &in, st, next); err != nil {
+	t, err := r.survey(ctx, &in, bound, st, now)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if err := r.writeStatus(ctx, &in, st, next, t); err != nil {
 		return ctrl.Result{}, err
 	}
 	if requeue || !st.isTrue(v1alpha1.ConditionReady) {
 		return ctrl.Result{RequeueAfter: requeueNotReady}, nil
+	}
+	if next != nil {
+		// Wake up for the schedule; a trigger in between wakes up sooner.
+		return ctrl.Result{RequeueAfter: max(next.Sub(now), time.Second)}, nil
 	}
 	return ctrl.Result{}, nil
 }
@@ -131,7 +158,7 @@ var cronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month 
 
 // schedule validates the cron expression and returns the next survey's
 // time, nil when the schedule is invalid.
-func (r *Reconciler) schedule(in *v1alpha1.TakeCareIntendant, st *status) *metav1.Time {
+func schedule(in *v1alpha1.TakeCareIntendant, st *status, now time.Time) *metav1.Time {
 	spec := in.Spec.Schedule
 	if spec == "" {
 		spec = "0 3 * * *"
@@ -142,7 +169,7 @@ func (r *Reconciler) schedule(in *v1alpha1.TakeCareIntendant, st *status) *metav
 		return nil
 	}
 	st.set(ConditionScheduleValid, true, ReasonValid, "spec.schedule "+spec+", in UTC")
-	next := metav1.NewTime(sched.Next(r.now().UTC()))
+	next := metav1.NewTime(sched.Next(now.UTC()))
 	return &next
 }
 
@@ -209,15 +236,25 @@ func (r *Reconciler) platform(ctx context.Context) (*v1alpha1.TakeCarePlatform, 
 }
 
 // writeStatus writes the status, and an event when the level changes.
-func (r *Reconciler) writeStatus(ctx context.Context, in *v1alpha1.TakeCareIntendant, st *status, next *metav1.Time) error {
+func (r *Reconciler) writeStatus(ctx context.Context, in *v1alpha1.TakeCareIntendant, st *status, next *metav1.Time, t triggered) error {
 	before := in.DeepCopy()
 	previous := in.Status.Level
 	in.Status.ObservedGeneration = in.Generation
 	in.Status.Level = st.level
 	in.Status.NextSurveyTime = next
+	in.Status.LastMapRevision, in.Status.Registrations, in.Status.PendingTrigger = t.mapRevision, t.registrations, t.pending
+	if t.created != "" {
+		in.Status.LastSurvey, in.Status.LastSurveyTime = t.created, t.createdAt
+	}
 	for _, c := range st.conditions {
 		meta.SetStatusCondition(&in.Status.Conditions, c)
 	}
+	// No lock: the Intendant was read outside the cache, two reconciles of
+	// it never run at once, and only this reconciler writes these fields.
+	// A conflict would drop the bookkeeping after a survey was created. The
+	// worst case, this patch failing after the Create, gives at most one
+	// extra survey: the next reconcile sees that survey in flight and keeps
+	// one pending trigger, never a storm.
 	if err := r.Status().Patch(ctx, in, client.MergeFrom(before)); err != nil {
 		return fmt.Errorf("update status of %s: %w", in.Name, err)
 	}
@@ -237,7 +274,20 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Named("takecareintendant").
 		For(&v1alpha1.TakeCareIntendant{}).
 		Watches(&v1alpha1.TakeCareConnector{}, all, builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, statusChanged{}))).
-		Watches(&v1alpha1.TakeCarePlatform{}, all, builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, statusChanged{})))
+		Watches(&v1alpha1.TakeCarePlatform{}, all, builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, statusChanged{}))).
+		// A survey created (by hand too), ended or deleted frees the next.
+		Watches(&v1alpha1.TakeCareSurvey{}, handler.EnqueueRequestsFromMapFunc(func(_ context.Context, o client.Object) []reconcile.Request {
+			s, ok := o.(*v1alpha1.TakeCareSurvey)
+			if !ok || s.Spec.IntendantRef.Kind != v1alpha1.KindTakeCareIntendant {
+				return nil
+			}
+			return []reconcile.Request{{Namespace: s.Namespace, Name: s.Spec.IntendantRef.Name}}
+		}), builder.WithPredicates(surveyPhaseChanged{}))
+	for _, gvk := range r.AgentKinds {
+		u := &unstructured.Unstructured{}
+		u.SetGroupVersionKind(gvk)
+		b = b.Watches(u, all, builder.WithPredicates(predicate.GenerationChangedPredicate{}))
+	}
 	for _, gvk := range routes.Kinds() {
 		u := &unstructured.Unstructured{}
 		u.SetGroupVersionKind(gvk)
@@ -257,6 +307,16 @@ func (r *Reconciler) intendants(ctx context.Context) []reconcile.Request {
 		out = append(out, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&in)})
 	}
 	return out
+}
+
+// surveyPhaseChanged passes a survey created or deleted, and one whose phase
+// changed.
+type surveyPhaseChanged struct{ predicate.Funcs }
+
+func (surveyPhaseChanged) Update(e event.UpdateEvent) bool {
+	a, okA := e.ObjectOld.(*v1alpha1.TakeCareSurvey)
+	b, okB := e.ObjectNew.(*v1alpha1.TakeCareSurvey)
+	return okA && okB && a.Status.Phase != b.Status.Phase
 }
 
 // statusChanged passes updates whose status changed (a connector's tools

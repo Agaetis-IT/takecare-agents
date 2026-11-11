@@ -16,12 +16,15 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/engine/kagent0103"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
 	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/testenv"
@@ -29,6 +32,7 @@ import (
 
 const (
 	ns          = "takecare-system"
+	engineNS    = "kagent"
 	gwURL       = "http://agentgateway-proxy.takecare-system.svc"
 	connMap     = "map"
 	connCluster = "kubernetes"
@@ -47,9 +51,18 @@ func (c *clock) Now() time.Time {
 	return c.now
 }
 
+func (c *clock) Set(t time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = t
+}
+
 type fixture struct {
-	c     client.Client
-	clock *clock
+	c      client.Client
+	clock  *clock
+	cfg    *rest.Config
+	scheme *runtime.Scheme
+	stop   context.CancelFunc
 }
 
 func start(t *testing.T) *fixture {
@@ -65,23 +78,42 @@ func start(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Create(context.Background(), &corev1.Namespace{Name: ns}); err != nil {
-		t.Fatal(err)
+	for _, n := range []string{ns, engineNS} {
+		if err := c.Create(context.Background(), &corev1.Namespace{Name: n}); err != nil {
+			t.Fatal(err)
+		}
 	}
-	f := &fixture{c: c, clock: &clock{now: time.Date(2026, 11, 11, 10, 0, 0, 0, time.UTC)}}
+	f := &fixture{c: c, clock: &clock{now: time.Date(2026, 11, 11, 10, 0, 0, 0, time.UTC)}, cfg: cfg, scheme: scheme}
+	f.startManager(t)
+	return f
+}
+
+// startManager runs a manager with the Intendant's reconciler; restart
+// stops it and runs a fresh one, as an operator restart would.
+func (f *fixture) startManager(t *testing.T) {
+	t.Helper()
 	skip := true
-	mgr, err := ctrl.NewManager(cfg, ctrl.Options{Scheme: scheme, Metrics: metricsserver.Options{BindAddress: "0"}, Controller: config.Controller{SkipNameValidation: &skip}})
+	mgr, err := ctrl.NewManager(f.cfg, ctrl.Options{Scheme: f.scheme, Metrics: metricsserver.Options{BindAddress: "0"}, Controller: config.Controller{SkipNameValidation: &skip}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := &Reconciler{Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("test"), OperatorNamespace: ns, Now: f.clock.Now}
+	r := &Reconciler{
+		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("test"), OperatorNamespace: ns,
+		EngineNamespace: engineNS, AgentKinds: (&kagent0103.Agents{}).AgentTypes(), Now: f.clock.Now,
+	}
 	if err := r.SetupWithManager(mgr); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	f.stop = cancel
 	t.Cleanup(cancel)
 	go func() { _ = mgr.Start(ctx) }()
-	return f
+}
+
+func (f *fixture) restart(t *testing.T) {
+	t.Helper()
+	f.stop()
+	f.startManager(t)
 }
 
 func (f *fixture) platform(t *testing.T) {
@@ -154,6 +186,23 @@ func (f *fixture) wait(t *testing.T, name string, check func(*v1alpha1.TakeCareI
 	}
 	t.Fatalf("intendant %s: conditions %+v", name, in.Status.Conditions)
 	return nil
+}
+
+// update changes the Intendant on a fresh read, again on a conflict: the
+// reconciler patches its status meanwhile.
+func (f *fixture) update(t *testing.T, name string, mutate func(*v1alpha1.TakeCareIntendant)) {
+	t.Helper()
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var in v1alpha1.TakeCareIntendant
+		if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: name}, &in); err != nil {
+			return err
+		}
+		mutate(&in)
+		return f.c.Update(context.Background(), &in)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func cond(in *v1alpha1.TakeCareIntendant, typ string) *metav1.Condition {
@@ -290,11 +339,7 @@ func TestRoutesPruned(t *testing.T) {
 		_, ok := f.policy(t, "pruned", connMetrics)
 		return ok
 	})
-	in := f.wait(t, "pruned", func(*v1alpha1.TakeCareIntendant) bool { return true })
-	in.Spec.Connectors.Metrics = nil
-	if err := f.c.Update(context.Background(), in); err != nil {
-		t.Fatal(err)
-	}
+	f.update(t, "pruned", func(in *v1alpha1.TakeCareIntendant) { in.Spec.Connectors.Metrics = nil })
 	f.wait(t, "pruned", func(*v1alpha1.TakeCareIntendant) bool {
 		_, ok := f.policy(t, "pruned", connMetrics)
 		return !ok
