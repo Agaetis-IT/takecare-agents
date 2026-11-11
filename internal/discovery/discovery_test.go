@@ -33,6 +33,7 @@ const (
 	wantUnrecognizedList = "unrecognized resources_list output"
 	oldDate              = "2026-11-01"
 	provDeclared         = "declared"
+	statusValidated      = "validated"
 	envDemoApps          = "environment/demo-apps"
 )
 
@@ -126,7 +127,7 @@ func demoIndex(t *testing.T, extra ...mapserver.Entry) *Index {
 func survey(t *testing.T, srv *mcptest.Server, ix *Index, namespaces ...string) Result {
 	t.Helper()
 	caller := &mcp.Client{HTTP: &http.Client{Timeout: 5 * time.Second}}
-	res, err := Import(context.Background(), caller, []Ground{{Connector: connector, Endpoint: endpoint(srv.URL), Namespaces: namespaces}}, ix, today)
+	res, err := Import(context.Background(), caller, []Ground{{Connector: connector, Endpoint: endpoint(srv.URL), Namespaces: namespaces}}, nil, ix, today)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +209,7 @@ func TestNotSeen(t *testing.T) {
 				ep.StateTools = tc.state
 			}
 			caller := &mcp.Client{HTTP: &http.Client{Timeout: 5 * time.Second}}
-			res, err := Import(context.Background(), caller, []Ground{{Connector: connector, Endpoint: ep, Namespaces: tc.namespaces}}, demoIndex(t), today)
+			res, err := Import(context.Background(), caller, []Ground{{Connector: connector, Endpoint: ep, Namespaces: tc.namespaces}}, nil, demoIndex(t), today)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -247,10 +248,10 @@ func TestRemove(t *testing.T) {
 			Sources: []map[string]string{{"kubernetes": source}}}
 	}
 	ix := demoIndex(t,
-		entry("compute/old-worker", "validated", demoApps+"/Deployment/old-worker"),
-		entry("compute/hidden", "validated", ackSystem+"/Deployment/hidden"),
+		entry("compute/old-worker", statusValidated, demoApps+"/Deployment/old-worker"),
+		entry("compute/hidden", statusValidated, ackSystem+"/Deployment/hidden"),
 		entry("compute/maybe", "proposed", demoApps+"/Deployment/maybe"),
-		entry("environment/gone", "validated", "gone"),
+		entry("environment/gone", statusValidated, "gone"),
 	)
 	srv := fakeGround{lists: map[string]answer{ackSystem + "/" + deployment: fixture(t, "forbidden-ack-system-Deployment.json")}}.start(t)
 	res := survey(t, srv, ix)
@@ -270,7 +271,10 @@ func TestRemove(t *testing.T) {
 			t.Errorf("removal of %s: id %s, entry\n%s", key, p.ID, p.Entry)
 		}
 	}
-	for _, key := range []string{"compute/hidden", "compute/maybe", "network/billing-db-proxy"} {
+	if res := survey(t, srv, ix, demoApps); hasRemoval(res, "environment/ack-system") {
+		t.Error("a namespace out of scope but listed is proposed for removal")
+	}
+	for _, key := range []string{"compute/hidden", "compute/maybe", "network/billing-db-proxy", "environment/ack-system"} {
 		if _, ok := removed[key]; ok {
 			t.Errorf("%s is proposed for removal", key)
 		}
@@ -331,4 +335,13 @@ func TestNoUpdateForLastSeenAlone(t *testing.T) {
 	if res.Layers[0].Matched != 1 || res.Layers[1].Matched != 2 {
 		t.Errorf("matched: environment %d, compute %d", res.Layers[0].Matched, res.Layers[1].Matched)
 	}
+}
+
+func hasRemoval(res Result, key string) bool {
+	for _, p := range res.Proposals {
+		if p.Key == key && p.Action == v1alpha1.ProposalRemove {
+			return true
+		}
+	}
+	return false
 }

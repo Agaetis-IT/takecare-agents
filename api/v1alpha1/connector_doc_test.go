@@ -167,7 +167,7 @@ func docFixture() *v1alpha1.TakeCareDoc {
 			},
 			Connectors: v1alpha1.DocConnectors{
 				Cluster:   []string{addonKubernetes},
-				Metrics:   []string{"prometheus"},
+				Metrics:   []string{connPrometheus},
 				Knowledge: []string{"incidents", "runbooks", "vendor"},
 				Report:    connReport,
 			},

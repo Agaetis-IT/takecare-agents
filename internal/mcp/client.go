@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -49,6 +50,19 @@ const MapEntryTool = "entry"
 // kind's objects. The import lists; it never gets an object, whose spec may
 // carry values.
 var DiscoveryTools = []string{"namespaces_list", ProbeTool}
+
+// RulesTool is the metrics add-on's tool that lists the rules Prometheus
+// has loaded (mcp-prometheus get_rules). The import calls it on a metrics
+// connector for the alerting rules only, never the firing alerts, which
+// carry label values: rulesArgsAllowed admits nothing else.
+const RulesTool = "get_rules"
+
+// maxRuleNames bounds the rule_name list of one get_rules call.
+const maxRuleNames = 100
+
+// alertName is an alert's name as a Map's alertedBy names it
+// (api/map/entry.schema.json).
+var alertName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
 
 // Endpoint is a connector's server as the operator reaches it.
 type Endpoint struct {
@@ -121,13 +135,14 @@ func (c *Client) ListTools(ctx context.Context, ep Endpoint) ([]Tool, error) {
 	return tools, nil
 }
 
-// Allowed says whether the operator may call a tool on this endpoint: any
-// tool of a report connector (the operator publishes, the model never does),
-// the entry tool of a map connector or the probe tool of a cluster add-on
-// of TakeCare's, each when discovery classed it read, or a discovery tool
-// of a cluster connector, when discovery classed it read and not content;
-// nothing else, whatever the caller asks.
-func (ep Endpoint) Allowed(tool string) bool {
+// Allowed says whether the operator may call a tool with these arguments on
+// this endpoint: any tool of a report connector (the operator publishes, the
+// model never does), the entry tool of a map connector or the probe tool of
+// a cluster add-on of TakeCare's, each when discovery classed it read, a
+// discovery tool of a cluster connector, or the rules tool of a metrics
+// connector with the arguments rulesArgsAllowed admits, each when discovery
+// classed it read and not content; nothing else, whatever the caller asks.
+func (ep Endpoint) Allowed(tool string, args map[string]any) bool {
 	if slices.Contains(ep.Types, v1alpha1.ConnectorReport) {
 		return true
 	}
@@ -138,7 +153,59 @@ func (ep Endpoint) Allowed(tool string) bool {
 	if cluster && slices.Contains(DiscoveryTools, tool) && ep.StateTools[tool] {
 		return true
 	}
+	if slices.Contains(ep.Types, v1alpha1.ConnectorMetrics) && tool == RulesTool && ep.StateTools[tool] {
+		return rulesArgsAllowed(args)
+	}
 	return ep.Addon && cluster && tool == ProbeTool && ep.ReadTools[tool]
+}
+
+// rulesArgsAllowed admits get_rules with type "alert", exclude_alerts true
+// and, optionally, rule_name: at most maxRuleNames alert names. Every other
+// argument is refused, prometheus_url and org_id above all: they would point
+// the server at another Prometheus or tenant.
+func rulesArgsAllowed(args map[string]any) bool {
+	if args["type"] != "alert" || args["exclude_alerts"] != true {
+		return false
+	}
+	for k, v := range args {
+		switch k {
+		case "type", "exclude_alerts":
+		case "rule_name":
+			if !ruleNamesAllowed(v) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func ruleNamesAllowed(v any) bool {
+	var names []string
+	switch l := v.(type) {
+	case []string:
+		names = l
+	case []any:
+		for _, n := range l {
+			s, ok := n.(string)
+			if !ok {
+				return false
+			}
+			names = append(names, s)
+		}
+	default:
+		return false
+	}
+	if len(names) == 0 || len(names) > maxRuleNames {
+		return false
+	}
+	for _, n := range names {
+		if !alertName.MatchString(n) {
+			return false
+		}
+	}
+	return true
 }
 
 // Result is a tool call's outcome.
@@ -154,7 +221,7 @@ type Result struct {
 
 // Call runs a tool, if Allowed permits it.
 func (c *Client) Call(ctx context.Context, ep Endpoint, tool string, args map[string]any) (Result, error) {
-	if !ep.Allowed(tool) {
+	if !ep.Allowed(tool, args) {
 		return Result{}, fmt.Errorf("%w: %s on a connector of types %v", ErrCallForbidden, tool, ep.Types)
 	}
 	session, err := c.connect(ctx, ep)

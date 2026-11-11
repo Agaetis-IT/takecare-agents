@@ -1,0 +1,8 @@
+{
+  "content": [
+    {
+      "text": "Prometheus Rules:\n{Groups:[{Name:takecare-demo File:/etc/prometheus/rules.yml Interval:5 Rules:[{Name:HighErrorRate Query:sum by (service, namespace) (rate(http_requests_total{status=\"504\"}[1m])) / sum by (service, namespace) (rate(http_requests_total[1m])) > 0.02 Duration:30 Labels:{severity=\"critical\"} Annotations:{description=\"{{ $value | humanizePercentage }} of {{ $labels.service }} requests have answered 504 for 30 seconds.\", summary=\"High error rate on {{ $labels.service }}\"} Alerts:[] Health:ok LastError: EvaluationTime:0.001185833 LastEvaluation:2026-11-11 09:50:39.479607837 +0000 UTC State:inactive}]}]}",
+      "type": "text"
+    }
+  ]
+}

@@ -62,6 +62,12 @@ type IntendantConnectors struct {
 	// +listType=set
 	// +optional
 	Map []string `json:"map,omitempty"`
+	// The metrics connector whose rules tool lists the alerting rules
+	// Prometheus has loaded (spec 10 §4).
+	// +kubebuilder:validation:MaxItems=1
+	// +listType=set
+	// +optional
+	Metrics []string `json:"metrics,omitempty"`
 	// The registry connector (type registry, spec 10 §8), when the Base
 	// camp's registry is installed.
 	// +kubebuilder:validation:MaxItems=1

@@ -41,6 +41,18 @@
       "seen": 1,
       "matched": 0,
       "proposed": 1
+    },
+    {
+      "name": "alerting",
+      "seen": 0,
+      "matched": 0,
+      "proposed": 0,
+      "notSeen": [
+        {
+          "ref": "metrics",
+          "reason": "no metrics connector given"
+        }
+      ]
     }
   ],
   "proposals": [

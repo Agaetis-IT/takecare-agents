@@ -11,9 +11,11 @@
 // The answers it parses are those of the kubernetes add-on as pinned,
 // containers/kubernetes-mcp-server v0.0.67 with list_output "table" (the
 // add-on's default, which the Doc also reads): resources_list's
-// structuredContent and namespaces_list's text table. A version bump of the
-// add-on recaptures testdata/ (testdata/README.md says how); a shape the
-// parser does not know is a notSeen line, never a guess.
+// structuredContent and namespaces_list's text table. Its alerting layer
+// reads the metrics add-on's get_rules, as pinned (giantswarm/mcp-prometheus
+// v0.11.11; rules.go). A version bump of either add-on recaptures testdata/
+// (the README next to each set says how); a shape the parser does not know
+// is a notSeen line, never a guess.
 //
 // It never reads a value: no object is fetched, only listed; of an
 // object's labels only app.kubernetes.io/part-of and app.kubernetes.io/name
@@ -25,6 +27,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -60,9 +63,10 @@ const (
 	LayerNetwork     = "network"
 	LayerIdentity    = "identity"
 	LayerStorage     = "storage"
+	LayerAlerting    = "alerting"
 )
 
-var layerOrder = []string{LayerEnvironment, LayerCompute, LayerService, LayerNetwork, LayerIdentity, LayerStorage}
+var layerOrder = []string{LayerEnvironment, LayerCompute, LayerService, LayerNetwork, LayerIdentity, LayerStorage, LayerAlerting}
 
 // kind is a resource kind the import lists, and the layer (and entity
 // type) it lands in.
@@ -102,6 +106,14 @@ type Ground struct {
 	// Namespaces surveyed; empty: every namespace namespaces_list returns
 	// but the kube-* ones.
 	Namespaces []string
+}
+
+// Metrics is the metrics connector whose rules tool lists the alerting
+// rules Prometheus has loaded (spec 10 §4).
+type Metrics struct {
+	// Connector is the TakeCareConnector's name, in evidence.
+	Connector string
+	Endpoint  mcp.Endpoint
 }
 
 // Index is the Map as the survey starts: its entries by key and by
@@ -209,16 +221,27 @@ type run struct {
 	proposedKeys                   map[string]bool
 	// computeKeys: the key proposed for a compute object, by its ref.
 	computeKeys map[string]string
+	// updates: the entries the survey changes, gathered across layers
+	// and proposed once each.
+	updates map[string]*pending
+}
+
+// pending is an entry changed by one or more layers.
+type pending struct {
+	entry    mapserver.Entry
+	layer    *Layer
+	evidence []string
 }
 
 // Import surveys the grounds against the Map and returns what it saw and
 // proposes. It returns an error only when ctx ends; everything else it
 // could not read is a notSeen line.
-func Import(ctx context.Context, caller Caller, grounds []Ground, ix *Index, now time.Time) (Result, error) {
+func Import(ctx context.Context, caller Caller, grounds []Ground, metrics *Metrics, ix *Index, now time.Time) (Result, error) {
 	r := &run{
 		ix: ix, today: now.UTC().Format(time.DateOnly),
 		layers: map[string]*Layer{}, seen: map[string]bool{}, surveyed: map[string]bool{}, listedClusters: map[string]bool{},
 		objects: map[string][]seenObject{}, proposedKeys: map[string]bool{}, computeKeys: map[string]string{},
+		updates: map[string]*pending{},
 	}
 	for _, name := range layerOrder {
 		r.layers[name] = &Layer{Name: name}
@@ -233,6 +256,10 @@ func Import(ctx context.Context, caller Caller, grounds []Ground, ix *Index, now
 		r.objectsOf(k)
 	}
 	r.services()
+	if err := r.alerting(ctx, caller, metrics); err != nil {
+		return Result{}, err
+	}
+	r.flushUpdates()
 	r.removals()
 	// By layer, then key: the order a reviewer reads them in.
 	slices.SortStableFunc(r.proposals, func(a, b Proposal) int {
@@ -266,7 +293,12 @@ func (r *run) list(ctx context.Context, caller Caller, g Ground) error {
 			return nil
 		}
 	} else {
+		// Every namespace the cluster has exists, in scope or not: an
+		// environment entry of one is never proposed for removal.
 		r.listedClusters[g.Cluster] = true
+		for _, ns := range existing {
+			r.seen[clusterRef(g.Cluster, ns)] = true
+		}
 	}
 	namespaces := g.Namespaces
 	if len(namespaces) == 0 {
@@ -540,25 +572,68 @@ func (r *run) add(l *Layer, e mapserver.Entry, evidence []string) {
 	r.propose(l, v1alpha1.ProposalAdd, e, evidence)
 }
 
-// update proposes an existing entry seen again when the relations the
-// import draws differ, with lastSeen refreshed. A survey never proposes a
-// change of lastSeen alone: the review would touch the whole Map every day
-// and hide the real changes.
+// update gathers the deployedIn relations the import draws on an existing
+// entry seen again.
 func (r *run) update(l *Layer, key string, evidence []string, relations *mapserver.Relations) {
-	e := r.ix.entries[key]
-	changed := false
-	if relations != nil {
+	if relations == nil {
+		return
+	}
+	r.change(l, key, evidence, func(e *mapserver.Entry) bool {
+		changed := false
 		for _, to := range relations.DeployedIn {
 			if !slices.Contains(e.Relations.DeployedIn, to) {
 				e.Relations.DeployedIn = append(e.Relations.DeployedIn, to)
 				changed = true
 			}
 		}
+		return changed
+	})
+}
+
+// change applies a layer's change to an existing entry, on top of the
+// changes other layers made to it; the first layer that changes it owns
+// the proposal, and evidence accumulates.
+func (r *run) change(l *Layer, key string, evidence []string, mutate func(*mapserver.Entry) bool) {
+	p, ok := r.updates[key]
+	if !ok {
+		p = &pending{entry: clone(r.ix.entries[key])}
 	}
-	if changed {
-		e.LastSeen = r.today
-		r.propose(l, v1alpha1.ProposalUpdate, e, evidence)
+	if !mutate(&p.entry) {
+		return
 	}
+	if !ok {
+		p.layer = l
+		r.updates[key] = p
+	}
+	for _, ev := range evidence {
+		if !slices.Contains(p.evidence, ev) {
+			p.evidence = append(p.evidence, ev)
+		}
+	}
+}
+
+// flushUpdates proposes every changed entry once, with lastSeen refreshed.
+// A survey never proposes a change of lastSeen alone: the review would
+// touch the whole Map every day and hide the real changes.
+func (r *run) flushUpdates() {
+	for _, key := range slices.Sorted(maps.Keys(r.updates)) {
+		p := r.updates[key]
+		p.entry.LastSeen = r.today
+		r.propose(p.layer, v1alpha1.ProposalUpdate, p.entry, p.evidence)
+	}
+}
+
+// clone copies an entry deeply, so that a change never touches the index.
+func clone(e mapserver.Entry) mapserver.Entry {
+	raw, err := json.Marshal(e)
+	if err != nil {
+		return e // an Entry always marshals
+	}
+	var c mapserver.Entry
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return e
+	}
+	return c
 }
 
 func (r *run) propose(l *Layer, action v1alpha1.ProposalAction, e mapserver.Entry, evidence []string) {
