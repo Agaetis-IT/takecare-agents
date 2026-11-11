@@ -5,11 +5,11 @@
 | Status | Proposed |
 | Date | 2026-11-11 |
 | Amends | ADR 0002 (§3: Prometheus and Alertmanager are no longer only the customer's), spec 01 (the Prometheus that scrapes the gateway) |
-| Relates to | ADR 0006, ADR 0011, ADR 0015, ADR 0016, spec 01, spec 09 |
+| Relates to | ADR 0006, ADR 0011, ADR 0015, ADR 0016, ADR 0018, spec 01, spec 09 |
 
 ## Context
 
-The usage and cost (spec 01), the Ranger's alerts (spec 09) and the `gateway-metrics-not-scraped` check all depend on a Prometheus that the customer must provide (`observability.metrics.prometheusURL`, required in values-prod) and that must scrape the gateway. The demo installs prometheus-community/prometheus for that. Nothing watches TakeCare itself. And there is no Alertmanager of ours to receive alerts from sources that are not an Alertmanager (ADR 0018, proposed).
+The usage and cost (spec 01), the Ranger's alerts (spec 09) and the `gateway-metrics-not-scraped` check all depend on a Prometheus that the customer must provide (`observability.metrics.prometheusURL`, required in values-prod) and that must scrape the gateway. The demo installs prometheus-community/prometheus for that. Nothing watches TakeCare itself. And there is no Alertmanager of ours to receive alerts from sources that are not an Alertmanager (ADR 0018).
 
 A lesson of the proof of concept: the gateway's counters were scraped twice, by two jobs.
 
