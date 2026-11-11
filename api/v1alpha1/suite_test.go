@@ -51,6 +51,7 @@ const (
 	colPhase         = "Phase"
 	addonKubernetes  = "kubernetes"
 	caseUnknownLevel = "unknown level"
+	connPrometheus   = "prometheus"
 )
 
 var (

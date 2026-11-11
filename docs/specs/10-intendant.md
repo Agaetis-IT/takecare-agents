@@ -19,7 +19,7 @@ Out of scope for 0.3.0: the Bib (its own ADR and spec), cloud importers, any wri
 - **`TakeCareIntendant`**, namespaced, one per Map scope. It embeds `RoleCommonSpec` (level, scope, connectors, model, report) and adds:
   - `schedule`: a cron expression, daily by default (`0 3 * * *`);
   - `importers`: `Kubernetes` for 0.3.0, the default;
-  - `connectors`: `cluster`, `knowledge`, `map` (required, exactly one), `registry` (optional, at most one) and `report`;
+  - `connectors`: `cluster`, `knowledge`, `map` (required, exactly one), `metrics` (optional, at most one), `registry` (optional, at most one) and `report`;
   - `report`: the report connector's destinations by level, as the Doc's.
 - **`TakeCareSurvey`**, one record per survey, with a `RunStatus` (spec 06 §3).
   - Spec, immutable: `intendantRef`, `trigger` (`Schedule`, `OnDemand`, `MapRevision`, `Registration`; `OnDemand` by default) and `mapRevision`, the Map revision to survey against (empty: the one served when the survey starts).
@@ -44,13 +44,11 @@ Layers, and how they map to spec 08:
 - namespaces → `environment/<namespace>` (`environment/<cluster>.<namespace>` on a named cluster);
 - Deployments, StatefulSets, DaemonSets and CronJobs → `compute`; their `app.kubernetes.io/part-of` or `app.kubernetes.io/name` label → a `service` proposal with `runsAs`;
 - Services, Ingresses and HTTPRoutes → `network`; ServiceAccounts → `identity`; PersistentVolumeClaims → `storage`;
-- PrometheusRules → `alertedBy` on the entries whose workload the rule's labels or expression name, with the alert's expression carried on the relation (spec 08 §4); no clear match, no proposal.
+- the alerting rules Prometheus has loaded (PrometheusRules included), read through the `metrics` connector's rules tool (decided 2026-11-11) → `alertedBy` with the alert's expression (spec 08 §4). First by name: an entry whose `alertedBy` names a loaded alert without its expression, or with another, gets it. Then every alerting rule: one whose expression has an exact matcher naming one service (`service="…"`) or one workload (`deployment="…"` and the like) of the Map gives that entry the alert when it lacks it. Anything else proposes nothing; a name loaded twice with two expressions is not seen. Expressions are compared up to whitespace (Prometheus returns its own formatting), and the one proposed is Prometheus's. A `deployment` matcher names a Deployment, `statefulset` a StatefulSet, `daemonset` a DaemonSet, `cronjob` a CronJob; `workload` names any kind.
 
 The import does not read the `knowledge` connectors: no standard MCP tool lists a knowledge server's records, so runbook entries come from the agent pass (§5) (decided 2026-11-11).
 
-It calls only `namespaces_list` and `resources_list` (the alerting layer also `resources_get`, on PrometheusRules only), each when discovery classed it read and not content; the operator's MCP client refuses any other tool or kind. Apart from PrometheusRules, it lists objects and never fetches one, since an object's spec may carry values: of an object it keeps its kind, namespace, name and the two labels above, nothing else. The answers it parses are the `kubernetes` add-on's as pinned (`resources_list`'s structured content, `namespaces_list`'s table); a shape it does not know is a `notSeen` line, never a guess.
-
-PrometheusRules are read through the `kubernetes` connector too: the `kubernetes` add-on's chart-rendered read-only RBAC gains `get`, `list` and `watch` on `prometheusrules` of `monitoring.coreos.com`, when that API is served. Read verbs only (AGENTS.md); it is the only RBAC change of the Intendant.
+It calls only `namespaces_list` and `resources_list` on a cluster connector, and `get_rules` on the metrics connector, each when discovery classed it read and not content; the operator's MCP client refuses any other tool. `get_rules` is called for the alerting rules only, never the firing alerts, which carry label values, and never with another Prometheus or tenant: the client admits `type: alert`, `exclude_alerts: true` and alert names, nothing else. The import lists objects and never fetches one, since an object's spec may carry values: of an object it keeps its kind, namespace, name and the two labels above, nothing else. The answers it parses are the add-ons' as pinned (`resources_list`'s structured content, `namespaces_list`'s table, `get_rules`' text, of which it keeps each rule's name and expression only); they are parsed strictly, and a shape it does not know, a truncated answer included, is a `notSeen` line, never a guess.
 
 Never Secrets, never ConfigMap values, never logs: content tools are not given to it.
 
@@ -134,11 +132,11 @@ Metrics: `takecare_survey_proposals_total{action,source}` and `takecare_survey_n
 ## 11. Acceptance criteria
 
 1. On the demo, a survey proposes the demo Map's compute, network, identity and environment entries, and finds no difference with the validated demo Map other than the declared ones.
-2. A PrometheusRule's alert lands as `alertedBy`, with its expression, on the entry it selects.
+2. On the demo, `HighErrorRate`, which `service/billing-api` declares, gets the expression Prometheus loaded; a rule naming exactly one service or workload of the Map lands as `alertedBy`, with its expression, on that entry.
 3. `RB-014` in the corpus lands as a runbook entry with `knowledge: runbooks/RB-014`.
 4. A Deployment deleted from the scenery gives a removal proposal; its entry keeps `lastSeen`.
 5. A namespace no connector reads is a `notSeen` line, not an omission.
-6. The read-only guard test is unchanged and green; the operator's ClusterRole is unchanged; the only RBAC change is the `prometheusrules` read rule on the `kubernetes` add-on (§4).
+6. The read-only guard test is unchanged and green; no RBAC changes, the operator's or an add-on's.
 7. agentregistry installs from the chart, and its connector is Ready with read tools only.
 8. A new Map revision triggers one survey; two triggers during a run give one more survey, not two.
 

@@ -71,7 +71,7 @@ func (f *fakeLister) ListTools(ctx context.Context, ep mcp.Endpoint) ([]mcp.Tool
 }
 
 func (f *fakeLister) Call(_ context.Context, ep mcp.Endpoint, tool string, _ map[string]any) (mcp.Result, error) {
-	if !ep.Allowed(tool) {
+	if !ep.Allowed(tool, nil) {
 		return mcp.Result{}, mcp.ErrCallForbidden
 	}
 	f.probeCalls++

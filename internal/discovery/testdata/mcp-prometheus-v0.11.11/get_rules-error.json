@@ -1,0 +1,9 @@
+{
+  "content": [
+    {
+      "text": "Error getting rules: failed to get rules: Get \"http://127.0.0.1:19090/api/v1/rules?exclude_alerts=true&type=alert\": dial tcp 127.0.0.1:19090: connect: connection refused",
+      "type": "text"
+    }
+  ],
+  "isError": true
+}

@@ -29,6 +29,7 @@ func intendantFixture() *v1alpha1.TakeCareIntendant {
 				Cluster:   []string{addonKubernetes},
 				Knowledge: []string{"runbooks"},
 				Map:       []string{connMap},
+				Metrics:   []string{connPrometheus},
 				Registry:  []string{connRegistry},
 				Report:    connReport,
 			},
@@ -52,6 +53,9 @@ func TestIntendantValidation(t *testing.T) {
 		}, ""},
 		{"no map connector", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Map = nil }, wantOneMap},
 		{"two map connectors", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Map = []string{connMap, "other-map"} }, wantOneMap},
+		{"two metrics connectors", func(i *v1alpha1.TakeCareIntendant) {
+			i.Spec.Connectors.Metrics = []string{connPrometheus, "other-prometheus"}
+		}, "metrics"},
 		{"two registry connectors", func(i *v1alpha1.TakeCareIntendant) {
 			i.Spec.Connectors.Registry = []string{connRegistry, "other-registry"}
 		}, "registry"},

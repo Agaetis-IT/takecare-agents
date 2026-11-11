@@ -88,6 +88,15 @@ spec:
                       type: string
                     type: array
                     x-kubernetes-list-type: set
+                  metrics:
+                    description: |-
+                      The metrics connector whose rules tool lists the alerting rules
+                      Prometheus has loaded (spec 10 §4).
+                    items:
+                      type: string
+                    maxItems: 1
+                    type: array
+                    x-kubernetes-list-type: set
                   registry:
                     description: |-
                       The registry connector (type registry, spec 10 §8), when the Base

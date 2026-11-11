@@ -437,6 +437,11 @@ func (in *IntendantConnectors) DeepCopyInto(out *IntendantConnectors) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.Metrics != nil {
+		in, out := &in.Metrics, &out.Metrics
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.Registry != nil {
 		in, out := &in.Registry, &out.Registry
 		*out = make([]string, len(*in))
