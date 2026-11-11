@@ -93,7 +93,14 @@ Each item of `proposals[]` is `{id, action, key, entry, evidence[], source}`:
 
 Ids are stable across surveys (a hash of the action and the key), so that `takecare review` can tick what was taken.
 
-The status is bounded in size: it keeps the counts and the first 20 proposals (20 entries of at most 8 KiB, 160 KiB at worst). The full set is in a ConfigMap owned by the survey, which never holds content.
+The status is bounded in size: it keeps the counts and the first 20 proposals (20 entries of at most 8 KiB, 160 KiB at worst). The full set is in a ConfigMap owned by the survey, which never holds content:
+
+- it is `survey-<survey>-proposals` in the operator's namespace, named in `status.proposalsConfigMap`;
+- its data is one key per proposal id, the proposal as YAML in the status's shape, in the import's order;
+- its data is bounded at 900 KiB; what does not fit is left out, and the layer of the first proposal left out says so first among its `notSeen` lines: "the full set exceeds the ConfigMap's size: N proposals left out";
+- a survey run again replaces it (deleted, then created); a ConfigMap of that name the survey does not own is never touched, and the survey fails with "the proposals could not be recorded".
+
+The operator's rights on ConfigMaps in its own namespace are create, get and delete: no list, no watch, no update. It reads them through the API reader, not the cache.
 
 ## 8. The registry (Base camp)
 

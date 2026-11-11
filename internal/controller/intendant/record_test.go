@@ -5,21 +5,26 @@ package intendant
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/yaml"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/discovery"
 	"github.com/agaetis-it/takecare-agents/internal/telemetry/semconv"
 )
 
@@ -175,5 +180,100 @@ func TestSweep(t *testing.T) {
 	var left v1alpha1.TakeCareSurveyList
 	if err := c.List(context.Background(), &left); err != nil || len(left.Items) != len(objs)-len(gone) {
 		t.Fatalf("left %d surveys, %v", len(left.Items), err)
+	}
+}
+
+// checkProposals checks a completed survey's ConfigMap: named in its
+// status, owned by it, the full set of proposals by id and nothing else.
+func (f *fixture) checkProposals(t *testing.T, s *v1alpha1.TakeCareSurvey) {
+	t.Helper()
+	if s.Status.ProposalsConfigMap != proposalsName(s.Name) {
+		t.Fatalf("proposalsConfigMap %q", s.Status.ProposalsConfigMap)
+	}
+	var cm corev1.ConfigMap
+	if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: s.Status.ProposalsConfigMap}, &cm); err != nil {
+		t.Fatal(err)
+	}
+	if ref := metav1.GetControllerOf(&cm); ref == nil || ref.UID != s.UID {
+		t.Errorf("owner %v, want the survey %s", ref, s.UID)
+	}
+	if len(cm.Data) != int(s.Status.ProposalCounts.Total) {
+		t.Fatalf("%d proposals in the ConfigMap, the status counts %d", len(cm.Data), s.Status.ProposalCounts.Total)
+	}
+	for id, v := range cm.Data {
+		var p v1alpha1.Proposal
+		if err := yaml.UnmarshalStrict([]byte(v), &p); err != nil || p.ID != id || p.Entry == "" {
+			t.Fatalf("proposal %s: %+v, %v", id, p, err)
+		}
+	}
+	for _, p := range s.Status.Proposals {
+		if _, ok := cm.Data[p.ID]; !ok {
+			t.Errorf("the status's proposal %s is not in the ConfigMap", p.ID)
+		}
+	}
+}
+
+// A ConfigMap of the proposals' name that the survey does not own is left
+// as it is, and the survey fails with the fixed reason.
+func TestProposalsForeign(t *testing.T) {
+	f := startRunner(t)
+	f.grounded(t)
+	ctx := context.Background()
+	foreign := &corev1.ConfigMap{Name: proposalsName("foreign-by-hand"), Namespace: ns, Data: map[string]string{"mine": "x"}}
+	if err := f.c.Create(ctx, foreign); err != nil {
+		t.Fatal(err)
+	}
+	f.surveyed(t, "foreign", mapServer(t, nil), nil)
+	byHand := &v1alpha1.TakeCareSurvey{Name: "foreign-by-hand", Namespace: ns}
+	byHand.Spec.IntendantRef = v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareIntendant, Name: "foreign"}
+	if err := f.c.Create(ctx, byHand); err != nil {
+		t.Fatal(err)
+	}
+	var got v1alpha1.TakeCareSurvey
+	deadline := time.Now().Add(waitFor)
+	for time.Now().Before(deadline) {
+		if err := f.c.Get(ctx, client.ObjectKeyFromObject(byHand), &got); err == nil && endedPhase(got.Status.Phase) {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if got.Status.Phase != v1alpha1.RunFailed || got.Status.Reason != failRecord || got.Status.ProposalsConfigMap != "" {
+		t.Fatalf("the survey: %+v", got.Status.RunStatus)
+	}
+	var cm corev1.ConfigMap
+	if err := f.c.Get(ctx, client.ObjectKeyFromObject(foreign), &cm); err != nil || cm.Data["mine"] != "x" || len(cm.OwnerReferences) != 0 {
+		t.Errorf("the foreign ConfigMap: %+v, %v", cm, err)
+	}
+}
+
+// The data is bounded: what does not fit is left out, and the layer of the
+// first proposal left out says how many, first among its not-seen lines.
+func TestProposalsBounded(t *testing.T) {
+	entry := strings.Repeat("x", 8<<10)
+	res := discovery.Result{Layers: []discovery.Layer{{Name: "workloads"}, {Name: "alerting", NotSeen: []discovery.NotSeen{{Ref: "r", Reason: "earlier"}}}}}
+	for i := range 200 {
+		layer := "workloads"
+		if i >= 100 {
+			layer = "alerting"
+		}
+		res.Proposals = append(res.Proposals, discovery.Proposal{ID: fmt.Sprintf("%016d", i), Action: v1alpha1.ProposalAdd, Key: "k", Entry: entry, Source: v1alpha1.ProposalFromImport, Layer: layer})
+	}
+	data, err := proposalsData(&res, "cm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	size := 0
+	for k, v := range data {
+		size += len(k) + len(v)
+	}
+	if size > maxProposalsData || len(data) < 100 || len(data) == 200 {
+		t.Fatalf("%d proposals, %d bytes", len(data), size)
+	}
+	want := discovery.NotSeen{Ref: "cm", Reason: fmt.Sprintf("the full set exceeds the ConfigMap's size: %d proposals left out", 200-len(data))}
+	if ns := res.Layers[1].NotSeen; len(ns) != 2 || ns[0] != want || len(res.Layers[0].NotSeen) != 0 {
+		t.Errorf("not seen: %+v / %+v", res.Layers[0].NotSeen, ns)
+	}
+	if n := proposalsName(strings.Repeat("s", 253)); len(n) != 253 || n == proposalsName(strings.Repeat("s", 252)+"t") {
+		t.Errorf("a long survey's ConfigMap name %q", n)
 	}
 }
