@@ -9,7 +9,7 @@
 
 ## Context
 
-The usage and cost (spec 01), the Ranger's alerts (spec 09) and the `gateway-metrics-not-scraped` check all depend on a Prometheus that the customer must provide (`observability.metrics.prometheusURL`, required in values-prod) and that must scrape the gateway. The demo installs prometheus-community/prometheus for that. Nothing watches TakeCare itself. And there is no Alertmanager of ours to receive alerts from sources that are not an Alertmanager (ADR 0018).
+The usage and cost (spec 01), the Ranger's alerts (spec 09) and the `gateway-metrics-not-scraped` check all depend on a Prometheus that the customer must provide (`observability.metrics.prometheusURL`, required in values-prod) and that must scrape the gateway. The demo installs prometheus-community/prometheus for that. Nothing watches TakeCare itself. And there is no Alertmanager of ours to receive alerts from sources that are not an Alertmanager (ADR 0018, proposed).
 
 A lesson of the proof of concept: the gateway's counters were scraped twice, by two jobs.
 
@@ -51,7 +51,9 @@ On an administration cluster (ADR 0011), there is no customer Prometheus at hand
 - values-prod no longer requires a Prometheus. `metricsScrapers` and the gateway's ingress NetworkPolicy follow the embedded Prometheus, and `gateway-metrics-not-scraped` reads it.
 - The footprint is measured in the implementing PR: Prometheus Operator, Prometheus, Alertmanager, Grafana and kube-state-metrics.
 - The kube-prometheus-stack chart and the prometheus-operator CRDs' version are pinned in `hack/versions.env`.
-- To make explicit in the specs: the Intendant's rules (spec 10 §4) come from the customer's Prometheus through the `metrics` connector, never from the embedded stack.
+- Two clarifications to make in the specs. Both read the customer's Prometheus through the `metrics` connector, never the embedded stack, whose Prometheus holds only TakeCare's own series:
+  - the Intendant's rules (spec 10 §4);
+  - the Doc's metric queries (the Doc's `metrics` connector, spec 02).
 
 ## Rejected alternatives
 
