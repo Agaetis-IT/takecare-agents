@@ -46,7 +46,12 @@
           "azure": { "type": "string", "minLength": 1 },
           "aws": { "type": "string", "minLength": 1 },
           "vsphere": { "type": "string", "minLength": 1 },
-          "url": { "type": "string", "minLength": 1 }
+          "url": { "type": "string", "minLength": 1 },
+          "knowledge": {
+            "type": "string",
+            "description": "<connector>/<recordId>: the record of a knowledge connector a runbook entry maps to (spec 08 §3)",
+            "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?/[^/\\s]+$"
+          }
         }
       }
     },
@@ -62,10 +67,23 @@
         "observedBy": { "$ref": "#/$defs/keys" },
         "documentedBy": { "$ref": "#/$defs/keys" },
         "alertedBy": {
-          "description": "Alert names, as the alert source names them.",
+          "description": "The alerts that fire on the entry, as the alert source names them: a name, or {name, expr} with the alert's expression (spec 08 §4).",
           "type": "array",
           "uniqueItems": true,
-          "items": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" }
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/alertName" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "expr"],
+                "properties": {
+                  "name": { "$ref": "#/$defs/alertName" },
+                  "expr": { "type": "string", "minLength": 1, "maxLength": 4096 }
+                }
+              }
+            ]
+          }
         }
       }
     }
@@ -81,6 +99,10 @@
       "type": "array",
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/key" }
+    },
+    "alertName": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
     },
     "date": {
       "type": "string",

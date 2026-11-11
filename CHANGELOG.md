@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - The Intendant's kinds `TakeCareIntendant` and `TakeCareSurvey` (spec 10). No controller yet: nothing is surveyed.
+- The Map accepts a `knowledge` source on runbook entries, naming the record of a knowledge connector, and an alert's expression on `alertedBy` (spec 08).
 
 ### Fixed
 

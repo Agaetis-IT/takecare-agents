@@ -150,7 +150,7 @@ func TestGitSource(t *testing.T) {
 	if !strings.Contains(string(st), c3) {
 		t.Errorf("lastError does not name commit 3: %s", st)
 	}
-	if got, _ := json.Marshal(m.Entries["service/billing-api"].Relations["dependsOn"]); string(got) != `["network/billing-db-proxy"]` {
+	if got, _ := json.Marshal(m.Entries["service/billing-api"].Relations.DependsOn); string(got) != `["network/billing-db-proxy"]` {
 		t.Errorf("commit 2's billing-api depends on %s", got)
 	}
 
@@ -174,7 +174,7 @@ func TestGitSource(t *testing.T) {
 				}
 				continue
 			}
-			got, _ := json.Marshal(m.Entries["service/billing-api"].Relations["dependsOn"])
+			got, _ := json.Marshal(m.Entries["service/billing-api"].Relations.DependsOn)
 			if err != nil || m.Revision != tc.revision || string(got) != tc.dependsOn {
 				t.Errorf("at %s: revision %v, dependsOn %s (%v)", tc.at, m, got, err)
 			}

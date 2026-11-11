@@ -1,0 +1,7 @@
+key: compute/orders
+provenance: declared
+status: validated
+created: 2026-11-11
+lastValidated: 2026-11-11
+sources:
+  - kubernetes: shop/Deployment/orders
