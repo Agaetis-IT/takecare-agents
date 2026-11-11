@@ -14,6 +14,7 @@ import (
 	mapschema "github.com/agaetis-it/takecare-agents/api/map"
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/controller/connector"
+	"github.com/agaetis-it/takecare-agents/internal/coverage"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
 )
 
@@ -23,20 +24,13 @@ type MapCaller interface {
 }
 
 const (
-	entryTimeout    = 3 * time.Second
-	typeEnvironment = "environment"
+	entryTimeout = 3 * time.Second
 )
 
-// entryInfo is what the Map says of one key.
+// entryInfo is what the Map says of one key; down is set when the server
+// itself failed, not the tool.
 type entryInfo struct {
-	found     bool
-	validated bool
-	// places are the namespaces of the entry's kubernetes sources, each on
-	// its cluster (ADR 0016 §5).
-	places []place
-	// err is set when the Map did not answer; down when the server
-	// itself failed, not the tool.
-	err  string
+	coverage.Entry
 	down bool
 }
 
@@ -47,41 +41,14 @@ type entryCache struct {
 }
 
 // mapProblem is why the Map could not be asked at all.
-type mapProblem struct {
-	reason v1alpha1.BlindSpotReason
-	why    string
-}
-
-// onGround says whether an entity type has state on a ground, and is checked
-// for coverage (spec 08 §7); environment is checked through its namespace.
-func onGround(t string) bool {
-	switch t {
-	case "service", "compute", "datastore", "storage", "network", "identity":
-		return true
-	}
-	return false
-}
-
-// environmentPlace reads an environment entry's name: <cluster>.<ns> on a
-// named cluster, <ns> on the unnamed one (a namespace has no dot).
-func environmentPlace(name string) place {
-	if cluster, ns, dotted := strings.Cut(name, "."); dotted {
-		return place{cluster, v1alpha1.Namespace(ns)}
-	}
-	return place{"", v1alpha1.Namespace(name)}
-}
-
-func typeName(k v1alpha1.EntityKey) (string, string) {
-	t, name, _ := strings.Cut(string(k), "/")
-	return t, name
-}
+type mapProblem = coverage.MapProblem
 
 // lookupEntities asks the bound Map for the scope's entities that have
 // state on a ground, through its entry tool, once per Map revision.
 func (r *Reconciler) lookupEntities(ctx context.Context, d *v1alpha1.TakeCareDoc, b binding, f *findings) error {
 	var keys []v1alpha1.EntityKey
 	for _, k := range d.Spec.Scope.Entities {
-		if t, _ := typeName(k); onGround(t) {
+		if t, _ := coverage.TypeName(k); coverage.OnGround(t) {
 			keys = append(keys, k)
 		}
 	}
@@ -89,11 +56,11 @@ func (r *Reconciler) lookupEntities(ctx context.Context, d *v1alpha1.TakeCareDoc
 		return nil
 	}
 	if len(d.Spec.Connectors.Map) == 0 {
-		f.mapProblem = mapProblem{v1alpha1.BlindSpotNoAccess, "no Map connector is bound"}
+		f.mapProblem = mapProblem{Reason: v1alpha1.BlindSpotNoAccess, Why: "no Map connector is bound"}
 		return nil
 	}
 	name := d.Spec.Connectors.Map[0]
-	notGiven := mapProblem{v1alpha1.BlindSpotConnectorNotReady, fmt.Sprintf("the Map connector %s is not given to the agent (never discovered, or no read tool)", name)}
+	notGiven := mapProblem{Reason: v1alpha1.BlindSpotConnectorNotReady, Why: fmt.Sprintf("the Map connector %s is not given to the agent (never discovered, or no read tool)", name)}
 	if !slices.ContainsFunc(b.rendered, func(c boundConnector) bool { return c.name == name }) {
 		f.mapProblem = notGiven
 		return nil
@@ -108,7 +75,7 @@ func (r *Reconciler) lookupEntities(ctx context.Context, d *v1alpha1.TakeCareDoc
 	}
 	ep, err := connector.MapEndpoint(ctx, r.Client, c)
 	if err != nil {
-		f.mapProblem = mapProblem{v1alpha1.BlindSpotConnectorNotReady, err.Error()}
+		f.mapProblem = mapProblem{Reason: v1alpha1.BlindSpotConnectorNotReady, Why: err.Error()}
 		return nil
 	}
 	f.entities = map[v1alpha1.EntityKey]entryInfo{}
@@ -117,7 +84,7 @@ func (r *Reconciler) lookupEntities(ctx context.Context, d *v1alpha1.TakeCareDoc
 	var down string
 	for _, k := range keys {
 		if down != "" {
-			f.entities[k] = entryInfo{err: down, down: true}
+			f.entities[k] = entryInfo{Err: down, down: true}
 			continue
 		}
 		if info, ok := r.cachedEntry(name, c.Status.MapRevision, k); ok {
@@ -127,9 +94,9 @@ func (r *Reconciler) lookupEntities(ctx context.Context, d *v1alpha1.TakeCareDoc
 		info := r.entry(ctx, ep, k)
 		f.entities[k] = info
 		if info.down {
-			down = info.err
+			down = info.Err
 		}
-		if info.err == "" && c.Status.MapRevision != "" {
+		if info.Err == "" && c.Status.MapRevision != "" {
 			r.cacheEntry(name, c.Status.MapRevision, k, info)
 		}
 	}
@@ -142,23 +109,23 @@ func (r *Reconciler) entry(ctx context.Context, ep mcp.Endpoint, key v1alpha1.En
 	res, err := r.MCP.Call(ctx, ep, mcp.MapEntryTool, map[string]any{"key": string(key)})
 	switch {
 	case err != nil:
-		return entryInfo{err: err.Error(), down: true}
+		return entryInfo{Err: err.Error(), down: true}
 	case res.IsError && strings.HasPrefix(res.Text, "unknown key"):
 		return entryInfo{}
 	case res.IsError:
-		return entryInfo{err: res.Text}
+		return entryInfo{Err: res.Text}
 	}
 	var e struct {
 		Status  string              `json:"status"`
 		Sources []map[string]string `json:"sources"`
 	}
 	if err := json.Unmarshal([]byte(res.Text), &e); err != nil {
-		return entryInfo{err: "the entry is not JSON"}
+		return entryInfo{Err: "the entry is not JSON"}
 	}
-	info := entryInfo{found: true, validated: e.Status == "validated"}
+	info := entryInfo{Found: true, Validated: e.Status == "validated"}
 	for _, s := range e.Sources {
 		if src, ok := mapschema.ParseKubernetes(s["kubernetes"]); ok && s["kubernetes"] != "" {
-			info.places = append(info.places, place{src.Cluster, v1alpha1.Namespace(src.Namespace)})
+			info.Places = append(info.Places, coverage.Place{Cluster: src.Cluster, Namespace: v1alpha1.Namespace(src.Namespace)})
 		}
 	}
 	return info
@@ -187,56 +154,4 @@ func (r *Reconciler) cacheEntry(conn, revision string, key v1alpha1.EntityKey, i
 	}
 	c.entries[key] = info
 	r.entries[conn] = c
-}
-
-// coverEntities reads scope.entities against the Map's answers and the
-// readable namespaces (spec 08 §7): an entity with state on a ground is
-// covered when it is validated in the Map and one of its kubernetes
-// sources is in a readable namespace; environment/<ns> when the namespace
-// is readable; team, observability, runbook and external are never blind
-// spots. It returns how many entities are covered.
-func (b *binding) coverEntities(d *v1alpha1.TakeCareDoc, f findings, readable map[place]bool) int {
-	covered := 0
-	spot := func(k v1alpha1.EntityKey, reason v1alpha1.BlindSpotReason, why string) {
-		b.blindSpots = append(b.blindSpots, v1alpha1.BlindSpot{Entity: k, Reason: reason, Message: fmt.Sprintf("The entity `%s`: %s.", k, why)})
-	}
-	for _, k := range d.Spec.Scope.Entities {
-		t, name := typeName(k)
-		env := environmentPlace(name)
-		switch {
-		case t == typeEnvironment && env.cluster == "" && slices.Contains(d.Spec.Scope.Namespaces, env.ns):
-			// Counted with the namespaces.
-		case t == typeEnvironment && readable[env]:
-			covered++
-		case t == typeEnvironment:
-			reason, why := f.unread(env)
-			spot(k, reason, why)
-		case !onGround(t):
-		case f.mapProblem.why != "":
-			spot(k, f.mapProblem.reason, f.mapProblem.why)
-		default:
-			covered += b.coverEntry(k, f, readable, spot)
-		}
-	}
-	return covered
-}
-
-func (b *binding) coverEntry(k v1alpha1.EntityKey, f findings, readable map[place]bool, spot func(v1alpha1.EntityKey, v1alpha1.BlindSpotReason, string)) int {
-	info := f.entities[k]
-	switch {
-	case info.err != "":
-		spot(k, v1alpha1.BlindSpotConnectorNotReady, "the Map did not answer: "+info.err)
-	case !info.found:
-		spot(k, v1alpha1.BlindSpotNotInMap, "not in the Map")
-	case !info.validated:
-		spot(k, v1alpha1.BlindSpotNotValidated, "proposed in the Map, not validated")
-	case len(info.places) == 0:
-		spot(k, v1alpha1.BlindSpotNoAccess, "no kubernetes source in the Map, so no connector reads it")
-	case slices.ContainsFunc(info.places, func(p place) bool { return readable[p] }):
-		return 1
-	default:
-		reason, why := f.unread(info.places[0])
-		spot(k, reason, fmt.Sprintf("its namespace `%s`: %s", info.places[0], why))
-	}
-	return 0
 }

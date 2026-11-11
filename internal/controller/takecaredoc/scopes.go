@@ -13,6 +13,7 @@ import (
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/controller/connector"
+	"github.com/agaetis-it/takecare-agents/internal/coverage"
 )
 
 // earlier orders Docs by creation time, then name, as the intake does.
@@ -92,7 +93,7 @@ func (r *Reconciler) scopeOf(ctx context.Context, d *v1alpha1.TakeCareDoc) (docS
 	sc := docScope{entities: d.Spec.Scope.Entities}
 	for _, ns := range d.Spec.Scope.Namespaces {
 		for _, cl := range clusters {
-			sc.places = append(sc.places, place{cl, ns})
+			sc.places = append(sc.places, place{Cluster: cl, Namespace: ns})
 		}
 	}
 	sc.entityPlaces = r.entityPlaces(ctx, d)
@@ -138,10 +139,10 @@ func (r *Reconciler) entityPlaces(ctx context.Context, d *v1alpha1.TakeCareDoc) 
 	out := map[v1alpha1.EntityKey][]place{}
 	var keys []v1alpha1.EntityKey
 	for _, k := range d.Spec.Scope.Entities {
-		switch t, name := typeName(k); {
-		case t == typeEnvironment:
-			out[k] = []place{environmentPlace(name)}
-		case onGround(t):
+		switch t, name := coverage.TypeName(k); {
+		case t == "environment":
+			out[k] = []place{place(coverage.EnvironmentPlace(name))}
+		case coverage.OnGround(t):
 			keys = append(keys, k)
 		}
 	}
@@ -163,12 +164,14 @@ func (r *Reconciler) entityPlaces(ctx context.Context, d *v1alpha1.TakeCareDoc) 
 			if info = r.entry(ctx, ep, k); info.down {
 				return out
 			}
-			if info.err == "" && c.Status.MapRevision != "" {
+			if info.Err == "" && c.Status.MapRevision != "" {
 				r.cacheEntry(name, c.Status.MapRevision, k, info)
 			}
 		}
-		if info.found && info.validated {
-			out[k] = info.places
+		if info.Found && info.Validated {
+			for _, p := range info.Places {
+				out[k] = append(out[k], place(p))
+			}
 		}
 	}
 	return out
