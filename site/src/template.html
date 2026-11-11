@@ -253,6 +253,7 @@ code.api{font-size:.68rem;color:var(--mute);background:var(--panel-2);margin-lef
 .crumb a{color:var(--mute)}
 .sheet{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:3rem;align-items:start}
 .sheet .big{position:sticky;top:90px}
+.sheet .big .bim{position:relative;display:block}.sheet .big .st,.flip .face.front .st{top:14px;right:14px;font-size:.8rem;z-index:2}
 .sheet .big img{width:100%;border-radius:16px;border:1px solid var(--line);box-shadow:0 24px 50px rgba(0,0,0,.4);display:block}
 .sheet h1{font:800 clamp(2rem,4.4vw,3rem)/1.05 var(--display);letter-spacing:-.02em;margin-block:.5rem .4rem}
 .aka{font:500 .9rem var(--mono);color:var(--mute)}
@@ -431,7 +432,7 @@ body.is-home .foot{display:none}
 
 <footer class="foot"><div class="wrap">
   <div><b>TakeCare Agents</b> · opérateur Kubernetes open source<br>Maintenu par Agaetis · <a href="https://github.com/Agaetis-IT/takecare-agents" target="_blank" rel="noopener">github.com/Agaetis-IT/takecare-agents</a></div>
-  <div>Toujours là, jamais à votre place.<br><a href="__VITRINE__" target="_blank" rel="noopener">Se faire accompagner par Agaetis ↗</a> · <a href="#mentions">Mentions légales</a></div>
+  <div>Toujours là, jamais à votre place.<br><a href="#mentions">Mentions légales</a></div>
 </div></footer>
 
 <script>
@@ -447,15 +448,14 @@ const img = k => `${ASSETS}img/${k}.webp`, av = k => `${ASSETS}img/av-${k}.webp`
 const nick = r => r.nick.replace(/^(Le |La |Les |L')/,m=>m.toLowerCase());
 const bare = r => r.nick.replace(/^(Les |Le |La |L')/,"");
 const tOf = r => r.fam==="role" ? r.nat : r.fam;
-const TY = {agent:["Agent","--c-agent"],guard:["Garde-fou","--c-guard"],exp:["Stage","--c-exp"],exo:["Exercice","--c-exo"],mat:["Matériel","--c-mat"],lieu:["Lieu","--c-lieu"],hum:["Humain","--c-hum"]};
+const TY = {agent:["Agent","--c-agent"],guard:["Garde-fou","--c-guard"],exo:["Exercice","--c-exo"],mat:["Matériel","--c-mat"],lieu:["Lieu","--c-lieu"]};
 const kv = r => `--k:var(${TY[tOf(r)][1]})`;
 const type = r => `<span class="type" style="${kv(r)}">${TY[tOf(r)][0]}</span>`;
-/* delivery status: what is shipped carries "live" */
-const STATUS = {doc:["v0.1.0 · livré","live"], ranger:["v0.2.0 · livré","live"], carte:["v0.2.0 · livrée","live"], intendant:["Étape 2 · à spécifier",""], psy:["Étape 2 · spécifié",""], kine:["Étape 2 · spécifié",""]};
-const LIVE = new Set(Object.keys(STATUS).filter(k=>STATUS[k][1]==="live"));
-const SOON = new Set(["kine","mecano","coach","nutri","guide","intendant","ranger","psy","carte","dossard","plan","ration","trousse","reeduc","carnet"].filter(k=>!LIVE.has(k)));
-const st = k => STATUS[k] ? `<span class="st ${STATUS[k][1]}">${STATUS[k][0]}</span>` : (byK[k].fam==="role" ? `<span class="st">Spécifié</span>` : "");
-const tcard = k => { const r = byK[k]; return `<a class="tc${SOON.has(k)?" wip":""}" href="#carte-${k}" style="${kv(r)}" data-t="${tOf(r)}"><span class="im"><img src="${img(k)}" alt="Carte : ${esc(r.nick)}" loading="lazy">${st(k)}</span>${type(r)}<b>${esc(r.nick)}</b><small>${esc(r.job)}</small></a>`; };
+/* delivery status, from the card's own field: since, the version it arrived in (a coloured card),
+   or next, "soon" or "later" (a grey card). Exercise cards carry neither. */
+const NEXT = {soon:"Bientôt", later:"Plus tard"};
+const st = k => { const r = byK[k]; return r.since ? `<span class="st live">v${r.since}</span>` : r.next ? `<span class="st">${NEXT[r.next]}</span>` : ""; };
+const tcard = k => { const r = byK[k]; return `<a class="tc${byK[k].next?" wip":""}" href="#carte-${k}" style="${kv(r)}" data-t="${tOf(r)}"><span class="im"><img src="${img(k)}" alt="Carte : ${esc(r.nick)}" loading="lazy">${st(k)}</span>${type(r)}<b>${esc(r.nick)}</b><small>${esc(r.job)}</small></a>`; };
 
 /* La carte côté cluster : le vocabulaire du jeu traduit en objets techniques.
    Les noms exacts des ressources Kubernetes arriveront avec la Référence. */
@@ -477,17 +477,11 @@ const TECH = {
  journal:"Une trace OpenTelemetry par enquête, selon les conventions GenAI, exportée en OTLP (Jaeger dans la démo). En production, le contenu des messages n'est pas capturé par défaut.",
  carte:"La cartographie de l'infra que partagent les agents : ce qui tourne, qui en répond, ce qui en dépend. Des fichiers YAML dans le Git du client, servis par un serveur MCP à cinq outils en lecture (entrée, voisins, rayon d'impact, chemin, la Carte à une date) ; le Doc la lit pour couvrir son périmètre et l'opérateur y résout l'entité d'une alerte. Tenue par l'Intendant. Livrée en 0.2.0.",
  trousse:"Les actions qu'un agent peut faire seul au niveau Expert, autorisées une par une. Pas encore livré : après la v0.1.",
- equipes:"Ceux qui décident : ils relisent et valident chaque PR de niveau, chaque entrée au Camp de base et chaque action confiée à un agent.",
  ration:"L'enveloppe de coût validée, que le Nutri ne dépasse jamais.",
  plan:"Le plan de capacité d'un temps fort : seuils, marges et corrections prêtes.",
  topo:"Vos runbooks et votre doc, branchés comme connecteur de type knowledge.",
  reeduc:"Les actions correctives issues des post-mortems, suivies jusqu'au bout.",
  carnet:"Versions, fins de support et mises à jour planifiées, composant par composant.",
- reco:"Passage Apprentice → Practitioner : on modifie spec.level dans la ressource du rôle, par une PR relue et validée par vos équipes.",
- qualif:"Passage Practitioner → Expert, action par action, après rejeu sur le Terrain d'entraînement.",
- kickoff:"L'installation : le chart takecare-crds, puis le chart takecare avec le profil prod (values-prod.yaml).",
- ravito:"Mise à jour des connecteurs et des specs quand l'infra change.",
- sparring:"Un stage, pas une ressource : attaquer les agents sur une copie. Chaque faille devient une politique de la passerelle.",
  bootcamp:"Un exercice, pas une ressource : du décor et des scénarios de panne, comme le mode démo, avec le Doc, le Kiné et le Mécano.",
  stresstest:"Un exercice, pas une ressource : montée en charge sur une copie, avec le Coach et le Nutri.",
  relais:"Un exercice, pas une ressource : transmission du savoir avec le Guide et le Mécano."
@@ -571,8 +565,8 @@ function oldHome(){
     <div class="sec-head"><p class="eyebrow">Les règles · la progression</p><h2>Au départ, personne n'a les clés du camion.</h2><p class="lead">Mis à l'épreuve, pas à pas : un agent gagne son autonomie comme un nouveau dans l'équipe, en faisant ses preuves action par action.</p></div>
     <div class="xp">
       <div class="lv"><span class="n">niveau 1</span><h3>Apprenti</h3><code class="spec">spec.level: Apprentice</code><div class="meter"><i style="width:22%"></i></div><ul><li>lecture seule</li><li>à blanc ; votre historique à l'étape 2</li><li>diagnostics vers un canal de relecture</li></ul><span class="how">→ chaque agent arrive comme ça au <a href="#carte-campdebase">Camp de base</a></span></div>
-      <div class="lv"><span class="n">niveau 2</span><h3>Compagnon</h3><code class="spec">spec.level: Practitioner</code><div class="meter"><i style="width:58%"></i></div><ul><li>travaille au quotidien</li><li>propose ; vos équipes valident et lancent</li><li>diagnostics vers l'astreinte</li></ul><span class="how">→ devient Compagnon après <a href="#carte-reco">la Reco</a>, par une PR relue sur <code>spec.level</code></span></div>
-      <div class="lv"><span class="n">niveau 3</span><h3>Maître</h3><code class="spec">spec.level: Expert</code><div class="meter"><i style="width:100%"></i></div><ul><li>agit seul, action par action</li><li>rend compte après coup</li><li>jamais hors du cadre validé</li></ul><span class="how">→ devient Maître, geste par geste, après <a href="#carte-qualif">la Qualif</a>, par une PR relue sur <code>spec.level</code></span></div>
+      <div class="lv"><span class="n">niveau 2</span><h3>Compagnon</h3><code class="spec">spec.level: Practitioner</code><div class="meter"><i style="width:58%"></i></div><ul><li>travaille au quotidien</li><li>propose ; vos équipes valident et lancent</li><li>diagnostics vers l'astreinte</li></ul><span class="how">→ devient Compagnon par une PR relue sur <code>spec.level</code></span></div>
+      <div class="lv"><span class="n">niveau 3</span><h3>Maître</h3><code class="spec">spec.level: Expert</code><div class="meter"><i style="width:100%"></i></div><ul><li>agit seul, action par action</li><li>rend compte après coup</li><li>jamais hors du cadre validé</li></ul><span class="how">→ devient Maître, geste par geste, par une PR relue sur <code>spec.level</code></span></div>
     </div>
     <p class="note"><b>Sous le capot :</b> le niveau est déclaré dans la ressource du rôle, champ <code>spec.level</code> (<code>Apprentice</code>, <code>Practitioner</code> ou <code>Expert</code>). L'opérateur en déduit les outils autorisés, et la passerelle les applique outil par outil. Changer de niveau, c'est modifier la ressource : une PR relue et validée par vos équipes, un changement tracé.</p>
   </div></section>
@@ -596,12 +590,12 @@ function oldHome(){
       <p style="margin-top:1.4rem"><a class="btn" href="#architecture">Voir l'architecture ›</a></p>
     </div>
     <div>
-      <div class="sec-head"><p class="eyebrow">Feuille de route</p><h2>Où on en est.</h2></div>
+      <div class="sec-head" id="feuille-de-route"><p class="eyebrow">Feuille de route</p><h2>Où on en est.</h2></div>
       <div class="road">
-        <div><span>fait · v0.1.0 (6 novembre 2026)</span><b>Le Doc</b><p>Diagnostic d'incident de bout en bout : alerte, enquête en lecture seule, diagnostic sourcé sur Slack, trace et coût ; images et charts publiés.</p></div>
+        <div><span>fait · v0.1.0</span><b>Le Doc</b><p>Diagnostic d'incident de bout en bout : alerte, enquête en lecture seule, diagnostic sourcé sur Slack, trace et coût ; images et charts publiés.</p></div>
         <div class="now"><span>maintenant · v0.2.0</span><b>Le Ranger, la Carte, plusieurs clusters</b><p>Le Ranger : les mêmes règles pour tous les agents à la passerelle, journal, masquage, filtrage, plafonds, modèles autorisés. La Carte, lue par le Doc. Un cluster d'administration qui supervise plusieurs clusters de charge. Une route de modèle par rôle.</p></div>
-        <div><span>étape 2, suite</span><b>L'Intendant, le Psy, le Kiné</b><p>L'Intendant (la Carte tenue, la découverte), le Psy, le Kiné : une release par rôle.</p></div>
-        <div><span>ensuite</span><b>Le Mécano, puis le Guide, puis le Coach et le Nutri</b><p>Ordre de la feuille de route actuelle ; il peut bouger.</p></div>
+        <div><span>bientôt</span><b>L'Intendant, le Psy, le Kiné</b><p>L'Intendant (la Carte tenue, la découverte), le Psy, le Kiné : une release par rôle.</p></div>
+        <div><span>plus tard</span><b>Le Mécano, puis le Guide, puis le Coach et le Nutri</b><p>Ordre de la feuille de route actuelle ; il peut bouger.</p></div>
       </div>
     </div>
   </div></section>
@@ -612,7 +606,7 @@ function oldHome(){
   </div></div></section>`;
 }
 
-const FILTERS = [["all","Tout",null],["agent","Agents","--c-agent"],["guard","Garde-fous","--c-guard"],["exp","Stages","--c-exp"],["exo","Exercices","--c-exo"],["mat","Matériel","--c-mat"],["lieu","Lieux","--c-lieu"],["hum","Humains","--c-hum"]];
+const FILTERS = [["all","Tout",null],["agent","Agents","--c-agent"],["guard","Garde-fous","--c-guard"],["exo","Exercices","--c-exo"],["mat","Matériel","--c-mat"],["lieu","Lieux","--c-lieu"]];
 let FLT = "all";
 try{ FLT = sessionStorage.getItem("tc-flt") || "all"; }catch(e){}
 function deck(){
@@ -623,14 +617,13 @@ function deck(){
   const staff = `<div class="dgrp"><div class="dgh"><h3>Le staff</h3><span>9 rôles · 7 agents, 2 garde-fous</span></div>
     ${["soigner","preparer","encadrer"].map(p=>`<div class="prow2"><div class="plab"><b>${PIL[p].name}</b><small>${PIL[p].sub}</small></div><div class="grid g3">${cards(ROLES.filter(r=>r.p===p).map(r=>r.k))}</div></div>`).join("")}</div>`;
   return `<section><div class="wrap">
-    <div class="sec-head"><p class="eyebrow">Le deck · ${R.length} cartes</p><h2>Toutes les cartes du jeu.</h2><p class="lead">Neuf rôles font le travail ; les stages et les exercices les font progresser ; le matériel, les lieux et les humains sont ce qu'ils partagent. Chaque carte a sa traduction côté cluster. En gris, ce qui n'est pas encore codé.</p></div>
+    <div class="sec-head"><p class="eyebrow">Le deck · ${R.length} cartes</p><h2>Toutes les cartes du jeu.</h2><p class="lead">Neuf rôles font le travail ; les exercices les font progresser ; le matériel et les lieux sont ce qu'ils partagent. Chaque carte a sa traduction côté cluster. Chaque carte porte sa version ; en gris, ce qui n'est pas encore codé.</p></div>
     <div class="deckbar" role="group" aria-label="Filtrer les cartes">${FILTERS.map(([t,l,c])=>`<button class="chip" type="button" data-f="${t}" aria-pressed="${FLT===t}" style="${c?`--k:var(${c})`:""}">${c?"<i></i>":""}${l} <span style="color:var(--dim)">${n(t)}</span></button>`).join("")}</div>
     <div id="grid">
       ${staff}
-      ${grp("Les stages","5 · des étapes manuelles, menées par vos équipes",fam(["exp"]))}
       ${grp("Les exercices","3 · ce que les rôles pratiquent ensemble",fam(["exo"]))}
       ${grp("Le matériel","11 · ce que les rôles préparent et emportent",fam(["mat"]))}
-      ${grp("Les lieux et les humains","3 · d'où tout part, et qui décide",fam(["lieu"]).concat(fam(["hum"])))}
+      ${grp("Les lieux","2 · d'où tout part",fam(["lieu"]))}
     </div>
   </div></section>`;
 }
@@ -645,13 +638,14 @@ function bindDeck(){
 
 function carte(k){
   const r = byK[k]; if(!r) return deck();
-  const famOf = y => y.fam==="role" ? "role" : (y.fam==="lieu"||y.fam==="hum" ? "lh" : y.fam);
+  const famOf = y => y.fam;
   const list = r.fam==="role" ? ["soigner","preparer","encadrer"].flatMap(p=>ROLES.filter(y=>y.p===p)) : R.filter(y=>famOf(y)===famOf(r));
   const i = list.indexOf(r), prev = list[(i+list.length-1)%list.length], next = list[(i+1)%list.length];
   const f = F[k], x = X[k] || {};
   const keyOf = n => (R.find(y=>bare(y)===n.trim())||{}).k;
   const mini = items => `<div class="mini">${items.filter(it=>it&&it[0]).map(([pk,why])=>`<a href="#carte-${pk}"><img src="${img(pk)}" alt=""><div><b>${esc(byK[pk].nick)}</b><span>${esc(why||byK[pk].job)}</span></div></a>`).join("")}</div>`;
-  const stats = [["Type",TY[tOf(r)][0]], r.p?["Pilier",PIL[r.p].name]:null, ["Nom métier",r.job], r.fam==="role"?["État",k==="doc"?"Fonctionne · v0.1.0":k==="ranger"?"Livré · v0.2.0":k==="intendant"?"Étape 2 · à spécifier":["psy","kine"].includes(k)?"Spécifié · étape 2":"Spécifié, pas encore codé"]:null, x.pass?["Passage",x.pass]:null, x.when?["Quand",x.when]:null].filter(Boolean);
+  const state = r.since ? "Disponible depuis v"+r.since : r.next ? "Prévu · "+NEXT[r.next].toLowerCase() : "";
+  const stats = [["Type",TY[tOf(r)][0]], r.p?["Pilier",PIL[r.p].name]:null, ["Nom métier",r.job], state?["État",`<a href="#feuille-de-route">${esc(state)}</a>`,true]:null, x.pass?["Passage",x.pass]:null, x.when?["Quand",x.when]:null].filter(Boolean);
   const owner = r.fam==="mat" && r.nat ? byK[r.nat] : null;
   const rel = r.fam==="role" ? (f.partners||[]).map(([n,why])=>[keyOf(n),why]) : (x.with || (owner?[owner.k]:[])).map(pk=>[pk,null]);
   const mats = r.fam==="role" ? R.filter(y=>y.fam==="mat" && y.nat===k).map(y=>[y.k,null]).concat(r.nat==="agent"?[["sac",null]]:[]) : [];
@@ -661,12 +655,12 @@ function carte(k){
   return `<section><div class="wrap">
     <div class="crumb"><a href="#deck">Le deck</a><span>/</span><span>${r.fam==="role"?"Le staff":TY[tOf(r)][0]}</span><span>/</span><span>${i+1} sur ${list.length}</span></div>
     <div class="sheet">
-      <div class="big">${kd?flipCard(kd)+`<p class="fsub" style="margin-top:.7rem">Retournez la carte : derrière, la ressource <code>${kd.kind}</code>.</p>`:`<img src="${img(k)}" alt="Carte : ${esc(r.nick)}, ${esc(r.job)}">`}</div>
+      <div class="big">${kd?flipCard(kd)+`<p class="fsub" style="margin-top:.7rem">Retournez la carte : derrière, la ressource <code>${kd.kind}</code>.</p>`:`<span class="bim"><img src="${img(k)}" alt="Carte : ${esc(r.nick)}, ${esc(r.job)}">${st(k)}</span>`}</div>
       <div>
         ${type(r)}
         <h1>${esc(r.nick)}</h1>
         ${f&&f.tagline?`<p class="lead">${esc(f.tagline)}</p>`:(r.q?`<p class="lead">${esc(r.q)}</p>`:"")}
-        <div class="stats">${stats.map(([a,b])=>`<div class="stat"><span>${a}</span><b>${esc(b)}</b></div>`).join("")}</div>
+        <div class="stats">${stats.map(([a,b,html])=>`<div class="stat"><span>${a}</span><b>${html?b:esc(b)}</b></div>`).join("")}</div>
         <div class="blk"><h2>Dans le jeu</h2><p class="lead">${r.does}</p></div>
         ${TECH[k]?`<div class="blk"><h2>Dans le cluster</h2><div class="tech"><span class="k">›</span> ${esc(TECH[k])}</div></div>`:""}
         ${f&&f.scene?`<div class="blk"><h2>En action</h2><div class="scene2"><span class="sc-t">// scène</span><p>${esc(f.scene)}</p></div></div>`:""}
@@ -685,14 +679,14 @@ function lexique(){
     <div class="tbl-wrap"><table>
       <thead><tr><th>Dans le jeu</th><th>Ce que c'est</th><th>Dans le cluster</th></tr></thead>
       <tbody>${LEX.map(([n,fam,t])=>`<tr><td class="c"><b>${n}</b></td><td class="g">${fam}</td><td class="t">${t}</td></tr>`).join("")}
-      ${[["lieu","Les lieux"],["mat","Le matériel"],["exp","Les stages","des étapes manuelles, sans ressource Kubernetes"],["exo","Les exercices","de l'outillage, sans ressource Kubernetes"],["hum","Les humains"]].map(([f,t,sub])=>`<tr class="lgh"><th colspan="3">${t}${sub?` <span>· ${sub}</span>`:""}</th></tr>`+R.filter(r=>r.fam===f).map(r=>`<tr><td class="c"><a href="#carte-${r.k}"><img src="${img(r.k)}" alt="">${esc(r.nick)}</a></td><td class="g">${esc(r.job)}</td><td class="t">${esc(TECH[r.k]||"")}</td></tr>`).join("")).join("")}
+      ${[["lieu","Les lieux"],["mat","Le matériel"],["exo","Les exercices","de l'outillage, sans ressource Kubernetes"]].map(([f,t,sub])=>`<tr class="lgh"><th colspan="3">${t}${sub?` <span>· ${sub}</span>`:""}</th></tr>`+R.filter(r=>r.fam===f).map(r=>`<tr><td class="c"><a href="#carte-${r.k}"><img src="${img(r.k)}" alt="">${esc(r.nick)}</a></td><td class="g">${esc(r.job)}</td><td class="t">${esc(TECH[r.k]||"")}</td></tr>`).join("")).join("")}
       <tr class="lgh"><th colspan="3">Hors deck</th></tr>
       ${LEXHD.map(([n,fam,t])=>`<tr><td class="c"><b>${n}</b></td><td class="g">${fam}</td><td class="t">${t}</td></tr>`).join("")}</tbody>
     </table></div>
     <div class="sec-head" style="margin-top:3.5rem"><p class="eyebrow">Les rôles</p><h2>Qui fait quoi, techniquement.</h2></div>
     <div class="tbl-wrap"><table>
       <thead><tr><th>Rôle</th><th>Type</th><th>Dans le cluster</th></tr></thead>
-      <tbody>${["soigner","preparer","encadrer"].flatMap(p=>ROLES.filter(r=>r.p===p)).map(r=>`<tr><td class="c"><a href="#carte-${r.k}"><img src="${img(r.k)}" alt="">${esc(r.nick)}</a></td><td class="g">${TY[r.nat][0]}${r.k==="doc"?` · <span style="color:var(--mint)">v0.1.0</span>`:r.k==="ranger"?` · <span style="color:var(--mint)">v0.2.0</span>`:""}</td><td class="t">${esc(TECH[r.k])}</td></tr>`).join("")}</tbody>
+      <tbody>${["soigner","preparer","encadrer"].flatMap(p=>ROLES.filter(r=>r.p===p)).map(r=>`<tr><td class="c"><a href="#carte-${r.k}"><img src="${img(r.k)}" alt="">${esc(r.nick)}</a></td><td class="g">${TY[r.nat][0]}${r.since?` · <span style="color:var(--mint)">v${r.since}</span>`:""}</td><td class="t">${esc(TECH[r.k])}</td></tr>`).join("")}</tbody>
     </table></div>
   </div></section>`;
 }
@@ -701,7 +695,7 @@ function archi(){
   const tools = [["kubernetes","kubernetes"],["prometheus","prometheus"],[null,"runbooks"],[null,"post-mortems"],[null,"Slack (publication)"]];
   const mb = [["Doc · Kiné",["doc","kine"],"Un modèle puissant","Une enquête longue, beaucoup d'outils à interroger, un raisonnement à tenir."],["Guide",["guide"],"Un modèle rapide","Des réponses tirées de vos procédures, éventuellement sur un modèle hébergé chez vous."],["Coach · Nutri",["coach","nutri"],"Un modèle économe","Des analyses régulières de chiffres, où le coût compte plus que la finesse."],["Psy",["psy"],"Un autre modèle","Celui qui juge les réponses ne doit pas être celui qui les a écrites."]];
   const br = (l,t) => `<span class="brick">${l?`<img src="${lg(l)}" alt="">`:""}${t}</span>`;
-  const who = ks => `<span class="avs">${ks.map(k=>`<a href="#carte-${k}"${LIVE.has(k)?"":` class="wip"`}><img src="${av(k)}" alt="${esc(byK[k].nick)}" title="${esc(byK[k].nick)}"></a>`).join("")}</span>`;
+  const who = ks => `<span class="avs">${ks.map(k=>`<a href="#carte-${k}"${byK[k].since?"":` class="wip"`}><img src="${av(k)}" alt="${esc(byK[k].nick)}" title="${esc(byK[k].nick)}"></a>`).join("")}</span>`;
   return `<section><div class="wrap">
     <div class="sec-head"><p class="eyebrow">Architecture</p><h2>Tout passe par la passerelle.</h2><p class="lead">Neuf rôles, une seule plateforme. L'opérateur traduit les ressources TakeCare, kagent fait tourner les agents, et tous leurs appels (modèles, outils, entre agents) traversent agentgateway. Le Ranger y pose les règles, le Psy relit les traces, l'Intendant tient le registre et la Carte.</p></div>
     <p class="legend"><span><i class="dot live"></i>livré dans la v0.1</span><span><i class="dot"></i>pointillés : spécifié, pas encore codé</span></p>
@@ -887,12 +881,12 @@ status:
     - type: Ready
     - type: SceneryReady`}
 ];
-const PLANNED = [["intendant","TakeCareIntendant","Étape 2 · à spécifier"],["psy","TakeCarePsy","Étape 2"],["kine","TakeCareKine","Étape 2"],["mecano","TakeCareMecano","Spécifié"],["coach","TakeCareCoach","Spécifié"],["nutri","TakeCareNutri","Spécifié"],["guide","TakeCareGuide","Spécifié"]];
+const PLANNED = ROLES.filter(r=>r.next).map(r=>[r.k,"TakeCare"+r.k[0].toUpperCase()+r.k.slice(1)]);
 const hl = y => esc(y).split("\n").map(l=>{ const m=l.match(/^(\s*-?\s*)([A-Za-z][\w.\/-]*)(:)(.*)$/); let s = m ? `${m[1]}<span class="yk">${m[2]}</span>${m[3]}${m[4]}` : l; return s.replace(/(#.*)$/,'<span class="yc">$1</span>'); }).join("\n");
 const KBYCARD = Object.fromEntries(KINDS.map(x=>[x.card,x]));
 const flipCard = x => `<div class="flip" role="button" tabindex="0" aria-pressed="false" data-kind="${x.kind}" aria-label="Retourner la carte ${x.kind}">
   <span class="fin">
-    <span class="face front"><img src="${img(x.card)}" alt="" loading="lazy"><span class="fh">↻ YAML</span></span>
+    <span class="face front"><img src="${img(x.card)}" alt="" loading="lazy">${st(x.card)}<span class="fh">↻ YAML</span></span>
     <span class="face back"><span class="bh"><b>${x.kind}</b><span class="bha"><button class="cpy" type="button" data-kind="${x.kind}">Copier</button>${REF.kinds[x.kind]?`<a class="cpy fld" href="#champs-${x.kind}">Champs ›</a>`:""}<span aria-hidden="true">↻</span></span></span><pre>${hl(x.yaml)}</pre></span>
   </span></div>`;
 function reference(){
@@ -902,7 +896,7 @@ function reference(){
       <p class="fsub"><b class="fkn">${x.kind}</b>${x.sub} <a href="${SPECS}${x.spec}" target="_blank" rel="noopener">${x.spec} ↗</a></p>
     </div>`).join("")}</div>
     <div class="sec-head" style="margin-top:4rem"><p class="eyebrow">Prévues</p><h2>Les prochaines cartes de l'API.</h2><p class="lead">Une ressource par rôle, sur le même modèle que TakeCareDoc. Leur dos s'écrira avec leur spec.</p></div>
-    <div class="grid">${PLANNED.map(([k,kind,st])=>`<a class="tc" href="#carte-${k}" style="${kv(byK[k])}"><span class="im"><img src="${img(k)}" alt="" loading="lazy" style="filter:grayscale(.6) brightness(.75)"><span class="st">${st}</span></span><b class="mono" style="font-size:.85rem">${kind}</b><small>${esc(byK[k].job)}</small></a>`).join("")}</div>
+    <div class="grid">${PLANNED.map(([k,kind])=>`<a class="tc" href="#carte-${k}" style="${kv(byK[k])}"><span class="im"><img src="${img(k)}" alt="" loading="lazy" style="filter:grayscale(.6) brightness(.75)">${st(k)}</span><b class="mono" style="font-size:.85rem">${kind}</b><small>${esc(byK[k].job)}</small></a>`).join("")}</div>
     ${refFields()}
     ${refValues()}
   </div></section>`;
@@ -1004,6 +998,7 @@ function render(){
   let html, cur = h, jump = null;
   if(h.startsWith("carte-")){ html = carte(h.slice(6)); cur = "deck"; }
   else if(h.startsWith("champs-") && REF.kinds[h.slice(7)]){ REFK = h.slice(7); html = reference(); cur = "reference"; jump = "ref-champs"; }
+  else if(h==="feuille-de-route"){ html = home(); cur = "accueil"; jump = "feuille-de-route"; }
   else html = ({deck, regles, lexique, architecture:archi, demarrer, reference, contribuer:contrib, mentions}[h]||home)();
   document.body.classList.toggle("is-home", !h.startsWith("carte-") && !h.startsWith("champs-") && !["deck","regles","lexique","architecture","demarrer","reference","contribuer","mentions"].includes(h));
   app.innerHTML = html;
