@@ -5,6 +5,7 @@ package intendant
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
@@ -27,6 +28,7 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/engine/kagent0103"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
 	"github.com/agaetis-it/takecare-agents/internal/routes"
+	"github.com/agaetis-it/takecare-agents/internal/runs"
 	"github.com/agaetis-it/takecare-agents/internal/testenv"
 )
 
@@ -63,9 +65,18 @@ type fixture struct {
 	cfg    *rest.Config
 	scheme *runtime.Scheme
 	stop   context.CancelFunc
+	// runner, when set, runs the survey queue and runner too, their routes
+	// to a connector, by "<intendant>/<connector>", pointing at test servers.
+	runner bool
+	routes sync.Map
 }
 
-func start(t *testing.T) *fixture {
+func start(t *testing.T) *fixture { return startWith(t, false) }
+
+// startRunner starts the reconciler with the survey runner.
+func startRunner(t *testing.T) *fixture { return startWith(t, true) }
+
+func startWith(t *testing.T, runner bool) *fixture {
 	t.Helper()
 	cfg := testenv.Start(t)
 	scheme := runtime.NewScheme()
@@ -83,7 +94,7 @@ func start(t *testing.T) *fixture {
 			t.Fatal(err)
 		}
 	}
-	f := &fixture{c: c, clock: &clock{now: time.Date(2026, 11, 11, 10, 0, 0, 0, time.UTC)}, cfg: cfg, scheme: scheme}
+	f := &fixture{c: c, clock: &clock{now: time.Date(2026, 11, 11, 10, 0, 0, 0, time.UTC)}, cfg: cfg, scheme: scheme, runner: runner}
 	f.startManager(t)
 	return f
 }
@@ -103,6 +114,23 @@ func (f *fixture) startManager(t *testing.T) {
 	}
 	if err := r.SetupWithManager(mgr); err != nil {
 		t.Fatal(err)
+	}
+	if f.runner {
+		queue := runs.NewQueue(16)
+		if err := (&SurveyQueuer{Client: mgr.GetClient(), Queue: queue}).SetupWithManager(mgr); err != nil {
+			t.Fatal(err)
+		}
+		if err := mgr.Add(&Runner{
+			Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: queue, GateRetry: 100 * time.Millisecond,
+			Caller: &mcp.Client{HTTP: &http.Client{Timeout: time.Minute}}, Now: f.clock.Now,
+			Route: func(_ string, role routes.Role, connector string) string {
+				u, _ := f.routes.Load(role.Name + "/" + connector)
+				s, _ := u.(string)
+				return s
+			},
+		}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	f.stop = cancel
@@ -235,7 +263,7 @@ func TestReadyWithItsRoutes(t *testing.T) {
 	f := start(t)
 	f.platform(t)
 	f.connector(t, connMap, v1alpha1.ConnectorMap, []string{mcp.MapEntryTool, mcp.MapListTool, "path"})
-	f.connector(t, connCluster, v1alpha1.ConnectorCluster, []string{"namespaces_list", "resources_list", "pods_log"}, "pods_log")
+	f.connector(t, connCluster, v1alpha1.ConnectorCluster, []string{toolNamespaces, toolResources, "pods_log"}, "pods_log")
 	f.connector(t, connMetrics, v1alpha1.ConnectorMetrics, []string{mcp.RulesTool, "execute_query"})
 	f.intendant(t, "intendant", nil)
 	in := f.wait(t, "intendant", func(in *v1alpha1.TakeCareIntendant) bool {
@@ -253,7 +281,7 @@ func TestReadyWithItsRoutes(t *testing.T) {
 		t.Errorf("nextSurveyTime %v, want %v (03:00 UTC after 10:00)", in.Status.NextSurveyTime, want)
 	}
 	for conn, want := range map[string]string{
-		connMap:     `mcp.tool.name in ["entry", "map_at"]`,
+		connMap:     `mcp.tool.name in ["map_at"]`,
 		connCluster: `mcp.tool.name in ["namespaces_list", "resources_list"]`,
 		connMetrics: `(mcp.tool.name in ["get_rules"]) && (` + RulesCEL + `)`,
 	} {
@@ -270,7 +298,7 @@ func TestConnectors(t *testing.T) {
 	f := start(t)
 	f.platform(t)
 	f.connector(t, connMap, v1alpha1.ConnectorMap, []string{mcp.MapEntryTool})
-	f.connector(t, connCluster, v1alpha1.ConnectorCluster, []string{"namespaces_list", "resources_list"}, "resources_list")
+	f.connector(t, connCluster, v1alpha1.ConnectorCluster, []string{toolNamespaces, toolResources}, toolResources)
 	f.intendant(t, "partial", nil)
 	in := f.wait(t, "partial", func(in *v1alpha1.TakeCareIntendant) bool {
 		return isStatus(in, v1alpha1.ConditionReady, metav1.ConditionFalse)

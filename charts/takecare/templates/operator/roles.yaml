@@ -184,6 +184,7 @@ rules:
   - takecaredocs/status
   - takecareintendants/status
   - takecareinvestigations/status
+  - takecaresurveys/status
   verbs:
   - get
   - patch

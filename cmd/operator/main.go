@@ -323,6 +323,18 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up the Intendant controller: %w", err)
 	}
+	// Its surveys (spec 10 §4): queued as they come, run one per Intendant
+	// at a time through its routes on the gateway.
+	surveys := runs.NewQueue(16)
+	if err := (&intendant.SurveyQueuer{Client: mgr.GetClient(), Queue: surveys}).SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("set up the survey queue: %w", err)
+	}
+	if err := mgr.Add(&intendant.Runner{
+		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: surveys,
+		Caller: &mcp.Client{HTTP: gatewayClient},
+	}); err != nil {
+		return nil, fmt.Errorf("add the survey runner: %w", err)
+	}
 	connectorReconciler := &connector.Reconciler{
 		Client:            mgr.GetClient(),
 		Recorder:          mgr.GetEventRecorder("takecare-operator"),

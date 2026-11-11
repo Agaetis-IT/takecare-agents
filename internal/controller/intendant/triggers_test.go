@@ -81,6 +81,15 @@ func (f *fixture) waitSurveys(t *testing.T, name string, n int) []v1alpha1.TakeC
 	return got
 }
 
+// countSurveys checks the count at once: the caller has waited for a status
+// marker that proves the reconcile ran.
+func (f *fixture) countSurveys(t *testing.T, name string, n int) {
+	t.Helper()
+	if got := f.surveys(t, name); len(got) != n {
+		t.Fatalf("%d surveys of %s, want %d", len(got), name, n)
+	}
+}
+
 // end sets every survey of the Intendant to a phase, as the runner would.
 func (f *fixture) end(t *testing.T, name string, phase v1alpha1.RunPhase) {
 	t.Helper()
@@ -186,7 +195,7 @@ func TestDebounce(t *testing.T) {
 	f.pending(t, "debounce", v1alpha1.TriggerSchedule)
 	f.mapRevision(t, rev2)
 	f.pending(t, "debounce", v1alpha1.TriggerMapRevision)
-	f.waitSurveys(t, "debounce", 1)
+	f.countSurveys(t, "debounce", 1)
 
 	f.end(t, "debounce", v1alpha1.RunCompleted)
 	if s := f.waitSurveys(t, "debounce", 2); !hasSurvey(s, v1alpha1.TriggerMapRevision) {
@@ -203,7 +212,7 @@ func TestSuspended(t *testing.T) {
 	f.pending(t, "suspended", v1alpha1.TriggerMapRevision)
 	f.mapRevision(t, rev2)
 	f.wait(t, "suspended", func(in *v1alpha1.TakeCareIntendant) bool { return in.Status.LastMapRevision == rev2 })
-	f.waitSurveys(t, "suspended", 0)
+	f.countSurveys(t, "suspended", 0)
 
 	f.update(t, "suspended", func(in *v1alpha1.TakeCareIntendant) { in.Spec.Suspend = false })
 	if s := f.waitSurveys(t, "suspended", 1); !hasSurvey(s, v1alpha1.TriggerMapRevision) {
@@ -242,7 +251,7 @@ func TestOnDemand(t *testing.T) {
 	}
 	f.mapRevision(t, rev2)
 	f.pending(t, "ondemand", v1alpha1.TriggerMapRevision)
-	f.waitSurveys(t, "ondemand", 2)
+	f.countSurveys(t, "ondemand", 2)
 	if c := meta.FindStatusCondition(byHand.Status.Conditions, v1alpha1.ConditionReady); c != nil {
 		t.Errorf("the operator touched the survey made by hand: %+v", c)
 	}

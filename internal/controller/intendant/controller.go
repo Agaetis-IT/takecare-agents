@@ -176,8 +176,8 @@ func schedule(in *v1alpha1.TakeCareIntendant, st *status, now time.Time) *metav1
 // render writes the Intendant's routes when the gateway is ready, and
 // removes the ones it no longer needs. It returns whether to look again.
 func (r *Reconciler) render(ctx context.Context, in *v1alpha1.TakeCareIntendant, b binding, st *status) (bool, error) {
-	role := r.role(in)
-	p, err := r.platform(ctx)
+	role := roleOf(in)
+	p, err := platformOf(ctx, r.Client)
 	if err != nil {
 		return false, err
 	}
@@ -214,7 +214,8 @@ func orNone(s string) string {
 	return s
 }
 
-func (r *Reconciler) role(in *v1alpha1.TakeCareIntendant) routes.Role {
+// roleOf is the Intendant's role on the gateway's routes.
+func roleOf(in *v1alpha1.TakeCareIntendant) routes.Role {
 	return routes.Role{
 		Kind: Kind, Name: in.Name, Namespace: in.Namespace,
 		Owner:  *metav1.NewControllerRef(in, v1alpha1.GroupVersion.WithKind(v1alpha1.KindTakeCareIntendant)),
@@ -222,10 +223,10 @@ func (r *Reconciler) role(in *v1alpha1.TakeCareIntendant) routes.Role {
 	}
 }
 
-// platform returns the platform (cluster-scoped), nil when there is none.
-func (r *Reconciler) platform(ctx context.Context) (*v1alpha1.TakeCarePlatform, error) {
+// platformOf returns the platform (cluster-scoped), nil when there is none.
+func platformOf(ctx context.Context, c client.Reader) (*v1alpha1.TakeCarePlatform, error) {
 	var list v1alpha1.TakeCarePlatformList
-	if err := r.List(ctx, &list); err != nil {
+	if err := c.List(ctx, &list); err != nil {
 		return nil, fmt.Errorf("list platforms: %w", err)
 	}
 	if len(list.Items) == 0 {
