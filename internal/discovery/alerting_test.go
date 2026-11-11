@@ -129,6 +129,7 @@ func TestAlertingExpression(t *testing.T) {
 	}{
 		{"another expression", "up == 0", true},
 		{"the same expression", highExpr, false},
+		{"the same expression, with other line breaks and indentation", "sum by (service, namespace) (rate(http_requests_total{status=\"504\"}[1m]))\n  /\n  sum by (service, namespace) (rate(http_requests_total[1m])) > 0.02\n", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ix := NewIndex([]mapserver.Entry{{Key: keyBilling, Provenance: provDeclared, Status: statusValidated, Created: oldDate,
@@ -190,5 +191,29 @@ func TestAlertingNotSeen(t *testing.T) {
 	}
 	if l := alertingLayer(res); !slices.Contains(l.NotSeen, NotSeen{Ref: "metrics", Reason: reasonNoMetrics}) {
 		t.Errorf("without a metrics connector: %+v", l)
+	}
+}
+
+// A workload label names its kind: deployment="x" is not the StatefulSet x;
+// statefulset="x" is.
+func TestAlertingWorkloadKind(t *testing.T) {
+	statefulSet := listed(item("apps/v1", "StatefulSet", "x", "<none>"))
+	rules := text("Prometheus Rules:\n{Groups:[{Name:g File:/etc/prometheus/rules.yml Interval:5 Rules:[" +
+		`{Name:XDeploymentDown Query:up{deployment="x"} == 0 Duration:0 Labels:{} Annotations:{} Alerts:[] Health:ok LastError: EvaluationTime:0 LastEvaluation:0001-01-01 00:00:00 +0000 UTC State:inactive} ` +
+		`{Name:XStatefulSetDown Query:up{statefulset="x"} == 0 Duration:0 Labels:{} Annotations:{} Alerts:[] Health:ok LastError: EvaluationTime:0 LastEvaluation:0001-01-01 00:00:00 +0000 UTC State:inactive}]}]}`)
+	ix := NewIndex([]mapserver.Entry{{Key: "compute/x", Provenance: provDeclared, Status: statusValidated, Created: oldDate,
+		Sources: []map[string]string{{sourceKubernetes: demoApps + "/StatefulSet/x"}}}})
+	ground := fakeGround{lists: map[string]answer{demoApps + "/StatefulSet": statefulSet}}.start(t)
+	caller := &mcp.Client{HTTP: &http.Client{Timeout: 5 * time.Second}}
+	srv := fakeRules(t, rulesFixture(t, "get_rules-none.json"), rules)
+	metrics := &Metrics{Connector: promConnector, Endpoint: mcp.Endpoint{URL: srv.URL,
+		Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorMetrics}, StateTools: map[string]bool{mcp.RulesTool: true}}}
+	res, err := Import(context.Background(), caller, []Ground{{Connector: connector, Endpoint: endpoint(ground.URL), Namespaces: []string{demoApps}}}, metrics, ix, today)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, ok := proposal(res, "compute/x")
+	if !ok || !strings.Contains(p.Entry, "name: XStatefulSetDown") || strings.Contains(p.Entry, "XDeploymentDown") {
+		t.Errorf("compute/x: %+v", p)
 	}
 }

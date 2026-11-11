@@ -43,7 +43,7 @@ func (r *run) alerting(ctx context.Context, caller Caller, m *Metrics) error {
 	ambiguous := map[string]bool{}
 	keep := func(rules []rule) {
 		for _, ru := range rules {
-			if expr, dup := loaded[ru.Name]; dup && expr != ru.Expr || ambiguous[ru.Name] {
+			if expr, dup := loaded[ru.Name]; dup && !sameExpr(expr, ru.Expr) || ambiguous[ru.Name] {
 				ambiguous[ru.Name] = true
 				continue
 			}
@@ -117,7 +117,7 @@ func dedupe(rules []rule, ambiguous map[string]bool) []rule {
 	var out []rule
 	for _, ru := range rules {
 		if expr, ok := seen[ru.Name]; ok {
-			if expr != ru.Expr {
+			if !sameExpr(expr, ru.Expr) {
 				ambiguous[ru.Name] = true
 			}
 			continue
@@ -141,9 +141,10 @@ func (r *run) declaredAlerts() map[string][]string {
 }
 
 // alertTarget is the one entry of the Map a rule's expression names: the
-// service entry service/<value> for a service matcher, the compute entry
-// of the one workload of that name the survey saw for a workload matcher.
-// Anything else names nothing.
+// service entry service/<value> for a service matcher; for a workload
+// matcher, the compute entry of the one workload of that name, and of the
+// label's kind (deployment a Deployment, …; workload any kind), the survey
+// saw. Anything else names nothing.
 func (r *run) alertTarget(expr string) string {
 	label, value, ok := namedTarget(expr)
 	if !ok {
@@ -156,8 +157,9 @@ func (r *run) alertTarget(expr string) string {
 		return ""
 	}
 	var keys []string
+	kind := workloadKinds[label]
 	for _, o := range r.objects[LayerCompute] {
-		if o.Name == value {
+		if o.Name == value && (kind == "" || o.Kind == kind) {
 			keys = append(keys, r.ix.matching(o.ref(), "compute")...)
 		}
 	}
@@ -167,11 +169,12 @@ func (r *run) alertTarget(expr string) string {
 	return keys[0]
 }
 
-// setExpr sets a declared alert's expression, when it differs.
+// setExpr sets a declared alert's expression, in Prometheus's form, when it
+// differs beyond whitespace.
 func setExpr(name, expr string) func(*mapserver.Entry) bool {
 	return func(e *mapserver.Entry) bool {
 		for i, a := range e.Relations.AlertedBy {
-			if a.Name == name && a.Expr != expr {
+			if a.Name == name && !sameExpr(a.Expr, expr) {
 				e.Relations.AlertedBy[i].Expr = expr
 				return true
 			}

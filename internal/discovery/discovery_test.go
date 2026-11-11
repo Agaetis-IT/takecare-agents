@@ -106,6 +106,25 @@ func (f fakeGround) start(t *testing.T) *mcptest.Server {
 	)
 }
 
+// item is one structured item of resources_list in demo-apps, its Labels
+// column only when labels is given.
+func item(apiVersion, kind, name string, labels ...string) map[string]any {
+	it := map[string]any{"apiVersion": apiVersion, "kind": kind, "Name": name, "Namespace": demoApps}
+	if len(labels) > 0 {
+		it["Labels"] = labels[0]
+	}
+	return it
+}
+
+// listed is a resources_list answer with these structured items.
+func listed(items ...map[string]any) answer {
+	l := make([]any, len(items))
+	for i, it := range items {
+		l[i] = it
+	}
+	return answer{StructuredContent: map[string]any{"items": l}}
+}
+
 func endpoint(url string) mcp.Endpoint {
 	return mcp.Endpoint{URL: url, Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, Addon: true,
 		StateTools: map[string]bool{toolNamespaces: true, toolList: true}}
@@ -173,8 +192,8 @@ func TestNotSeen(t *testing.T) {
 	badHeader := answer{Content: []struct {
 		Text string `json:"text"`
 	}{{Text: "NAME   STATUS\ndemo-apps   Active\n"}}}
-	noLabels := answer{StructuredContent: map[string]any{"items": []any{map[string]any{"apiVersion": "v1", "kind": "Service", "Name": "billing-api", "Namespace": demoApps}}}}
-	otherKind := answer{StructuredContent: map[string]any{"items": []any{map[string]any{"apiVersion": "v1", "kind": "Secret", "Name": "x", "Namespace": demoApps, "Labels": "<none>"}}}}
+	noLabels := listed(item("v1", "Service", "billing-api"))
+	otherKind := listed(item("v1", "Secret", "x", "<none>"))
 	textOnly := answer{Content: []struct {
 		Text string `json:"text"`
 	}{{Text: "NAMESPACE   APIVERSION   KIND   NAME\n"}}}

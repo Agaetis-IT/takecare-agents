@@ -63,10 +63,20 @@ func parseRules(res mcp.Result) ([]rule, error) {
 		if strings.TrimSpace(m[2]) == "" {
 			return nil, errUnrecognized
 		}
-		rules = append(rules, rule{Name: m[1], Expr: m[2]})
+		rules = append(rules, rule{Name: m[1], Expr: strings.TrimSpace(m[2])})
 	}
 	return rules, nil
 }
+
+// sameExpr compares two expressions up to whitespace: Prometheus returns its
+// own formatting of a rule's query (a multi-line expression on one line),
+// and a Map written by hand or from the chart's YAML holds another.
+func sameExpr(a, b string) bool {
+	return strings.Join(strings.Fields(a), " ") == strings.Join(strings.Fields(b), " ")
+}
+
+// workloadKinds is the kind a workload label names; "workload" names any.
+var workloadKinds = map[string]string{"deployment": "Deployment", "statefulset": "StatefulSet", "daemonset": "DaemonSet", "cronjob": "CronJob", "workload": ""}
 
 // Label matchers that name one workload or service: label="value", an
 // exact match. Any other operator on these labels makes the rule ambiguous.
@@ -76,19 +86,16 @@ var (
 )
 
 // namedTarget is the one workload or service a rule's expression names:
-// its label ("service" or a workload label) and value. ok is false when
-// the expression names none, several, or uses another operator on them.
+// its label (service, or a workload label of workloadKinds) and value. ok
+// is false when the expression names none, several, or uses another
+// operator on them.
 func namedTarget(expr string) (label, value string, ok bool) {
 	if otherMatcher.MatchString(expr) {
 		return "", "", false
 	}
 	seen := map[[2]string]bool{}
 	for _, m := range exactMatcher.FindAllStringSubmatch(expr, -1) {
-		l := m[1]
-		if l != "service" {
-			l = "workload"
-		}
-		seen[[2]string{l, m[2]}] = true
+		seen[[2]string{m[1], m[2]}] = true
 	}
 	if len(seen) != 1 {
 		return "", "", false
