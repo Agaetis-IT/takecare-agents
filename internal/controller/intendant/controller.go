@@ -251,7 +251,10 @@ func (r *Reconciler) writeStatus(ctx context.Context, in *v1alpha1.TakeCareInten
 	}
 	// No lock: the Intendant was read outside the cache, two reconciles of
 	// it never run at once, and only this reconciler writes these fields.
-	// A conflict would drop the bookkeeping after a survey was created.
+	// A conflict would drop the bookkeeping after a survey was created. The
+	// worst case, this patch failing after the Create, gives at most one
+	// extra survey: the next reconcile sees that survey in flight and keeps
+	// one pending trigger, never a storm.
 	if err := r.Status().Patch(ctx, in, client.MergeFrom(before)); err != nil {
 		return fmt.Errorf("update status of %s: %w", in.Name, err)
 	}
