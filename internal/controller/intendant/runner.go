@@ -5,6 +5,7 @@ package intendant
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -35,7 +36,29 @@ const (
 )
 
 // reasonEntitiesLater says that the scope's entities are not surveyed yet.
-const reasonEntitiesLater = "scope entities are surveyed from I1d-3a-2"
+const reasonEntitiesLater = "scope entities are not surveyed yet"
+
+// Why a survey failed, in status.reason: a fixed phrase per class, never a
+// server's or a tool's text (the import's rule); the full error is logged.
+const (
+	failMap       = "the Map could not be read"
+	failIntendant = "the Intendant could not be read"
+	failGateway   = "the gateway is not ready"
+	failImport    = "the import failed"
+	maxReason     = 256
+)
+
+// failed is a survey's failure: its class for the status, its error for
+// the log.
+type failed struct {
+	class string
+	err   error
+}
+
+func (f failed) Error() string { return f.class + ": " + f.err.Error() }
+func (f failed) Unwrap() error { return f.err }
+
+func fail(class string, err error) error { return failed{class: class, err: err} }
 
 // SurveyQueuer feeds the runner: a survey with no phase is Queued at once,
 // a Queued one goes into the queue.
@@ -213,7 +236,12 @@ func (w *Runner) run(ctx context.Context, s *v1alpha1.TakeCareSurvey) {
 	}
 	done := metav1.NewTime(w.now())
 	if err != nil {
-		out = v1alpha1.TakeCareSurveyStatus{Phase: v1alpha1.RunFailed, Reason: err.Error()}
+		reason := failImport
+		if f, ok := errors.AsType[failed](err); ok {
+			reason = f.class
+		}
+		logger.Error(err, "the survey failed", "intendant", s.Spec.IntendantRef.Name)
+		out = v1alpha1.TakeCareSurveyStatus{Phase: v1alpha1.RunFailed, Reason: reason[:min(len(reason), maxReason)]}
 	} else {
 		out.Phase = v1alpha1.RunCompleted
 	}
@@ -231,13 +259,16 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 	var in v1alpha1.TakeCareIntendant
 	if err := w.Reader.Get(ctx, types.NamespacedName{Namespace: s.Namespace, Name: s.Spec.IntendantRef.Name}, &in); err != nil {
 		if apierrors.IsNotFound(err) {
-			return out, fmt.Errorf("the Intendant %s does not exist", s.Spec.IntendantRef.Name)
+			return out, fail(failIntendant, fmt.Errorf("the Intendant %s does not exist", s.Spec.IntendantRef.Name))
 		}
-		return out, fmt.Errorf("read the Intendant: %w", err)
+		return out, fail(failIntendant, err)
 	}
 	p, err := platformOf(ctx, w.Client)
-	if err != nil || p == nil || p.Status.GatewayURL == "" {
-		return out, fmt.Errorf("the platform's gateway is not ready")
+	switch {
+	case err != nil:
+		return out, fail(failGateway, err)
+	case p == nil || p.Status.GatewayURL == "":
+		return out, fail(failGateway, errors.New("the platform has no gateway URL"))
 	}
 	role := roleOf(&in)
 	route := func(name string) string {
@@ -249,15 +280,15 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 	c := in.Spec.Connectors
 	mapEP, err := w.endpoint(ctx, &in, c.Map, v1alpha1.ConnectorMap, mapTools, readTools, route)
 	if err != nil || mapEP == nil {
-		return out, fmt.Errorf("the map connector cannot be read")
+		return out, fail(failMap, fmt.Errorf("the map connector cannot be used: %w", err))
 	}
 	idx, err := readMap(ctx, w.Caller, mapEP.ep, w.now())
 	if err != nil {
-		return out, fmt.Errorf("the Map could not be read: %w", err)
+		return out, fail(failMap, err)
 	}
 	grounds, err := w.grounds(ctx, &in, route)
 	if err != nil {
-		return out, err
+		return out, fail(failImport, err)
 	}
 	var metrics *discovery.Metrics
 	if m, _ := w.endpoint(ctx, &in, c.Metrics, v1alpha1.ConnectorMetrics, []string{mcp.RulesTool}, stateTools, route); m != nil {
@@ -265,7 +296,7 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 	}
 	res, err := discovery.Import(ctx, w.Caller, grounds, metrics, discovery.NewIndex(idx.entries), w.now())
 	if err != nil {
-		return out, err
+		return out, fail(failImport, err)
 	}
 	if len(in.Spec.Scope.Entities) > 0 {
 		// Never silence: what this survey does not read yet says so.

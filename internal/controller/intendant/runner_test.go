@@ -212,7 +212,7 @@ func TestSurveyMapFailure(t *testing.T) {
 	dead.Close()
 	f.surveyed(t, "nomap", dead.URL+"/mcp", nil)
 	s := f.waitPhase(t, "nomap", 1, v1alpha1.RunFailed)[0]
-	if !strings.Contains(s.Status.Reason, "the Map could not be read") || s.Status.CompletedAt == nil {
+	if s.Status.Reason != failMap || strings.Contains(s.Status.Reason, "http") || s.Status.CompletedAt == nil {
 		t.Errorf("failed survey %+v", s.Status.RunStatus)
 	}
 }
@@ -259,7 +259,7 @@ func TestSurveyResumed(t *testing.T) {
 	}
 }
 
-// Until I1d-3a-2, a scope's entities are not surveyed, and the survey says
+// A scope's entities are not surveyed yet, and the survey says
 // so: an entity-only scope gives a Completed survey with that line.
 func TestEntitiesSaidNotSurveyed(t *testing.T) {
 	f := startRunner(t)
