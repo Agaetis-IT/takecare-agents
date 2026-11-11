@@ -11,6 +11,10 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -26,6 +30,7 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
 	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/runs"
+	"github.com/agaetis-it/takecare-agents/internal/telemetry/semconv"
 )
 
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaresurveys/status,verbs=get;update;patch,namespace=takecare-system
@@ -108,6 +113,10 @@ type Runner struct {
 	// GateRetry is how long the runner waits when every queued survey is
 	// held back.
 	GateRetry time.Duration
+	// Tracer records a survey's trace (spec 10 §10); none when nil.
+	Tracer trace.Tracer
+	// Metrics, when set, hold what each Intendant's last survey proposes.
+	Metrics *SurveyMetrics
 
 	mu      sync.Mutex
 	running map[types.NamespacedName]bool // by Intendant
@@ -221,16 +230,32 @@ func (w *Runner) release(owner types.NamespacedName) {
 
 // run surveys the ground once and writes the outcome; a stopped operator
 // leaves the survey Running for the next leader to run again.
+func (w *Runner) tracer() trace.Tracer {
+	if w.Tracer != nil {
+		return w.Tracer
+	}
+	return noop.NewTracerProvider().Tracer("")
+}
+
 func (w *Runner) run(ctx context.Context, s *v1alpha1.TakeCareSurvey) {
-	logger := log.FromContext(ctx).WithValues("survey", s.Name)
+	// The survey's trace: its root is the Intendant's invoke_agent, the
+	// agent pass (I1e) to come as its child.
+	ctx, span := w.tracer().Start(ctx, semconv.OperationInvokeAgent+" "+Kind, trace.WithAttributes(
+		attribute.String(semconv.GenAIOperationName, semconv.OperationInvokeAgent),
+		attribute.String(semconv.GenAIAgentName, Kind),
+		attribute.String(semconv.SurveyName, s.Name),
+		attribute.String(semconv.SurveyTrigger, string(s.Spec.Trigger))))
+	defer span.End()
+	traceID := span.SpanContext().TraceID().String()
+	logger := log.FromContext(ctx).WithValues("survey", s.Name, "traceID", traceID)
 	now := metav1.NewTime(w.now())
 	if err := w.patch(ctx, s, func(st *v1alpha1.TakeCareSurveyStatus) {
-		st.Phase, st.StartedAt, st.Attempts = v1alpha1.RunRunning, &now, st.Attempts+1
+		st.Phase, st.StartedAt, st.Attempts, st.TraceID = v1alpha1.RunRunning, &now, st.Attempts+1, traceID
 	}); err != nil {
 		logger.Error(err, "mark the survey running")
 		return
 	}
-	out, err := w.survey(ctx, s)
+	out, res, err := w.survey(ctx, s)
 	if ctx.Err() != nil {
 		return
 	}
@@ -241,12 +266,15 @@ func (w *Runner) run(ctx context.Context, s *v1alpha1.TakeCareSurvey) {
 			reason = f.class
 		}
 		logger.Error(err, "the survey failed", "intendant", s.Spec.IntendantRef.Name)
+		span.SetStatus(codes.Error, reason)
 		out = v1alpha1.TakeCareSurveyStatus{Phase: v1alpha1.RunFailed, Reason: reason[:min(len(reason), maxReason)]}
 	} else {
 		out.Phase = v1alpha1.RunCompleted
+		span.SetAttributes(attribute.Int(semconv.SurveyProposals, len(res.Proposals)))
+		w.Metrics.Record(s.Spec.IntendantRef.Name, res)
 	}
 	if err := w.patch(ctx, s, func(st *v1alpha1.TakeCareSurveyStatus) {
-		out.StartedAt, out.Attempts, out.CompletedAt = st.StartedAt, st.Attempts, &done
+		out.StartedAt, out.Attempts, out.CompletedAt, out.TraceID = st.StartedAt, st.Attempts, &done, traceID
 		*st = out
 	}); err != nil {
 		logger.Error(err, "record the survey's outcome")
@@ -254,21 +282,22 @@ func (w *Runner) run(ctx context.Context, s *v1alpha1.TakeCareSurvey) {
 }
 
 // survey reads the Map and the ground through the Intendant's routes.
-func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alpha1.TakeCareSurveyStatus, error) {
+func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alpha1.TakeCareSurveyStatus, discovery.Result, error) {
 	var out v1alpha1.TakeCareSurveyStatus
+	var none discovery.Result
 	var in v1alpha1.TakeCareIntendant
 	if err := w.Reader.Get(ctx, types.NamespacedName{Namespace: s.Namespace, Name: s.Spec.IntendantRef.Name}, &in); err != nil {
 		if apierrors.IsNotFound(err) {
-			return out, fail(failIntendant, fmt.Errorf("the Intendant %s does not exist", s.Spec.IntendantRef.Name))
+			return out, none, fail(failIntendant, fmt.Errorf("the Intendant %s does not exist", s.Spec.IntendantRef.Name))
 		}
-		return out, fail(failIntendant, err)
+		return out, none, fail(failIntendant, err)
 	}
 	p, err := platformOf(ctx, w.Client)
 	switch {
 	case err != nil:
-		return out, fail(failGateway, err)
+		return out, none, fail(failGateway, err)
 	case p == nil || p.Status.GatewayURL == "":
-		return out, fail(failGateway, errors.New("the platform has no gateway URL"))
+		return out, none, fail(failGateway, errors.New("the platform has no gateway URL"))
 	}
 	role := roleOf(&in)
 	route := func(name string) string {
@@ -280,25 +309,53 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 	c := in.Spec.Connectors
 	mapEP, err := w.endpoint(ctx, &in, c.Map, v1alpha1.ConnectorMap, mapTools, readTools, route)
 	if err != nil || mapEP == nil {
-		return out, fail(failMap, fmt.Errorf("the map connector cannot be used: %w", err))
+		return out, none, fail(failMap, fmt.Errorf("the map connector cannot be used: %w", err))
 	}
-	idx, err := readMap(ctx, w.Caller, mapEP.ep, w.now())
+	mctx, mspan := w.tracer().Start(ctx, "read map")
+	idx, err := readMap(mctx, w.Caller, mapEP.ep, w.now())
+	mspan.SetAttributes(attribute.Int(semconv.SurveyEntries, len(idx.entries)))
+	mspan.End()
 	if err != nil {
-		return out, fail(failMap, err)
+		return out, none, fail(failMap, err)
 	}
 	grounds, blind, err := w.grounds(ctx, &in, idx, route)
 	if err != nil {
-		return out, fail(failImport, err)
+		return out, none, fail(failImport, err)
 	}
 	var metrics *discovery.Metrics
 	if m, _ := w.endpoint(ctx, &in, c.Metrics, v1alpha1.ConnectorMetrics, []string{mcp.RulesTool}, stateTools, route); m != nil {
 		metrics = &discovery.Metrics{Connector: m.name, Endpoint: m.ep}
 	}
-	res, err := discovery.Import(ctx, w.Caller, grounds, metrics, discovery.NewIndex(idx.entries), w.now())
+	res, err := discovery.Import(ctx, w.Caller, grounds, metrics, discovery.NewIndex(idx.entries), w.now(), w.observer(ctx))
 	if err != nil {
-		return out, fail(failImport, err)
+		return out, none, fail(failImport, err)
 	}
-	return outcome(res, idx.revision, blind), nil
+	end := time.Now()
+	for _, l := range res.Layers {
+		_, ls := w.tracer().Start(ctx, "layer "+l.Name, trace.WithTimestamp(end), trace.WithAttributes(
+			attribute.String(semconv.SurveyLayer, l.Name), attribute.Int(semconv.SurveySeen, int(l.Seen)),
+			attribute.Int(semconv.SurveyMatched, int(l.Matched)), attribute.Int(semconv.SurveyProposed, int(l.Proposed)),
+			attribute.Int(semconv.SurveyNotSeen, len(l.NotSeen))))
+		ls.End(trace.WithTimestamp(end))
+	}
+	return outcome(res, idx.revision, blind), res, nil
+}
+
+// observer turns the import's calls into the survey's child spans, timed
+// as they ran: each ground's listing and the rules' read.
+func (w *Runner) observer(ctx context.Context) discovery.Observer {
+	return discovery.Observer{
+		Ground: func(g discovery.Ground, start, end time.Time) {
+			_, sp := w.tracer().Start(ctx, "list "+g.Connector, trace.WithTimestamp(start), trace.WithAttributes(
+				attribute.String(semconv.SurveyConnector, g.Connector), attribute.String(semconv.SurveyCluster, g.Cluster),
+				attribute.Int(semconv.SurveyNamespaces, len(g.Namespaces))))
+			sp.End(trace.WithTimestamp(end))
+		},
+		Rules: func(start, end time.Time) {
+			_, sp := w.tracer().Start(ctx, "read rules", trace.WithTimestamp(start))
+			sp.End(trace.WithTimestamp(end))
+		},
+	}
 }
 
 type bound struct {

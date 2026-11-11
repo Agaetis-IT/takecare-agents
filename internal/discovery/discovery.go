@@ -168,7 +168,9 @@ type Proposal struct {
 	Entry    string                  `json:"entry"`
 	Evidence []string                `json:"evidence"`
 	Source   v1alpha1.ProposalSource `json:"source"`
-	layer    int
+	// Layer is the layer that made the proposal.
+	Layer string `json:"-"`
+	layer int
 }
 
 // Result is the import's outcome.
@@ -233,10 +235,21 @@ type pending struct {
 	evidence []string
 }
 
+// Observer hears when the import's calls run, for a trace: each ground's
+// listing and the rules' read, with their start and end. Either may be nil.
+type Observer struct {
+	Ground func(g Ground, start, end time.Time)
+	Rules  func(start, end time.Time)
+}
+
 // Import surveys the grounds against the Map and returns what it saw and
 // proposes. It returns an error only when ctx ends; everything else it
 // could not read is a notSeen line.
-func Import(ctx context.Context, caller Caller, grounds []Ground, metrics *Metrics, ix *Index, now time.Time) (Result, error) {
+func Import(ctx context.Context, caller Caller, grounds []Ground, metrics *Metrics, ix *Index, now time.Time, obs ...Observer) (Result, error) {
+	var o Observer
+	if len(obs) > 0 {
+		o = obs[0]
+	}
 	r := &run{
 		ix: ix, today: now.UTC().Format(time.DateOnly),
 		layers: map[string]*Layer{}, seen: map[string]bool{}, surveyed: map[string]bool{}, listedClusters: map[string]bool{},
@@ -247,8 +260,12 @@ func Import(ctx context.Context, caller Caller, grounds []Ground, metrics *Metri
 		r.layers[name] = &Layer{Name: name}
 	}
 	for _, g := range grounds {
+		start := time.Now()
 		if err := r.list(ctx, caller, g); err != nil {
 			return Result{}, err
+		}
+		if o.Ground != nil {
+			o.Ground(g, start, time.Now())
 		}
 	}
 	r.environments()
@@ -256,8 +273,12 @@ func Import(ctx context.Context, caller Caller, grounds []Ground, metrics *Metri
 		r.objectsOf(k)
 	}
 	r.services()
+	start := time.Now()
 	if err := r.alerting(ctx, caller, metrics); err != nil {
 		return Result{}, err
+	}
+	if o.Rules != nil && metrics != nil {
+		o.Rules(start, time.Now())
 	}
 	r.flushUpdates()
 	r.removals()
@@ -648,6 +669,6 @@ func (r *run) propose(l *Layer, action v1alpha1.ProposalAction, e mapserver.Entr
 	l.Proposed++
 	r.proposals = append(r.proposals, Proposal{
 		ID: ProposalID(action, e.Key), Action: action, Key: e.Key, Entry: string(raw),
-		Evidence: evidence, Source: v1alpha1.ProposalFromImport, layer: slices.Index(layerOrder, l.Name),
+		Evidence: evidence, Source: v1alpha1.ProposalFromImport, Layer: l.Name, layer: slices.Index(layerOrder, l.Name),
 	})
 }

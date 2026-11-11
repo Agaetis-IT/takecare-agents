@@ -80,6 +80,8 @@ type Reconciler struct {
 	// are: one appearing or changing is a registration (spec 10 §3).
 	EngineNamespace string
 	AgentKinds      []schema.GroupVersionKind
+	// Metrics are the survey gauges, whose series go with the Intendant.
+	Metrics *SurveyMetrics
 	// Now is time.Now when nil; tests inject a clock.
 	Now func() time.Time
 }
@@ -103,7 +105,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	var in v1alpha1.TakeCareIntendant
 	if err := r.reader().Get(ctx, req.NamespacedName, &in); err != nil {
 		if apierrors.IsNotFound(err) {
-			return ctrl.Result{}, nil // its routes go with it (ownerReferences)
+			r.Metrics.Forget(req.Name) // its routes and surveys go with it (ownerReferences)
+			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("get intendant %s: %w", req.Name, err)
 	}

@@ -211,18 +211,10 @@ rules:
   - takecare.agaetis.fr
   resources:
   - takecareinvestigations
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - watch
-- apiGroups:
-  - takecare.agaetis.fr
-  resources:
   - takecaresurveys
   verbs:
   - create
+  - delete
   - get
   - list
   - watch

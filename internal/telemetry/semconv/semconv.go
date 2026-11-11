@@ -60,6 +60,23 @@ const (
 	// Journal stamps the gateway's access log lines the Ranger's journal
 	// keeps (spec 09 §7).
 	Journal = "takecare.journal"
+
+	// A survey of the Intendant (spec 10 §10): its record and trigger, on
+	// the root span; a ground listed (its connector, cluster and namespace
+	// count) or the Map read (its entry count) on their spans; a layer's
+	// counts on that layer's span.
+	SurveyName       = "takecare.survey.name"
+	SurveyTrigger    = "takecare.survey.trigger"
+	SurveyConnector  = "takecare.survey.connector"
+	SurveyCluster    = "takecare.survey.cluster"
+	SurveyNamespaces = "takecare.survey.namespaces"
+	SurveyEntries    = "takecare.survey.entries"
+	SurveyLayer      = "takecare.survey.layer"
+	SurveySeen       = "takecare.survey.seen"
+	SurveyMatched    = "takecare.survey.matched"
+	SurveyProposed   = "takecare.survey.proposed"
+	SurveyNotSeen    = "takecare.survey.not_seen"
+	SurveyProposals  = "takecare.survey.proposals"
 )
 
 // Span events of an investigation (spec 02).

@@ -316,8 +316,13 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		return nil, fmt.Errorf("set up the Doc controller: %w", err)
 	}
 	// The Intendant (spec 10): its conditions, schedule and routes.
+	surveyMetrics, err := intendant.NewSurveyMetrics(crmetrics.Registry)
+	if err != nil {
+		return nil, err
+	}
 	if err := (&intendant.Reconciler{
-		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("takecare-operator"),
+		Metrics: surveyMetrics,
+		Client:  mgr.GetClient(), Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("takecare-operator"),
 		OperatorNamespace: cfg.operatorNamespace, EngineNamespace: cfg.engineNamespace,
 		AgentKinds: (&kagent0103.Agents{}).AgentTypes(),
 	}).SetupWithManager(mgr); err != nil {
@@ -331,9 +336,13 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	}
 	if err := mgr.Add(&intendant.Runner{
 		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: surveys,
-		Caller: &mcp.Client{HTTP: gatewayClient},
+		Caller: &mcp.Client{HTTP: gatewayClient}, Metrics: surveyMetrics,
+		Tracer: traces.Tracer("github.com/agaetis-it/takecare-agents/internal/controller/intendant"),
 	}); err != nil {
 		return nil, fmt.Errorf("add the survey runner: %w", err)
+	}
+	if err := mgr.Add(&intendant.Sweeper{Client: mgr.GetClient(), Namespace: cfg.operatorNamespace}); err != nil {
+		return nil, fmt.Errorf("add the survey sweeper: %w", err)
 	}
 	connectorReconciler := &connector.Reconciler{
 		Client:            mgr.GetClient(),
