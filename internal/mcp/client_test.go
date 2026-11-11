@@ -56,6 +56,7 @@ func TestCallIsLockedToReportProbeAndEntry(t *testing.T) {
 		mcptest.ToolSpec{Name: ProbeTool, ReadOnly: true, Reply: "[]"},
 		mcptest.ToolSpec{Name: toolDelete, Reply: "deleted"},
 		mcptest.ToolSpec{Name: MapEntryTool, ReadOnly: true, Reply: "{}"},
+		mcptest.ToolSpec{Name: MapListTool, ReadOnly: true, Reply: "[]"},
 		mcptest.ToolSpec{Name: "broken", ReadOnly: true, Reply: "boom", IsError: true},
 		mcptest.ToolSpec{Name: nsList, ReadOnly: true, Reply: "APIVERSION   KIND   NAME"},
 		mcptest.ToolSpec{Name: toolPodsList, ReadOnly: true, Reply: "[]"},
@@ -85,7 +86,7 @@ func TestCallIsLockedToReportProbeAndEntry(t *testing.T) {
 	}
 	mapEP := func(readEntry bool) Endpoint {
 		e := ep(v1alpha1.ConnectorMap)
-		e.ReadTools = map[string]bool{MapEntryTool: readEntry, toolDelete: true}
+		e.ReadTools = map[string]bool{MapEntryTool: readEntry, MapListTool: readEntry, toolDelete: true}
 		return e
 	}
 	tests := []struct {
@@ -105,6 +106,8 @@ func TestCallIsLockedToReportProbeAndEntry(t *testing.T) {
 		{"map, entry classed read: entry, add-on or url", mapEP(true), MapEntryTool, false},
 		{"map, entry not classed read: refused", mapEP(false), MapEntryTool, true},
 		{"map: not another tool", mapEP(true), toolDelete, true},
+		{"map, map_at classed read: the Map's list", mapEP(true), MapListTool, false},
+		{"map, map_at not classed read: refused", mapEP(false), MapListTool, true},
 		{"cluster, discovery tool classed read, not content: allowed, add-on or url", discovery(false, nsList), nsList, false},
 		{"cluster add-on, discovery tool: resources_list", discovery(true, ProbeTool), ProbeTool, false},
 		{"cluster, discovery tool classed content (not a state tool): refused", discovery(true), nsList, true},

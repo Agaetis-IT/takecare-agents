@@ -45,6 +45,11 @@ const ProbeTool = "resources_list"
 // an add-on or a customer's server, when discovery classed it read.
 const MapEntryTool = "entry"
 
+// MapListTool is the Map server's tool that lists the Map's entries (key,
+// type, status) at a date: the Intendant's survey reads the Map's index
+// with it, then each entry with MapEntryTool (spec 10 §4).
+const MapListTool = "map_at"
+
 // DiscoveryTools are the kubernetes add-on's tools the Intendant's import
 // calls on a cluster connector (spec 10 §4): the namespaces, and a resource
 // kind's objects. The import lists; it never gets an object, whose spec may
@@ -137,7 +142,7 @@ func (c *Client) ListTools(ctx context.Context, ep Endpoint) ([]Tool, error) {
 
 // Allowed says whether the operator may call a tool with these arguments on
 // this endpoint: any tool of a report connector (the operator publishes, the
-// model never does), the entry tool of a map connector or the probe tool of
+// model never does), the entry and list tools of a map connector or the probe tool of
 // a cluster add-on of TakeCare's, each when discovery classed it read, a
 // discovery tool of a cluster connector, or the rules tool of a metrics
 // connector with the arguments rulesArgsAllowed admits, each when discovery
@@ -146,7 +151,7 @@ func (ep Endpoint) Allowed(tool string, args map[string]any) bool {
 	if slices.Contains(ep.Types, v1alpha1.ConnectorReport) {
 		return true
 	}
-	if slices.Contains(ep.Types, v1alpha1.ConnectorMap) && tool == MapEntryTool && ep.ReadTools[tool] {
+	if slices.Contains(ep.Types, v1alpha1.ConnectorMap) && (tool == MapEntryTool || tool == MapListTool) && ep.ReadTools[tool] {
 		return true
 	}
 	cluster := slices.Contains(ep.Types, v1alpha1.ConnectorCluster)

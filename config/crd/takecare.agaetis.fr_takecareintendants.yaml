@@ -318,6 +318,12 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              lastMapRevision:
+                description: |-
+                  The map connector's revision the last survey was triggered for: a
+                  new one triggers a survey.
+                maxLength: 128
+                type: string
               lastSurvey:
                 description: The last TakeCareSurvey started.
                 type: string
@@ -339,6 +345,24 @@ spec:
               observedGeneration:
                 format: int64
                 type: integer
+              pendingTrigger:
+                description: |-
+                  A trigger that came while a survey was in flight: the next survey,
+                  one at most, started when the current one ends (spec 10 §3). Kept in
+                  status, so that a restart does not lose it.
+                enum:
+                - Schedule
+                - OnDemand
+                - MapRevision
+                - Registration
+                type: string
+              registrations:
+                description: |-
+                  A digest of the registrations the last survey saw (the bound
+                  connectors and the engine's agents, by name and generation): a
+                  change triggers a survey.
+                maxLength: 64
+                type: string
             type: object
         required:
         - spec

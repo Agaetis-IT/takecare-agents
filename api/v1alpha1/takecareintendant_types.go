@@ -91,6 +91,25 @@ type TakeCareIntendantStatus struct {
 	// When the schedule runs the next survey.
 	// +optional
 	NextSurveyTime *metav1.Time `json:"nextSurveyTime,omitempty"`
+
+	// A trigger that came while a survey was in flight: the next survey,
+	// one at most, started when the current one ends (spec 10 §3). Kept in
+	// status, so that a restart does not lose it.
+	// +optional
+	PendingTrigger SurveyTrigger `json:"pendingTrigger,omitempty"`
+
+	// The map connector's revision the last survey was triggered for: a
+	// new one triggers a survey.
+	// +kubebuilder:validation:MaxLength=128
+	// +optional
+	LastMapRevision string `json:"lastMapRevision,omitempty"`
+
+	// A digest of the registrations the last survey saw (the bound
+	// connectors and the engine's agents, by name and generation): a
+	// change triggers a survey.
+	// +kubebuilder:validation:MaxLength=64
+	// +optional
+	Registrations string `json:"registrations,omitempty"`
 }
 
 // +kubebuilder:object:root=true

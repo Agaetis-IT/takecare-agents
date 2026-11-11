@@ -95,6 +95,8 @@ The status is bounded in size: it keeps the counts and the first N proposals. Th
 
 agentregistry (`agentregistry-dev/agentregistry`, Apache-2.0) is installed by the `takecare` chart from its OCI chart (`oci://ghcr.io/agentregistry-dev/agentregistry/charts/agentregistry`), pinned in `hack/versions.env`, and sits behind the gateway. Its Service exposes an HTTP port (12121) and an MCP port (31313). Its MCP endpoint is registered as a connector of type `registry`, with `read` tools only, listed one by one.
 
+The Intendant's routes on the gateway (to its map, cluster and metrics connectors) identify it by their path alone, as the Doc's do (ADR 0008): any pod the gateway admits, the engine's included, could call them, and would get only their allow-list, listing tools and `get_rules` with its argument rule; the Bib (spec 09) closes this.
+
 The Intendant's inventory has three parts, each read in one place:
 
 - the kagent `Agent`s of every namespace in scope, through the `kubernetes` connectors (the operator's rights do not grow, §4);
