@@ -44,14 +44,17 @@ Layers, and how they map to spec 08:
 - namespaces → `environment/<namespace>` (`environment/<cluster>.<namespace>` on a named cluster);
 - Deployments, StatefulSets, DaemonSets and CronJobs → `compute`; their `app.kubernetes.io/part-of` or `app.kubernetes.io/name` label → a `service` proposal with `runsAs`;
 - Services, Ingresses and HTTPRoutes → `network`; ServiceAccounts → `identity`; PersistentVolumeClaims → `storage`;
-- PrometheusRules → `alertedBy` on the entries their labels select, with the alert's expression carried on the relation (spec 08 §4);
-- the records of the `knowledge` connectors → `runbook` entries with a `knowledge` source (spec 08 §3).
+- PrometheusRules → `alertedBy` on the entries whose workload the rule's labels or expression name, with the alert's expression carried on the relation (spec 08 §4); no clear match, no proposal.
+
+The import does not read the `knowledge` connectors: no standard MCP tool lists a knowledge server's records, so runbook entries come from the agent pass (§5) (decided 2026-11-11).
+
+It calls only `namespaces_list` and `resources_list` (the alerting layer also `resources_get`, on PrometheusRules only), each when discovery classed it read and not content; the operator's MCP client refuses any other tool or kind. Apart from PrometheusRules, it lists objects and never fetches one, since an object's spec may carry values: of an object it keeps its kind, namespace, name and the two labels above, nothing else. The answers it parses are the `kubernetes` add-on's as pinned (`resources_list`'s structured content, `namespaces_list`'s table); a shape it does not know is a `notSeen` line, never a guess.
 
 PrometheusRules are read through the `kubernetes` connector too: the `kubernetes` add-on's chart-rendered read-only RBAC gains `get`, `list` and `watch` on `prometheusrules` of `monitoring.coreos.com`, when that API is served. Read verbs only (AGENTS.md); it is the only RBAC change of the Intendant.
 
 Never Secrets, never ConfigMap values, never logs: content tools are not given to it.
 
-Every discovered entry is `provenance: discovered`, `status: proposed`. An existing entry seen again gets `lastSeen`. A validated entry not seen keeps its `lastSeen` and gets a removal proposal.
+Every discovered entry is `provenance: discovered`, `status: proposed`. An existing entry seen again is matched; it gets an update only when its sources or relations differ from what the survey sees. A survey never proposes a change of `lastSeen` alone: `lastSeen` is refreshed by an update made for another reason. A validated entry whose kubernetes sources were all surveyed (their kind listed in their namespace) and none seen keeps its `lastSeen` and gets a removal proposal; a source the survey could not list keeps the entry.
 
 What a connector could not read is a `notSeen` line with its reason, never silence.
 
@@ -61,7 +64,8 @@ After the import, one kagent run, traced `invoke_agent intendant` with the same 
 
 - `dependsOn`, from the hostnames in environment variables and the names of connection settings;
 - `belongsTo`, from labels and annotations;
-- `documentedBy`, from the Topo.
+- `documentedBy`, from the Topo;
+- `runbook` entries with a `knowledge` source (spec 08 §3), from the records the knowledge tools return, with `documentedBy` on the entries they apply to.
 
 Each proposal carries its evidence: the tool calls that support it.
 

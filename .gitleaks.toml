@@ -25,3 +25,13 @@ condition = "AND"
 paths = ['''(^|/)map/[a-z]+/[a-z0-9][-a-z0-9.]*\.yaml$''']
 regexTarget = "line"
 regexes = ['''^key: (service|compute|datastore|storage|network|identity|external|team|environment|observability|runbook)/[a-z0-9]([-a-z0-9.]*[a-z0-9])?$''']
+
+# The discovery's golden output (spec 10 §4) quotes Map entries: their
+# `"key": "<type>/<name>"` field and the `key: <type>/<name>` line inside a
+# proposal's YAML. Only those shapes, in that directory, are allowed.
+[[allowlists]]
+description = "Map keys quoted in the discovery's golden output"
+condition = "AND"
+paths = ['''(^|/)internal/discovery/testdata/[a-z0-9-]+\.json$''']
+regexTarget = "match"
+regexes = ['''key\W{1,4}(service|compute|datastore|storage|network|identity|external|team|environment|observability|runbook)/[a-z0-9]([-a-z0-9.]*[a-z0-9])?''']

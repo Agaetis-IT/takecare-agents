@@ -17,8 +17,11 @@ import (
 )
 
 const (
-	toolDelete = "resources_delete"
-	toolPost   = "post_message"
+	toolDelete   = "resources_delete"
+	toolPost     = "post_message"
+	nsList       = "namespaces_list"
+	toolPodsList = "pods_list"
+	toolPodsLog  = "pods_log"
 )
 
 func TestListToolsReportsAnnotations(t *testing.T) {
@@ -54,6 +57,9 @@ func TestCallIsLockedToReportProbeAndEntry(t *testing.T) {
 		mcptest.ToolSpec{Name: toolDelete, Reply: "deleted"},
 		mcptest.ToolSpec{Name: MapEntryTool, ReadOnly: true, Reply: "{}"},
 		mcptest.ToolSpec{Name: "broken", ReadOnly: true, Reply: "boom", IsError: true},
+		mcptest.ToolSpec{Name: nsList, ReadOnly: true, Reply: "APIVERSION   KIND   NAME"},
+		mcptest.ToolSpec{Name: toolPodsList, ReadOnly: true, Reply: "[]"},
+		mcptest.ToolSpec{Name: toolPodsLog, ReadOnly: true, Reply: "log"},
 	)
 	c := &Client{HTTP: &http.Client{Timeout: 5 * time.Second}}
 	ctx := context.Background()
@@ -62,6 +68,19 @@ func TestCallIsLockedToReportProbeAndEntry(t *testing.T) {
 		e := ep(types...)
 		e.Addon = true
 		e.ReadTools = map[string]bool{ProbeTool: readProbe}
+		return e
+	}
+	stateOn := func(typ v1alpha1.ConnectorType, state ...string) Endpoint {
+		e := ep(typ)
+		e.StateTools = map[string]bool{}
+		for _, s := range state {
+			e.StateTools[s] = true
+		}
+		return e
+	}
+	discovery := func(addon bool, state ...string) Endpoint {
+		e := stateOn(v1alpha1.ConnectorCluster, state...)
+		e.Addon = addon
 		return e
 	}
 	mapEP := func(readEntry bool) Endpoint {
@@ -86,6 +105,12 @@ func TestCallIsLockedToReportProbeAndEntry(t *testing.T) {
 		{"map, entry classed read: entry, add-on or url", mapEP(true), MapEntryTool, false},
 		{"map, entry not classed read: refused", mapEP(false), MapEntryTool, true},
 		{"map: not another tool", mapEP(true), toolDelete, true},
+		{"cluster, discovery tool classed read, not content: allowed, add-on or url", discovery(false, nsList), nsList, false},
+		{"cluster add-on, discovery tool: resources_list", discovery(true, ProbeTool), ProbeTool, false},
+		{"cluster, discovery tool classed content (not a state tool): refused", discovery(true), nsList, true},
+		{"cluster, a read tool outside the discovery list: refused", discovery(true, nsList, toolPodsList), toolPodsList, true},
+		{"cluster, a content tool marked state by mistake: refused, not on the list", discovery(true, toolPodsLog), toolPodsLog, true},
+		{"metrics, a discovery tool: refused", stateOn(v1alpha1.ConnectorMetrics, nsList), nsList, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

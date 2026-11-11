@@ -1,0 +1,98 @@
+{
+  "layers": [
+    {
+      "name": "environment",
+      "seen": 3,
+      "matched": 2,
+      "proposed": 1
+    },
+    {
+      "name": "compute",
+      "seen": 2,
+      "matched": 1,
+      "proposed": 1
+    },
+    {
+      "name": "service",
+      "seen": 2,
+      "matched": 2,
+      "proposed": 0
+    },
+    {
+      "name": "network",
+      "seen": 1,
+      "matched": 0,
+      "proposed": 1,
+      "notSeen": [
+        {
+          "ref": "HTTPRoute",
+          "reason": "API not served"
+        }
+      ]
+    },
+    {
+      "name": "identity",
+      "seen": 1,
+      "matched": 0,
+      "proposed": 1
+    },
+    {
+      "name": "storage",
+      "seen": 1,
+      "matched": 0,
+      "proposed": 1
+    }
+  ],
+  "proposals": [
+    {
+      "id": "072ab18f0296632a",
+      "action": "Add",
+      "key": "environment/default",
+      "entry": "created: \"2026-11-11\"\nkey: environment/default\nlastSeen: \"2026-11-11\"\nprovenance: discovered\nsources:\n- kubernetes: default\nstatus: proposed\n",
+      "evidence": [
+        "kubernetes/namespaces_list"
+      ],
+      "source": "Import"
+    },
+    {
+      "id": "e1090c426e0237d4",
+      "action": "Add",
+      "key": "compute/notifications-worker",
+      "entry": "created: \"2026-11-11\"\nkey: compute/notifications-worker\nlastSeen: \"2026-11-11\"\nprovenance: discovered\nrelations:\n  deployedIn:\n  - environment/demo-apps\nsources:\n- kubernetes: demo-apps/Deployment/notifications-worker\nstatus: proposed\n",
+      "evidence": [
+        "kubernetes/resources_list"
+      ],
+      "source": "Import"
+    },
+    {
+      "id": "7ea96a023f5377bf",
+      "action": "Add",
+      "key": "network/billing-api",
+      "entry": "created: \"2026-11-11\"\nkey: network/billing-api\nlastSeen: \"2026-11-11\"\nprovenance: discovered\nrelations:\n  deployedIn:\n  - environment/demo-apps\nsources:\n- kubernetes: demo-apps/Service/billing-api\nstatus: proposed\n",
+      "evidence": [
+        "kubernetes/resources_list"
+      ],
+      "source": "Import"
+    },
+    {
+      "id": "050c3d1ff008cb3b",
+      "action": "Add",
+      "key": "identity/billing-api",
+      "entry": "created: \"2026-11-11\"\nkey: identity/billing-api\nlastSeen: \"2026-11-11\"\nprovenance: discovered\nsources:\n- kubernetes: demo-apps/ServiceAccount/billing-api\nstatus: proposed\n",
+      "evidence": [
+        "kubernetes/resources_list"
+      ],
+      "source": "Import"
+    },
+    {
+      "id": "5d2ca9c24745ab77",
+      "action": "Add",
+      "key": "storage/billing-exports",
+      "entry": "created: \"2026-11-11\"\nkey: storage/billing-exports\nlastSeen: \"2026-11-11\"\nprovenance: discovered\nsources:\n- kubernetes: demo-apps/PersistentVolumeClaim/billing-exports\nstatus: proposed\n",
+      "evidence": [
+        "kubernetes/resources_list"
+      ],
+      "source": "Import"
+    }
+  ]
+}
