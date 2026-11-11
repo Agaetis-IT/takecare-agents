@@ -36,7 +36,7 @@ import (
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaresurveys/status,verbs=get;update;patch,namespace=takecare-system
 
 // Bounds of a survey's status (spec 10 §7): the first proposals and the
-// not-seen lines of a layer; the full set goes elsewhere (I1d-3b).
+// not-seen lines of a layer; the full set is in its proposals ConfigMap.
 const (
 	maxProposals = 20
 	maxNotSeen   = 50
@@ -50,6 +50,7 @@ const (
 	failIntendant = "the Intendant could not be read"
 	failGateway   = "the gateway is not ready"
 	failImport    = "the import failed"
+	failRecord    = "the proposals could not be recorded"
 	maxReason     = 256
 )
 
@@ -330,6 +331,16 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 	if err != nil {
 		return out, none, fail(failImport, err)
 	}
+	// The full set, before the status: the not-seen line of what does not
+	// fit goes into both.
+	name := proposalsName(s.Name)
+	data, err := proposalsData(&res, name)
+	if err == nil {
+		err = w.recordProposals(ctx, s, name, data)
+	}
+	if err != nil {
+		return out, none, fail(failRecord, err)
+	}
 	end := time.Now()
 	for _, l := range res.Layers {
 		_, ls := w.tracer().Start(ctx, "layer "+l.Name, trace.WithTimestamp(end), trace.WithAttributes(
@@ -338,7 +349,9 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 			attribute.Int(semconv.SurveyNotSeen, len(l.NotSeen))))
 		ls.End(trace.WithTimestamp(end))
 	}
-	return outcome(res, idx.revision, blind), res, nil
+	out = outcome(res, idx.revision, blind)
+	out.ProposalsConfigMap = name
+	return out, res, nil
 }
 
 // observer turns the import's calls into the survey's child spans, timed

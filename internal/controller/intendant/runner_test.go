@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -182,6 +183,7 @@ func TestSurveyRuns(t *testing.T) {
 	if st.StartedAt == nil || st.CompletedAt == nil || st.Attempts != 1 {
 		t.Errorf("run: started %v, completed %v, attempts %d", st.StartedAt, st.CompletedAt, st.Attempts)
 	}
+	f.checkProposals(t, &s)
 	f.mapRevision(t, rev2)
 	f.waitPhase(t, "runs", 2, v1alpha1.RunCompleted)
 }
@@ -248,6 +250,12 @@ func TestSurveyResumed(t *testing.T) {
 	if err := f.c.Status().Update(ctx, left); err != nil {
 		t.Fatal(err)
 	}
+	// What the stopped run had recorded is replaced, not added to.
+	stale := &corev1.ConfigMap{Name: proposalsName(left.Name), Namespace: ns, Data: map[string]string{"stale": "x"}}
+	stale.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(left, v1alpha1.GroupVersion.WithKind(surveyKind))}
+	if err := f.c.Create(ctx, stale); err != nil {
+		t.Fatal(err)
+	}
 	f.startManager(t)
 	var got v1alpha1.TakeCareSurvey
 	deadline := time.Now().Add(waitFor)
@@ -260,6 +268,7 @@ func TestSurveyResumed(t *testing.T) {
 	if got.Status.Phase != v1alpha1.RunCompleted || got.Status.Attempts != 2 || len(got.Status.Layers) != 7 || got.Status.Layers[0].Name == "half" {
 		t.Fatalf("resumed survey: %+v", got.Status)
 	}
+	f.checkProposals(t, &got)
 }
 
 // An entity-only scope is surveyed through its entities' Map sources: the
