@@ -297,7 +297,7 @@ func TestReadyWithItsRoutes(t *testing.T) {
 	for conn, want := range map[string]string{
 		connMap:     `mcp.tool.name in ["map_at"]`,
 		connCluster: `mcp.tool.name in ["namespaces_list", "resources_list"]`,
-		connMetrics: `(mcp.tool.name in ["get_rules"]) && (` + RulesCEL + `)`,
+		connMetrics: `mcp.tool.name in ["get_rules"]`,
 	} {
 		got, ok := f.policy(t, "intendant", conn)
 		if !ok || got != want {

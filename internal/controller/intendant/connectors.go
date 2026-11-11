@@ -18,15 +18,6 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/routes"
 )
 
-// RulesCEL is the gateway's rule on get_rules' arguments, the same rule as
-// the operator's MCP client (mcp.Endpoint.Allowed): the alerting rules
-// only, never the firing alerts, never another Prometheus or tenant. The
-// client keeps its own check whatever the gateway does (spec 10 §4).
-const RulesCEL = `mcp.tool.arguments.type == "alert" && mcp.tool.arguments.exclude_alerts == true && ` +
-	`mcp.tool.arguments.all(k, k in ["type", "exclude_alerts", "rule_name"]) && ` +
-	`(!has(mcp.tool.arguments.rule_name) || (size(mcp.tool.arguments.rule_name) <= 100 && ` +
-	`mcp.tool.arguments.rule_name.all(n, n.matches("^[A-Za-z][A-Za-z0-9_]*$"))))`
-
 // mapTools are the map connector's tools the survey reads the Map with:
 // map_at alone, the list and each entry at one revision.
 var mapTools = []string{mcp.MapListTool}
@@ -91,7 +82,11 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 			b.problems = append(b.problems, problem)
 			continue
 		}
-		b.routes = append(b.routes, routes.MCP{Connector: name, Backend: "mcp-" + name, Tools: tools, Extra: []string{RulesCEL}})
+		// The gateway checks the tool's name only: agentgateway v1.6.0 does
+		// not show a call's arguments to its rules, and a rule on them hides
+		// the tool. get_rules' arguments are the client's check alone
+		// (mcp.Endpoint.Allowed, spec 10 §8).
+		b.routes = append(b.routes, routes.MCP{Connector: name, Backend: "mcp-" + name, Tools: tools})
 	}
 	switch {
 	case b.mapProblem != "":

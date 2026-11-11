@@ -34,7 +34,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=26
+CHECKS_EXPECTED=33
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -43,6 +43,77 @@ check() { # NAME COMMAND...
   local name="$1"; shift
   checks=$((checks + 1))
   if "$@"; then printf 'PASS  %s\n' "$name"; else printf 'FAIL  %s\n' "$name"; failed=$((failed + 1)); fi
+}
+
+# survey NAME INTENDANT creates a survey by hand and prints its phase
+# once it has ended.
+survey() {
+  kubectl apply -f - >/dev/null <<EOF
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareSurvey
+metadata: {name: $1, namespace: $NS}
+spec:
+  intendantRef: {kind: TakeCareIntendant, name: $2}
+EOF
+  local phase=""
+  for _ in $(seq 60); do
+    phase="$(kubectl -n "$NS" get takecaresurvey "$1" -o jsonpath='{.status.phase}')"
+    [[ "$phase" =~ ^(Completed|Failed|Dropped)$ ]] && break
+    sleep 5
+  done
+  printf '%s\n' "$phase"
+}
+
+# proposals SURVEY prints a survey's record as the golden holds it: each
+# layer's counts from its status, then each proposal of its ConfigMap as
+# `action key id`, sorted.
+proposals() {
+  kubectl -n "$NS" get takecaresurvey "$1" \
+    -o jsonpath='{range .status.layers[*]}layer {.name} seen={.seen} matched={.matched} proposed={.proposed}{"\n"}{end}'
+  kubectl -n "$NS" get configmap "survey-$1-proposals" -o json | jq -r '.data | to_entries[]
+    | "\(.value | capture("(^|\n)action: (?<a>\\S+)").a) \(.value | capture("(^|\n)key: (?<k>\\S+)").k) \(.key)"' | sort
+}
+
+# intendant checks the demo's Intendant (spec 10 §11): its survey against
+# the golden, a scope nothing reads as a blind spot, and a removal.
+intendant() {
+  log "surveying the demo with the demo Intendant"
+  check "the demo Intendant is Ready, its connectors bound (spec 10)" \
+    bash -c "[[ \$(kubectl -n $NS get takecareintendant intendant -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}') == True ]]"
+  local phase
+  phase="$(survey e2e-first intendant)"
+  check "a survey by hand of the demo Completes (spec 10 §4)" test "$phase" = Completed
+  check "its proposals are the golden's: the demo ground's known difference with the demo Map (spec 10 AC 1)" \
+    diff -u test/e2e/intendant-proposals.golden <(proposals e2e-first)
+  check "its ConfigMap holds every proposal the status counts (spec 10 §7)" \
+    bash -c "[[ \$(kubectl -n $NS get configmap survey-e2e-first-proposals -o json | jq '.data | length') == \$(kubectl -n $NS get takecaresurvey e2e-first -o jsonpath='{.status.proposalCounts.total}') ]]"
+
+  # A scope no connector reads, in the e2e only: kube-public.
+  kubectl apply -f - >/dev/null <<EOF
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareIntendant
+metadata: {name: e2e-blind, namespace: $NS}
+spec:
+  level: Practitioner
+  scope: {namespaces: [kube-public]}
+  connectors: {map: [map], cluster: [kubernetes]}
+EOF
+  phase="$(survey e2e-blind-1 e2e-blind)"
+  check "a namespace no connector reads is a blind spot of the survey, with its reason (spec 10 AC 5)" \
+    bash -c "[[ '$phase' == Completed ]] && kubectl -n $NS get takecaresurvey e2e-blind-1 -o jsonpath='{range .status.blindSpots[*]}{.reason} {.entity} {.message}{\"\n\"}{end}' | grep -qE '^[A-Za-z]+ .*kube-public'"
+  kubectl -n "$NS" delete takecareintendant e2e-blind --wait=false >/dev/null
+
+  # Deleting the TakeCareDemo removes its scenery, the app's Deployment
+  # among it; the Map still has compute/billing-api.
+  kubectl -n "$NS" delete takecaredemo demo --timeout=120s >/dev/null
+  phase="$(survey e2e-removed intendant)"
+  local removed
+  removed="$(kubectl -n "$NS" get configmap survey-e2e-removed-proposals -o json 2>/dev/null |
+    jq -r '.data[] | select(test("(^|\n)action: Remove") and test("(^|\n)key: compute/billing-api"))')"
+  check "a Deployment deleted from the scenery gives its removal proposal (spec 10 AC 4)" \
+    bash -c "[[ '$phase' == Completed && -n \"\$1\" ]]" _ "$removed"
+  check "the removal's entry is the Map's, unchanged: validated, its dates kept (spec 10 AC 4)" \
+    bash -c "grep -q 'status: validated' <<<\"\$1\" && grep -q 'lastValidated: .*2026-11-05' <<<\"\$1\"" _ "$removed"
 }
 
 # fakes builds the fakes' images, imports them and deploys them with their
@@ -265,6 +336,7 @@ run() {
     bash -c "kubectl -n $NS port-forward svc/prometheus-server 18991:80 >/dev/null 2>&1 & pf=\$!; sleep 2; r=1; for _ in \$(seq 24); do curl -s 'http://localhost:18991/api/v1/query?query=agentgateway_guardrail_checks_total%7Bphase%3D%22Request%22%2Caction%3D%22Mask%22%7D' | jq -e '[.data.result[] | select((.value[1] | tonumber) > 0)] | length > 0' >/dev/null && { r=0; break; }; sleep 5; done; kill \$pf; exit \$r"
   check "the Ranger says the masked request in a RequestsMasked Warning event (spec 09 §5)" \
     bash -c "for _ in \$(seq 36); do kubectl get events -A --field-selector reason=RequestsMasked,type=Warning -o jsonpath='{range .items[*]}{.involvedObject.kind}{\"\\n\"}{end}' | grep -q TakeCareRanger && exit 0; sleep 5; done; exit 1"
+  intendant
   if [[ "$checks" -ne "$CHECKS_EXPECTED" || "$failed" -ne 0 ]]; then
     echo "checks: ${checks} run (expected ${CHECKS_EXPECTED}), ${failed} failed"
     exit 1
