@@ -47,9 +47,12 @@ func (g *gate) release() { g.once.Do(func() { close(g.ch) }) }
 
 // mapServer serves the demo Map, as the map add-on would behind the route;
 // hold, when set, makes every call wait until it is released.
-func mapServer(t *testing.T, hold *gate) string {
+func mapServer(t *testing.T, hold *gate) string { return mapServerAt(t, demoMap, hold) }
+
+// mapServerAt serves the Map of dir.
+func mapServerAt(t *testing.T, dir string, hold *gate) string {
 	t.Helper()
-	s, err := mapserver.New(mapserver.Config{Dir: demoMap, Logger: slog.New(slog.DiscardHandler)})
+	s, err := mapserver.New(mapserver.Config{Dir: dir, Logger: slog.New(slog.DiscardHandler)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,20 +262,61 @@ func TestSurveyResumed(t *testing.T) {
 	}
 }
 
-// A scope's entities are not surveyed yet, and the survey says
-// so: an entity-only scope gives a Completed survey with that line.
-func TestEntitiesSaidNotSurveyed(t *testing.T) {
+// An entity-only scope is surveyed through its entities' Map sources: the
+// demo's billing-api, in demo-apps, gives a ground on demo-apps.
+func TestEntityScope(t *testing.T) {
 	f := startRunner(t)
 	f.grounded(t)
 	f.surveyed(t, "entities", mapServer(t, nil), func(in *v1alpha1.TakeCareIntendant) {
 		in.Spec.Scope = v1alpha1.Scope{Entities: []v1alpha1.EntityKey{"service/billing-api"}}
 	})
-	s := f.waitPhase(t, "entities", 1, v1alpha1.RunCompleted)[0]
-	env := s.Status.Layers[0]
-	for _, n := range env.NotSeen {
-		if n.Ref == "scope.entities" && n.Reason == reasonEntitiesLater {
-			return
+	st := f.waitPhase(t, "entities", 1, v1alpha1.RunCompleted)[0].Status
+	if compute := st.Layers[1]; compute.Name != "compute" || compute.Seen == 0 {
+		t.Errorf("compute layer %+v: the entity's namespace was not surveyed", compute)
+	}
+	if len(st.BlindSpots) != 0 {
+		t.Errorf("blind spots %+v", st.BlindSpots)
+	}
+}
+
+// What of an entity scope nothing reads is a blind spot, with the reason
+// the coverage rule gives: a source in a namespace no connector declares,
+// a proposed entry, an entry with no kubernetes source.
+func TestEntityBlindSpots(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, os.DirFS(demoMap)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "map", "service"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	payments := "key: service/payments\nprovenance: declared\nstatus: validated\ncreated: 2026-11-05\nsources:\n  - url: https://payments.example\n"
+	if err := os.WriteFile(filepath.Join(dir, "map", "service", "payments.yaml"), []byte(payments), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f := startRunner(t)
+	f.grounded(t)
+	f.surveyed(t, "blind", mapServerAt(t, dir, nil), func(in *v1alpha1.TakeCareIntendant) {
+		in.Spec.Scope = v1alpha1.Scope{Entities: []v1alpha1.EntityKey{"service/billing-api", "network/billing-db-proxy", "service/notifications", "service/payments"}}
+	})
+	st := f.waitPhase(t, "blind", 1, v1alpha1.RunCompleted)[0].Status
+	want := map[v1alpha1.EntityKey]struct {
+		reason v1alpha1.BlindSpotReason
+		says   string
+	}{
+		"network/billing-db-proxy": {v1alpha1.BlindSpotNoAccess, "its namespace `ack-system`: no connector reads it"},
+		"service/notifications":    {v1alpha1.BlindSpotNotValidated, "proposed in the Map"},
+		"service/payments":         {v1alpha1.BlindSpotNoAccess, "no kubernetes source"},
+	}
+	if len(st.BlindSpots) != len(want) {
+		t.Fatalf("blind spots %+v", st.BlindSpots)
+	}
+	for _, b := range st.BlindSpots {
+		if w, ok := want[b.Entity]; !ok || b.Reason != w.reason || !strings.Contains(b.Message, w.says) {
+			t.Errorf("blind spot %+v, want %+v", b, want[b.Entity])
 		}
 	}
-	t.Errorf("environment layer %+v", env)
+	if st.Layers[1].Seen == 0 {
+		t.Errorf("billing-api's namespace was not surveyed: %+v", st.Layers[1])
+	}
 }
