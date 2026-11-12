@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The Intendant (spec 10), its import half; the agent pass is not built yet.
   - **The kinds:** `TakeCareIntendant` and `TakeCareSurvey`.
-  - **The controller:** an Intendant has its conditions, a cron schedule, and its routes on the gateway: the Map's `map_at`, the cluster's read tools, and `get_rules`, whose arguments the operator checks (the gateway checks tool names only, agentgateway v1.6.0).
+  - **The controller:** an Intendant has its conditions, a cron schedule, and its routes on the gateway: the Map's `map_at`, the cluster's read tools, and `get_rules`, whose arguments both the gateway (a route-level rule on the metrics route) and the operator check.
   - **Survey triggers:** the schedule, a new Map revision, a registration (a bound connector or an engine agent appearing or changing), and a survey created by hand. Triggers are debounced, with one pending trigger kept in status.
   - **The survey:** one at a time per Intendant. It reads the Map at one revision and imports the cluster and the alerting rules into proposals (add, update, remove) by layer, with what it could not read and the scope's blind spots.
   - **Where the results go:** the first 20 proposals are in the survey's status and the full set in a ConfigMap owned by the survey. Each survey is one trace, and the gauges `takecare_survey_proposals` and `takecare_survey_not_seen` hold what awaits review.

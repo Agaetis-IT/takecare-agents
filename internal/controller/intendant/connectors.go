@@ -127,11 +127,20 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 			b.problems = append(b.problems, problem)
 			continue
 		}
-		// The gateway checks the tool's name only: agentgateway v1.6.0 does
-		// not show a call's arguments to its rules, and a rule on them hides
-		// the tool. get_rules' arguments are the client's check alone
-		// (mcp.Endpoint.Allowed, spec 10 §8).
-		b.routes = append(b.routes, route(name, tools, nil))
+		// Two layers for get_rules' arguments (spec 10 §8): the route-level
+		// rule, which the gateway enforces once it has Accepted and Attached
+		// it, and the operator's client. Until then the connector is not
+		// usable: the survey does not call get_rules.
+		m := route(name, tools, nil)
+		m.CallRule = RulesCallCEL
+		b.routes = append(b.routes, m)
+		ok, problem, err := callRuleEnforced(ctx, r.Client, roleOf(in), name)
+		if err != nil {
+			return b, err
+		}
+		if !ok {
+			b.problems = append(b.problems, problem)
+		}
 	}
 	switch {
 	case b.mapProblem != "":

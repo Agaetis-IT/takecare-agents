@@ -293,8 +293,9 @@ func TestReadyWithItsRoutes(t *testing.T) {
 	f.connector(t, connCluster, v1alpha1.ConnectorCluster, []string{toolNamespaces, toolResources, "pods_log"}, "pods_log")
 	f.connector(t, connMetrics, v1alpha1.ConnectorMetrics, []string{mcp.RulesTool, "execute_query"})
 	f.intendant(t, "intendant", nil)
+	f.verdict(t, "intendant", "True", "True") // the gateway enforces the argument rule
 	in := f.wait(t, "intendant", func(in *v1alpha1.TakeCareIntendant) bool {
-		return isStatus(in, v1alpha1.ConditionReady, metav1.ConditionTrue)
+		return isStatus(in, v1alpha1.ConditionReady, metav1.ConditionTrue) && isStatus(in, v1alpha1.ConditionConnectorsReady, metav1.ConditionTrue)
 	})
 	for _, c := range []string{v1alpha1.ConditionConnectorsReady, ConditionLevelSupported, ConditionScheduleValid, ConditionRoutesReady} {
 		if !isStatus(in, c, metav1.ConditionTrue) {
