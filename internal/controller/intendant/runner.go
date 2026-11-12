@@ -120,7 +120,9 @@ type Runner struct {
 	// Metrics, when set, hold what each Intendant's last survey proposes.
 	Metrics *SurveyMetrics
 	// Runs runs the agent pass on the engine (spec 10 §5); no pass when nil.
+	// EngineKind names the engine in the survey's record (EngineRun.Kind).
 	Runs            engine.Runs
+	EngineKind      string
 	EngineNamespace string
 	// PassTimeout bounds the pass from the survey's start (DefaultPassTimeout
 	// when zero); PassInterval is between two reads of its task.
@@ -284,7 +286,9 @@ func (w *Runner) run(ctx context.Context, s *v1alpha1.TakeCareSurvey) {
 		return
 	}
 	out, res, err := w.survey(ctx, s)
-	if ctx.Err() != nil {
+	if ctx.Err() != nil || errors.Is(err, errStopped) {
+		// The operator is stopping: the survey stays Running, with its
+		// recorded task when the pass had one, for the next leader.
 		return
 	}
 	done := metav1.NewTime(w.now())
@@ -359,10 +363,13 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 		return out, none, fail(failImport, err)
 	}
 	provider, model := modelOf(p, &in)
-	res = w.pass(ctx, s, passRecord{
+	res, err = w.pass(ctx, s, passRecord{
 		in: &in, gateway: p.Status.GatewayURL, provider: provider, model: model,
 		entries: idx.entries, rev: idx.revision, started: s.Status.StartedAt.Time,
 	}, res)
+	if err != nil {
+		return out, none, err // the operator stopped: nothing is written
+	}
 	// The full set, before the status: the not-seen line of what does not
 	// fit goes into both.
 	name := proposalsName(s.Name)

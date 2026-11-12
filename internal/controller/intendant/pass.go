@@ -56,14 +56,20 @@ func (w *Runner) passTimeout() time.Duration {
 	return DefaultPassTimeout
 }
 
+// errStopped is the operator stopping while the pass follows its task:
+// the survey stays Running with its recorded task, for the next leader to
+// follow (spec 10 §5). A stop is never "did not finish".
+var errStopped = errors.New("the operator stopped during the agent pass")
+
 // pass runs the agent pass after the import and joins its proposals to
 // the import's (spec 10 §5). It never fails the survey: a pass that does
 // not run, does not finish, or answers what cannot be read leaves the
 // import's proposals and a line on the agent's layer saying why. Neither
-// the status, the log nor the span ever holds the model's text.
-func (w *Runner) pass(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec passRecord, res discovery.Result) discovery.Result {
+// the status, the log nor the span ever holds the model's text. Only the
+// operator stopping (errStopped) leaves the survey as it is.
+func (w *Runner) pass(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec passRecord, res discovery.Result) (discovery.Result, error) {
 	if w.Runs == nil || !meta.IsStatusConditionTrue(rec.in.Status.Conditions, v1alpha1.ConditionEngineReady) {
-		return surveyagent.NotRead(res, passNotReady)
+		return surveyagent.NotRead(res, passNotReady), nil
 	}
 	// The root carries the agent's identity, as the Doc's does (ADR 0006).
 	root := trace.SpanFromContext(ctx)
@@ -83,7 +89,7 @@ func (w *Runner) pass(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec passR
 	deadline := runs.EngineDeadline(rec.started, w.passTimeout())
 	record := func(ctx context.Context, taskID string) error {
 		return w.patch(ctx, s, func(st *v1alpha1.TakeCareSurveyStatus) {
-			st.Engine = &v1alpha1.EngineRun{Kind: "kagent", Agent: run.Agent, TaskID: taskID}
+			st.Engine = &v1alpha1.EngineRun{Kind: w.EngineKind, Agent: run.Agent, TaskID: taskID}
 		})
 	}
 	var out runs.Outcome
@@ -100,6 +106,8 @@ func (w *Runner) pass(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec passR
 	}
 	span.SetAttributes(attribute.String(semconv.RunTaskID, out.TaskID), attribute.String(semconv.RunOutcome, out.Label()), attribute.Int(semconv.RunAttempt, attempt))
 	switch {
+	case ctx.Err() != nil:
+		return res, errStopped
 	case err != nil:
 		logger.Error(err, "the agent pass did not finish", "task", out.TaskID)
 	case out.Outcome == engine.OutcomeCompleted:
@@ -112,11 +120,11 @@ func (w *Runner) pass(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec passR
 			}
 			logger.Info(reason, "task", out.TaskID)
 			span.SetStatus(codes.Error, reason)
-			return surveyagent.NotRead(res, reason)
+			return surveyagent.NotRead(res, reason), nil
 		}
 		return surveyagent.Merge(res, a, surveyagent.Ground{
 			Entries: rec.entries, Scope: rec.in.Spec.Scope, Tools: w.agentTools(ctx, rec.in), Today: w.now().UTC().Format(time.DateOnly),
-		})
+		}), nil
 	case !out.TimedOut:
 		// Failed, lost twice, or stopped waiting for an input or an
 		// authorization it will never get: ended now, and canceled, since
@@ -129,7 +137,7 @@ func (w *Runner) pass(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec passR
 	}
 	logger.Info(passNotFinished, "task", out.TaskID, "outcome", out.Label())
 	span.SetStatus(codes.Error, passNotFinished)
-	return surveyagent.NotRead(res, passNotFinished)
+	return surveyagent.NotRead(res, passNotFinished), nil
 }
 
 // agentTools are the names of the tools the Intendant's agent is given:

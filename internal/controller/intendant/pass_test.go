@@ -19,6 +19,7 @@ import (
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/engine"
+	"github.com/agaetis-it/takecare-agents/internal/engine/kagent0103"
 	"github.com/agaetis-it/takecare-agents/internal/surveyagent"
 	"github.com/agaetis-it/takecare-agents/internal/telemetry/semconv"
 )
@@ -325,4 +326,46 @@ func (f *fixture) configMapData(t *testing.T, name string) map[string]string {
 		t.Fatal(err)
 	}
 	return cm.Data
+}
+
+// The operator stopping while the pass follows its task leaves the survey
+// Running with that task, never "did not finish"; the next runner follows
+// the same task to its end.
+func TestPassStoppedResumes(t *testing.T) {
+	f := startRunner(t)
+	f.passReady(t, "stopped")
+	f.runs.set("never", "", false)
+	ctx := context.Background()
+	s := &v1alpha1.TakeCareSurvey{Name: "stopped-pass", Namespace: ns}
+	s.Spec.IntendantRef = v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareIntendant, Name: "stopped"}
+	if err := f.c.Create(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+	var got v1alpha1.TakeCareSurvey
+	for deadline := time.Now().Add(waitFor); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		if err := f.c.Get(ctx, client.ObjectKeyFromObject(s), &got); err == nil && got.Status.Engine != nil && got.Status.Engine.TaskID == firstTask {
+			break
+		}
+	}
+	if got.Status.Engine == nil {
+		t.Fatalf("the pass never recorded its task: %+v", got.Status.RunStatus)
+	}
+	f.stop()
+	f.runs.set("complete", goodAnswer, false)
+	f.startManager(t)
+	end := f.ended(t, "stopped-pass")
+	if end.Status.Phase != v1alpha1.RunCompleted || end.Status.Engine == nil || end.Status.Engine.TaskID != firstTask || end.Status.Engine.Kind != kagent0103.Kind {
+		t.Fatalf("survey %+v", end.Status.RunStatus)
+	}
+	if reasons := agentLine(end); len(reasons) != 0 {
+		t.Errorf("agent layer %v: the stop became an end", reasons)
+	}
+	if starts, _ := f.runs.counts(); starts != 1 {
+		t.Errorf("%d starts: the next runner did not follow the recorded task", starts)
+	}
+	for line := range strings.SplitSeq(logged(), "\n") {
+		if strings.Contains(line, passNotFinished) && strings.Contains(line, `"stopped-pass"`) {
+			t.Errorf("the stop was logged as an end: %s", line)
+		}
+	}
 }

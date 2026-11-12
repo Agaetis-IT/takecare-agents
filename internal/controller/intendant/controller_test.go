@@ -148,7 +148,7 @@ func (f *fixture) startManager(t *testing.T) {
 		if err := mgr.Add(&Runner{
 			Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: queue, GateRetry: 100 * time.Millisecond,
 			Caller: &mcp.Client{HTTP: &http.Client{Timeout: time.Minute}}, Now: f.passClock.Now, Metrics: f.metrics,
-			Runs: f.runs, EngineNamespace: engineNS, PassTimeout: passTimeout, PassInterval: 50 * time.Millisecond, PassClock: f.passClock,
+			Runs: f.runs, EngineKind: kagent0103.Kind, EngineNamespace: engineNS, PassTimeout: passTimeout, PassInterval: 50 * time.Millisecond, PassClock: f.passClock,
 			Tracer: sdktrace.NewTracerProvider(sdktrace.WithSyncer(f.spans)).Tracer("test"),
 			Route: func(_ string, role routes.Role, connector string) string {
 				u, _ := f.routes.Load(role.Name + "/" + connector)
