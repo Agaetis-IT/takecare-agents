@@ -53,7 +53,7 @@ func mapServer(t *testing.T, hold *gate) string { return mapServerAt(t, demoMap,
 // mapServerAt serves the Map of dir.
 func mapServerAt(t *testing.T, dir string, hold *gate) string {
 	t.Helper()
-	s, err := mapserver.New(mapserver.Config{Dir: dir, Logger: slog.New(slog.DiscardHandler)})
+	s, err := mapserver.New(mapserver.Config{Dir: dir, Logger: slog.New(slog.DiscardHandler), Now: func() time.Time { return testStart }})
 	if err != nil {
 		t.Fatal(err)
 	}

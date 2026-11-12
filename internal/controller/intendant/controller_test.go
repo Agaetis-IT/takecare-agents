@@ -62,6 +62,12 @@ func (c *clock) Set(t time.Time) {
 	c.now = t
 }
 
+// testStart is the fixture's clock when it starts. The test Map servers
+// load at that time too: a directory Map answers for dates at or after
+// its load, so a Map loaded on the real clock would refuse the fixture's
+// dates once the day has changed.
+var testStart = time.Date(2026, 11, 11, 10, 0, 0, 0, time.UTC)
+
 type fixture struct {
 	c      client.Client
 	clock  *clock
@@ -105,7 +111,7 @@ func startWith(t *testing.T, runner bool) *fixture {
 		t.Fatal(err)
 	}
 	f := &fixture{
-		c: c, clock: &clock{now: time.Date(2026, 11, 11, 10, 0, 0, 0, time.UTC)}, cfg: cfg, scheme: scheme, runner: runner,
+		c: c, clock: &clock{now: testStart}, cfg: cfg, scheme: scheme, runner: runner,
 		spans: tracetest.NewInMemoryExporter(), metrics: metrics,
 	}
 	f.startManager(t)
