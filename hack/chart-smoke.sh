@@ -183,8 +183,8 @@ mcp_call() {
 
 # mcp_allowed NAMESPACE POD URL TOOL [ARGS]: succeeds when the call gets a
 # result, within 20 s: the gateway applies a new or changed policy a few
-# seconds after it is written. Refusals are not retried, and assert their
-# exact answer.
+# seconds after it is written. A refusal of a tool off the allow-list waits
+# the same way (mcp_unknown_tool); every refusal asserts its exact answer.
 mcp_allowed() {
   local _ out
   for _ in $(seq 10); do
