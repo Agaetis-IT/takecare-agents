@@ -44,10 +44,10 @@ import (
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/controller/connector"
-	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
 	"github.com/agaetis-it/takecare-agents/internal/coverage"
 	"github.com/agaetis-it/takecare-agents/internal/doc"
 	"github.com/agaetis-it/takecare-agents/internal/engine"
+	"github.com/agaetis-it/takecare-agents/internal/roleagent"
 	"github.com/agaetis-it/takecare-agents/internal/routes"
 )
 
@@ -63,8 +63,8 @@ const (
 	ReasonSuspended              = "Suspended"
 	ReasonNotImplemented         = "NotImplemented"
 	ReasonSupported              = "Supported"
-	ReasonPlatformMissing        = "PlatformMissing"
-	ReasonModelUnknown           = "ModelUnknown"
+	ReasonPlatformMissing        = roleagent.ReasonPlatformMissing
+	ReasonModelUnknown           = roleagent.ReasonModelUnknown
 	ReasonResolved               = "Resolved"
 	ReasonConnectorMissing       = "ConnectorMissing"
 	ReasonConnectorNotReady      = "ConnectorNotReady"
@@ -526,13 +526,7 @@ func (r *Reconciler) platform(ctx context.Context) (*v1alpha1.TakeCarePlatform, 
 // adds the engine's verdict on it.
 func (r *Reconciler) ensureModelConfig(ctx context.Context, d *v1alpha1.TakeCareDoc, p *v1alpha1.TakeCarePlatform, role routes.Role, model string, st *status) (string, error) {
 	name := doc.AgentName(d)
-	i := slices.IndexFunc(p.Spec.Models, func(m v1alpha1.ModelSpec) bool { return m.Name == model })
-	if err := r.Models.EnsureModel(ctx, engine.Model{
-		Name: name, Namespace: r.EngineNamespace, Model: p.Spec.Models[i].Model,
-		GatewayURL:     p.Status.GatewayURL + routes.ModelPath(role, model) + "/v1",
-		DummyKeySecret: platform.DummyKeySecretName, DummyKeyField: platform.DummyKeyField,
-		Labels: doc.OwnerLabels(d),
-	}); err != nil {
+	if err := r.Models.EnsureModel(ctx, roleagent.ModelConfig(p, role, model, name, r.EngineNamespace, doc.OwnerLabels(d))); err != nil {
 		return "", err
 	}
 	readiness, err := r.Models.ModelReadiness(ctx, r.EngineNamespace, name)
@@ -548,20 +542,9 @@ func (r *Reconciler) ensureModelConfig(ctx context.Context, d *v1alpha1.TakeCare
 // resolveModel returns the engine's model name for the Doc, empty when it
 // cannot be resolved.
 func (r *Reconciler) resolveModel(d *v1alpha1.TakeCareDoc, p *v1alpha1.TakeCarePlatform, st *status) string {
-	if p == nil {
-		st.set(v1alpha1.ConditionModelResolved, false, ReasonPlatformMissing, "no TakeCarePlatform")
-		return ""
-	}
-	if len(p.Spec.Models) == 0 {
-		st.set(v1alpha1.ConditionModelResolved, false, ReasonModelUnknown, "the platform declares no model")
-		return ""
-	}
-	name := p.Spec.Models[0].Name
-	if d.Spec.Model != nil {
-		name = d.Spec.Model.Name
-	}
-	if !slices.ContainsFunc(p.Spec.Models, func(m v1alpha1.ModelSpec) bool { return m.Name == name }) {
-		st.set(v1alpha1.ConditionModelResolved, false, ReasonModelUnknown, fmt.Sprintf("spec.model names %s, which the platform does not declare", name))
+	name, reason, message := roleagent.Model(p, d.Spec.Model)
+	if name == "" {
+		st.set(v1alpha1.ConditionModelResolved, false, reason, message)
 		return ""
 	}
 	st.set(v1alpha1.ConditionModelResolved, true, ReasonResolved, "model "+name)
@@ -689,22 +672,13 @@ func (r *Reconciler) inspect(ctx context.Context, d *v1alpha1.TakeCareDoc, t v1a
 		return nil
 	}
 	f.seen[name] = true
-	var read, withheld []string
 	for _, tool := range c.Status.Tools {
 		if tool.Content {
 			f.content[tool.Name] = true
 		}
-		switch {
-		case tool.Class != v1alpha1.ToolRead:
-		case tool.Content && !slices.Contains(d.Spec.ContentTools, tool.Name):
-			withheld = append(withheld, tool.Name)
-		default:
-			read = append(read, tool.Name)
-		}
 	}
-	slices.Sort(read)
+	read, withheld := roleagent.Tools(c, d.Spec.ContentTools)
 	if len(withheld) > 0 {
-		slices.Sort(withheld)
 		st.withheld = append(st.withheld, fmt.Sprintf("connector %s: %s", name, strings.Join(withheld, ", ")))
 	}
 	switch {
