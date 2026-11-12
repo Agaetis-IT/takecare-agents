@@ -288,14 +288,16 @@ func TestPassNotReady(t *testing.T) {
 
 // A survey resumed with its pass's task follows that task, with the
 // deadline counted from its first start: no fresh ten minutes.
+const resumedName = "resumed-pass"
+
 func TestPassResumedKeepsDeadline(t *testing.T) {
 	f := startRunner(t)
-	f.passReady(t, "resumed-pass")
+	f.passReady(t, resumedName)
 	f.runs.set("never", "", false)
 	f.stop()
 	ctx := context.Background()
 	s := &v1alpha1.TakeCareSurvey{Name: "resumed-pass-1", Namespace: ns}
-	s.Spec.IntendantRef = v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareIntendant, Name: "resumed-pass"}
+	s.Spec.IntendantRef = v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareIntendant, Name: resumedName}
 	if err := f.c.Create(ctx, s); err != nil {
 		t.Fatal(err)
 	}
@@ -304,13 +306,18 @@ func TestPassResumedKeepsDeadline(t *testing.T) {
 	started := metav1.NewTime(f.passClock.Now().Add(-passTimeout * 8 / 10).Truncate(time.Second))
 	s.Status = v1alpha1.TakeCareSurveyStatus{
 		Phase: v1alpha1.RunRunning, StartedAt: &started, Attempts: 1,
-		Engine: &v1alpha1.EngineRun{Kind: "kagent", Agent: surveyagent.AgentName(&v1alpha1.TakeCareIntendant{Name: "resumed-pass"}), TaskID: "t-old"},
+		Engine: &v1alpha1.EngineRun{Kind: "kagent", Agent: surveyagent.AgentName(&v1alpha1.TakeCareIntendant{Name: resumedName}), TaskID: "t-old"},
 	}
 	if err := f.c.Status().Update(ctx, s); err != nil {
 		t.Fatal(err)
 	}
+	route := routes.ModelRoute(roleOf(&v1alpha1.TakeCareIntendant{Name: resumedName, Namespace: ns}), "default")
+	f.usageURL.Store(promOnRoute(t, route, f.runs))
 	f.startManager(t)
 	got := f.ended(t, "resumed-pass-1")
+	if got.Status.Usage != nil {
+		t.Errorf("a resumed pass recorded a usage measured from its restart: %+v", got.Status.Usage)
+	}
 	if starts, cancels := f.runs.counts(); starts != 0 || len(cancels) != 1 || cancels[0] != "t-old" {
 		t.Errorf("starts %d, cancels %v: the recorded task was not the one followed", starts, cancels)
 	}
@@ -406,5 +413,24 @@ func TestPassUsage(t *testing.T) {
 	u := s.Status.Usage
 	if u == nil || u.ModelCalls != 3 || u.InputTokens != 1000 || u.OutputTokens != 50 || u.Approximate {
 		t.Fatalf("usage %+v", u)
+	}
+}
+
+// The pass after one that did not finish is measured, but approximate:
+// kagent may still run the earlier one on the same route.
+func TestPassUsageAfterUnfinished(t *testing.T) {
+	f := startRunner(t)
+	f.passReady(t, "after")
+	route := routes.ModelRoute(roleOf(&v1alpha1.TakeCareIntendant{Name: "after", Namespace: ns}), "default")
+	f.usageURL.Store(promOnRoute(t, route, f.runs))
+	f.runs.set("never", "", false)
+	first := f.byHand(t, "after-1", "after")
+	if strings.Join(agentLine(first), "|") != passNotFinished || first.Status.Usage == nil || first.Status.Usage.Approximate {
+		t.Fatalf("first survey: agent layer %v, usage %+v", agentLine(first), first.Status.Usage)
+	}
+	f.runs.set("complete", goodAnswer, false)
+	second := f.byHand(t, "after-2", "after")
+	if u := second.Status.Usage; u == nil || !u.Approximate {
+		t.Errorf("the pass after an unfinished one: usage %+v, want approximate", u)
 	}
 }

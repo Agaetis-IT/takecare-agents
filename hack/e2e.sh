@@ -34,7 +34,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=34
+CHECKS_EXPECTED=35
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s %s\n' "$(date +%H:%M:%S)" "$*"; }
@@ -92,6 +92,7 @@ intendant_idle() {
     sleep 5
   done
   echo "the Intendant's surveys did not end" >&2
+  return 1
 }
 
 # intendant checks the demo's Intendant (spec 10 §11): its survey against
@@ -269,7 +270,7 @@ run() {
     [[ "$gen" == "$obs" && "$phase" == Ready ]] && break
     sleep 5
   done
-  intendant_idle
+  check "the Intendant's startup surveys ended before the incident" intendant_idle
   hack/demo.sh incident
   log "waiting for the Doc's investigation to complete"
   local inv=""
@@ -380,7 +381,7 @@ record() {
   hack/demo.sh reset
   hack/demo.sh incident
   hack/demo.sh verdict
-  fake_get fake-llm /recorded >"${FIXTURES}/proxy-timeout.json"
+  fake_get fake-llm /recorded | fixture_clean >"${FIXTURES}/proxy-timeout.json"
   echo "recorded into ${FIXTURES}/proxy-timeout.json: review it like code, then run make e2e"
 }
 
@@ -404,8 +405,26 @@ EOF
     sleep 5
   done
   echo "survey ${phase:-not ended}; its agent layer: $(kubectl -n "$NS" get takecaresurvey e2e-record -o jsonpath='{.status.layers[?(@.name=="agent")]}')"
-  fake_get fake-llm /recorded >"${FIXTURES}/intendant-pass.json"
+  fake_get fake-llm /recorded | fixture_clean >"${FIXTURES}/intendant-pass.json"
   echo "recorded into ${FIXTURES}/intendant-pass.json: read it whole, review it like code, then run make e2e"
+}
+
+# fixture_clean reads a recording on stdin and writes it in the hand-written
+# fixtures' shape: the model's tool calls, its final content and its token
+# counts, nothing of the provider's (its name, the real model, tiers, ids,
+# cost, reasoning text or encrypted reasoning). The model is the one the
+# request named, ids and tool call ids are sequential.
+fixture_clean() {
+  jq '{source, date, exchanges: [.exchanges | to_entries[] | .key as $i | .value | {
+        fingerprint,
+        response: {
+          id: "e2e-\($i + 1)", object: "chat.completion", created: (1793433601 + $i), model: .fingerprint.model,
+          choices: [.response.choices[] | {index, finish_reason, message: ({role: .message.role, content: .message.content}
+            + (if ((.message.tool_calls // []) | length) > 0
+               then {tool_calls: [.message.tool_calls | to_entries[] | {id: "call_\($i + 1)_\(.key + 1)", type: "function", function: {name: .value.function.name, arguments: .value.function.arguments}}]}
+               else {} end))}],
+          usage: {prompt_tokens: .response.usage.prompt_tokens, completion_tokens: .response.usage.completion_tokens, total_tokens: .response.usage.total_tokens}
+        }}]}'
 }
 
 # record_mode turns the fake model into a recording proxy to a real model.

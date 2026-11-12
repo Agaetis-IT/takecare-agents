@@ -75,7 +75,14 @@ func (w *Runner) pass(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec passR
 	if w.Runs == nil || !meta.IsStatusConditionTrue(rec.in.Status.Conditions, v1alpha1.ConditionEngineReady) {
 		return surveyagent.NotRead(res, passNotReady), nil, nil
 	}
-	m := w.meter(ctx, rec)
+	var m *passMeter
+	if e := s.Status.Engine; e != nil && e.TaskID != "" {
+		// As the Doc's meter: a resumed pass lost its start snapshot with
+		// the previous leader; its usage would be the part after the restart.
+		log.FromContext(ctx).Info("the agent pass's usage is not measured", "survey", s.Name, "reason", "the operator restarted during the pass: its start was not measured")
+	} else {
+		m = w.meter(ctx, s, rec)
+	}
 	out, err := w.passRun(ctx, s, rec, res)
 	if errors.Is(err, errStopped) {
 		return res, nil, err
@@ -85,14 +92,18 @@ func (w *Runner) pass(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec passR
 
 // passMeter measures a pass on the Intendant's own model route (spec 10
 // §5): its usage counts no other role's calls. One survey runs at a time per
-// Intendant, so it is never approximate.
+// Intendant, so it is exact, except after a pass that did not finish: kagent
+// may still run that one on the same route (it refuses cancellation), and
+// the usage is marked approximate.
 type passMeter struct {
-	source  usage.Source
-	start   usage.Counters
-	pricing *v1alpha1.Pricing
+	source      usage.Source
+	start       usage.Counters
+	pricing     *v1alpha1.Pricing
+	approximate bool
+	survey      string
 }
 
-func (w *Runner) meter(ctx context.Context, rec passRecord) *passMeter {
+func (w *Runner) meter(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec passRecord) *passMeter {
 	if w.Usage == nil || rec.platform == nil {
 		return nil
 	}
@@ -101,7 +112,7 @@ func (w *Runner) meter(ctx context.Context, rec passRecord) *passMeter {
 	if src == nil || name == "" {
 		return nil
 	}
-	m := &passMeter{source: usage.ForRoute(src, routes.ModelRoute(roleOf(rec.in), name))}
+	m := &passMeter{source: usage.ForRoute(src, routes.ModelRoute(roleOf(rec.in), name)), survey: s.Name, approximate: w.previousUnfinished(ctx, s)}
 	for _, spec := range rec.platform.Spec.Models {
 		if spec.Name == name {
 			m.pricing = spec.Pricing
@@ -109,10 +120,40 @@ func (w *Runner) meter(ctx context.Context, rec passRecord) *passMeter {
 	}
 	var err error
 	if m.start, err = m.source.Snapshot(ctx); err != nil {
-		log.FromContext(ctx).Info("the agent pass's usage is not measured", "reason", err.Error())
+		log.FromContext(ctx).Info("the agent pass's usage is not measured", "survey", s.Name, "reason", err.Error())
 		return nil
 	}
 	return m
+}
+
+// previousUnfinished says whether the Intendant's last ended survey before
+// this one has a pass that did not finish: kagent may still run it.
+func (w *Runner) previousUnfinished(ctx context.Context, s *v1alpha1.TakeCareSurvey) bool {
+	var list v1alpha1.TakeCareSurveyList
+	if err := w.reader().List(ctx, &list, client.InNamespace(s.Namespace)); err != nil {
+		return true // unknown: not claimed exact
+	}
+	var last *v1alpha1.TakeCareSurvey
+	for i := range list.Items {
+		o := &list.Items[i]
+		if o.Name == s.Name || o.Spec.IntendantRef.Name != s.Spec.IntendantRef.Name || o.Status.CompletedAt == nil {
+			continue
+		}
+		if last == nil || o.Status.CompletedAt.After(last.Status.CompletedAt.Time) {
+			last = o
+		}
+	}
+	if last == nil {
+		return false
+	}
+	for _, l := range last.Status.Layers {
+		for _, n := range l.NotSeen {
+			if l.Name == surveyagent.Layer && n.Reason == passNotFinished {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // end reads the counters one scrape interval after the pass, and records
@@ -126,16 +167,20 @@ func (m *passMeter) end(ctx context.Context, wait time.Duration) *v1alpha1.Usage
 		return nil
 	case <-time.After(wait):
 	}
+	logger := log.FromContext(ctx).WithValues("survey", m.survey)
 	end, err := m.source.Snapshot(ctx)
 	if err != nil {
+		logger.Info("the agent pass's usage is not measured", "reason", "the end snapshot: "+err.Error())
 		return nil
 	}
 	d, err := usage.Delta(m.start, end)
 	if err != nil {
+		logger.Info("the agent pass's usage is not measured", "reason", err.Error())
 		return nil
 	}
-	u, err := usage.Record(d, m.pricing, false)
+	u, err := usage.Record(d, m.pricing, m.approximate)
 	if err != nil {
+		logger.Info("the agent pass's usage is not priced", "reason", err.Error())
 		return nil
 	}
 	return &u

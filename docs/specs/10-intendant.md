@@ -80,7 +80,7 @@ The pass runs after the import when the Intendant's agent is ready (`EngineReady
 - **Its deadline** is 10 minutes counted from the survey's start (`status.startedAt`), the engine getting its usual share. A survey resumed after a restart keeps that start and follows its recorded task (`status.engine.taskID`); a new pass counts from its own start.
 - **A task stopped** waiting for an input or an authorization ends the pass at once and is canceled.
 - **A pass that does not finish**, fails, or answers what cannot be read leaves the import's proposals: the survey is Completed, and its `agent` layer says why in a fixed phrase. The model's text is never kept in the status, a log or a span.
-- **Usage:** the pass's model calls and tokens are measured on the Intendant's own model route, as the Doc's are (spec 02 §5), and recorded in the survey's `status.usage`. One survey runs at a time per Intendant, so it is never approximate.
+- **Usage:** the pass's model calls and tokens are measured on the Intendant's own model route, as the Doc's are (spec 02 §5), and recorded in the survey's `status.usage`. One survey runs at a time per Intendant, so it is exact, with two exceptions. A pass resumed after a restart lost its start and records no usage. And the pass after one that did not finish is marked approximate: kagent refuses cancellation (below), so the earlier pass may still call the model on the same route; that is one of the corrections after 0.3.0.
 - **Cancellation:** kagent 0.10.3's runtime refuses it, so a pass past its deadline may run on in its pod and call the model, bounded by the model's own turn limit; this is one of the corrections after 0.3.0.
 
 ## 6. Levels
