@@ -6,6 +6,7 @@ package surveyagent
 import (
 	"encoding/json"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -33,6 +34,7 @@ const (
 	layerCompute = "compute"
 	declared     = "declared"
 	validated    = "validated"
+	srcK8s       = "kubernetes"
 	listTool     = "resources_list"
 )
 
@@ -42,10 +44,10 @@ func ground() Ground {
 	return Ground{
 		Entries: []mapserver.Entry{
 			{Key: shopCart, Provenance: declared, Status: validated, Created: created, LastValidated: created,
-				Sources: []map[string]string{{"kubernetes": "shop/Deployment/shop-cart"}}, Relations: mapserver.Relations{BelongsTo: []string{teamShop}}},
+				Sources: []map[string]string{{srcK8s: "shop/Deployment/shop-cart"}}, Relations: mapserver.Relations{BelongsTo: []string{teamShop}}},
 			{Key: cartSessions, Provenance: declared, Status: validated, Created: created},
 			{Key: teamShop, Provenance: declared, Status: validated, Created: created},
-			{Key: "service/elsewhere", Provenance: declared, Status: validated, Created: created, Sources: []map[string]string{{"kubernetes": "other/Deployment/elsewhere"}}},
+			{Key: "service/elsewhere", Provenance: declared, Status: validated, Created: created, Sources: []map[string]string{{srcK8s: "other/Deployment/elsewhere"}}},
 		},
 		Scope: v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{"shop"}},
 		Tools: []string{getTool, searchTool},
@@ -60,6 +62,17 @@ func entryOf(t *testing.T, p discovery.Proposal) mapserver.Entry {
 		t.Fatal(err)
 	}
 	return e
+}
+
+func byKey(t *testing.T, res discovery.Result, key string) discovery.Proposal {
+	t.Helper()
+	for _, p := range res.Proposals {
+		if p.Key == key {
+			return p
+		}
+	}
+	t.Fatalf("no proposal for %s: %+v", key, res.Proposals)
+	return discovery.Proposal{}
 }
 
 func agentLayer(t *testing.T, res discovery.Result) discovery.Layer {
@@ -81,7 +94,7 @@ func TestMergeOntoTheMap(t *testing.T) {
 	if len(res.Proposals) != 2 {
 		t.Fatalf("proposals %+v", res.Proposals)
 	}
-	up, add := res.Proposals[0], res.Proposals[1]
+	up, add := byKey(t, res, shopCart), byKey(t, res, diskPressure)
 	if up.Action != v1alpha1.ProposalUpdate || up.ID != discovery.ProposalID(v1alpha1.ProposalUpdate, shopCart) || up.Source != v1alpha1.ProposalFromAgent {
 		t.Errorf("update %+v", up)
 	}
@@ -205,5 +218,60 @@ func TestPatternsAreTheSchemas(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), strings.ReplaceAll(knowledgePattern.String(), `\`, `\\`)) {
 		t.Errorf("the knowledge pattern %q is not the schema's", knowledgePattern)
+	}
+}
+
+// A relation never names an entry that will not exist: a runbook whose own
+// item is dropped, or an entry this survey proposes to remove.
+func TestMergeTargets(t *testing.T) {
+	documented := Item{Key: shopCart, Relations: Relations{DocumentedBy: []string{diskPressure}}, Evidence: []string{getTool}}
+	for name, tc := range map[string]struct {
+		items  []Item
+		remove string
+		reason string
+		want   int
+	}{
+		"a runbook whose item is dropped":               {[]Item{documented, {Key: diskPressure, Sources: []Source{{Knowledge: opsRecord}}}}, "", dropTarget, 0},
+		"a runbook whose item adds nothing":             {[]Item{documented, {Key: diskPressure, Evidence: []string{searchTool}}}, "", dropTarget, 0},
+		"a runbook whose item is kept, named before it": {[]Item{documented, {Key: diskPressure, Sources: []Source{{Knowledge: opsRecord}}, Evidence: []string{searchTool}}}, "", "", 2},
+		"an entry this survey removes":                  {[]Item{{Key: shopCart, Relations: Relations{DependsOn: []string{cartSessions}}, Evidence: []string{getTool}}}, cartSessions, dropTarget, 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var in discovery.Result
+			if tc.remove != "" {
+				in.Proposals = []discovery.Proposal{{ID: "r", Action: v1alpha1.ProposalRemove, Key: tc.remove, Entry: "key: " + tc.remove + "\n"}}
+			}
+			res := Merge(in, Answer{Proposals: tc.items}, ground())
+			if got := len(res.Proposals); got != tc.want {
+				t.Errorf("%d proposals, want %d: %+v", got, tc.want, res.Proposals)
+			}
+			l := agentLayer(t, res)
+			if tc.reason == "" && len(l.NotSeen) != 0 {
+				t.Errorf("not seen %+v", l.NotSeen)
+			}
+			if tc.reason != "" && !slices.ContainsFunc(l.NotSeen, func(n discovery.NotSeen) bool { return strings.HasSuffix(n.Reason, ": "+tc.reason) }) {
+				t.Errorf("not seen %+v, want a %s drop", l.NotSeen, tc.reason)
+			}
+		})
+	}
+}
+
+// The scope's namespaces match a kubernetes source's namespace on any
+// cluster, never its cluster's name.
+func TestMergeScopeOnNamedClusters(t *testing.T) {
+	g := ground()
+	g.Entries = append(g.Entries,
+		mapserver.Entry{Key: "service/east-cart", Provenance: declared, Status: validated, Created: created, Sources: []map[string]string{{srcK8s: "east/shop/Deployment/cart"}}},
+		mapserver.Entry{Key: "service/in-other", Provenance: declared, Status: validated, Created: created, Sources: []map[string]string{{srcK8s: "shop/other/Deployment/x"}}},
+	)
+	add := func(key string) Item {
+		return Item{Key: key, Relations: Relations{DependsOn: []string{cartSessions}}, Evidence: []string{getTool}}
+	}
+	res := Merge(discovery.Result{}, Answer{Proposals: []Item{add("service/east-cart"), add("service/in-other")}}, g)
+	if len(res.Proposals) != 1 || res.Proposals[0].Key != "service/east-cart" {
+		t.Errorf("proposals %+v, want service/east-cart only", res.Proposals)
+	}
+	if l := agentLayer(t, res); len(l.NotSeen) != 1 || l.NotSeen[0].Reason != "1 agent proposals dropped: scope" {
+		t.Errorf("not seen %+v", l.NotSeen)
 	}
 }

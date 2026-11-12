@@ -11,6 +11,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
+	mapschema "github.com/agaetis-it/takecare-agents/api/map"
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/discovery"
 	"github.com/agaetis-it/takecare-agents/internal/mapserver"
@@ -18,6 +19,8 @@ import (
 
 // Layer is the survey layer of the agent pass (spec 10 §5).
 const Layer = "agent"
+
+const runbookPrefix = "runbook/"
 
 // Bounds of one item: past either, the item is dropped.
 const (
@@ -73,9 +76,19 @@ type Ground struct {
 // results, with its stable id; a proposal the agent changed has the source
 // Agent. What is dropped is counted, by reason, on the agent's layer.
 func Merge(res discovery.Result, a Answer, g Ground) discovery.Result {
-	m := newMerger(res, g, a)
+	m := newMerger(res, g)
 	layer := discovery.Layer{Name: Layer, Seen: int32(len(a.Proposals))} //nolint:gosec // bounded by MaxItems
+	// The runbooks first: a new runbook becomes a target the other items
+	// may name only once its own item has given a proposal.
+	var runbooks, others []Item
 	for _, it := range a.Proposals {
+		if strings.HasPrefix(it.Key, runbookPrefix) {
+			runbooks = append(runbooks, it)
+		} else {
+			others = append(others, it)
+		}
+	}
+	for _, it := range slices.Concat(runbooks, others) {
 		if reason := m.check(it); reason != "" {
 			m.dropped[reason]++
 			continue
@@ -84,6 +97,7 @@ func Merge(res discovery.Result, a Answer, g Ground) discovery.Result {
 		case reason != "":
 			m.dropped[reason]++
 		case changed:
+			m.known[it.Key] = true
 			layer.Proposed++
 			if matched {
 				layer.Matched++
@@ -118,14 +132,20 @@ type merger struct {
 	dropped map[string]int
 }
 
-func newMerger(res discovery.Result, g Ground, a Answer) *merger {
+func newMerger(res discovery.Result, g Ground) *merger {
 	m := &merger{
 		g: g, proposals: slices.Clone(res.Proposals), byKey: map[string]int{},
 		entries: map[string]mapserver.Entry{}, inScope: map[string]bool{}, known: map[string]bool{},
 		tools: map[string]bool{}, dropped: map[string]int{},
 	}
+	removed := map[string]bool{}
 	for i, p := range m.proposals {
-		m.byKey[p.Key], m.known[p.Key], m.inScope[p.Key] = i, true, true
+		m.byKey[p.Key], m.inScope[p.Key] = i, true
+		if p.Action == v1alpha1.ProposalRemove {
+			removed[p.Key] = true
+		} else {
+			m.known[p.Key] = true
+		}
 	}
 	for _, t := range g.Tools {
 		m.tools[t] = true
@@ -137,7 +157,8 @@ func newMerger(res discovery.Result, g Ground, a Answer) *merger {
 	}
 	var scoped []mapserver.Entry
 	for _, e := range g.Entries {
-		m.entries[e.Key], m.known[e.Key] = e, true
+		// An entry this survey proposes to remove is no target.
+		m.entries[e.Key], m.known[e.Key] = e, !removed[e.Key]
 		if slices.Contains(g.Scope.Entities, v1alpha1.EntityKey(e.Key)) || inNamespaces(e, namespaces) || m.inScope[e.Key] {
 			m.inScope[e.Key] = true
 			scoped = append(scoped, e)
@@ -149,21 +170,16 @@ func newMerger(res discovery.Result, g Ground, a Answer) *merger {
 			m.inScope[k] = true
 		}
 	}
-	for _, it := range a.Proposals {
-		if strings.HasPrefix(it.Key, "runbook/") {
-			m.known[it.Key] = true // a runbook the agent proposes may be a target
-		}
-	}
 	return m
 }
 
 // inNamespaces says whether an entry has a kubernetes source in one of
-// the scope's namespaces.
+// the scope's namespaces, on any cluster: the scope's namespaces are not
+// cluster-qualified, as for the Doc's coverage (ADR 0016 §5).
 func inNamespaces(e mapserver.Entry, namespaces map[string]bool) bool {
 	for _, s := range e.Sources {
 		if ref, ok := s["kubernetes"]; ok {
-			ns, _, _ := strings.Cut(ref, "/")
-			if namespaces[ns] {
+			if src, ok := mapschema.ParseKubernetes(ref); ok && namespaces[src.Namespace] {
 				return true
 			}
 		}
@@ -188,7 +204,7 @@ func (m *merger) check(it Item) string {
 		}
 	}
 	for _, s := range it.Sources {
-		if !knowledgePattern.MatchString(s.Knowledge) || !strings.HasPrefix(it.Key, "runbook/") {
+		if !knowledgePattern.MatchString(s.Knowledge) || !strings.HasPrefix(it.Key, runbookPrefix) {
 			return dropSource
 		}
 	}
@@ -200,7 +216,7 @@ func (m *merger) check(it Item) string {
 			return dropEvidence
 		}
 	}
-	if !m.inScope[it.Key] && !strings.HasPrefix(it.Key, "runbook/") {
+	if !m.inScope[it.Key] && !strings.HasPrefix(it.Key, runbookPrefix) {
 		return dropScope
 	}
 	for _, k := range targets {
