@@ -5,5 +5,6 @@ layer network seen=1 matched=0 proposed=1
 layer identity seen=0 matched=0 proposed=0
 layer storage seen=0 matched=0 proposed=0
 layer alerting seen=4 matched=1 proposed=1
+layer agent seen=0 matched=0 proposed=0
 Add network/billing-api 7ea96a023f5377bf
 Update service/billing-api c99d0a2b8b21007e
