@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Proposed |
+| Status | Accepted |
 | Date | 2026-11-11 |
 | Amends | ADR 0014 (coverage), ADR 0015 (resolution) |
 | Relates to | ADR 0008, ADR 0017, spec 02 §1, spec 05, spec 08 |

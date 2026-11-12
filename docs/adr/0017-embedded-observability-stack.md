@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Proposed |
+| Status | Accepted |
 | Date | 2026-11-11 |
 | Amends | ADR 0002 (§3: Prometheus and Alertmanager are no longer only the customer's), spec 01 (the Prometheus that scrapes the gateway) |
 | Relates to | ADR 0006, ADR 0011, ADR 0015, ADR 0016, ADR 0018, spec 01, spec 09 |
