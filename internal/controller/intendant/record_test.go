@@ -59,7 +59,15 @@ func TestSurveyTrace(t *testing.T) {
 	if len(s.Status.TraceID) != 32 {
 		t.Fatalf("trace ID %q", s.Status.TraceID)
 	}
-	spans := f.spansOf(s.Status.TraceID)
+	// The runner records the outcome, then ends the root span: wait for it.
+	var spans map[string][]tracetest.SpanStub
+	deadline := time.Now().Add(waitFor)
+	for time.Now().Before(deadline) {
+		if spans = f.spansOf(s.Status.TraceID); len(spans[semconv.OperationInvokeAgent+" "+Kind]) > 0 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 	root := spans[semconv.OperationInvokeAgent+" "+Kind]
 	if len(root) != 1 || root[0].Parent.IsValid() {
 		t.Fatalf("root spans %v", root)
@@ -106,7 +114,7 @@ func TestSurveyTrace(t *testing.T) {
 	if err := f.c.Delete(context.Background(), in); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(waitFor)
+	deadline = time.Now().Add(waitFor)
 	for testutil.CollectAndCount(f.metrics.Proposals)+testutil.CollectAndCount(f.metrics.NotSeen) != 0 {
 		if time.Now().After(deadline) {
 			t.Fatal("the Intendant's series outlived it")
@@ -124,7 +132,10 @@ func TestSurveyTraceFailure(t *testing.T) {
 	dead.Close()
 	f.surveyed(t, "untraced", dead.URL+"/mcp", nil)
 	s := f.waitPhase(t, "untraced", 1, v1alpha1.RunFailed)[0]
-	root := f.spansOf(s.Status.TraceID)[semconv.OperationInvokeAgent+" "+Kind]
+	var root []tracetest.SpanStub
+	for deadline := time.Now().Add(waitFor); len(root) == 0 && time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		root = f.spansOf(s.Status.TraceID)[semconv.OperationInvokeAgent+" "+Kind]
+	}
 	if len(root) != 1 || root[0].Status.Code != codes.Error || root[0].Status.Description != failMap {
 		t.Fatalf("root spans %v", root)
 	}
