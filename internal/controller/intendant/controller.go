@@ -25,6 +25,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -33,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/recorder"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/engine"
 	"github.com/agaetis-it/takecare-agents/internal/routes"
 )
 
@@ -64,7 +66,7 @@ const (
 
 const requeueNotReady = 30 * time.Second
 
-// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareintendants,verbs=get;list;watch,namespace=takecare-system
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareintendants,verbs=get;list;watch;update;patch,namespace=takecare-system
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareintendants/status,verbs=get;update;patch,namespace=takecare-system
 
 // Reconciler reconciles TakeCareIntendants.
@@ -80,6 +82,10 @@ type Reconciler struct {
 	// are: one appearing or changing is a registration (spec 10 §3).
 	EngineNamespace string
 	AgentKinds      []schema.GroupVersionKind
+	// Agents and Models write the Intendant's agent and its model
+	// configuration in the engine (spec 10 §5).
+	Agents engine.Agents
+	Models engine.Models
 	// Metrics are the survey gauges, whose series go with the Intendant.
 	Metrics *SurveyMetrics
 	// Now is time.Now when nil; tests inject a clock.
@@ -109,6 +115,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("get intendant %s: %w", req.Name, err)
+	}
+	if !in.DeletionTimestamp.IsZero() {
+		return ctrl.Result{}, r.remove(ctx, &in)
+	}
+	if controllerutil.AddFinalizer(&in, Finalizer) {
+		if err := r.Update(ctx, &in); err != nil {
+			return ctrl.Result{}, fmt.Errorf("add the finalizer to %s: %w", in.Name, err)
+		}
 	}
 	// One instant for the whole reconciliation: the schedule's next time
 	// and the trigger that is due are read from the same clock reading.
@@ -196,7 +210,11 @@ func (r *Reconciler) render(ctx context.Context, in *v1alpha1.TakeCareIntendant,
 			return false, err
 		}
 	}
-	if err := routes.Prune(ctx, r.Client, role, keep, nil, false); err != nil {
+	models, starting, err := r.renderAgent(ctx, in, b, p, gw, st)
+	if err != nil {
+		return false, err
+	}
+	if err := routes.Prune(ctx, r.Client, role, keep, models, len(models) > 0); err != nil {
 		return false, err
 	}
 	names := slices.Sorted(func(yield func(string) bool) {
@@ -207,7 +225,27 @@ func (r *Reconciler) render(ctx context.Context, in *v1alpha1.TakeCareIntendant,
 		}
 	})
 	st.set(ConditionRoutesReady, true, ReasonRendered, "routes on the gateway to "+orNone(strings.Join(names, ", ")))
-	return false, nil
+	return starting, nil
+}
+
+// remove deletes what the Intendant has in the engine namespace and on the
+// gateway, then lets it go: the finalizer comes off once every engine
+// object and route is gone.
+func (r *Reconciler) remove(ctx context.Context, in *v1alpha1.TakeCareIntendant) error {
+	if !controllerutil.ContainsFinalizer(in, Finalizer) {
+		return nil
+	}
+	if err := r.removeEngine(ctx, in); err != nil {
+		return err
+	}
+	if err := routes.Prune(ctx, r.Client, roleOf(in), nil, nil, false); err != nil {
+		return err
+	}
+	controllerutil.RemoveFinalizer(in, Finalizer)
+	if err := r.Update(ctx, in); err != nil {
+		return fmt.Errorf("remove the finalizer of %s: %w", in.Name, err)
+	}
+	return nil
 }
 
 func orNone(s string) string {

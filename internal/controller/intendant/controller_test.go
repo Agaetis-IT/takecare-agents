@@ -130,6 +130,7 @@ func (f *fixture) startManager(t *testing.T) {
 	r := &Reconciler{
 		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("test"), OperatorNamespace: ns,
 		EngineNamespace: engineNS, AgentKinds: (&kagent0103.Agents{}).AgentTypes(), Now: f.clock.Now, Metrics: f.metrics,
+		Agents: &kagent0103.Agents{Client: mgr.GetClient()}, Models: &kagent0103.Models{Client: mgr.GetClient()},
 	}
 	if err := r.SetupWithManager(mgr); err != nil {
 		t.Fatal(err)
@@ -278,11 +279,11 @@ func (f *fixture) policy(t *testing.T, name, connector string) (string, bool) {
 }
 
 // The happy path: every connector ready, the routes on the gateway with
-// their allow-lists, the metrics route carrying the argument rule.
+// their allow-lists: the operator's tools and the agent's read tools.
 func TestReadyWithItsRoutes(t *testing.T) {
 	f := start(t)
 	f.platform(t)
-	f.connector(t, connMap, v1alpha1.ConnectorMap, []string{mcp.MapEntryTool, mcp.MapListTool, "path"})
+	f.connector(t, connMap, v1alpha1.ConnectorMap, []string{mcp.MapEntryTool, mcp.MapListTool, toolPath})
 	f.connector(t, connCluster, v1alpha1.ConnectorCluster, []string{toolNamespaces, toolResources, "pods_log"}, "pods_log")
 	f.connector(t, connMetrics, v1alpha1.ConnectorMetrics, []string{mcp.RulesTool, "execute_query"})
 	f.intendant(t, "intendant", nil)
@@ -301,7 +302,7 @@ func TestReadyWithItsRoutes(t *testing.T) {
 		t.Errorf("nextSurveyTime %v, want %v (03:00 UTC after 10:00)", in.Status.NextSurveyTime, want)
 	}
 	for conn, want := range map[string]string{
-		connMap:     `mcp.tool.name in ["map_at"]`,
+		connMap:     `mcp.tool.name in ["entry", "map_at", "path"]`,
 		connCluster: `mcp.tool.name in ["namespaces_list", "resources_list"]`,
 		connMetrics: `mcp.tool.name in ["get_rules"]`,
 	} {

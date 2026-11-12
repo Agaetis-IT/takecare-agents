@@ -15,6 +15,7 @@ import (
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
+	"github.com/agaetis-it/takecare-agents/internal/roleagent"
 	"github.com/agaetis-it/takecare-agents/internal/routes"
 )
 
@@ -33,6 +34,34 @@ type binding struct {
 	problems []string
 	// mapRevision is the revision the map connector serves (its status).
 	mapRevision string
+	// agent are the connectors given to the agent (spec 10 §5), each with
+	// the agent's own tools: never the operator's get_rules.
+	agent []agentTools
+}
+
+// agentTools is a connector given to the agent and its tools.
+type agentTools struct {
+	name  string
+	typ   v1alpha1.ConnectorType
+	tools []string
+}
+
+// route is a connector's route: the operator's tools and the agent's, the
+// gateway's allow-list for both (spec 10 §8).
+func route(name string, operator, agent []string) routes.MCP {
+	tools := slices.Concat(operator, agent)
+	slices.Sort(tools)
+	return routes.MCP{Connector: name, Backend: "mcp-" + name, Tools: slices.Compact(tools)}
+}
+
+// giveAgent records a connector's tools the agent is given, the read tools
+// and the content tools the Intendant lists.
+func (b *binding) giveAgent(in *v1alpha1.TakeCareIntendant, conn *v1alpha1.TakeCareConnector, typ v1alpha1.ConnectorType) []string {
+	read, _ := roleagent.Tools(conn, in.Spec.ContentTools)
+	if len(read) > 0 {
+		b.agent = append(b.agent, agentTools{name: conn.Name, typ: typ, tools: read})
+	}
+	return read
 }
 
 // connectors inspects the bound connectors and sets ConnectorsReady: the
@@ -51,7 +80,7 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 			continue
 		}
 		b.mapRevision = conn.Status.MapRevision
-		b.routes = append(b.routes, routes.MCP{Connector: name, Backend: "mcp-" + name, Tools: tools})
+		b.routes = append(b.routes, route(name, tools, b.giveAgent(in, conn, v1alpha1.ConnectorMap)))
 	}
 	if len(c.Map) == 0 {
 		b.mapProblem = "no map connector is given"
@@ -60,7 +89,7 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 		b.problems = append(b.problems, "no cluster connector is given: nothing on a cluster is surveyed")
 	}
 	for _, name := range c.Cluster {
-		tools, problem, _, err := usable(ctx, r.Client, in.Namespace, name, v1alpha1.ConnectorCluster, mcp.DiscoveryTools, stateTools)
+		tools, problem, conn, err := usable(ctx, r.Client, in.Namespace, name, v1alpha1.ConnectorCluster, mcp.DiscoveryTools, stateTools)
 		if err != nil {
 			return b, err
 		}
@@ -68,7 +97,23 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 			b.problems = append(b.problems, problem)
 			continue
 		}
-		b.routes = append(b.routes, routes.MCP{Connector: name, Backend: "mcp-" + name, Tools: tools})
+		b.routes = append(b.routes, route(name, tools, b.giveAgent(in, conn, v1alpha1.ConnectorCluster)))
+	}
+	// The knowledge connectors are the agent's alone: the import does not
+	// read them (spec 10 §4).
+	for _, name := range c.Knowledge {
+		_, problem, conn, err := usable(ctx, r.Client, in.Namespace, name, v1alpha1.ConnectorKnowledge, nil, readTools)
+		if err != nil {
+			return b, err
+		}
+		if problem == "" && len(b.giveAgent(in, conn, v1alpha1.ConnectorKnowledge)) == 0 {
+			problem = fmt.Sprintf("connector %s has no read tool to give the agent", name)
+		}
+		if problem != "" {
+			b.problems = append(b.problems, problem)
+			continue
+		}
+		b.routes = append(b.routes, route(name, nil, b.agent[len(b.agent)-1].tools))
 	}
 	if len(c.Metrics) == 0 {
 		b.problems = append(b.problems, "no metrics connector is given: the alerting rules are not surveyed")
@@ -86,7 +131,7 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 		// not show a call's arguments to its rules, and a rule on them hides
 		// the tool. get_rules' arguments are the client's check alone
 		// (mcp.Endpoint.Allowed, spec 10 §8).
-		b.routes = append(b.routes, routes.MCP{Connector: name, Backend: "mcp-" + name, Tools: tools})
+		b.routes = append(b.routes, route(name, tools, nil))
 	}
 	switch {
 	case b.mapProblem != "":
@@ -94,7 +139,7 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 	case len(b.problems) > 0:
 		st.set(v1alpha1.ConditionConnectorsReady, false, ReasonConnectorDegrade, strings.Join(b.problems, "; "))
 	default:
-		st.set(v1alpha1.ConditionConnectorsReady, true, ReasonConnectorsReady, "the map, cluster and metrics connectors are ready")
+		st.set(v1alpha1.ConditionConnectorsReady, true, ReasonConnectorsReady, "the map, cluster, metrics and knowledge connectors given are ready")
 	}
 	return b, nil
 }

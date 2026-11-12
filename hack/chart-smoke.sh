@@ -472,6 +472,9 @@ EOF
 
   # AC 4: a tool the Doc may no longer call is refused by the gateway at
   # once, whatever the agent still lists. pods_log is reclassified act.
+  # The chart's own overrides (the content marks) are put back after.
+  local tools
+  tools="$(kubectl -n "$NS" get takecareconnector kubernetes -o jsonpath='{.spec.tools}')"
   kubectl -n "$NS" patch takecareconnector kubernetes --type=merge -p '{"spec":{"tools":[{"name":"pods_log","class":"act"}]}}' >/dev/null
   for _ in $(seq 30); do
     [[ "$(kubectl -n "$NS" get agentgatewaypolicy role-doc-smoke-doc-mcp-kubernetes -o jsonpath='{.spec.backend.mcp.authorization.policy.matchExpressions[0]}')" != *pods_log* ]] && break
@@ -482,7 +485,7 @@ EOF
     mcp_allowed kagent smoke-a2a "$route" pods_log
   check "a call to pods_list through the Doc's route is let through" \
     mcp_allowed kagent smoke-a2a "$route" pods_list
-  kubectl -n "$NS" patch takecareconnector kubernetes --type=json -p '[{"op":"remove","path":"/spec/tools"}]' >/dev/null
+  kubectl -n "$NS" patch takecareconnector kubernetes --type=merge -p "{\"spec\":{\"tools\":${tools:-null}}}" >/dev/null
   # The Intendant's routes (spec 10 §4, §8): the gateway lets get_rules
   # through by name, with the survey's arguments, and refuses a tool off the
   # allow-list. It does not check arguments: agentgateway v1.6.0 does not
@@ -513,7 +516,19 @@ EOF
     mcp_allowed kagent smoke-a2a "${iroute}/map" map_at '{}'
   check "pods_log, a content tool, is refused on the Intendant's cluster route" \
     mcp_refused kagent smoke-a2a "${iroute}/kubernetes" pods_log '{}'
+  # The Intendant's agent (spec 10 §5): its own tools, never get_rules, and
+  # its card through its A2A route once the engine runs it.
+  local iagent=takecare-intendant-smoke-intendant
+  check "the Intendant's agent is given the map's and the cluster's read tools, and no metrics tool" \
+    bash -c "for _ in \$(seq 30); do kubectl -n kagent get agent ${iagent} >/dev/null 2>&1 && break; sleep 2; done; t=\$(kubectl -n kagent get agent ${iagent} -o jsonpath='{range .spec.declarative.tools[*]}{.mcpServer.name}={.mcpServer.toolNames}{\"\\n\"}{end}'); [[ \"\$t\" == *${iagent}-map=*map_at* && \"\$t\" == *${iagent}-kubernetes=*resources_list* && \"\$t\" != *get_rules* && \"\$t\" != *pods_log* ]]"
+  check "EngineReady=True: the engine runs the Intendant's agent" \
+    wait_condition_long takecareintendant smoke-intendant EngineReady True 300
+  check "through the Intendant's A2A route, its agent's card answers (200)" \
+    test "$("${code[@]}" "${gw}/api/a2a/kagent/${iagent}/.well-known/agent-card.json")" = "200"
+  log "the Intendant's agent pod: $(kubectl -n kagent top pod --no-headers 2>/dev/null | awk -v a="$iagent" 'index($1, a) == 1 {print $1" "$2" "$3}' | head -1)"
   kubectl -n "$NS" delete takecareintendant smoke-intendant --timeout=60s >/dev/null
+  check "deleting the Intendant removed its agent and model configuration in kagent, and its routes" \
+    bash -c "[[ -z \$(kubectl -n kagent get agents,modelconfigs,remotemcpservers -l takecare.agaetis.fr/owner=smoke-intendant -o name) && -z \$(kubectl -n ${NS} get httproutes,agentgatewaypolicies -l takecare.agaetis.fr/role-instance=intendant.smoke-intendant -o name) ]]"
   kubectl -n kagent delete pod smoke-a2a --now >/dev/null
   kubectl -n "$NS" delete takecaredoc smoke-doc --timeout=60s >/dev/null
   check "deleting the Doc removed its agent, tool servers and instructions in kagent, and its routes" \
@@ -691,11 +706,11 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=85 install ;;
-  upgrade) CHECKS_EXPECTED=85 upgrade ;;
+  install) CHECKS_EXPECTED=89 install ;;
+  upgrade) CHECKS_EXPECTED=89 upgrade ;;
   status) status ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=4 cluster_chart ;;
-  all) up; CHECKS_EXPECTED=85 install; CHECKS_EXPECTED=85 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
+  all) up; CHECKS_EXPECTED=89 install; CHECKS_EXPECTED=89 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|cluster|status|down|all]"; exit 2 ;;
 esac

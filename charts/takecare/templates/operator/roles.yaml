@@ -179,7 +179,6 @@ rules:
   - takecare.agaetis.fr
   resources:
   - takecareconnectors
-  - takecareintendants
   verbs:
   - get
   - list
@@ -202,6 +201,7 @@ rules:
   resources:
   - takecaredemos
   - takecaredocs
+  - takecareintendants
   verbs:
   - get
   - list
@@ -213,6 +213,7 @@ rules:
   resources:
   - takecaredemos/finalizers
   - takecaredocs/finalizers
+  - takecareintendants/finalizers
   verbs:
   - update
 - apiGroups:
