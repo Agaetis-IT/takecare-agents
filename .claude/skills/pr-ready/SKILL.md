@@ -25,4 +25,5 @@ description: Use before opening or updating a pull request on TakeCare Agents. R
 6. **Description.** Fill `.github/pull_request_template.md`:
    - one line per acceptance criterion: `[x] spec 02 AC 3: covered by TestDocTrialDestination (envtest)`;
    - deferred criteria with their target PR;
+   - **Upstream docs read**: for a change that builds on a third-party product (agentgateway, kagent, an MCP server, Helm, Prometheus, Gateway API, a Go library), each page read, the version it documents (the pin in `hack/versions.env`, or "latest" checked on the pinned version) and what the change follows; "None" otherwise;
    - **Open questions**: every ambiguity you resolved with the most conservative reading, every deviation from the spec. Never leave this section empty without writing "None".

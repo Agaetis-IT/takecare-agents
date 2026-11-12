@@ -13,6 +13,10 @@ Deferred criteria (and the PR that will close them):
 
 -
 
+## Upstream docs read
+
+<!-- For a change that builds on a third-party product: page, version documented, what the change follows. "None" otherwise. -->
+
 ## Checks
 
 - [ ] `make generate` run, generated files committed
