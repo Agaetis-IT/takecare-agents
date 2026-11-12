@@ -41,14 +41,16 @@ Each proposal carries its evidence: the names of the tool calls that support it,
 
 Answer with one fenced JSON block and nothing else:
 
+The shape, with made-up names that are not on your ground:
+
 ```json
 {"proposals": [
-  {"key": "service/billing-api",
-   "relations": {"dependsOn": ["network/billing-db-proxy"], "documentedBy": ["runbook/proxy-timeout"]},
-   "evidence": ["resources_get"]},
-  {"key": "runbook/proxy-timeout",
-   "sources": [{"knowledge": "runbooks/RB-014"}],
-   "evidence": ["search_runbooks"]}
+  {"key": "service/shop-cart",
+   "relations": {"dependsOn": ["datastore/cart-sessions"], "documentedBy": ["runbook/disk-pressure"]},
+   "evidence": ["the tool you called"]},
+  {"key": "runbook/disk-pressure",
+   "sources": [{"knowledge": "wiki/OPS-231"}],
+   "evidence": ["the tool you called"]}
 ]}
 ```
 

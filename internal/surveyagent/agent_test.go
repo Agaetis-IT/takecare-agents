@@ -4,6 +4,10 @@
 package surveyagent
 
 import (
+	"encoding/json"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -81,5 +85,85 @@ func TestRender(t *testing.T) {
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("Render (-want +got):\n%s", diff)
+	}
+}
+
+// exampleNames are the names in the instructions' answer example, read
+// from its JSON block: keys, relation targets, knowledge sources, evidence,
+// and each key's name after its type.
+func exampleNames(t *testing.T) []string {
+	t.Helper()
+	_, rest, ok := strings.Cut(instructionsSource, "```json\n")
+	block, _, ok2 := strings.Cut(rest, "```")
+	if !ok || !ok2 {
+		t.Fatal("the instructions have no JSON example")
+	}
+	var ex struct {
+		Proposals []struct {
+			Key       string              `json:"key"`
+			Relations map[string][]string `json:"relations"`
+			Sources   []map[string]string `json:"sources"`
+			Evidence  []string            `json:"evidence"`
+		} `json:"proposals"`
+	}
+	if err := json.Unmarshal([]byte(block), &ex); err != nil {
+		t.Fatalf("the example is not JSON: %v", err)
+	}
+	var names []string
+	add := func(n string) {
+		names = append(names, n)
+		if _, name, ok := strings.Cut(n, "/"); ok {
+			names = append(names, name)
+		}
+	}
+	for _, p := range ex.Proposals {
+		add(p.Key)
+		for _, targets := range p.Relations {
+			for _, k := range targets {
+				add(k)
+			}
+		}
+		for _, src := range p.Sources {
+			for _, v := range src {
+				add(v)
+			}
+		}
+		names = append(names, p.Evidence...)
+	}
+	if len(names) < 4 {
+		t.Fatalf("the example names %v", names)
+	}
+	return names
+}
+
+// A model can echo an example instead of reading the ground, so no name of
+// the example may be one the demo, its corpus or a fixture answers with: a
+// test passing on an echoed example would prove nothing (spec 10 §11).
+func TestExampleIsNotTheDemo(t *testing.T) {
+	names := exampleNames(t)
+	var scanned int
+	for _, root := range []string{"../../charts/takecare/files/demo-map", "../demo/corpus", "../../test/e2e", "../../test/fakellm/testdata"} {
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			b, err := os.ReadFile(path) //nolint:gosec // the repository's own fixtures
+			if err != nil {
+				return err
+			}
+			scanned++
+			for _, n := range names {
+				if strings.Contains(string(b), n) {
+					t.Errorf("%s names %q, a name of the instructions' example", path, n)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if scanned < 10 {
+		t.Fatalf("scanned %d files: the demo's Map, corpus or fixtures moved", scanned)
 	}
 }
