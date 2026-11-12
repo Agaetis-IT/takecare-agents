@@ -56,14 +56,20 @@ up() {
 # Every check prints PASS or FAIL and each phase asserts its total, so that a
 # check that did not run cannot pass silently.
 checks=0 failed=0
+# DIAG collects what a failing check says about its cause (mcp_diagnose):
+# check prints it under its FAIL line, and empties it for the next check.
+DIAG="$(mktemp "${TMPDIR:-/tmp}/chart-smoke-diag.XXXXXX")"
+trap 'rm -f "$DIAG"' EXIT
 check() { # NAME COMMAND...: PASS when the command succeeds
   local name="$1"; shift
   checks=$((checks + 1))
-  if "$@" >/dev/null 2>&1; then printf 'PASS  %s\n' "$name"; else printf 'FAIL  %s\n' "$name"; failed=$((failed + 1)); fi
+  : >"$DIAG"
+  if "$@" >/dev/null 2>&1; then printf 'PASS  %s\n' "$name"; else printf 'FAIL  %s\n' "$name"; cat "$DIAG"; failed=$((failed + 1)); fi
 }
 check_not() { # NAME COMMAND...: PASS when the command fails
   local name="$1"; shift
   checks=$((checks + 1))
+  : >"$DIAG"
   if "$@" >/dev/null 2>&1; then printf 'FAIL  %s\n' "$name"; failed=$((failed + 1)); else printf 'PASS  %s\n' "$name"; fi
 }
 assert_checks() { # EXPECTED
@@ -198,12 +204,34 @@ mcp_diagnose() {
   local path="${1#*://*/}" status first
   status="$(grep -o '^HTTP [0-9]*$' <<<"$2" | tail -1)"
   first="$(grep -v '^HTTP [0-9]*$' <<<"$2" | grep -v '^$' | head -1 | cut -c1-200)"
-  echo "      last answer: ${status:-no status}: ${first:-empty body}"
   # /mcp/<namespace>/<role>/<connector> is served by role-<kind>-<role>-mcp-<connector>.
-  local role connector
+  local role connector policy tools
   IFS=/ read -r _ _ role connector <<<"$path"
-  kubectl -n "$NS" get agentgatewaypolicies -o jsonpath='{range .items[*]}{.metadata.name} generation={.metadata.generation} {.spec.backend.mcp.authorization.policy.matchExpressions[0]}{"\n"}{end}' 2>/dev/null |
-    grep -E "^role-[a-z]+-${role}-mcp-${connector} " | sed 's/^/      policy now: /'
+  policy="$(kubectl -n "$NS" get agentgatewaypolicies -o jsonpath='{range .items[*]}{.metadata.name} generation={.metadata.generation} {.spec.backend.mcp.authorization.policy.matchExpressions[0]}{"\n"}{end}' 2>/dev/null |
+    grep -E "^role-[a-z]+-${role}-mcp-${connector} " || true)"
+  tools="$(kubectl -n "$NS" get takecareconnector "$connector" -o jsonpath='{range .status.tools[*]}{.name} {end}' 2>/dev/null || true)"
+  {
+    echo "      last answer: ${status:-no status}: ${first:-empty body}"
+    echo "      policy now: ${policy:-none found for ${role}/${connector}}"
+    echo "      connector ${connector} status.tools ($(wc -w <<<"$tools" | tr -d ' ')): ${tools:-none}"
+  } >>"${DIAG:-/dev/stderr}"
+}
+
+# mcp_unknown_tool NAMESPACE POD URL TOOL [ARGS]: succeeds when the gateway
+# refuses the tool as off the route's allow-list (JSON-RPC -32602, "Unknown
+# tool"), within 20 s: a policy just changed applies a few seconds after it
+# is written, so the tool may still answer for a moment.
+mcp_unknown_tool() {
+  local _ out
+  for _ in $(seq 10); do
+    out="$(mcp_call "$@")"
+    if grep -q '"code":-32602' <<<"$out" && grep -q 'Unknown tool' <<<"$out" && ! grep -q '"result"' <<<"$out"; then
+      return 0
+    fi
+    sleep 2
+  done
+  mcp_diagnose "$3" "$out"
+  return 1
 }
 
 # mcp_forbidden NAMESPACE POD URL TOOL [ARGS]: succeeds when the gateway
@@ -519,7 +547,7 @@ EOF
   done
   local route="${gw}/mcp/${NS}/smoke-doc/kubernetes"
   check "a forged call to pods_log through the Doc's route is refused" \
-    mcp_refused kagent smoke-a2a "$route" pods_log
+    mcp_unknown_tool kagent smoke-a2a "$route" pods_log
   check "a call to pods_list through the Doc's route is let through" \
     mcp_allowed kagent smoke-a2a "$route" pods_list
   kubectl -n "$NS" patch takecareconnector kubernetes --type=merge -p "{\"spec\":{\"tools\":${tools:-null}}}" >/dev/null
