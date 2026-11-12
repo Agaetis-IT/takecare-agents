@@ -26,6 +26,7 @@ Specs and ADRs are written and reviewed with the maintainers before the code. A 
 - **Telemetry from day one** (ADR 0006): every investigation is one trace following the OpenTelemetry GenAI semantic conventions. Attribute names live only in `internal/telemetry/semconv`. Message content is not captured unless `captureContent` is on.
 - **No demo-specific code in the roles**. The demo is scenery, scenarios and a values profile.
 - **Pinned versions** in `hack/versions.env` only.
+- **Upstream documentation first**: before building on a third-party product, read its official documentation for the pinned version and follow its documented practice; when something fails against it, read its documentation and changelog before working around it. The pull request lists the pages read.
 - **No secrets** in the repository, in fixtures, in logs or in status fields.
 - **Do not decide silently.** If a spec is ambiguous, wrong or blocks you, ask in the pull request or an issue. Meanwhile implement the most conservative reading, and list the question under "Open questions" in the PR description. Do not edit an accepted ADR: propose a new one.
 - **The challenge POC is reference material only, kept outside this repository.** Copy and adapt what you need, with its provenance (`docs/licensing.md`).
