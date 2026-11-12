@@ -27,6 +27,7 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/controller/connector"
 	"github.com/agaetis-it/takecare-agents/internal/coverage"
 	"github.com/agaetis-it/takecare-agents/internal/discovery"
+	"github.com/agaetis-it/takecare-agents/internal/engine"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
 	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/runs"
@@ -118,6 +119,17 @@ type Runner struct {
 	Tracer trace.Tracer
 	// Metrics, when set, hold what each Intendant's last survey proposes.
 	Metrics *SurveyMetrics
+	// Runs runs the agent pass on the engine (spec 10 §5); no pass when nil.
+	Runs            engine.Runs
+	EngineNamespace string
+	// PassTimeout bounds the pass from the survey's start (DefaultPassTimeout
+	// when zero); PassInterval is between two reads of its task.
+	PassTimeout  time.Duration
+	PassInterval time.Duration
+	// PassClock times the pass (runs.WallClock when nil); it must agree
+	// with Now, which dates the survey's start.
+	PassClock  runs.Clock
+	RunMetrics *runs.Metrics
 
 	mu      sync.Mutex
 	running map[types.NamespacedName]bool // by Intendant
@@ -190,6 +202,12 @@ func (w *Runner) resume(ctx context.Context) error {
 		}
 		before := s.DeepCopy()
 		s.Status = v1alpha1.TakeCareSurveyStatus{Phase: v1alpha1.RunQueued, Attempts: before.Status.Attempts}
+		// No half status is kept, but an agent pass's recorded task and the
+		// start its deadline counts from are: the pass follows that task
+		// again rather than start another (spec 10 §5).
+		if e := before.Status.Engine; e != nil && e.TaskID != "" {
+			s.Status.StartedAt, s.Status.Engine = before.Status.StartedAt, e
+		}
 		if err := w.Client.Status().Patch(ctx, s, client.MergeFrom(before)); err != nil {
 			return fmt.Errorf("put survey %s back in the queue: %w", s.Name, err)
 		}
@@ -239,8 +257,8 @@ func (w *Runner) tracer() trace.Tracer {
 }
 
 func (w *Runner) run(ctx context.Context, s *v1alpha1.TakeCareSurvey) {
-	// The survey's trace: its root is the Intendant's invoke_agent, the
-	// agent pass (I1e) to come as its child.
+	// The survey's trace: its root is the Intendant's invoke_agent, with
+	// the agent pass as one of its children (spec 10 §10).
 	ctx, span := w.tracer().Start(ctx, semconv.OperationInvokeAgent+" "+Kind, trace.WithAttributes(
 		attribute.String(semconv.GenAIOperationName, semconv.OperationInvokeAgent),
 		attribute.String(semconv.GenAIAgentName, Kind),
@@ -251,9 +269,18 @@ func (w *Runner) run(ctx context.Context, s *v1alpha1.TakeCareSurvey) {
 	logger := log.FromContext(ctx).WithValues("survey", s.Name, "traceID", traceID)
 	now := metav1.NewTime(w.now())
 	if err := w.patch(ctx, s, func(st *v1alpha1.TakeCareSurveyStatus) {
-		st.Phase, st.StartedAt, st.Attempts, st.TraceID = v1alpha1.RunRunning, &now, st.Attempts+1, traceID
+		// A survey resumed with its agent pass's task keeps its start: the
+		// pass's deadline counts from it (spec 10 §5).
+		if st.StartedAt == nil || st.Engine == nil || st.Engine.TaskID == "" {
+			st.StartedAt = &now
+		}
+		st.Phase, st.Attempts, st.TraceID = v1alpha1.RunRunning, st.Attempts+1, traceID
 	}); err != nil {
 		logger.Error(err, "mark the survey running")
+		return
+	}
+	if err := w.Reader.Get(ctx, client.ObjectKeyFromObject(s), s); err != nil {
+		logger.Error(err, "read the survey")
 		return
 	}
 	out, res, err := w.survey(ctx, s)
@@ -275,7 +302,7 @@ func (w *Runner) run(ctx context.Context, s *v1alpha1.TakeCareSurvey) {
 		w.Metrics.Record(s.Spec.IntendantRef.Name, res)
 	}
 	if err := w.patch(ctx, s, func(st *v1alpha1.TakeCareSurveyStatus) {
-		out.StartedAt, out.Attempts, out.CompletedAt, out.TraceID = st.StartedAt, st.Attempts, &done, traceID
+		out.StartedAt, out.Attempts, out.CompletedAt, out.TraceID, out.Engine = st.StartedAt, st.Attempts, &done, traceID, st.Engine
 		*st = out
 	}); err != nil {
 		logger.Error(err, "record the survey's outcome")
@@ -331,6 +358,11 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 	if err != nil {
 		return out, none, fail(failImport, err)
 	}
+	provider, model := modelOf(p, &in)
+	res = w.pass(ctx, s, passRecord{
+		in: &in, gateway: p.Status.GatewayURL, provider: provider, model: model,
+		entries: idx.entries, rev: idx.revision, started: s.Status.StartedAt.Time,
+	}, res)
 	// The full set, before the status: the not-seen line of what does not
 	// fit goes into both.
 	name := proposalsName(s.Name)

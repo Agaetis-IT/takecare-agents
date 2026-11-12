@@ -177,7 +177,7 @@ func TestSurveyRuns(t *testing.T) {
 	f.surveyed(t, "runs", mapServer(t, nil), nil)
 	s := f.waitPhase(t, "runs", 1, v1alpha1.RunCompleted)[0]
 	st := s.Status
-	if len(st.Layers) != 7 || st.ProposalCounts == nil || st.ProposalCounts.Total == 0 || len(st.Proposals) > maxProposals || st.MapRevision == "" {
+	if len(st.Layers) != 8 || st.ProposalCounts == nil || st.ProposalCounts.Total == 0 || len(st.Proposals) > maxProposals || st.MapRevision == "" {
 		t.Fatalf("status: layers %d, counts %+v, %d proposals, revision %q", len(st.Layers), st.ProposalCounts, len(st.Proposals), st.MapRevision)
 	}
 	if st.StartedAt == nil || st.CompletedAt == nil || st.Attempts != 1 {
@@ -265,7 +265,7 @@ func TestSurveyResumed(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if got.Status.Phase != v1alpha1.RunCompleted || got.Status.Attempts != 2 || len(got.Status.Layers) != 7 || got.Status.Layers[0].Name == "half" {
+	if got.Status.Phase != v1alpha1.RunCompleted || got.Status.Attempts != 2 || len(got.Status.Layers) != 8 || got.Status.Layers[0].Name == "half" {
 		t.Fatalf("resumed survey: %+v", got.Status)
 	}
 	f.checkProposals(t, &got)

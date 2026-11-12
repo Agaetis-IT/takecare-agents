@@ -52,6 +52,8 @@ const (
 	RunOutcome = "takecare.run.outcome"
 	// RunAttempt counts the starts of a run: a lost task is retried once.
 	RunAttempt = "takecare.run.attempt"
+	// RunTaskID is the engine's task of a run.
+	RunTaskID = "takecare.run.task_id"
 	// DegradedConnectors and DegradedReason say which sources a run went
 	// without (issue #10: the run degrades and says so, in the trace too).
 	DegradedConnectors = "takecare.degraded.connectors"
