@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -33,6 +34,7 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/runs"
 	"github.com/agaetis-it/takecare-agents/internal/testenv"
+	"github.com/agaetis-it/takecare-agents/internal/usage"
 )
 
 const (
@@ -85,6 +87,9 @@ type fixture struct {
 	// passClock the runner's clock: it starts at testStart and moves.
 	runs      *fakeRuns
 	passClock *offsetClock
+	// usageURL, when set, is the Prometheus the runner measures its
+	// passes with.
+	usageURL atomic.Value
 }
 
 func start(t *testing.T) *fixture { return startWith(t, false) }
@@ -123,6 +128,15 @@ func startWith(t *testing.T, runner bool) *fixture {
 	return f
 }
 
+// usage is the runner's usage source: none until a test sets usageURL.
+func (f *fixture) usage(*v1alpha1.TakeCarePlatform) usage.Source {
+	u, _ := f.usageURL.Load().(string)
+	if u == "" {
+		return nil
+	}
+	return usage.Prometheus{HTTP: &http.Client{Timeout: 10 * time.Second}, URL: u}
+}
+
 // startManager runs a manager with the Intendant's reconciler; restart
 // stops it and runs a fresh one, as an operator restart would.
 func (f *fixture) startManager(t *testing.T) {
@@ -148,7 +162,7 @@ func (f *fixture) startManager(t *testing.T) {
 		if err := mgr.Add(&Runner{
 			Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: queue, GateRetry: 100 * time.Millisecond,
 			Caller: &mcp.Client{HTTP: &http.Client{Timeout: time.Minute}}, Now: f.passClock.Now, Metrics: f.metrics,
-			Runs: f.runs, EngineKind: kagent0103.Kind, EngineNamespace: engineNS, PassTimeout: passTimeout, PassInterval: 50 * time.Millisecond, PassClock: f.passClock,
+			Runs: f.runs, EngineKind: kagent0103.Kind, EngineNamespace: engineNS, Usage: f.usage, PassTimeout: passTimeout, PassInterval: 50 * time.Millisecond, PassClock: f.passClock,
 			Tracer: sdktrace.NewTracerProvider(sdktrace.WithSyncer(f.spans)).Tracer("test"),
 			Route: func(_ string, role routes.Role, connector string) string {
 				u, _ := f.routes.Load(role.Name + "/" + connector)

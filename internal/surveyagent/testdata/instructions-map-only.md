@@ -16,6 +16,9 @@ Propose only for entries of this scope, the entries they relate to, and runbooks
 - `belongsTo`: the team an entry belongs to, from its workloads' labels and annotations, when the team is in the Map.
 - `documentedBy`: the runbooks that apply to an entry.
 - A runbook entry, `runbook/<name>`, for each runbook record a knowledge tool returns that applies to an entry of the scope, with its record as a `knowledge` source (`<connector>/<record id>`), and `documentedBy` on the entries it applies to.
+- A `knowledge` source on a runbook entry the Map already holds without one, when a knowledge tool returns the record it describes.
+
+A listing never shows runbooks: when you are given knowledge tools, search them for each entry of your scope and for each runbook entry of the Map. What the Map already holds needs no proposal.
 
 Each proposal carries its evidence: the names of the tool calls that support it, nothing else.
 

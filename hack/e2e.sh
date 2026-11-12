@@ -34,15 +34,22 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=33
+CHECKS_EXPECTED=34
 FIXTURES=test/fakellm/testdata/e2e
 
-log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+log() { printf '\033[1;34m==>\033[0m %s %s\n' "$(date +%H:%M:%S)" "$*"; }
 checks=0 failed=0
 check() { # NAME COMMAND...
   local name="$1"; shift
   checks=$((checks + 1))
   if "$@"; then printf 'PASS  %s\n' "$name"; else printf 'FAIL  %s\n' "$name"; failed=$((failed + 1)); fi
+}
+
+# fixture_usage NAME prints a fake-model fixture's tokens and calls as the
+# usage records them: input, output, calls. One fixture per role, so each
+# role's usage is checked against its own (spec 02 §5).
+fixture_usage() {
+  jq -r '[.exchanges[].response.usage] | "\(map(.prompt_tokens) | add) \(map(.completion_tokens) | add) \(length)"' "$FIXTURES/$1.json"
 }
 
 # survey NAME INTENDANT creates a survey by hand and prints its phase
@@ -74,6 +81,19 @@ proposals() {
     | "\(.value | capture("(^|\n)action: (?<a>\\S+)").a) \(.value | capture("(^|\n)key: (?<k>\\S+)").k) \(.key)"' | sort
 }
 
+# intendant_idle waits until no survey of the demo Intendant is queued or
+# running: its agent pass calls the model, and the incident starts after it.
+intendant_idle() {
+  log "waiting for the Intendant's surveys to end"
+  local busy
+  for _ in $(seq 120); do
+    busy="$(kubectl -n "$NS" get takecaresurveys -o jsonpath='{range .items[*]}{.status.phase}{"\n"}{end}' | grep -cE '^(Queued|Running)?$' || true)"
+    [[ "$busy" == 0 ]] && return 0
+    sleep 5
+  done
+  echo "the Intendant's surveys did not end" >&2
+}
+
 # intendant checks the demo's Intendant (spec 10 §11): its survey against
 # the golden, a scope nothing reads as a blind spot, and a removal.
 intendant() {
@@ -85,6 +105,10 @@ intendant() {
   check "a survey by hand of the demo Completes (spec 10 §4)" test "$phase" = Completed
   check "its proposals are the golden's: the demo ground's known difference with the demo Map (spec 10 AC 1)" \
     diff -u test/e2e/intendant-proposals.golden <(proposals e2e-first)
+  local want
+  want="$(fixture_usage intendant-pass)"
+  check "its agent pass's usage is its own route's, exactly the fixture's (${want}) (spec 10 §5)" \
+    bash -c "[[ \"\$(kubectl -n $NS get takecaresurvey e2e-first -o jsonpath='{.status.usage.inputTokens} {.status.usage.outputTokens} {.status.usage.modelCalls}')\" == '$want' ]]"
   check "its ConfigMap holds every proposal the status counts (spec 10 §7)" \
     bash -c "[[ \$(kubectl -n $NS get configmap survey-e2e-first-proposals -o json | jq '.data | length') == \$(kubectl -n $NS get takecaresurvey e2e-first -o jsonpath='{.status.proposalCounts.total}') ]]"
 
@@ -245,6 +269,7 @@ run() {
     [[ "$gen" == "$obs" && "$phase" == Ready ]] && break
     sleep 5
   done
+  intendant_idle
   hack/demo.sh incident
   log "waiting for the Doc's investigation to complete"
   local inv=""
@@ -309,7 +334,7 @@ run() {
   # The exact counts the fixtures serve: with the gateway scraped twice, a
   # usage that does not collapse duplicate scrapes fails.
   local want
-  want="$(jq -r '[.exchanges[].response.usage] | "\(map(.prompt_tokens) | add) \(map(.completion_tokens) | add) \(length)"' "$FIXTURES"/*.json)"
+  want="$(fixture_usage proxy-timeout)"
   check "usage measured exactly: input, output tokens and model calls = the fixtures' (${want})" \
     bash -c "[[ \"\$($get='{.status.usage.inputTokens} {.status.usage.outputTokens} {.status.usage.modelCalls}')\" == '$want' ]]"
   fake_get fake-slack /messages >bin/demo/slack-messages.json
@@ -351,6 +376,40 @@ run() {
 # Run on a demo brought up by `hack/e2e.sh run` or `fakes` + `demo.sh up`;
 # costs one real investigation.
 record() {
+  record_mode
+  hack/demo.sh reset
+  hack/demo.sh incident
+  hack/demo.sh verdict
+  fake_get fake-llm /recorded >"${FIXTURES}/proxy-timeout.json"
+  echo "recorded into ${FIXTURES}/proxy-timeout.json: review it like code, then run make e2e"
+}
+
+# record_intendant replaces the Intendant's fixture with a real model's
+# answer to one survey of the demo: its agent pass alone (spec 10 §5).
+# Costs one survey's pass on the real model.
+record_intendant() {
+  record_mode
+  kubectl -n "$NS" delete takecaresurvey e2e-record --ignore-not-found >/dev/null
+  kubectl apply -f - >/dev/null <<EOF
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareSurvey
+metadata: {name: e2e-record, namespace: $NS}
+spec:
+  intendantRef: {kind: TakeCareIntendant, name: intendant}
+EOF
+  local phase=""
+  for _ in $(seq 150); do
+    phase="$(kubectl -n "$NS" get takecaresurvey e2e-record -o jsonpath='{.status.phase}')"
+    [[ "$phase" =~ ^(Completed|Failed|Dropped)$ ]] && break
+    sleep 5
+  done
+  echo "survey ${phase:-not ended}; its agent layer: $(kubectl -n "$NS" get takecaresurvey e2e-record -o jsonpath='{.status.layers[?(@.name=="agent")]}')"
+  fake_get fake-llm /recorded >"${FIXTURES}/intendant-pass.json"
+  echo "recorded into ${FIXTURES}/intendant-pass.json: read it whole, review it like code, then run make e2e"
+}
+
+# record_mode turns the fake model into a recording proxy to a real model.
+record_mode() {
   local key="${FAKELLM_UPSTREAM_KEY:-${REAL_MODEL_API_KEY:-}}"
   if [[ -z "$key" && -f .env ]]; then
     # shellcheck disable=SC1091
@@ -364,18 +423,18 @@ record() {
   upstream="${FAKELLM_UPSTREAM:-$(awk '$1 == "baseURL:" {print $2; exit}' charts/takecare/values-demo.yaml)}"
   model="${FAKELLM_UPSTREAM_MODEL:-$(awk '$1 == "model:" {print $2; exit}' charts/takecare/values-demo.yaml)}"
   [[ -n "$upstream" && -n "$model" ]] || { echo "no provider or model in values-demo.yaml: set FAKELLM_UPSTREAM and FAKELLM_UPSTREAM_MODEL" >&2; exit 1; }
-  kubectl -n "$E2E_NS" patch deployment fake-llm --type=json -p '[
-    {"op":"replace","path":"/spec/template/spec/containers/0/args","value":["--mode=record","--upstream='"$upstream"'","--upstream-model='"$model"'","--api-key-file=/upstream/key","--out=/tmp/recorded.json"]},
-    {"op":"add","path":"/spec/template/spec/volumes/-","value":{"name":"upstream","secret":{"secretName":"fake-llm-upstream"}}},
-    {"op":"add","path":"/spec/template/spec/volumes/-","value":{"name":"tmp","emptyDir":{}}},
-    {"op":"add","path":"/spec/template/spec/containers/0/volumeMounts/-","value":{"name":"upstream","mountPath":"/upstream","readOnly":true}},
-    {"op":"add","path":"/spec/template/spec/containers/0/volumeMounts/-","value":{"name":"tmp","mountPath":"/tmp"}}]' >/dev/null
+  local patch='[{"op":"replace","path":"/spec/template/spec/containers/0/args","value":["--mode=record","--upstream='"$upstream"'","--upstream-model='"$model"'","--api-key-file=/upstream/key","--out=/tmp/recorded.json"]}'
+  # The volumes once: a second recording on the same cluster replaces the
+  # args only (a restarted pod starts a new recording).
+  if ! kubectl -n "$E2E_NS" get deployment fake-llm -o jsonpath='{.spec.template.spec.volumes[*].name}' | grep -qw upstream; then
+    patch+=',{"op":"add","path":"/spec/template/spec/volumes/-","value":{"name":"upstream","secret":{"secretName":"fake-llm-upstream"}}}'
+    patch+=',{"op":"add","path":"/spec/template/spec/volumes/-","value":{"name":"tmp","emptyDir":{}}}'
+    patch+=',{"op":"add","path":"/spec/template/spec/containers/0/volumeMounts/-","value":{"name":"upstream","mountPath":"/upstream","readOnly":true}}'
+    patch+=',{"op":"add","path":"/spec/template/spec/containers/0/volumeMounts/-","value":{"name":"tmp","mountPath":"/tmp"}}'
+  fi
+  kubectl -n "$E2E_NS" patch deployment fake-llm --type=json -p "${patch}]" >/dev/null
+  kubectl -n "$E2E_NS" rollout restart deployment/fake-llm >/dev/null
   kubectl -n "$E2E_NS" rollout status deployment/fake-llm --timeout=120s >/dev/null
-  hack/demo.sh reset
-  hack/demo.sh incident
-  hack/demo.sh verdict
-  fake_get fake-llm /recorded >"${FIXTURES}/proxy-timeout.json"
-  echo "recorded into ${FIXTURES}/proxy-timeout.json: review it like code, then run make e2e"
 }
 
 # status prints the cluster's state after a failed run: the pods not
@@ -392,8 +451,9 @@ status() {
 case "${1:-run}" in
   run) run ;;
   record) record ;;
+  record-intendant) record_intendant ;;
   fakes) fakes ;;
   status) status ;;
   down) hack/demo.sh down ;;
-  *) echo "usage: $0 [run|fakes|record|status|down]" >&2; exit 1 ;;
+  *) echo "usage: $0 [run|fakes|record|record-intendant|status|down]" >&2; exit 1 ;;
 esac

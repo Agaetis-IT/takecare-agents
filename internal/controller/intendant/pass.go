@@ -21,9 +21,11 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/mapserver"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
 	"github.com/agaetis-it/takecare-agents/internal/roleagent"
+	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/runs"
 	"github.com/agaetis-it/takecare-agents/internal/surveyagent"
 	"github.com/agaetis-it/takecare-agents/internal/telemetry/semconv"
+	"github.com/agaetis-it/takecare-agents/internal/usage"
 )
 
 // DefaultPassTimeout bounds the agent pass (spec 10 §5), counted from the
@@ -42,8 +44,10 @@ type passRecord struct {
 	gateway string
 	// provider and model are the platform model the agent uses.
 	provider, model string
-	entries         []mapserver.Entry
-	rev             string
+	// platform prices and measures the pass (its Prometheus, its models).
+	platform *v1alpha1.TakeCarePlatform
+	entries  []mapserver.Entry
+	rev      string
 	// started is the survey's start: the pass's deadline counts from it,
 	// and a resumed survey keeps it (spec 10 §5).
 	started time.Time
@@ -67,10 +71,78 @@ var errStopped = errors.New("the operator stopped during the agent pass")
 // import's proposals and a line on the agent's layer saying why. Neither
 // the status, the log nor the span ever holds the model's text. Only the
 // operator stopping (errStopped) leaves the survey as it is.
-func (w *Runner) pass(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec passRecord, res discovery.Result) (discovery.Result, error) {
+func (w *Runner) pass(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec passRecord, res discovery.Result) (discovery.Result, *v1alpha1.Usage, error) {
 	if w.Runs == nil || !meta.IsStatusConditionTrue(rec.in.Status.Conditions, v1alpha1.ConditionEngineReady) {
-		return surveyagent.NotRead(res, passNotReady), nil
+		return surveyagent.NotRead(res, passNotReady), nil, nil
 	}
+	m := w.meter(ctx, rec)
+	out, err := w.passRun(ctx, s, rec, res)
+	if errors.Is(err, errStopped) {
+		return res, nil, err
+	}
+	return out, m.end(ctx, w.ScrapeWait), nil
+}
+
+// passMeter measures a pass on the Intendant's own model route (spec 10
+// §5): its usage counts no other role's calls. One survey runs at a time per
+// Intendant, so it is never approximate.
+type passMeter struct {
+	source  usage.Source
+	start   usage.Counters
+	pricing *v1alpha1.Pricing
+}
+
+func (w *Runner) meter(ctx context.Context, rec passRecord) *passMeter {
+	if w.Usage == nil || rec.platform == nil {
+		return nil
+	}
+	name, _, _ := roleagent.Model(rec.platform, rec.in.Spec.Model)
+	src := w.Usage(rec.platform)
+	if src == nil || name == "" {
+		return nil
+	}
+	m := &passMeter{source: usage.ForRoute(src, routes.ModelRoute(roleOf(rec.in), name))}
+	for _, spec := range rec.platform.Spec.Models {
+		if spec.Name == name {
+			m.pricing = spec.Pricing
+		}
+	}
+	var err error
+	if m.start, err = m.source.Snapshot(ctx); err != nil {
+		log.FromContext(ctx).Info("the agent pass's usage is not measured", "reason", err.Error())
+		return nil
+	}
+	return m
+}
+
+// end reads the counters one scrape interval after the pass, and records
+// the difference; nil when it cannot be measured.
+func (m *passMeter) end(ctx context.Context, wait time.Duration) *v1alpha1.Usage {
+	if m == nil {
+		return nil
+	}
+	select {
+	case <-ctx.Done():
+		return nil
+	case <-time.After(wait):
+	}
+	end, err := m.source.Snapshot(ctx)
+	if err != nil {
+		return nil
+	}
+	d, err := usage.Delta(m.start, end)
+	if err != nil {
+		return nil
+	}
+	u, err := usage.Record(d, m.pricing, false)
+	if err != nil {
+		return nil
+	}
+	return &u
+}
+
+// passRun runs the pass and joins its proposals to the import's.
+func (w *Runner) passRun(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec passRecord, res discovery.Result) (discovery.Result, error) {
 	// The root carries the agent's identity, as the Doc's does (ADR 0006).
 	root := trace.SpanFromContext(ctx)
 	root.SetAttributes(attribute.String(semconv.GenAIAgentID, string(rec.in.UID)), attribute.String(semconv.GenAIConversationID, s.Name))

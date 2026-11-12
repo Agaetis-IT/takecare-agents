@@ -339,6 +339,9 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: surveys,
 		Caller: &mcp.Client{HTTP: gatewayClient}, Metrics: surveyMetrics,
 		Tracer: traces.Tracer("github.com/agaetis-it/takecare-agents/internal/controller/intendant"),
+		// The agent pass (spec 10 §5), over the same A2A client as the Doc's.
+		Runs: &kagent0103.Runs{HTTP: a2aClient}, EngineKind: kagent0103.Kind, EngineNamespace: cfg.engineNamespace, RunMetrics: runMetrics,
+		Usage: usageSource, ScrapeWait: cfg.usageScrapeWait,
 	}); err != nil {
 		return nil, fmt.Errorf("add the survey runner: %w", err)
 	}

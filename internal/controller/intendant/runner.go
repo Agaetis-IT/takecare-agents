@@ -32,6 +32,7 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/runs"
 	"github.com/agaetis-it/takecare-agents/internal/telemetry/semconv"
+	"github.com/agaetis-it/takecare-agents/internal/usage"
 )
 
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaresurveys/status,verbs=get;update;patch,namespace=takecare-system
@@ -132,6 +133,10 @@ type Runner struct {
 	// with Now, which dates the survey's start.
 	PassClock  runs.Clock
 	RunMetrics *runs.Metrics
+	// Usage gives the platform's usage source, nil when it declares no
+	// Prometheus; ScrapeWait is one scrape interval (spec 02 §5).
+	Usage      func(p *v1alpha1.TakeCarePlatform) usage.Source
+	ScrapeWait time.Duration
 
 	mu      sync.Mutex
 	running map[types.NamespacedName]bool // by Intendant
@@ -380,8 +385,9 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 		}
 	}
 	provider, model := modelOf(p, &in)
-	res, err = w.pass(ctx, s, passRecord{
-		in: &in, gateway: p.Status.GatewayURL, provider: provider, model: model,
+	var passUsage *v1alpha1.Usage
+	res, passUsage, err = w.pass(ctx, s, passRecord{
+		in: &in, gateway: p.Status.GatewayURL, provider: provider, model: model, platform: p,
 		entries: idx.entries, rev: idx.revision, started: s.Status.StartedAt.Time,
 	}, res)
 	if err != nil {
@@ -406,7 +412,7 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 		ls.End(trace.WithTimestamp(end))
 	}
 	out = outcome(res, idx.revision, blind)
-	out.ProposalsConfigMap = name
+	out.ProposalsConfigMap, out.Usage = name, passUsage
 	return out, res, nil
 }
 

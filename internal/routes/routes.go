@@ -113,6 +113,10 @@ func ModelPath(r Role, model string) string {
 	return fmt.Sprintf("/roles/%s/models/%s", r.Key(), model)
 }
 
+// ModelRoute is the role's route to a model as the gateway's metrics name
+// it: "<namespace>/<HTTPRoute>".
+func ModelRoute(r Role, model string) string { return r.Namespace + "/" + modelName(r, model) }
+
 // ModelBackend names the platform's backend of a model (spec 01).
 func ModelBackend(model string) string { return "model-" + model }
 

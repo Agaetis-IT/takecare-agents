@@ -15,25 +15,37 @@ import (
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 )
 
-// fakeProm answers the two queries with the given counters.
+// fakeProm answers the two queries of every route with the given counters.
 func fakeProm(t *testing.T, c Counters) *httptest.Server {
+	t.Helper()
+	return fakePromByRoute(t, map[string]Counters{"": c})
+}
+
+// fakePromByRoute answers the two queries of each route with its counters,
+// and fails the test on any other query.
+func fakePromByRoute(t *testing.T, byRoute map[string]Counters) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/query" {
 			t.Errorf("path %s", r.URL.Path)
 		}
-		switch r.URL.Query().Get("query") {
-		case queryByType:
-			fmt.Fprintf(w, `{"status":"success","data":{"resultType":"vector","result":[
+		q := r.URL.Query().Get("query")
+		for route, c := range byRoute {
+			byType, calls := queries(route)
+			switch q {
+			case byType:
+				fmt.Fprintf(w, `{"status":"success","data":{"resultType":"vector","result":[
 				{"metric":{"gen_ai_token_type":"input"},"value":[1,"%g"]},
 				{"metric":{"gen_ai_token_type":"input_cache_read"},"value":[1,"%g"]},
 				{"metric":{"gen_ai_token_type":"input_cache_write"},"value":[1,"7"]},
 				{"metric":{"gen_ai_token_type":"output"},"value":[1,"%g"]}]}}`, c.Input, c.CacheRead, c.Output)
-		case queryCalls:
-			fmt.Fprintf(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1,"%g"]}]}}`, c.ModelCalls)
-		default:
-			t.Errorf("unexpected query %q", r.URL.Query().Get("query"))
+				return
+			case calls:
+				fmt.Fprintf(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1,"%g"]}]}}`, c.ModelCalls)
+				return
+			}
 		}
+		t.Errorf("unexpected query %q", q)
 	}))
 	t.Cleanup(srv.Close)
 	return srv
@@ -101,7 +113,9 @@ func TestRecord(t *testing.T) {
 // labels, never by a job's labels; the e2e scrapes the gateway twice on
 // purpose and checks the exact token counts.
 func TestQueriesCollapseDuplicateScrapes(t *testing.T) {
-	for _, q := range []string{queryByType, queryCalls} {
+	byType, calls := queries("")
+	routed, routedCalls := queries("takecare-system/role-doc-doc-model-default")
+	for _, q := range []string{byType, calls, routed, routedCalls} {
 		if !strings.Contains(q, "max by (instance, gateway, listener") {
 			t.Errorf("%s does not collapse duplicate scrapes first", q)
 		}
@@ -112,3 +126,33 @@ func TestQueriesCollapseDuplicateScrapes(t *testing.T) {
 		}
 	}
 }
+
+// A role's usage is its own model route's, matched by its exact name: two
+// roles whose names differ only by a "-model-" part never count each
+// other's tokens.
+func TestForRoute(t *testing.T) {
+	doc := "takecare-system/role-doc-doc-model-default"
+	other := "takecare-system/role-doc-doc-model-x-model-default"
+	want := map[string]Counters{
+		doc:   {ModelCalls: 2, Input: 100, Output: 10},
+		other: {ModelCalls: 5, Input: 900, Output: 90},
+	}
+	srv := fakePromByRoute(t, want)
+	for route, c := range want {
+		got, err := ForRoute(Prometheus{HTTP: srv.Client(), URL: srv.URL}, route).Snapshot(context.Background())
+		if err != nil || got != c {
+			t.Errorf("%s: %+v, %v; want %+v", route, got, err, c)
+		}
+	}
+	byType, _ := queries(doc)
+	if !strings.Contains(byType, `{route="takecare-system/role-doc-doc-model-default"}`) || strings.Contains(byType, "=~") {
+		t.Errorf("the route is not matched exactly: %s", byType)
+	}
+	if s := ForRoute(fakeSource{}, doc); s != (fakeSource{}) {
+		t.Errorf("a source that cannot be limited changed: %v", s)
+	}
+}
+
+type fakeSource struct{}
+
+func (fakeSource) Snapshot(context.Context) (Counters, error) { return Counters{}, nil }

@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -20,6 +22,7 @@ import (
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/engine"
 	"github.com/agaetis-it/takecare-agents/internal/engine/kagent0103"
+	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/surveyagent"
 	"github.com/agaetis-it/takecare-agents/internal/telemetry/semconv"
 )
@@ -364,5 +367,44 @@ func TestPassStoppedResumes(t *testing.T) {
 		if strings.Contains(line, passNotFinished) && strings.Contains(line, `"stopped-pass"`) {
 			t.Errorf("the stop was logged as an end: %s", line)
 		}
+	}
+}
+
+// promOnRoute answers the usage queries as a Prometheus would for the
+// gateway's token counters: only a query naming route counts, and its
+// tokens grow with the engine's tasks.
+func promOnRoute(t *testing.T, route string, runs *fakeRuns) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("query")
+		starts, _ := runs.counts()
+		n := 0
+		if strings.Contains(q, `route="`+route+`"`) {
+			n = starts
+		}
+		if strings.Contains(q, "sum by (gen_ai_token_type)") {
+			fmt.Fprintf(w, `{"status":"success","data":{"resultType":"vector","result":[
+				{"metric":{"gen_ai_token_type":"input"},"value":[1,"%d"]},
+				{"metric":{"gen_ai_token_type":"output"},"value":[1,"%d"]}]}}`, 1000*n, 50*n)
+			return
+		}
+		fmt.Fprintf(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1,"%d"]}]}}`, 3*n)
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+// A pass's usage is measured on the Intendant's own model route, and
+// recorded in the survey.
+func TestPassUsage(t *testing.T) {
+	f := startRunner(t)
+	f.passReady(t, "metered")
+	f.runs.set("complete", goodAnswer, false)
+	route := routes.ModelRoute(roleOf(&v1alpha1.TakeCareIntendant{Name: "metered", Namespace: ns}), "default")
+	f.usageURL.Store(promOnRoute(t, route, f.runs))
+	s := f.byHand(t, "metered-pass", "metered")
+	u := s.Status.Usage
+	if u == nil || u.ModelCalls != 3 || u.InputTokens != 1000 || u.OutputTokens != 50 || u.Approximate {
+		t.Fatalf("usage %+v", u)
 	}
 }

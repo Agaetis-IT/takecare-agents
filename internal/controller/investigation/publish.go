@@ -25,6 +25,8 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/doc"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
 	"github.com/agaetis-it/takecare-agents/internal/reportslack"
+	"github.com/agaetis-it/takecare-agents/internal/roleagent"
+	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/telemetry/semconv"
 	"github.com/agaetis-it/takecare-agents/internal/usage"
 )
@@ -90,9 +92,10 @@ type meter struct {
 	reason string
 }
 
-// startMeter reads the counters when the run starts. A resumed run lost its
-// start snapshot with the previous leader.
-func (w *Worker) startMeter(ctx context.Context, resumed bool) *meter {
+// startMeter reads the counters when the run starts, on the Doc's own model
+// route: another role's calls never count (spec 02 §5). A resumed run lost
+// its start snapshot with the previous leader.
+func (w *Worker) startMeter(ctx context.Context, d *v1alpha1.TakeCareDoc, resumed bool) *meter {
 	m := &meter{}
 	p, err := w.platform(ctx)
 	switch {
@@ -109,6 +112,9 @@ func (w *Worker) startMeter(ctx context.Context, resumed bool) *meter {
 	if m.source = w.Accounting.Usage(p); m.source == nil {
 		m.reason = "the platform declares no Prometheus (observability.metrics.prometheusURL)"
 		return m
+	}
+	if model, _, _ := roleagent.Model(p, d.Spec.Model); model != "" {
+		m.source = usage.ForRoute(m.source, routes.ModelRoute(routes.Role{Kind: doc.Kind, Name: d.Name, Namespace: d.Namespace}, model))
 	}
 	if m.start, err = m.source.Snapshot(ctx); err != nil {
 		m.reason = err.Error()

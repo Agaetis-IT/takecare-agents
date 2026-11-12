@@ -24,9 +24,10 @@ STATE=bin/demo
 export KUBECONFIG="${PWD}/bin/${CLUSTER}.kubeconfig"
 HELM="${HELM:-bin/helm-${HELM_VERSION}}"
 export HELM_REPOSITORY_CONFIG="${PWD}/bin/helm/repositories.yaml" HELM_REPOSITORY_CACHE="${PWD}/bin/helm/cache"
-# The stack needs about 3.7 GiB in an incident (measured on k3d with the
-# Intendant's agent).
-MIN_DOCKER_MEMORY=$((4 * 1024 * 1024 * 1024))
+# The stack needs about 3.5 GiB idle and 4.1 GiB in an incident, the
+# Intendant's agent pass included (measured on k3d, docker stats every 5 s;
+# ADR 0017 §6).
+MIN_DOCKER_MEMORY=$((5 * 1024 * 1024 * 1024))
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -54,7 +55,7 @@ prerequisites() {
   docker info >/dev/null 2>&1 || die "Docker is not running"
   local mem
   mem="$(docker info --format '{{.MemTotal}}')"
-  ((mem >= MIN_DOCKER_MEMORY)) || die "Docker has $((mem / 1024 / 1024)) MiB of memory; the demo needs at least 4 GiB (about 3.7 GiB in an incident)"
+  ((mem >= MIN_DOCKER_MEMORY)) || die "Docker has $((mem / 1024 / 1024)) MiB of memory; the demo needs at least 5 GiB (about 4.1 GiB in an incident)"
   [[ "$(k3d version | head -1)" == *"$K3D_VERSION"* ]] || log "k3d is not ${K3D_VERSION}, the version the demo is tested with"
   make helm chart-deps >/dev/null
 }

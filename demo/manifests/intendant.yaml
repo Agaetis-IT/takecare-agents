@@ -1,8 +1,8 @@
 # The demo's Intendant (spec 10): it surveys the scenery through the demo's
 # connectors and proposes what the hand-written demo Map lacks. It reads the
 # Map, the cluster and Prometheus's alerting rules; it surveys on demand and
-# on each new Map revision (no schedule). The agent pass (spec 10 §5) is
-# not built yet: its surveys hold the import's proposals only.
+# on each new Map revision (no schedule). Its agent pass (spec 10 §5) reads
+# the cluster and the runbooks, and proposes what the import cannot see.
 apiVersion: takecare.agaetis.fr/v1alpha1
 kind: TakeCareIntendant
 metadata:
@@ -17,3 +17,4 @@ spec:
     map: [map]
     cluster: [kubernetes]
     metrics: [prometheus]
+    knowledge: [runbooks]

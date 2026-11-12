@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- The Intendant (spec 10), its import half; the agent pass is not built yet.
+- The Intendant (spec 10): its import, then its agent pass.
   - **The kinds:** `TakeCareIntendant` and `TakeCareSurvey`.
   - **The controller:** an Intendant has its conditions, a cron schedule, and its routes on the gateway: the Map's `map_at`, the cluster's read tools, and `get_rules`, whose arguments both the gateway (a route-level rule on the metrics route) and the operator check.
   - **Survey triggers:** the schedule, a new Map revision, a registration (a bound connector or an engine agent appearing or changing), and a survey created by hand. Triggers are debounced, with one pending trigger kept in status.
@@ -17,8 +17,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - **Retention:** an ended survey is deleted after seven days, each Intendant keeping its newest.
   - **The demo** runs an Intendant over its scenery.
   - **The agent:** each Intendant has its kagent agent, its model route and its A2A route, given the Map's, the cluster's and the knowledge connectors' read tools (never `get_rules`); a finalizer removes them with the Intendant. Its engine agents no longer count as registrations.
+  - **The agent pass:** after the import, the agent reads the cluster and the knowledge connectors and proposes dependencies, owners and runbooks, each with its evidence. Its answer is read strictly, and only Map keys, knowledge sources and tool names pass. A pass that does not run, does not finish, or answers what cannot be read leaves the import's proposals and says why. Its usage is measured on its own model route.
   - **Operator rights:** the operator gains `delete` on `takecaresurveys`, `create`, `get` and `delete` on ConfigMaps, and `update` and `patch` on `takecareintendants` with `update` on their finalizers, in its own namespace.
 - The Map accepts a `knowledge` source on runbook entries, naming the record of a knowledge connector, and an alert's expression on `alertedBy` (spec 08).
+
+### Changed
+
+- The demo needs 5 GB of Docker memory, up from 4 GB: with the Intendant's agent pass the stack uses about 4.1 GiB in an incident (ADR 0017 §6).
+- A role's model usage is measured on its own model route: the Doc's usage no longer counts another role's calls, such as an Intendant's agent pass, and `approximate` now means two runs of the same Doc overlapping (spec 02 §5).
 
 ### Fixed
 
