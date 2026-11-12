@@ -159,7 +159,7 @@ Also configured in `.claude/settings.json`: `gofmt` runs after every edit of a `
 - **Alerting cadence**: `HighErrorRate` uses a 1 m window and `for: 30s`; the app's ramp decides when the threshold is crossed. Changing one without the other breaks the demo timing.
 - **The demo must not change the user's kube context**: use an explicit kubeconfig from `k3d kubeconfig write`.
 - **Drift beats absence**: most POC demo failures were outdated objects (old receiver code, rules edited locally and never redeployed), not missing ones. Make `SceneryReady` detect drift.
-- **Docker memory**: the stack needs about 2.7 GB idle and 3.8 GB during an incident. Check for at least 4 GB.
+- **Docker memory**: the stack needs about 3.5 GiB idle and 4.1 GiB during an incident, the Intendant's agent pass included. Check for at least 5 GB.
 
 ## Definition of done
 

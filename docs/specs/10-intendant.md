@@ -80,6 +80,7 @@ The pass runs after the import when the Intendant's agent is ready (`EngineReady
 - **Its deadline** is 10 minutes counted from the survey's start (`status.startedAt`), the engine getting its usual share. A survey resumed after a restart keeps that start and follows its recorded task (`status.engine.taskID`); a new pass counts from its own start.
 - **A task stopped** waiting for an input or an authorization ends the pass at once and is canceled.
 - **A pass that does not finish**, fails, or answers what cannot be read leaves the import's proposals: the survey is Completed, and its `agent` layer says why in a fixed phrase. The model's text is never kept in the status, a log or a span.
+- **Usage:** the pass's model calls and tokens are measured on the Intendant's own model route, as the Doc's are (spec 02 §5), and recorded in the survey's `status.usage`. One survey runs at a time per Intendant, so it is exact, with two exceptions. A pass resumed after a restart lost its start and records no usage. And the pass after one that did not finish is marked approximate: kagent refuses cancellation (below), so the earlier pass may still call the model on the same route; that is one of the corrections after 0.3.0.
 - **Cancellation:** kagent 0.10.3's runtime refuses it, so a pass past its deadline may run on in its pod and call the model, bounded by the model's own turn limit; this is one of the corrections after 0.3.0.
 
 ## 6. Levels
@@ -172,12 +173,13 @@ Retention: an ended survey (Completed, Failed or Dropped) older than seven days 
 
 1. On the demo, a survey proposes the demo Map's compute, network, identity and environment entries, and finds no difference with the validated demo Map other than the declared ones.
 2. On the demo, `HighErrorRate`, which `service/billing-api` declares, gets the expression Prometheus loaded; a rule naming exactly one service or workload of the Map lands as `alertedBy`, with its expression, on that entry.
-3. `RB-014` in the corpus lands as a runbook entry with `knowledge: runbooks/RB-014`.
+3. `RB-014` in the corpus lands as a `knowledge` source on a runbook entry that documents `service/billing-api` (`documentedBy`), whatever key the agent gives that entry.
 4. A Deployment deleted from the scenery gives a removal proposal; its entry keeps `lastSeen`.
 5. A namespace no connector reads is a blind spot of the survey, with its reason, not an omission.
 6. The read-only guard test is unchanged and green; the add-ons' RBAC is unchanged; the operator gains only create, get, list, watch and delete on `takecaresurveys`, get, update and patch on its status, and create, get and delete on ConfigMaps in its own namespace (§7).
 7. agentregistry installs from the chart, and its connector is Ready with read tools only.
 8. A new Map revision triggers one survey; two triggers during a run give one more survey, not two (proven in envtest).
+9. To come before 0.3.0: a scored bench of the Intendant on a real model, its proposals compared with a hand-written expected set.
 
 ## Open questions
 

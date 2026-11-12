@@ -1,0 +1,511 @@
+{
+  "source": "recorded",
+  "date": "2026-11-12",
+  "exchanges": [
+    {
+      "fingerprint": {
+        "model": "e2e-doc",
+        "roles": [
+          "system",
+          "user"
+        ],
+        "called": [],
+        "offered": "f49df94cf4913a63"
+      },
+      "response": {
+        "id": "e2e-1",
+        "object": "chat.completion",
+        "created": 1793433601,
+        "model": "e2e-doc",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "tool_calls",
+            "message": {
+              "role": "assistant",
+              "content": null,
+              "tool_calls": [
+                {
+                  "id": "call_1_1",
+                  "type": "function",
+                  "function": {
+                    "name": "entry",
+                    "arguments": "{\"key\":\"service/billing-api\"}"
+                  }
+                },
+                {
+                  "id": "call_1_2",
+                  "type": "function",
+                  "function": {
+                    "name": "resources_list",
+                    "arguments": "{\"namespace\":\"demo-apps\",\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\"}"
+                  }
+                },
+                {
+                  "id": "call_1_3",
+                  "type": "function",
+                  "function": {
+                    "name": "pods_list_in_namespace",
+                    "arguments": "{\"namespace\":\"demo-apps\"}"
+                  }
+                },
+                {
+                  "id": "call_1_4",
+                  "type": "function",
+                  "function": {
+                    "name": "runbooks_search",
+                    "arguments": "{\"query\":\"billing-api\"}"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 3823,
+          "completion_tokens": 253,
+          "total_tokens": 4076
+        }
+      }
+    },
+    {
+      "fingerprint": {
+        "model": "e2e-doc",
+        "roles": [
+          "system",
+          "user",
+          "assistant",
+          "tool",
+          "tool",
+          "tool",
+          "tool"
+        ],
+        "called": [
+          "entry",
+          "resources_list",
+          "pods_list_in_namespace",
+          "runbooks_search"
+        ],
+        "offered": "f49df94cf4913a63"
+      },
+      "response": {
+        "id": "e2e-2",
+        "object": "chat.completion",
+        "created": 1793433602,
+        "model": "e2e-doc",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "tool_calls",
+            "message": {
+              "role": "assistant",
+              "content": null,
+              "tool_calls": [
+                {
+                  "id": "call_2_1",
+                  "type": "function",
+                  "function": {
+                    "name": "resources_get",
+                    "arguments": "{\"kind\":\"Deployment\",\"apiVersion\":\"apps/v1\",\"namespace\":\"demo-apps\",\"name\":\"billing-api\"}"
+                  }
+                },
+                {
+                  "id": "call_2_2",
+                  "type": "function",
+                  "function": {
+                    "name": "runbooks_recent",
+                    "arguments": "{\"limit\":20}"
+                  }
+                },
+                {
+                  "id": "call_2_3",
+                  "type": "function",
+                  "function": {
+                    "name": "entry",
+                    "arguments": "{\"key\":\"runbook/proxy-timeout\"}"
+                  }
+                },
+                {
+                  "id": "call_2_4",
+                  "type": "function",
+                  "function": {
+                    "name": "map_at",
+                    "arguments": "{\"date\":\"2026-11-05\"}"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 4319,
+          "completion_tokens": 101,
+          "total_tokens": 4420
+        }
+      }
+    },
+    {
+      "fingerprint": {
+        "model": "e2e-doc",
+        "roles": [
+          "system",
+          "user",
+          "assistant",
+          "tool",
+          "tool",
+          "tool",
+          "tool",
+          "assistant",
+          "tool",
+          "tool",
+          "tool",
+          "tool"
+        ],
+        "called": [
+          "entry",
+          "resources_list",
+          "pods_list_in_namespace",
+          "runbooks_search",
+          "resources_get",
+          "runbooks_recent",
+          "entry",
+          "map_at"
+        ],
+        "offered": "f49df94cf4913a63"
+      },
+      "response": {
+        "id": "e2e-3",
+        "object": "chat.completion",
+        "created": 1793433603,
+        "model": "e2e-doc",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "tool_calls",
+            "message": {
+              "role": "assistant",
+              "content": null,
+              "tool_calls": [
+                {
+                  "id": "call_3_1",
+                  "type": "function",
+                  "function": {
+                    "name": "runbooks_get",
+                    "arguments": "{\"id\":\"RB-014\"}"
+                  }
+                },
+                {
+                  "id": "call_3_2",
+                  "type": "function",
+                  "function": {
+                    "name": "map_at",
+                    "arguments": "{\"date\":\"2026-11-12T13:46:53Z\"}"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 5782,
+          "completion_tokens": 56,
+          "total_tokens": 5838
+        }
+      }
+    },
+    {
+      "fingerprint": {
+        "model": "e2e-doc",
+        "roles": [
+          "system",
+          "user",
+          "assistant",
+          "tool",
+          "tool",
+          "tool",
+          "tool",
+          "assistant",
+          "tool",
+          "tool",
+          "tool",
+          "tool",
+          "assistant",
+          "tool",
+          "tool"
+        ],
+        "called": [
+          "entry",
+          "resources_list",
+          "pods_list_in_namespace",
+          "runbooks_search",
+          "resources_get",
+          "runbooks_recent",
+          "entry",
+          "map_at",
+          "runbooks_get",
+          "map_at"
+        ],
+        "offered": "f49df94cf4913a63"
+      },
+      "response": {
+        "id": "e2e-4",
+        "object": "chat.completion",
+        "created": 1793433604,
+        "model": "e2e-doc",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "tool_calls",
+            "message": {
+              "role": "assistant",
+              "content": null,
+              "tool_calls": [
+                {
+                  "id": "call_4_1",
+                  "type": "function",
+                  "function": {
+                    "name": "map_at",
+                    "arguments": "{\"date\":\"2026-11-12T14:00:00Z\"}"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 6625,
+          "completion_tokens": 35,
+          "total_tokens": 6660
+        }
+      }
+    },
+    {
+      "fingerprint": {
+        "model": "e2e-doc",
+        "roles": [
+          "system",
+          "user",
+          "assistant",
+          "tool",
+          "tool",
+          "tool",
+          "tool",
+          "assistant",
+          "tool",
+          "tool",
+          "tool",
+          "tool",
+          "assistant",
+          "tool",
+          "tool",
+          "assistant",
+          "tool"
+        ],
+        "called": [
+          "entry",
+          "resources_list",
+          "pods_list_in_namespace",
+          "runbooks_search",
+          "resources_get",
+          "runbooks_recent",
+          "entry",
+          "map_at",
+          "runbooks_get",
+          "map_at",
+          "map_at"
+        ],
+        "offered": "f49df94cf4913a63"
+      },
+      "response": {
+        "id": "e2e-5",
+        "object": "chat.completion",
+        "created": 1793433605,
+        "model": "e2e-doc",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "tool_calls",
+            "message": {
+              "role": "assistant",
+              "content": null,
+              "tool_calls": [
+                {
+                  "id": "call_5_1",
+                  "type": "function",
+                  "function": {
+                    "name": "runbooks_search",
+                    "arguments": "{\"query\":\"billing\"}"
+                  }
+                },
+                {
+                  "id": "call_5_2",
+                  "type": "function",
+                  "function": {
+                    "name": "runbooks_search",
+                    "arguments": "{\"query\":\"proxy\"}"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 6774,
+          "completion_tokens": 34,
+          "total_tokens": 6808
+        }
+      }
+    },
+    {
+      "fingerprint": {
+        "model": "e2e-doc",
+        "roles": [
+          "system",
+          "user",
+          "assistant",
+          "tool",
+          "tool",
+          "tool",
+          "tool",
+          "assistant",
+          "tool",
+          "tool",
+          "tool",
+          "tool",
+          "assistant",
+          "tool",
+          "tool",
+          "assistant",
+          "tool",
+          "assistant",
+          "tool",
+          "tool"
+        ],
+        "called": [
+          "entry",
+          "resources_list",
+          "pods_list_in_namespace",
+          "runbooks_search",
+          "resources_get",
+          "runbooks_recent",
+          "entry",
+          "map_at",
+          "runbooks_get",
+          "map_at",
+          "map_at",
+          "runbooks_search",
+          "runbooks_search"
+        ],
+        "offered": "f49df94cf4913a63"
+      },
+      "response": {
+        "id": "e2e-6",
+        "object": "chat.completion",
+        "created": 1793433606,
+        "model": "e2e-doc",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "tool_calls",
+            "message": {
+              "role": "assistant",
+              "content": null,
+              "tool_calls": [
+                {
+                  "id": "call_6_1",
+                  "type": "function",
+                  "function": {
+                    "name": "runbooks_search",
+                    "arguments": "{\"query\":\"demo-apps\"}"
+                  }
+                },
+                {
+                  "id": "call_6_2",
+                  "type": "function",
+                  "function": {
+                    "name": "resources_list",
+                    "arguments": "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"namespace\":\"demo-apps\"}"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 6848,
+          "completion_tokens": 50,
+          "total_tokens": 6898
+        }
+      }
+    },
+    {
+      "fingerprint": {
+        "model": "e2e-doc",
+        "roles": [
+          "system",
+          "user",
+          "assistant",
+          "tool",
+          "tool",
+          "tool",
+          "tool",
+          "assistant",
+          "tool",
+          "tool",
+          "tool",
+          "tool",
+          "assistant",
+          "tool",
+          "tool",
+          "assistant",
+          "tool",
+          "assistant",
+          "tool",
+          "tool",
+          "assistant",
+          "tool",
+          "tool"
+        ],
+        "called": [
+          "entry",
+          "resources_list",
+          "pods_list_in_namespace",
+          "runbooks_search",
+          "resources_get",
+          "runbooks_recent",
+          "entry",
+          "map_at",
+          "runbooks_get",
+          "map_at",
+          "map_at",
+          "runbooks_search",
+          "runbooks_search",
+          "runbooks_search",
+          "resources_list"
+        ],
+        "offered": "f49df94cf4913a63"
+      },
+      "response": {
+        "id": "e2e-7",
+        "object": "chat.completion",
+        "created": 1793433607,
+        "model": "e2e-doc",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "```json\n{\"proposals\": [\n  {\"key\": \"runbook/proxy-timeout\",\n   \"sources\": [{\"knowledge\": \"runbooks/RB-014\"}],\n   \"evidence\": [\"runbooks_search\", \"runbooks_get\"]}\n]}\n```"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 7003,
+          "completion_tokens": 61,
+          "total_tokens": 7064
+        }
+      }
+    }
+  ]
+}

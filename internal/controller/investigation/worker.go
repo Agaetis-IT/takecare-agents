@@ -377,7 +377,7 @@ func (w *Worker) drive(ctx context.Context, r run) error {
 	}
 	// The usage's start snapshot, and the grouped alerts the run's message
 	// carries (unknown for a resumed run).
-	m := w.startMeter(ctx, r.resumed)
+	m := w.startMeter(ctx, d, r.resumed)
 	var sent map[string]bool
 	if !r.resumed {
 		sent = doc.Sent(&inv)

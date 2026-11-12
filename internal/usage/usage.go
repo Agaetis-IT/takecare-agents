@@ -61,27 +61,52 @@ type Source interface {
 // on the e2e cluster: a later agentgateway that adds one must extend the
 // list (the version moves in a deliberate PR, hack/versions.env), or two
 // distinct series would collapse and the usage would be under-counted.
-const (
-	seriesIdentity = `instance, gateway, listener, bind, route, route_rule, gen_ai_operation_name, gen_ai_system, gen_ai_request_model, gen_ai_response_model, gen_ai_token_type`
-	queryByType    = `sum by (gen_ai_token_type) (max by (` + seriesIdentity + `) (agentgateway_gen_ai_client_token_usage_sum))`
-	queryCalls     = `sum(max by (` + seriesIdentity + `) (agentgateway_gen_ai_client_token_usage_count{gen_ai_token_type="input"}))`
-)
+const seriesIdentity = `instance, gateway, listener, bind, route, route_rule, gen_ai_operation_name, gen_ai_system, gen_ai_request_model, gen_ai_response_model, gen_ai_token_type`
+
+// queries are the two queries on the series of one route, or of every
+// route when route is empty. The route label is "<namespace>/<HTTPRoute>"
+// (read on the e2e cluster, agentgateway 1.6.0), so each role's usage is
+// its own model route's: exact whatever another role runs meanwhile.
+func queries(route string) (byType, calls string) {
+	sel, input := "", `{gen_ai_token_type="input"}`
+	if route != "" {
+		quoted := strconv.Quote(route)
+		sel, input = `{route=`+quoted+`}`, `{gen_ai_token_type="input",route=`+quoted+`}`
+	}
+	byType = `sum by (gen_ai_token_type) (max by (` + seriesIdentity + `) (agentgateway_gen_ai_client_token_usage_sum` + sel + `))`
+	calls = `sum(max by (` + seriesIdentity + `) (agentgateway_gen_ai_client_token_usage_count` + input + `))`
+	return byType, calls
+}
 
 // Prometheus reads the counters from the Prometheus that scrapes the
 // gateway (the platform's observability.metrics.prometheusURL).
 type Prometheus struct {
 	HTTP *http.Client
 	URL  string
+	// Route, when set, limits the counters to one route's series
+	// ("<namespace>/<HTTPRoute>"): a role's own model route.
+	Route string
+}
+
+// ForRoute is the source limited to one route, when the source can be;
+// as it is otherwise.
+func ForRoute(s Source, route string) Source {
+	if p, ok := s.(Prometheus); ok {
+		p.Route = route
+		return p
+	}
+	return s
 }
 
 // Snapshot implements Source. A series that does not exist yet (no call so
 // far) counts zero.
 func (p Prometheus) Snapshot(ctx context.Context) (Counters, error) {
-	byType, err := p.Query(ctx, queryByType, "gen_ai_token_type")
+	qByType, qCalls := queries(p.Route)
+	byType, err := p.Query(ctx, qByType, "gen_ai_token_type")
 	if err != nil {
 		return Counters{}, err
 	}
-	calls, err := p.Query(ctx, queryCalls, "")
+	calls, err := p.Query(ctx, qCalls, "")
 	if err != nil {
 		return Counters{}, err
 	}
