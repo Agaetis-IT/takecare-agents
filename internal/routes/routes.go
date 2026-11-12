@@ -85,9 +85,6 @@ type MCP struct {
 	Backend string
 	// Tools is the allow-list: the only tools the gateway lets the role call.
 	Tools []string
-	// Extra are CEL expressions the policy requires besides the allow-list,
-	// on the call's arguments for example.
-	Extra []string
 }
 
 // Names of the generated objects.
@@ -123,16 +120,6 @@ func Expression(tools []string) string {
 	return "mcp.tool.name in [" + strings.Join(quoted, ", ") + "]"
 }
 
-// expression is the allow-list's expression and every Extra one, all
-// required.
-func (m MCP) expression() string {
-	expr := Expression(m.Tools)
-	for _, e := range m.Extra {
-		expr = "(" + expr + ") && (" + e + ")"
-	}
-	return expr
-}
-
 func (r Role) object(gvk schema.GroupVersionKind, name string) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(gvk)
@@ -158,7 +145,7 @@ func EnsureMCP(ctx context.Context, c client.Client, g Gateway, r Role, m MCP) e
 		"targetRefs": []any{map[string]any{keyGroup: gatewayAPIGroup, keyKind: "HTTPRoute", keyName: name}},
 		"backend": map[string]any{"mcp": map[string]any{"authorization": map[string]any{
 			"action": "Require",
-			"policy": map[string]any{"matchExpressions": []any{m.expression()}},
+			"policy": map[string]any{"matchExpressions": []any{Expression(m.Tools)}},
 		}}},
 	}
 	if err := apply.Strict(ctx, c, policy); err != nil {

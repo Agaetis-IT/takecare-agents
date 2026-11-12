@@ -151,7 +151,7 @@ up() {
   tag="$(images)"
   secrets
   install "$tag"
-  log "applying the Doc and the TakeCareDemo (demo/manifests)"
+  log "applying the Doc, the Intendant and the TakeCareDemo (demo/manifests)"
   kubectl apply -f demo/manifests/ >/dev/null
   wait_ready takecareplatform main 300
   for c in kubernetes prometheus report incidents runbooks deployments vendor support; do

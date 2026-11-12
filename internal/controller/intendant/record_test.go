@@ -136,7 +136,7 @@ func TestSurveyTraceFailure(t *testing.T) {
 // Retention: an ended survey older than seven days goes, unless it is its
 // Intendant's newest ended one; a survey that has not ended stays.
 func TestSweep(t *testing.T) {
-	now := time.Date(2026, 11, 11, 10, 0, 0, 0, time.UTC)
+	now := testStart
 	old, recent := now.Add(-8*24*time.Hour), now.Add(-time.Hour)
 	survey := func(name, intendant string, phase v1alpha1.RunPhase, ended time.Time) *v1alpha1.TakeCareSurvey {
 		s := &v1alpha1.TakeCareSurvey{Name: name, Namespace: ns, CreationTimestamp: metav1.NewTime(ended.Add(-time.Minute))}

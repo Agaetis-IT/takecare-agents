@@ -115,6 +115,8 @@ make demo-reset                     # puts the scenery back in shape, ready for 
 make demo-down                      # deletes the cluster and the demo's working files
 ```
 
+The demo also runs an Intendant ([spec 10](docs/specs/10-intendant.md)), which surveys the scenery and proposes what the demo's Map lacks. It surveys on each new Map revision and on demand: create a `TakeCareSurvey` naming it (`intendantRef: {kind: TakeCareIntendant, name: intendant}`), then read `kubectl -n takecare-system get takecaresurveys` and the survey's status. The first proposals are in its status, the full set in the ConfigMap that `status.proposalsConfigMap` names. The agent pass (spec 10 §5) is not built yet, so a survey holds the import's proposals only.
+
 `DEMO_IMAGES=build` builds the images from this tree and imports them into the cluster. Without it, `demo-up` pulls the images of the version the charts name, the latest release, from the registry. A second `make demo-up` changes nothing and takes seconds. With `TAKECARE_SLACK_BOT_TOKEN` and `TAKECARE_SLACK_ONCALL_CHANNEL` (and optionally `TAKECARE_SLACK_REVIEW_CHANNEL`), diagnoses are posted to Slack; without them they go to the report server's log, and `make demo-verdict` reads them from the investigation. `make demo-bench N=5` runs the accuracy bench on the ongoing incident (see `test/bench/README.md`).
 
 Prerequisites: Docker with at least 4 GB of memory (the stack uses about 3.5 GiB in an incident), k3d, kubectl, make; Helm 4 is downloaded by the Makefile.

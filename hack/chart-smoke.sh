@@ -154,27 +154,39 @@ wait_condition_long() {
   return 1
 }
 
-# mcp_call NAMESPACE POD URL TOOL: from the pod, opens an MCP session at URL
-# and calls TOOL without arguments; prints the JSON-RPC answer. An allowed
-# tool answers a "result" (an error result when arguments are missing); a
-# tool the gateway refuses answers a JSON-RPC "error".
+# mcp_call NAMESPACE POD URL TOOL [ARGS]: from the pod, opens an MCP session
+# at URL and calls TOOL with the JSON object ARGS (none by default); prints
+# the JSON-RPC answer. An allowed tool answers a "result" (an error result
+# when arguments are missing); a tool the gateway refuses answers a
+# JSON-RPC "error".
 mcp_call() {
+  local args="${5:-}"
+  [[ -n "$args" ]] || args='{}'
   # shellcheck disable=SC2016 # the script expands in the pod, not here
   kubectl -n "$1" exec "$2" -- sh -c '
-    url=$0 tool=$1 accept="Accept: application/json, text/event-stream" json="Content-Type: application/json"
+    url=$0 tool=$1 args=$2 accept="Accept: application/json, text/event-stream" json="Content-Type: application/json"
     sid=$(curl -s -m 10 -D - -o /dev/null -X POST -H "$json" -H "$accept" \
       -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"smoke\",\"version\":\"0\"}}}" "$url" |
       tr -d "\r" | sed -n "s/^[Mm]cp-[Ss]ession-[Ii]d: //p")
     curl -s -m 10 -o /dev/null -X POST -H "$json" -H "$accept" -H "Mcp-Session-Id: $sid" \
       -d "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}" "$url"
     curl -s -m 20 -X POST -H "$json" -H "$accept" -H "Mcp-Session-Id: $sid" \
-      -d "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"$tool\",\"arguments\":{}}}" "$url"
-  ' "$3" "$4"
+      -d "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"$tool\",\"arguments\":$args}}" "$url"
+  ' "$3" "$4" "$args"
 }
 
-# mcp_allowed NAMESPACE POD URL TOOL: succeeds when the call gets a result.
+# mcp_allowed NAMESPACE POD URL TOOL [ARGS]: succeeds when the call gets a
+# result.
 mcp_allowed() {
   mcp_call "$@" | grep -q '"result"'
+}
+
+# mcp_refused NAMESPACE POD URL TOOL [ARGS]: succeeds when the call is
+# answered with an error and no result: a refusal, not a broken network.
+mcp_refused() {
+  local out
+  out="$(mcp_call "$@")"
+  grep -q '"error"' <<<"$out" && ! grep -q '"result"' <<<"$out"
 }
 
 # operator_metrics prints the operator's metrics. They are served over HTTPS
@@ -471,6 +483,37 @@ EOF
   check "a call to pods_list through the Doc's route is let through" \
     mcp_allowed kagent smoke-a2a "$route" pods_list
   kubectl -n "$NS" patch takecareconnector kubernetes --type=json -p '[{"op":"remove","path":"/spec/tools"}]' >/dev/null
+  # The Intendant's routes (spec 10 §4, §8): the gateway lets get_rules
+  # through by name, with the survey's arguments, and refuses a tool off the
+  # allow-list. It does not check arguments: agentgateway v1.6.0 does not
+  # show them to its rules, so get_rules' arguments are the operator's
+  # client check alone. Not a check that passes: a note, tested again when
+  # agentgateway moves.
+  log "the Intendant's routes (spec 10 §4)"
+  kubectl -n "$NS" apply -f - >/dev/null <<EOF
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareIntendant
+metadata: { name: smoke-intendant, namespace: ${NS} }
+spec:
+  level: Practitioner
+  scope: { namespaces: [demo-apps] }
+  connectors: { map: [map], cluster: [kubernetes], metrics: [prometheus] }
+EOF
+  check "the Intendant reaches Ready=True, its three routes rendered" \
+    wait_condition_long takecareintendant smoke-intendant Ready True 120
+  local iroute="${gw}/mcp/${NS}/smoke-intendant"
+  check "get_rules with the survey's arguments is let through" \
+    mcp_allowed kagent smoke-a2a "${iroute}/prometheus" get_rules '{"type":"alert","exclude_alerts":true}'
+  check "get_rules naming rules that match the pattern is let through" \
+    mcp_allowed kagent smoke-a2a "${iroute}/prometheus" get_rules '{"type":"alert","exclude_alerts":true,"rule_name":["HighErrorRate"]}'
+  log "note: the gateway does not check get_rules' arguments in agentgateway ${AGENTGATEWAY_VERSION:-v1.6.0}; the operator's client does (spec 10 §8)"
+  check "get_alerts, off the Intendant's allow-list, is refused on its metrics route" \
+    mcp_refused kagent smoke-a2a "${iroute}/prometheus" get_alerts '{}'
+  check "map_at through the Intendant's map route is let through" \
+    mcp_allowed kagent smoke-a2a "${iroute}/map" map_at '{}'
+  check "pods_log, a content tool, is refused on the Intendant's cluster route" \
+    mcp_refused kagent smoke-a2a "${iroute}/kubernetes" pods_log '{}'
+  kubectl -n "$NS" delete takecareintendant smoke-intendant --timeout=60s >/dev/null
   kubectl -n kagent delete pod smoke-a2a --now >/dev/null
   kubectl -n "$NS" delete takecaredoc smoke-doc --timeout=60s >/dev/null
   check "deleting the Doc removed its agent, tool servers and instructions in kagent, and its routes" \
@@ -648,11 +691,11 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=79 install ;;
-  upgrade) CHECKS_EXPECTED=79 upgrade ;;
+  install) CHECKS_EXPECTED=85 install ;;
+  upgrade) CHECKS_EXPECTED=85 upgrade ;;
   status) status ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=4 cluster_chart ;;
-  all) up; CHECKS_EXPECTED=79 install; CHECKS_EXPECTED=79 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
+  all) up; CHECKS_EXPECTED=85 install; CHECKS_EXPECTED=85 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|cluster|status|down|all]"; exit 2 ;;
 esac

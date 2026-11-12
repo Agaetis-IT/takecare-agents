@@ -48,7 +48,7 @@ Layers, and how they map to spec 08:
 
 The import does not read the `knowledge` connectors: no standard MCP tool lists a knowledge server's records, so runbook entries come from the agent pass (§5) (decided 2026-11-11).
 
-It calls only `namespaces_list` and `resources_list` on a cluster connector, and `get_rules` on the metrics connector, each when discovery classed it read and not content; the operator's MCP client refuses any other tool. `get_rules` is called for the alerting rules only, never the firing alerts, which carry label values, and never with another Prometheus or tenant: the client admits `type: alert`, `exclude_alerts: true` and alert names, nothing else. The import lists objects and never fetches one, since an object's spec may carry values: of an object it keeps its kind, namespace, name and the two labels above, nothing else. The answers it parses are the add-ons' as pinned (`resources_list`'s structured content, `namespaces_list`'s table, `get_rules`' text, of which it keeps each rule's name and expression only); they are parsed strictly, and a shape it does not know, a truncated answer included, is a `notSeen` line, never a guess.
+It calls only `namespaces_list` and `resources_list` on a cluster connector, and `get_rules` on the metrics connector, each when discovery classed it read and not content; the operator's MCP client refuses any other tool. `get_rules` is called for the alerting rules only, never the firing alerts, which carry label values, and never with another Prometheus or tenant: the client admits `type: alert`, `exclude_alerts: true` and alert names, nothing else. That client check is the only check of the arguments: the gateway lets `get_rules` through by name (§8). The import lists objects and never fetches one, since an object's spec may carry values: of an object it keeps its kind, namespace, name and the two labels above, nothing else. The answers it parses are the add-ons' as pinned (`resources_list`'s structured content, `namespaces_list`'s table, `get_rules`' text, of which it keeps each rule's name and expression only); they are parsed strictly, and a shape it does not know, a truncated answer included, is a `notSeen` line, never a guess.
 
 Never Secrets, never ConfigMap values, never logs: content tools are not given to it.
 
@@ -106,7 +106,9 @@ The operator's rights on ConfigMaps in its own namespace are create, get and del
 
 agentregistry (`agentregistry-dev/agentregistry`, Apache-2.0) is installed by the `takecare` chart from its OCI chart (`oci://ghcr.io/agentregistry-dev/agentregistry/charts/agentregistry`), pinned in `hack/versions.env`, and sits behind the gateway. Its Service exposes an HTTP port (12121) and an MCP port (31313). Its MCP endpoint is registered as a connector of type `registry`, with `read` tools only, listed one by one.
 
-The Intendant's routes on the gateway (to its map, cluster and metrics connectors) identify it by their path alone, as the Doc's do (ADR 0008): any pod the gateway admits, the engine's included, could call them, and would get only their allow-list, listing tools and `get_rules` with its argument rule; the Bib (spec 09) closes this.
+The Intendant's routes on the gateway (to its map, cluster and metrics connectors) identify it by their path alone, as the Doc's do (ADR 0008): any pod the gateway admits, the engine's included, could call them, and would get only their allow-list, the listing tools and `get_rules`; the Bib (spec 09) closes this.
+
+The gateway checks tool names, not arguments. agentgateway v1.6.0 does not show a call's arguments to its authorization rules: a rule on `mcp.tool.arguments` hides the tool, because the rule also applies when tools are listed, and no call is ever checked against it (found by the chart smoke, 2026-11-11). The operator's client check (§4) is therefore the only check of `get_rules`' arguments, and ADR 0008's two layers hold for tool names. The prometheus add-on's egress NetworkPolicy keeps a caller's `prometheus_url` from reaching anything but its Prometheus. A later agentgateway version is tested again before the gateway is given an argument rule.
 
 The Intendant's inventory has three parts, each read in one place:
 
@@ -162,10 +164,10 @@ Retention: an ended survey (Completed, Failed or Dropped) older than seven days 
 2. On the demo, `HighErrorRate`, which `service/billing-api` declares, gets the expression Prometheus loaded; a rule naming exactly one service or workload of the Map lands as `alertedBy`, with its expression, on that entry.
 3. `RB-014` in the corpus lands as a runbook entry with `knowledge: runbooks/RB-014`.
 4. A Deployment deleted from the scenery gives a removal proposal; its entry keeps `lastSeen`.
-5. A namespace no connector reads is a `notSeen` line, not an omission.
-6. The read-only guard test is unchanged and green; no RBAC changes, the operator's or an add-on's.
+5. A namespace no connector reads is a blind spot of the survey, with its reason, not an omission.
+6. The read-only guard test is unchanged and green; the add-ons' RBAC is unchanged; the operator gains only create, get, list, watch and delete on `takecaresurveys`, get, update and patch on its status, and create, get and delete on ConfigMaps in its own namespace (§7).
 7. agentregistry installs from the chart, and its connector is Ready with read tools only.
-8. A new Map revision triggers one survey; two triggers during a run give one more survey, not two.
+8. A new Map revision triggers one survey; two triggers during a run give one more survey, not two (proven in envtest).
 
 ## Open questions
 
