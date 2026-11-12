@@ -283,6 +283,24 @@ func parse(p string, raw []byte) (*Entry, error) {
 	return &e, nil
 }
 
+// ValidateEntry checks one entry as the Map would load it: its schema and
+// the rules the schema cannot say (an alert named once, a knowledge source
+// on a runbook only). It does not check links to other entries.
+func ValidateEntry(e Entry) error {
+	doc, err := json.Marshal(e)
+	if err != nil {
+		return fmt.Errorf("encode %s: %w", e.Key, err)
+	}
+	var instance any
+	if err := json.Unmarshal(doc, &instance); err != nil {
+		return fmt.Errorf("decode %s: %w", e.Key, err)
+	}
+	if err := entrySchema.Validate(instance); err != nil {
+		return fmt.Errorf("%s does not match api/map/entry.schema.json: %w", e.Key, err)
+	}
+	return errors.Join(entryRules(&e, e.Key)...)
+}
+
 // sourceKnowledge names a knowledge connector's record (spec 08 §3).
 const sourceKnowledge = "knowledge"
 

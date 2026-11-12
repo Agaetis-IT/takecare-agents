@@ -1,0 +1,14 @@
+A survey of the Map at revision abc123 has imported what the cluster lists.
+Scope: the namespace shop, the entity service/shop-cart.
+
+The import, by layer (seen, matched, proposed):
+- compute: 2, 1, 1
+- network: 1, 0, 0
+
+The import's proposals:
+- Add compute/shop-cart
+
+What the import could not read:
+- network: kube-public
+
+Read the ground with your tools and answer as your instructions say.

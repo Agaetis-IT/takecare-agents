@@ -131,3 +131,28 @@ func TestLoadRefuses(t *testing.T) {
 		})
 	}
 }
+
+const proposed = "proposed"
+
+func TestValidateEntry(t *testing.T) {
+	ok := Entry{Key: "runbook/disk-pressure", Provenance: proposed, Status: proposed, Created: "2026-11-12", Sources: []map[string]string{{"knowledge": "wiki/OPS-231"}}}
+	for name, tc := range map[string]struct {
+		change func(*Entry)
+		fails  bool
+	}{
+		"a runbook with its record":        {func(*Entry) {}, false},
+		"a knowledge source off a runbook": {func(e *Entry) { e.Key = "service/shop-cart" }, true},
+		"a key outside the types":          {func(e *Entry) { e.Key = "cache/shop" }, true},
+		"a relation target that is no key": {func(e *Entry) { e.Relations.DependsOn = []string{"not a key"} }, true},
+		"an unknown provenance":            {func(e *Entry) { e.Provenance = "guessed" }, true},
+		"an alert named twice":             {func(e *Entry) { e.Relations.AlertedBy = []Alert{{Name: "A"}, {Name: "A"}} }, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := ok
+			tc.change(&e)
+			if err := ValidateEntry(e); (err != nil) != tc.fails {
+				t.Errorf("ValidateEntry: %v, want failing %v", err, tc.fails)
+			}
+		})
+	}
+}
