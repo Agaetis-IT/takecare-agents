@@ -165,7 +165,7 @@ Retention: an ended survey (Completed, Failed or Dropped) older than seven days 
 3. `RB-014` in the corpus lands as a runbook entry with `knowledge: runbooks/RB-014`.
 4. A Deployment deleted from the scenery gives a removal proposal; its entry keeps `lastSeen`.
 5. A namespace no connector reads is a blind spot of the survey, with its reason, not an omission.
-6. The read-only guard test is unchanged and green; no RBAC changes, the operator's or an add-on's.
+6. The read-only guard test is unchanged and green; the add-ons' RBAC is unchanged; the operator gains only create, get, list, watch and delete on `takecaresurveys`, get, update and patch on its status, and create, get and delete on ConfigMaps in its own namespace (§7).
 7. agentregistry installs from the chart, and its connector is Ready with read tools only.
 8. A new Map revision triggers one survey; two triggers during a run give one more survey, not two (proven in envtest).
 
