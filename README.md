@@ -119,7 +119,7 @@ The demo also runs an Intendant ([spec 10](docs/specs/10-intendant.md)), which s
 
 `DEMO_IMAGES=build` builds the images from this tree and imports them into the cluster. Without it, `demo-up` pulls the images of the version the charts name, the latest release, from the registry. A second `make demo-up` changes nothing and takes seconds. With `TAKECARE_SLACK_BOT_TOKEN` and `TAKECARE_SLACK_ONCALL_CHANNEL` (and optionally `TAKECARE_SLACK_REVIEW_CHANNEL`), diagnoses are posted to Slack; without them they go to the report server's log, and `make demo-verdict` reads them from the investigation. `make demo-bench N=5` runs the accuracy bench on the ongoing incident (see `test/bench/README.md`).
 
-Prerequisites: Docker with at least 4 GB of memory (the stack uses about 3.5 GiB in an incident), k3d, kubectl, make; Helm 4 is downloaded by the Makefile.
+Prerequisites: Docker with at least 4 GB of memory (the stack uses about 3.7 GiB in an incident, measured on k3d with the Intendant's agent), k3d, kubectl, make; Helm 4 is downloaded by the Makefile.
 
 ## Documentation
 
