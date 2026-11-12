@@ -87,12 +87,16 @@ cmp -s <(jq -S . "$WORK/map-demo.json") <(jq -S . "$WORK/map-bench.json") &&
 revision="$(intendant_status '{.status.lastMapRevision}')"
 kubectl replace -f "$WORK/map-bench.json" >/dev/null
 map_set=true
-log "the bench's Map is written; waiting for its revision (the kubelet refreshes the volume within about a minute)"
-for _ in $(seq 60); do
+# The kubelet refreshes the volume within about a minute, but the map
+# connector reads the Map's revision only at its discovery, every
+# DiscoveryInterval (10 minutes, internal/controller/connector/controller.go):
+# the wait is that interval plus 2 minutes.
+log "the bench's Map is written; waiting up to 12 minutes for its revision (the map connector reads it at each discovery, every 10 minutes)"
+for _ in $(seq 144); do
   [[ "$(intendant_status '{.status.lastMapRevision}')" != "$revision" ]] && break
   sleep 5
 done
-[[ "$(intendant_status '{.status.lastMapRevision}')" != "$revision" ]] || die "the Map's new revision did not reach the Intendant in 5 minutes"
+[[ "$(intendant_status '{.status.lastMapRevision}')" != "$revision" ]] || die "the Map's new revision did not reach the Intendant in 12 minutes"
 log "the revision's own survey, not scored"
 sleep 5
 idle 900 || die "the revision's survey did not end in 15 minutes"
