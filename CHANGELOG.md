@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - **The agent:** each Intendant has its kagent agent, its model route and its A2A route, given the Map's, the cluster's and the knowledge connectors' read tools (never `get_rules`); a finalizer removes them with the Intendant. Its engine agents no longer count as registrations.
   - **The agent pass:** after the import, the agent reads the cluster and the knowledge connectors and proposes dependencies, owners and runbooks, each with its evidence. Its answer is read strictly, and only Map keys, knowledge sources and tool names pass. A pass that does not run, does not finish, or answers what cannot be read leaves the import's proposals and says why. Its usage is measured on its own model route.
   - **Operator rights:** the operator gains `delete` on `takecaresurveys`, `create`, `get` and `delete` on ConfigMaps, and `update` and `patch` on `takecareintendants` with `update` on their finalizers, in its own namespace.
+- The Intendant bench, `make demo-bench-intendant N=5`: N surveys of the demo with a real model, each agent pass scored against a hand-written expected set. Its report gives, per run, the recall, the precision, what the merge dropped and by which reason, the forbidden proposals, and the usage (keys and counts only).
 - The Map accepts a `knowledge` source on runbook entries, naming the record of a knowledge connector, and an alert's expression on `alertedBy` (spec 08).
 
 ### Changed
