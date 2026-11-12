@@ -5,6 +5,7 @@ package intendant
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -17,9 +18,8 @@ import (
 )
 
 const (
-	settle = 2 * time.Second
-	rev1   = "r1"
-	rev2   = "r2"
+	rev1 = "r1"
+	rev2 = "r2"
 )
 
 // ready sets up a platform and a map connector serving revision rev1, and
@@ -65,18 +65,21 @@ func (f *fixture) surveys(t *testing.T, name string) []v1alpha1.TakeCareSurvey {
 	return out
 }
 
-// waitSurveys waits for n surveys of the Intendant, then checks that no
-// more come within settle.
+// waitSurveys waits for n surveys of the Intendant and for the status
+// marker of the reconcile that created the last one: status.lastSurvey
+// names one of them and the status has observed the spec. The trigger's
+// bookkeeping is written with that marker, so a further survey needs a new
+// trigger; the count is checked again then, with no sleep.
 func (f *fixture) waitSurveys(t *testing.T, name string, n int) []v1alpha1.TakeCareSurvey {
 	t.Helper()
-	deadline := time.Now().Add(waitFor)
-	for len(f.surveys(t, name)) < n && time.Now().Before(deadline) {
-		time.Sleep(50 * time.Millisecond)
-	}
-	time.Sleep(settle)
-	got := f.surveys(t, name)
-	if len(got) != n {
-		t.Fatalf("%d surveys of %s, want %d: %+v", len(got), name, n, got)
+	var got []v1alpha1.TakeCareSurvey
+	f.wait(t, name, func(in *v1alpha1.TakeCareIntendant) bool {
+		got = f.surveys(t, name)
+		return len(got) >= n && in.Status.ObservedGeneration == in.Generation &&
+			slices.ContainsFunc(got, func(s v1alpha1.TakeCareSurvey) bool { return s.Name == in.Status.LastSurvey })
+	})
+	if got = f.surveys(t, name); len(got) != n {
+		t.Fatalf("%d surveys of %s, want %d: %+v", len(got), name, n, phases(got))
 	}
 	return got
 }
