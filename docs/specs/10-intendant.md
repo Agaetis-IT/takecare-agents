@@ -75,6 +75,13 @@ The agent reads workload specs with the cluster's read tools, so environment val
 
 Tools: the Map's five, the cluster's `read` tools and the knowledge tools; no content tool unless it is listed. The agent's proposals join the import's, with `provenance: proposed`.
 
+The pass runs after the import when the Intendant's agent is ready (`EngineReady`):
+
+- **Its deadline** is 10 minutes counted from the survey's start (`status.startedAt`), the engine getting its usual share. A survey resumed after a restart keeps that start and follows its recorded task (`status.engine.taskID`); a new pass counts from its own start.
+- **A task stopped** waiting for an input or an authorization ends the pass at once and is canceled.
+- **A pass that does not finish**, fails, or answers what cannot be read leaves the import's proposals: the survey is Completed, and its `agent` layer says why in a fixed phrase. The model's text is never kept in the status, a log or a span.
+- **Cancellation:** kagent 0.10.3's runtime refuses it, so a pass past its deadline may run on in its pod and call the model, bounded by the model's own turn limit; this is one of the corrections after 0.3.0.
+
 ## 6. Levels
 
 - **Apprentice**: the survey and its proposals in status. Nothing is published; the proposals stay in the status (or go to its `review` destination when one is set, as for the Doc, spec 02).
@@ -140,14 +147,15 @@ The Map's schema (`api/map/entry.schema.json`) follows in the build pull request
 
 ## 10. Telemetry
 
-One trace per survey (ADR 0006), its ID in the survey's `status.traceID` and in the operator's log when the survey fails. Its root is `invoke_agent intendant`, an error span with the survey's fixed reason when it fails; the agent pass will be its child. Under the root:
+One trace per survey (ADR 0006), its ID in the survey's `status.traceID` and in the operator's log when the survey fails. Its root is `invoke_agent intendant`, an error span with the survey's fixed reason when it fails. Under the root:
 
 - `read map`, the Map's read at one revision, with the number of entries;
 - one `list <connector>` per ground, timed as the listing ran, with its cluster and number of namespaces;
 - `read rules`, the alerting rules' read, when a metrics connector is bound;
-- one `layer <name>` per layer, carrying its counts: seen, matched, proposed, not seen.
+- one `layer <name>` per layer, carrying its counts: seen, matched, proposed, not seen;
+- `agent pass`, the agent pass (§5): its task, outcome and attempt (`takecare.run.*`), an error with its fixed phrase when it does not finish. The root then carries the agent's identity, the survey as the conversation, and the platform model.
 
-The attribute names (`takecare.survey.*`) live in `internal/telemetry/semconv` like every other.
+The attribute names (`takecare.survey.*`, `takecare.run.*`) live in `internal/telemetry/semconv` like every other.
 
 Metrics are gauges, not counters: the same proposals come back at every survey until a human merges them, so a total would count one proposal many times. Each Intendant's last completed survey sets them, and its series go when the Intendant goes:
 

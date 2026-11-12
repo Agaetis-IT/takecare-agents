@@ -81,6 +81,10 @@ type fixture struct {
 	// spans and metrics are what the runner records.
 	spans   *tracetest.InMemoryExporter
 	metrics *SurveyMetrics
+	// runs is the engine's run half the runner's agent pass calls, and
+	// passClock the runner's clock: it starts at testStart and moves.
+	runs      *fakeRuns
+	passClock *offsetClock
 }
 
 func start(t *testing.T) *fixture { return startWith(t, false) }
@@ -113,6 +117,7 @@ func startWith(t *testing.T, runner bool) *fixture {
 	f := &fixture{
 		c: c, clock: &clock{now: testStart}, cfg: cfg, scheme: scheme, runner: runner,
 		spans: tracetest.NewInMemoryExporter(), metrics: metrics,
+		runs: &fakeRuns{}, passClock: &offsetClock{base: testStart, t0: time.Now()},
 	}
 	f.startManager(t)
 	return f
@@ -142,7 +147,8 @@ func (f *fixture) startManager(t *testing.T) {
 		}
 		if err := mgr.Add(&Runner{
 			Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: queue, GateRetry: 100 * time.Millisecond,
-			Caller: &mcp.Client{HTTP: &http.Client{Timeout: time.Minute}}, Now: f.clock.Now, Metrics: f.metrics,
+			Caller: &mcp.Client{HTTP: &http.Client{Timeout: time.Minute}}, Now: f.passClock.Now, Metrics: f.metrics,
+			Runs: f.runs, EngineKind: kagent0103.Kind, EngineNamespace: engineNS, PassTimeout: passTimeout, PassInterval: 50 * time.Millisecond, PassClock: f.passClock,
 			Tracer: sdktrace.NewTracerProvider(sdktrace.WithSyncer(f.spans)).Tracer("test"),
 			Route: func(_ string, role routes.Role, connector string) string {
 				u, _ := f.routes.Load(role.Name + "/" + connector)
