@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/surveyagent"
 )
 
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaresurveys,verbs=get;list;watch;create,namespace=takecare-system
@@ -125,11 +126,13 @@ func (r *Reconciler) inFlight(ctx context.Context, in *v1alpha1.TakeCareIntendan
 // registrations digests what a registration changes (spec 10 §3): the
 // Intendant's bound connectors and the engine's agents, by name and
 // generation. The agents are read in the engine namespace only, where the
-// operator already reads them; other namespaces would need new rights.
+// operator already reads them; other namespaces would need new rights. The
+// Intendants' own agents are left out: rendering one is not a
+// registration, and would survey again after every rendering.
 func (r *Reconciler) registrations(ctx context.Context, in *v1alpha1.TakeCareIntendant) (string, error) {
 	var lines []string
 	c := in.Spec.Connectors
-	for _, name := range slices.Concat(c.Map, c.Cluster, c.Metrics) {
+	for _, name := range slices.Concat(c.Map, c.Cluster, c.Metrics, c.Knowledge) {
 		var conn v1alpha1.TakeCareConnector
 		err := r.Get(ctx, client.ObjectKey{Namespace: in.Namespace, Name: name}, &conn)
 		switch {
@@ -148,6 +151,9 @@ func (r *Reconciler) registrations(ctx context.Context, in *v1alpha1.TakeCareInt
 			return "", fmt.Errorf("list %s: %w", gvk.Kind, err)
 		}
 		for _, o := range list.Items {
+			if o.GetLabels()["takecare.agaetis.fr/role"] == surveyagent.Kind {
+				continue
+			}
 			lines = append(lines, fmt.Sprintf("%s %s %d", gvk.Kind, o.GetName(), o.GetGeneration()))
 		}
 	}

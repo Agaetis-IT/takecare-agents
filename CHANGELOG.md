@@ -16,7 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - **Where the results go:** the first 20 proposals are in the survey's status and the full set in a ConfigMap owned by the survey. Each survey is one trace, and the gauges `takecare_survey_proposals` and `takecare_survey_not_seen` hold what awaits review.
   - **Retention:** an ended survey is deleted after seven days, each Intendant keeping its newest.
   - **The demo** runs an Intendant over its scenery.
-  - **Operator rights:** the operator gains `delete` on `takecaresurveys`, and `create`, `get` and `delete` on ConfigMaps, in its own namespace.
+  - **The agent:** each Intendant has its kagent agent, its model route and its A2A route, given the Map's, the cluster's and the knowledge connectors' read tools (never `get_rules`); a finalizer removes them with the Intendant. Its engine agents no longer count as registrations.
+  - **Operator rights:** the operator gains `delete` on `takecaresurveys`, `create`, `get` and `delete` on ConfigMaps, and `update` and `patch` on `takecareintendants` with `update` on their finalizers, in its own namespace.
 - The Map accepts a `knowledge` source on runbook entries, naming the record of a knowledge connector, and an alert's expression on `alertedBy` (spec 08).
 
 ### Fixed

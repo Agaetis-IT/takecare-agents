@@ -13,6 +13,7 @@
 # Files the binaries embed (go:embed).
 !internal/doc/instructions.md
 !internal/doc/message.tmpl
+!internal/surveyagent/instructions.md
 !internal/demo/corpus/pools.json
 !internal/demo/corpus/seed/*.json
 !api/map/entry.schema.json

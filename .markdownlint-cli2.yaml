@@ -7,9 +7,11 @@ globs:
 ignores:
   - "bin/**"
   - "spikes/**"
-  # A Go text/template, not Markdown as written; what it renders is linted
-  # through its golden files (internal/doc/testdata).
+  # Go text/templates, not Markdown as written; what they render is linted
+  # through their golden files (internal/doc/testdata,
+  # internal/surveyagent/testdata).
   - "internal/doc/instructions.md"
+  - "internal/surveyagent/instructions.md"
 gitignore: true
 config:
   # Paragraphs are written on one line; tables are aligned by hand or not.
