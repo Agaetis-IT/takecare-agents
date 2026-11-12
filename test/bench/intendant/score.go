@@ -223,8 +223,11 @@ func forbidden(f Forbidden, p v1alpha1.Proposal, adds []string) bool {
 	return slices.Contains(f.Actions, p.Action) || slices.ContainsFunc(adds, func(a string) bool { return slices.Contains(f.Adds, a) })
 }
 
+// allowed says whether p adds something, and only what an allowed rule
+// for its key names: a proposal that adds none of the scored fields is
+// "other".
 func allowed(al []Allowed, p v1alpha1.Proposal, adds []string) bool {
-	return slices.ContainsFunc(al, func(a Allowed) bool {
+	return len(adds) > 0 && slices.ContainsFunc(al, func(a Allowed) bool {
 		return strings.HasPrefix(string(p.Key), a.KeyPrefix) && all(adds, a.Adds)
 	})
 }

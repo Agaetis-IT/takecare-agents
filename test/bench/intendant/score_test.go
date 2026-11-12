@@ -149,6 +149,14 @@ func TestScore(t *testing.T) {
 			precision: 2.0 / 3,
 		},
 		{
+			name: "an Update on an allowed key that adds nothing scored: other",
+			proposals: []v1alpha1.Proposal{rightRunbook, rightService,
+				proposal(v1alpha1.ProposalUpdate, "compute/billing-api", "key: compute/billing-api\nlabels: {tier: critical}\n", "resources_get")},
+			matched:   []string{updateRunbook, updateService},
+			other:     []string{"Update compute/billing-api"},
+			precision: 2.0 / 3, ok: true,
+		},
+		{
 			name:      "the required key, but with a guessed team: forbidden, not matched",
 			proposals: []v1alpha1.Proposal{rightRunbook, proposal(v1alpha1.ProposalUpdate, "service/billing-api", serviceGuessed, "runbooks_get")},
 			matched:   []string{updateRunbook},
