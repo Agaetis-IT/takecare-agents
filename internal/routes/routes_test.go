@@ -176,3 +176,74 @@ func checkModelRoute(t *testing.T, model *unstructured.Unstructured) {
 		t.Errorf("the model route must lead to the platform's backend, got %v", ref)
 	}
 }
+
+// A route's call rule is a route-level traffic policy of its own, beside
+// the MCP allow-list; it goes when the route no longer carries one, and
+// with the route.
+const (
+	promConn  = "prometheus"
+	ownerName = "owner"
+)
+
+func TestCallRule(t *testing.T) {
+	cfg := testenv.Start(t)
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	c, err := client.New(cfg, client.Options{Scheme: scheme})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	owner := &corev1.ConfigMap{Name: ownerName, Namespace: ns}
+	if err := c.Create(ctx, &corev1.Namespace{Name: ns}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Create(ctx, owner); err != nil {
+		t.Fatal(err)
+	}
+	gw := Gateway{Name: "agentgateway-proxy"}
+	r := Role{Kind: "intendant", Name: "main", Namespace: ns, Owner: metav1.OwnerReference{APIVersion: "v1", Kind: "ConfigMap", Name: ownerName, UID: owner.UID}}
+	const rule = `!has(mcp.tool) || mcp.tool.name != "get_rules" || mcp.tool.arguments.type == "alert"`
+	m := MCP{Connector: promConn, Backend: "mcp-prometheus", Tools: []string{"get_rules"}, CallRule: rule}
+	if err := EnsureMCP(ctx, c, gw, r, m); err != nil {
+		t.Fatal(err)
+	}
+	calls := get(t, c, PolicyGVK, CallsPolicyName(r, promConn))
+	target, _, _ := unstructured.NestedSlice(calls.Object, "spec", "targetRefs")
+	action, _, _ := unstructured.NestedString(calls.Object, "spec", "traffic", "authorization", "action")
+	exprs, _, _ := unstructured.NestedStringSlice(calls.Object, "spec", "traffic", "authorization", "policy", "matchExpressions")
+	if len(target) != 1 || target[0].(map[string]any)["name"] != "role-intendant-main-mcp-prometheus" || action != "Require" || len(exprs) != 1 || exprs[0] != rule {
+		t.Errorf("calls policy: target %v, action %s, expressions %v", target, action, exprs)
+	}
+	if _, found, _ := unstructured.NestedMap(calls.Object, "spec", "backend"); found {
+		t.Error("the calls policy sets a backend field: one field per policy per target")
+	}
+	if _, found, _ := unstructured.NestedMap(get(t, c, PolicyGVK, "role-intendant-main-mcp-prometheus").Object, "spec", "traffic"); found {
+		t.Error("the MCP policy sets a traffic field: one field per policy per target")
+	}
+	if err := Prune(ctx, c, r, map[string]bool{promConn: true}, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := names(t, c, PolicyGVK, r); len(got) != 2 {
+		t.Errorf("policies kept with their route: %v", got)
+	}
+	m.CallRule = ""
+	if err := EnsureMCP(ctx, c, gw, r, m); err != nil {
+		t.Fatal(err)
+	}
+	if got := names(t, c, PolicyGVK, r); len(got) != 1 || got[0] != "role-intendant-main-mcp-prometheus" {
+		t.Errorf("policies once the rule is gone: %v", got)
+	}
+	m.CallRule = rule
+	if err := EnsureMCP(ctx, c, gw, r, m); err != nil {
+		t.Fatal(err)
+	}
+	if err := Prune(ctx, c, r, nil, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := names(t, c, PolicyGVK, r); len(got) != 0 {
+		t.Errorf("policies after the route is pruned: %v", got)
+	}
+}

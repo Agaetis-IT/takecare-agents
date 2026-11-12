@@ -355,12 +355,29 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 		return out, none, fail(failImport, err)
 	}
 	var metrics *discovery.Metrics
+	blocked := ""
 	if m, _ := w.endpoint(ctx, &in, c.Metrics, v1alpha1.ConnectorMetrics, []string{mcp.RulesTool}, stateTools, route); m != nil {
-		metrics = &discovery.Metrics{Connector: m.name, Endpoint: m.ep}
+		// Fail closed for that layer only: no get_rules while the gateway
+		// does not enforce its argument rule.
+		switch ok, _, err := callRuleEnforced(ctx, w.Reader, role, m.name); {
+		case err != nil:
+			return out, none, fail(failImport, err)
+		case ok:
+			metrics = &discovery.Metrics{Connector: m.name, Endpoint: m.ep}
+		default:
+			blocked = m.name
+		}
 	}
 	res, err := discovery.Import(ctx, w.Caller, grounds, metrics, discovery.NewIndex(idx.entries), w.now(), w.observer(ctx))
 	if err != nil {
 		return out, none, fail(failImport, err)
+	}
+	if blocked != "" {
+		for i := range res.Layers {
+			if res.Layers[i].Name == discovery.LayerAlerting {
+				res.Layers[i].NotSeen = []discovery.NotSeen{{Ref: blocked, Reason: notEnforced}}
+			}
+		}
 	}
 	provider, model := modelOf(p, &in)
 	res, err = w.pass(ctx, s, passRecord{

@@ -171,14 +171,29 @@ mcp_call() {
     curl -s -m 10 -o /dev/null -X POST -H "$json" -H "$accept" -H "Mcp-Session-Id: $sid" \
       -d "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}" "$url"
     curl -s -m 20 -X POST -H "$json" -H "$accept" -H "Mcp-Session-Id: $sid" \
-      -d "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"$tool\",\"arguments\":$args}}" "$url"
+      -d "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"$tool\",\"arguments\":$args}}" -w "\nHTTP %{http_code}" "$url"
   ' "$3" "$4" "$args"
 }
 
 # mcp_allowed NAMESPACE POD URL TOOL [ARGS]: succeeds when the call gets a
-# result.
+# result, within 20 s: the gateway applies a new or changed policy a few
+# seconds after it is written. Refusals are not retried, and assert their
+# exact answer.
 mcp_allowed() {
-  mcp_call "$@" | grep -q '"result"'
+  local _
+  for _ in $(seq 10); do
+    mcp_call "$@" | grep -q '"result"' && return 0
+    sleep 2
+  done
+  return 1
+}
+
+# mcp_forbidden NAMESPACE POD URL TOOL [ARGS]: succeeds when the gateway
+# refuses the call with a 403 (a route-level authorization) and no result.
+mcp_forbidden() {
+  local out
+  out="$(mcp_call "$@")"
+  grep -q '^HTTP 403$' <<<"$out" && ! grep -q '"result"' <<<"$out"
 }
 
 # mcp_refused NAMESPACE POD URL TOOL [ARGS]: succeeds when the call is
@@ -487,11 +502,9 @@ EOF
     mcp_allowed kagent smoke-a2a "$route" pods_list
   kubectl -n "$NS" patch takecareconnector kubernetes --type=merge -p "{\"spec\":{\"tools\":${tools:-null}}}" >/dev/null
   # The Intendant's routes (spec 10 §4, §8): the gateway lets get_rules
-  # through by name, with the survey's arguments, and refuses a tool off the
-  # allow-list. It does not check arguments: agentgateway v1.6.0 does not
-  # show them to its rules, so get_rules' arguments are the operator's
-  # client check alone. Not a check that passes: a note, tested again when
-  # agentgateway moves.
+  # through with the survey's arguments only, by the route-level argument
+  # rule (its own policy, which the operator's client check doubles), and
+  # refuses a tool off the allow-list by the MCP authorization.
   log "the Intendant's routes (spec 10 §4)"
   kubectl -n "$NS" apply -f - >/dev/null <<EOF
 apiVersion: takecare.agaetis.fr/v1alpha1
@@ -509,7 +522,13 @@ EOF
     mcp_allowed kagent smoke-a2a "${iroute}/prometheus" get_rules '{"type":"alert","exclude_alerts":true}'
   check "get_rules naming rules that match the pattern is let through" \
     mcp_allowed kagent smoke-a2a "${iroute}/prometheus" get_rules '{"type":"alert","exclude_alerts":true,"rule_name":["HighErrorRate"]}'
-  log "note: the gateway does not check get_rules' arguments in agentgateway ${AGENTGATEWAY_VERSION:-v1.6.0}; the operator's client does (spec 10 §8)"
+  check "the argument rule on the Intendant's metrics route is Accepted and Attached" \
+    bash -c "for _ in \$(seq 30); do s=\$(kubectl -n ${NS} get agentgatewaypolicy role-intendant-smoke-intendant-mcp-prometheus-calls -o jsonpath='{.status.ancestors[*].conditions[?(@.type==\"Accepted\")].status} {.status.ancestors[*].conditions[?(@.type==\"Attached\")].status}' 2>/dev/null); [[ \$s == 'True True' ]] && exit 0; sleep 2; done; exit 1"
+  local bad
+  for bad in '{"type":"all","exclude_alerts":true}' '{"type":"alert"}' '{"type":"alert","exclude_alerts":true,"prometheus_url":"http://elsewhere"}' '{"type":"alert","exclude_alerts":true,"rule_name":["high-error"]}'; do
+    check "get_rules with ${bad} is refused by the gateway's argument rule (403)" \
+      mcp_forbidden kagent smoke-a2a "${iroute}/prometheus" get_rules "$bad"
+  done
   check "get_alerts, off the Intendant's allow-list, is refused on its metrics route" \
     mcp_refused kagent smoke-a2a "${iroute}/prometheus" get_alerts '{}'
   check "map_at through the Intendant's map route is let through" \
@@ -706,11 +725,11 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=89 install ;;
-  upgrade) CHECKS_EXPECTED=89 upgrade ;;
+  install) CHECKS_EXPECTED=94 install ;;
+  upgrade) CHECKS_EXPECTED=94 upgrade ;;
   status) status ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=4 cluster_chart ;;
-  all) up; CHECKS_EXPECTED=89 install; CHECKS_EXPECTED=89 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
+  all) up; CHECKS_EXPECTED=94 install; CHECKS_EXPECTED=94 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|cluster|status|down|all]"; exit 2 ;;
 esac

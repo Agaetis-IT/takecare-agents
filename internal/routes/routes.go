@@ -85,7 +85,17 @@ type MCP struct {
 	Backend string
 	// Tools is the allow-list: the only tools the gateway lets the role call.
 	Tools []string
+	// CallRule, when set, is a CEL expression every request on the route
+	// must satisfy, in a route-level authorization policy of its own: the
+	// one place agentgateway shows a call's arguments (mcp.tool.arguments
+	// on tools/call), which MCP authorization never sees. It must hold on
+	// requests without a tool (initialize, tools/list), which have no
+	// mcp.tool.
+	CallRule string
 }
+
+// CallsPolicyName names the route-level policy of a route's CallRule.
+func CallsPolicyName(r Role, connector string) string { return mcpName(r, connector) + "-calls" }
 
 // Names of the generated objects.
 func mcpName(r Role, connector string) string {
@@ -142,7 +152,7 @@ func EnsureMCP(ctx context.Context, c client.Client, g Gateway, r Role, m MCP) e
 	name := mcpName(r, m.Connector)
 	policy := r.object(PolicyGVK, name)
 	policy.Object["spec"] = map[string]any{
-		"targetRefs": []any{map[string]any{keyGroup: gatewayAPIGroup, keyKind: "HTTPRoute", keyName: name}},
+		"targetRefs": []any{map[string]any{keyGroup: gatewayAPIGroup, keyKind: HTTPRouteGVK.Kind, keyName: name}},
 		"backend": map[string]any{"mcp": map[string]any{"authorization": map[string]any{
 			"action": "Require",
 			"policy": map[string]any{"matchExpressions": []any{Expression(m.Tools)}},
@@ -150,6 +160,25 @@ func EnsureMCP(ctx context.Context, c client.Client, g Gateway, r Role, m MCP) e
 	}
 	if err := apply.Strict(ctx, c, policy); err != nil {
 		return fmt.Errorf("apply policy %s: %w", name, err)
+	}
+	// One field per policy per target: the call rule is a traffic policy of
+	// its own on the route, removed when the route no longer carries one.
+	calls := r.object(PolicyGVK, CallsPolicyName(r, m.Connector))
+	if m.CallRule == "" {
+		if err := c.Delete(ctx, calls); client.IgnoreNotFound(err) != nil {
+			return fmt.Errorf("delete policy %s: %w", calls.GetName(), err)
+		}
+	} else {
+		calls.Object["spec"] = map[string]any{
+			"targetRefs": []any{map[string]any{keyGroup: gatewayAPIGroup, keyKind: HTTPRouteGVK.Kind, keyName: name}},
+			"traffic": map[string]any{"authorization": map[string]any{
+				"action": "Require",
+				"policy": map[string]any{"matchExpressions": []any{m.CallRule}},
+			}},
+		}
+		if err := apply.Strict(ctx, c, calls); err != nil {
+			return fmt.Errorf("apply policy %s: %w", calls.GetName(), err)
+		}
 	}
 	route := r.object(HTTPRouteGVK, name)
 	route.Object["spec"] = g.routeSpec(MCPPath(r, m.Connector), m.Backend)
@@ -216,7 +245,7 @@ func (g Gateway) routeSpec(prefix, backend string) map[string]any {
 func Prune(ctx context.Context, c client.Client, r Role, keep map[string]bool, models []string, a2a bool) error {
 	wanted := map[string]bool{}
 	for connector := range keep {
-		wanted[mcpName(r, connector)] = true
+		wanted[mcpName(r, connector)], wanted[CallsPolicyName(r, connector)] = true, true
 	}
 	for _, m := range models {
 		wanted[modelName(r, m)] = true
