@@ -30,7 +30,7 @@ Out of scope for 0.3.0: the Bib (its own ADR and spec), cloud importers, any wri
 
 - **Schedule**: the Intendant's `schedule`.
 - **On demand**: a `TakeCareSurvey` created by hand or by `takecare discover`.
-- **A new Map revision**: the `status.mapRevision` of the map connector changes.
+- **A new Map revision**: the `status.mapRevision` of the map connector changes. The connector reads it at each discovery, so a new revision reaches the Intendant up to one discovery interval (10 minutes) after the Map server loads it.
 - **A registration**: a connector the Intendant binds, or a kagent agent of the engine namespace, appears or changes. Agents are watched in the engine namespace only, where the operator already reads them; other namespaces would need new rights.
 
 Triggers are debounced: one survey in flight per Intendant, a survey created by hand included. Triggers that fire together, or while a survey is in flight, give one survey, whose trigger is the first in the order `MapRevision`, `Registration`, `Schedule`; the one waiting is kept in `status.pendingTrigger`, so that a restart does not lose it. A suspended Intendant, or one not Ready, starts no survey: its triggers are recorded the same way, and the one pending survey runs when it is Ready again. The Intendant's first survey starts when it is first Ready.
@@ -179,7 +179,7 @@ Retention: an ended survey (Completed, Failed or Dropped) older than seven days 
 6. The read-only guard test is unchanged and green; the add-ons' RBAC is unchanged; the operator gains only create, get, list, watch and delete on `takecaresurveys`, get, update and patch on its status, and create, get and delete on ConfigMaps in its own namespace (§7).
 7. agentregistry installs from the chart, and its connector is Ready with read tools only.
 8. A new Map revision triggers one survey; two triggers during a run give one more survey, not two (proven in envtest).
-9. To come before 0.3.0: a scored bench of the Intendant on a real model, its proposals compared with a hand-written expected set.
+9. A scored bench of the Intendant on a real model, its agent's proposals compared with a hand-written expected set (`make demo-bench-intendant`, `test/bench/README.md`). It surveys the demo against the demo Map without `service/billing-api`'s `documentedBy`. Its threshold is set from its first reports.
 
 ## Open questions
 

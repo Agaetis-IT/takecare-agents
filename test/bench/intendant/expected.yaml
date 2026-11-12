@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2026 Agaetis
+# SPDX-License-Identifier: Apache-2.0
+#
+# The Intendant bench's expected set (spec 10 §11 criterion 9), for the demo
+# surveyed against the bench's Map, which is the demo Map without
+# service/billing-api's documentedBy (hack/bench-intendant.sh). Each
+# required item names the tools that show it to the agent; a match needs one
+# of them in its evidence. Only the agent's proposals are scored.
+scenario: demo-without-documentedBy
+required:
+  # RB-014's record names billing-api; the Map's runbook entry describes
+  # RB-014 and holds no knowledge source.
+  - action: Update
+    key: runbook/proxy-timeout
+    sources: [runbooks/RB-014]
+    evidence: [runbooks_get, runbooks_search]
+  # The runbook applies to billing-api, whose entry no longer names it.
+  - action: Update
+    key: service/billing-api
+    documentedBy: [runbook/proxy-timeout]
+    evidence: [runbooks_get, runbooks_search]
+allowed:
+  # The corpus's other runbooks apply to every service: an entry for one,
+  # or a documentedBy naming one, is right but not required.
+  - keyPrefix: runbook/
+    adds: [sources, documentedBy]
+  - keyPrefix: service/billing-api
+    adds: [documentedBy]
+  - keyPrefix: compute/billing-api
+    adds: [documentedBy]
+forbidden:
+  # Nothing the agent may read shows a dependency or a team (no hostname in
+  # the scenery's environment, no team label): either added is a guess.
+  adds: [dependsOn, belongsTo]
+  actions: [Remove]
