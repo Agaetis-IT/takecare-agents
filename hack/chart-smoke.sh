@@ -180,12 +180,30 @@ mcp_call() {
 # seconds after it is written. Refusals are not retried, and assert their
 # exact answer.
 mcp_allowed() {
-  local _
+  local _ out
   for _ in $(seq 10); do
-    mcp_call "$@" | grep -q '"result"' && return 0
+    out="$(mcp_call "$@")"
+    grep -q '"result"' <<<"$out" && return 0
     sleep 2
   done
+  mcp_diagnose "$3" "$out"
   return 1
+}
+
+# mcp_diagnose URL ANSWER: says, for a failed check only, what the gateway
+# answered (its status and the first line of the body, bounded) and the
+# route's allow-list as the cluster holds it, so that a re-render window
+# shows. Never a header or a token.
+mcp_diagnose() {
+  local path="${1#*://*/}" status first
+  status="$(grep -o '^HTTP [0-9]*$' <<<"$2" | tail -1)"
+  first="$(grep -v '^HTTP [0-9]*$' <<<"$2" | grep -v '^$' | head -1 | cut -c1-200)"
+  echo "      last answer: ${status:-no status}: ${first:-empty body}"
+  # /mcp/<namespace>/<role>/<connector> is served by role-<kind>-<role>-mcp-<connector>.
+  local role connector
+  IFS=/ read -r _ _ role connector <<<"$path"
+  kubectl -n "$NS" get agentgatewaypolicies -o jsonpath='{range .items[*]}{.metadata.name} generation={.metadata.generation} {.spec.backend.mcp.authorization.policy.matchExpressions[0]}{"\n"}{end}' 2>/dev/null |
+    grep -E "^role-[a-z]+-${role}-mcp-${connector} " | sed 's/^/      policy now: /'
 }
 
 # mcp_forbidden NAMESPACE POD URL TOOL [ARGS]: succeeds when the gateway
@@ -193,7 +211,9 @@ mcp_allowed() {
 mcp_forbidden() {
   local out
   out="$(mcp_call "$@")"
-  grep -q '^HTTP 403$' <<<"$out" && ! grep -q '"result"' <<<"$out"
+  grep -q '^HTTP 403$' <<<"$out" && ! grep -q '"result"' <<<"$out" && return 0
+  mcp_diagnose "$3" "$out"
+  return 1
 }
 
 # mcp_refused NAMESPACE POD URL TOOL [ARGS]: succeeds when the call is
@@ -201,7 +221,9 @@ mcp_forbidden() {
 mcp_refused() {
   local out
   out="$(mcp_call "$@")"
-  grep -q '"error"' <<<"$out" && ! grep -q '"result"' <<<"$out"
+  grep -q '"error"' <<<"$out" && ! grep -q '"result"' <<<"$out" && return 0
+  mcp_diagnose "$3" "$out"
+  return 1
 }
 
 # operator_metrics prints the operator's metrics. They are served over HTTPS
@@ -496,8 +518,8 @@ EOF
     sleep 2
   done
   local route="${gw}/mcp/${NS}/smoke-doc/kubernetes"
-  check_not "a forged call to pods_log through the Doc's route is refused" \
-    mcp_allowed kagent smoke-a2a "$route" pods_log
+  check "a forged call to pods_log through the Doc's route is refused" \
+    mcp_refused kagent smoke-a2a "$route" pods_log
   check "a call to pods_list through the Doc's route is let through" \
     mcp_allowed kagent smoke-a2a "$route" pods_list
   kubectl -n "$NS" patch takecareconnector kubernetes --type=merge -p "{\"spec\":{\"tools\":${tools:-null}}}" >/dev/null
