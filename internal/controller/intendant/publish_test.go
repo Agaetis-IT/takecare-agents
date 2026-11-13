@@ -50,8 +50,12 @@ func (p *fakePoster) Call(ctx context.Context, _ mcp.Endpoint, tool string, args
 		select {
 		case <-hold.ch:
 		case <-ctx.Done():
-			return mcp.Result{}, ctx.Err()
 		}
+	}
+	// A real call with a canceled context fails: when the hold is
+	// released as the operator stops, select may pick either case.
+	if err := ctx.Err(); err != nil {
+		return mcp.Result{}, err
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -203,29 +207,55 @@ func TestDigestResumedInOrder(t *testing.T) {
 	f.mapRevision(t, rev2)
 	f.waitPhase(t, "order", 2, v1alpha1.RunCompleted)
 	f.mapRevision(t, "rev-3")
-	f.waitPhase(t, "order", 3, v1alpha1.RunCompleted)
+	resumed := f.waitPhase(t, "order", 3, v1alpha1.RunCompleted)
 	f.restart(t) // the three held posts are cut, nothing recorded
 	f.poster.mu.Lock()
 	f.poster.most = 0
 	f.poster.mu.Unlock()
 	f.poster.hold.release()
-	surveys := f.waitPublished(t, "order", 3)
-	// The oldest is published first and posts; the two others have the
-	// same proposals and repeat it.
-	slices.SortFunc(surveys, func(a, b v1alpha1.TakeCareSurvey) int {
+	// The three resumed surveys, oldest first; a restart may also start a
+	// survey of its own, whose digest is not this test's.
+	slices.SortFunc(resumed, func(a, b v1alpha1.TakeCareSurvey) int {
 		if c := a.CreationTimestamp.Compare(b.CreationTimestamp.Time); c != 0 {
 			return c
 		}
 		return strings.Compare(a.Name, b.Name)
 	})
-	calls := f.poster.posted()
-	if len(calls) != 1 || !strings.Contains(calls[0]["text"].(string), "Survey "+surveys[0].Name+" ") {
-		t.Fatalf("posts %d, want the oldest's (%s) alone", len(calls), surveys[0].Name)
-	}
-	for _, s := range surveys[1:] {
-		if p := s.Status.Published; p.Reason != reasonSame+surveys[0].Name {
-			t.Errorf("%s: published %+v, want the same proposals as %s", s.Name, p, surveys[0].Name)
+	deadline := time.Now().Add(waitFor)
+	for i := 0; i < len(resumed); {
+		if err := f.c.Get(context.Background(), client.ObjectKeyFromObject(&resumed[i]), &resumed[i]); err != nil {
+			t.Fatal(err)
 		}
+		if resumed[i].Status.Published != nil {
+			i++
+			continue
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s not published", resumed[i].Name)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	// Those posted come in the surveys' order; one not posted repeats a
+	// digest already posted.
+	var posted []string
+	for _, s := range resumed {
+		switch p := s.Status.Published; {
+		case p.OK && p.Reason == "":
+			posted = append(posted, s.Name)
+		case !strings.HasPrefix(p.Reason, reasonSame):
+			t.Errorf("%s: published %+v", s.Name, p)
+		}
+	}
+	var order []string
+	for _, c := range f.poster.posted() {
+		for _, name := range posted {
+			if strings.Contains(c["text"].(string), "Survey "+name+" ") {
+				order = append(order, name)
+			}
+		}
+	}
+	if !slices.Equal(order, posted) {
+		t.Errorf("digests posted in the order %v, want the surveys' %v", order, posted)
 	}
 	f.poster.mu.Lock()
 	defer f.poster.mu.Unlock()
@@ -292,7 +322,7 @@ func (f *fixture) lastDigest(t *testing.T, name string) *v1alpha1.LastDigest {
 func (f *fixture) newPublished(t *testing.T, name string, n int, seen map[string]bool) v1alpha1.TakeCareSurvey {
 	t.Helper()
 	for _, s := range f.waitPublished(t, name, n) {
-		if !seen[s.Name] {
+		if !seen[s.Name] && s.Status.Published != nil {
 			seen[s.Name] = true
 			return s
 		}

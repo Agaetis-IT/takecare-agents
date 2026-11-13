@@ -179,9 +179,19 @@ func (f *fixture) startManager(t *testing.T) {
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	f.stop = cancel
+	done := make(chan struct{})
+	// stop waits for the manager, its runner's goroutines included: a
+	// restart never has two runners at once, as leader election ensures
+	// on a cluster.
+	f.stop = func() {
+		cancel()
+		<-done
+	}
 	t.Cleanup(cancel)
-	go func() { _ = mgr.Start(ctx) }()
+	go func() {
+		defer close(done)
+		_ = mgr.Start(ctx)
+	}()
 }
 
 func (f *fixture) restart(t *testing.T) {
