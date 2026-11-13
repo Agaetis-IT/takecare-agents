@@ -90,8 +90,10 @@ type fixture struct {
 	// usageURL, when set, is the Prometheus the runner measures its
 	// passes with.
 	usageURL atomic.Value
-	// poster receives the digests the runner publishes.
-	poster *fakePoster
+	// poster receives the digests the runner publishes; publishTimeout,
+	// when set, bounds each from its lock.
+	poster         *fakePoster
+	publishTimeout time.Duration
 }
 
 func start(t *testing.T) *fixture { return startWith(t, false) }
@@ -166,7 +168,7 @@ func (f *fixture) startManager(t *testing.T) {
 			Caller: &mcp.Client{HTTP: &http.Client{Timeout: time.Minute}}, Now: f.passClock.Now, Metrics: f.metrics,
 			Runs: f.runs, EngineKind: kagent0103.Kind, EngineNamespace: engineNS, Usage: f.usage, PassTimeout: passTimeout, PassInterval: 50 * time.Millisecond, PassClock: f.passClock,
 			Tracer: sdktrace.NewTracerProvider(sdktrace.WithSyncer(f.spans)).Tracer("test"),
-			Poster: f.poster, Backoff: time.Millisecond, Recorder: mgr.GetEventRecorder("test"),
+			Poster: f.poster, Backoff: time.Millisecond, Recorder: mgr.GetEventRecorder("test"), PublishTimeout: f.publishTimeout,
 			Route: func(_ string, role routes.Role, connector string) string {
 				u, _ := f.routes.Load(role.Name + "/" + connector)
 				s, _ := u.(string)
@@ -177,9 +179,19 @@ func (f *fixture) startManager(t *testing.T) {
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	f.stop = cancel
+	done := make(chan struct{})
+	// stop waits for the manager, its runner's goroutines included: a
+	// restart never has two runners at once, as leader election ensures
+	// on a cluster.
+	f.stop = func() {
+		cancel()
+		<-done
+	}
 	t.Cleanup(cancel)
-	go func() { _ = mgr.Start(ctx) }()
+	go func() {
+		defer close(done)
+		_ = mgr.Start(ctx)
+	}()
 }
 
 func (f *fixture) restart(t *testing.T) {
