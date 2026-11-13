@@ -26,8 +26,8 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
   ' ranger:"TakeCareRanger: agentgateway policies rendered by level on the gateway every call goes through (models, MCP tools, A2A): journal, masking and filtering (audited at Apprentice, applied from Practitioner), token and request caps, the models each role may call, and at Expert the customer\'s own Markers. No LLM loop: a deterministic guardrail.",'),
  (' psy:"TakeCarePsy : évalue les traces des agents avec un modèle juge, jamais celui qu\'il juge (une règle CEL le refuse). Il évalue, il n\'agit pas.",',
   ' psy:"TakeCarePsy: evaluates the agents\' traces with a judge model, never the one it judges (a CEL rule refuses it). It evaluates, it does not act.",'),
- (' intendant:"TakeCareIntendant : il relève le terrain par les connecteurs de cluster et propose, dans le statut d\'un TakeCareSurvey, les entrées de la Carte et du registre ; vos équipes en font une PR. Le registre du Camp de base, c\'est agentregistry. Spec 10.",',
-  ' intendant:"TakeCareIntendant: it surveys the ground through the cluster connectors and proposes, in a TakeCareSurvey\'s status, the entries of the Map and of the registry; your teams turn them into a PR. The Base camp\'s registry is agentregistry. Spec 10.",'),
+ (' intendant:"TakeCareIntendant : il relève le terrain par les connecteurs de cluster, recense les agents et les connecteurs en circulation, et propose, dans le statut d\'un TakeCareSurvey, les entrées de la Carte. Il propose chaque entrée ; vos équipes en font une pull request dans leur Git. Livrés : l\'import, la passe agent, le résumé des propositions et l\'inventaire ; le niveau Maître est prévu. Spec 10.",',
+  ' intendant:"TakeCareIntendant: it surveys the ground through the cluster connectors, lists the agents and connectors in circulation, and proposes, in a TakeCareSurvey\'s status, the entries of the Map. It proposes each entry; your teams turn it into a pull request in their Git. Delivered: the import, the agent pass, the digest of the proposals and the inventory; the Expert level is planned. Spec 10.",'),
  (' kine:"TakeCareKine, enregistrements TakeCareReview : part des enquêtes du Doc pour remonter aux causes récurrentes et suivre les actions correctives.",',
   ' kine:"TakeCareKine, TakeCareReview records: starts from the Doc\'s investigations to trace recurring causes and follow up corrective actions.",'),
  (' mecano:"TakeCareMecano, enregistrements TakeCareMaintenance : état du parc, plan de montée de version (une PR au niveau Practitioner).",',
@@ -38,8 +38,8 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
   ' nutri:"TakeCareNutri, TakeCareCostReview records: cost sources and model usage measured by the gateway.",'),
  (' guide:"TakeCareGuide, enregistrements TakeCareConversation : répond depuis vos runbooks, pas à pas.",',
   ' guide:"TakeCareGuide, TakeCareConversation records: answers from your runbooks, step by step.",'),
- (' campdebase:"TakeCarePlatform, le cœur : modèles, passerelle, moteur et télémétrie. Une seule instance par cluster, rendue par le chart. Un cluster d\'administration supervise plusieurs clusters de charge, chacun avec son paquet takecare-cluster et son front mTLS (ADR 0016). Le registre des agents (agentregistry) est prévu.",',
-  ' campdebase:"TakeCarePlatform, the core: models, gateway, engine and telemetry. A single instance per cluster, rendered by the chart. An administration cluster supervises several workload clusters, each with its takecare-cluster package and its mTLS front (ADR 0016). The agent registry (agentregistry) is planned.",'),
+ (' campdebase:"TakeCarePlatform, le cœur : modèles, passerelle, moteur et télémétrie, une seule instance par cluster, rendue par le chart. Un cluster d\'administration supervise plusieurs clusters de charge, chacun avec son paquet takecare-cluster et son front mTLS (ADR 0016). Ce qui équipe les agents (Sacs, Carte, compétences, consignes) vit dans le Git du client ; une liste approuvée en fixe chaque version, et l\'opérateur n\'équipe un agent que de ce qui y est épinglé (ADR 0019). Aucun registre d\'agents n\'est installé. La liste approuvée est prévue.",',
+  ' campdebase:"TakeCarePlatform, the core: models, gateway, engine and telemetry, a single instance per cluster, rendered by the chart. An administration cluster supervises several workload clusters, each with its takecare-cluster package and its mTLS front (ADR 0016). What equips the agents (Bags, Map, skills, prompts) lives in the customer\'s Git; an approved list fixes each version, and the operator equips an agent only with what is pinned there (ADR 0019). No agent registry is installed. The approved list is planned.",'),
  (' terrain:"Le décor de rejeu. Le mode démo en fournit un premier : un cluster k3d, le décor billing-api et l\'incident scénarisé proxy-timeout. Rejouer votre propre historique demandera le connecteur d\'historique.",',
   ' terrain:"The replay scenery. Demo mode provides a first one: a k3d cluster, the billing-api scenery and the scripted proxy-timeout incident. Replaying your own history will need the history connector.",'),
  (' sac:"La spec du rôle : son niveau, son périmètre, ses connecteurs par type, où partent ses résultats, son modèle. Pour le Doc, c\'est la ressource TakeCareDoc.",',
@@ -138,28 +138,24 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
   '<p class="eyebrow">The rules · governance</p><h2>The same rules for every agent.</h2><p class="lead">The Govern pillar: one agent and two guardrails. The guardrails never act on your infra: the '
   "Ranger sets what each agent may call, the Psy checks afterwards what it did. The goal: apply them to your vendors' agents too, by routing their calls through the same gateway (coming).</p><p><a "
   'class="btn" href="#lexique">The full lexicon ›</a></p>'),
- ("<span><b>Et l'Intendant ?</b> Il est dans le pilier Encadrer, mais c'est un agent comme les autres : il tient la Carte et propose chaque entrée sur la plateforme. Il passe donc lui aussi par le "
-  'Ranger et le Psy.</span>',
-  '<span><b>What about the Intendant?</b> It belongs to the Govern pillar, but it is an agent like the others: it keeps the Map and proposes every entry on the platform. So it goes through the '
-  'Ranger and the Psy too.</span>'),
+ ("<span><b>Et l'Intendant ?</b> Il est dans le pilier Encadrer, mais c'est un agent comme les autres : il tient la Carte, recense les agents et les connecteurs en circulation, et propose chaque entrée à vos équipes. Il passe donc lui aussi par le Ranger et le Psy.</span>",
+  '<span><b>What about the Intendant?</b> It belongs to the Govern pillar, but it is an agent like the others: it keeps the Map, lists the agents and connectors in circulation, and proposes each entry to your teams. So it goes through the Ranger and the Psy too.</span>'),
  ('<div class="sec-head"><p class="eyebrow">La pile</p><h2>Des briques reconnues, assemblées.</h2><p class="lead">Pas de réinvention : TakeCare orchestre des projets open source et y ajoute les '
   'rôles, les paliers et le cadre.</p></div>',
   '<div class="sec-head"><p class="eyebrow">The stack</p><h2>Proven building blocks, put together.</h2><p class="lead">No reinventing: TakeCare orchestrates open source projects and adds the roles, '
   'the levels and the frame.</p></div>'),
- ('${[["kagent","kagent","moteur des agents"],["agentgateway","agentgateway","passerelle"],["kubernetes","Kubernetes","opérateur '
-  'Go"],[null,"MCP","connecteurs"],[null,"OpenTelemetry","traces"],["agentregistry","agentregistry","prévu"],["langfuse","Langfuse","à l\'étude"]]',
-  '${[["kagent","kagent","agent engine"],["agentgateway","agentgateway","gateway"],["kubernetes","Kubernetes","Go '
-  'operator"],[null,"MCP","connectors"],[null,"OpenTelemetry","traces"],["agentregistry","agentregistry","planned"],["langfuse","Langfuse","under study"]]'),
+ ('${[["kagent","kagent","moteur des agents"],["agentgateway","agentgateway","passerelle"],["kubernetes","Kubernetes","opérateur Go"],[null,"MCP","connecteurs"],[null,"OpenTelemetry","traces"],["git","Git","matériel validé"],["langfuse","Langfuse","à l\'étude"]]',
+  '${[["kagent","kagent","agent engine"],["agentgateway","agentgateway","gateway"],["kubernetes","Kubernetes","Go operator"],[null,"MCP","connectors"],[null,"OpenTelemetry","traces"],["git","Git","validated equipment"],["langfuse","Langfuse","under study"]]'),
  ('href="#architecture">Voir l\'architecture ›</a>', 'href="#architecture">See the architecture ›</a>'),
  ('<div class="sec-head" id="feuille-de-route"><p class="eyebrow">Feuille de route</p><h2>Où on en est.</h2></div>', '<div class="sec-head" id="feuille-de-route"><p class="eyebrow">Roadmap</p><h2>Where we stand.</h2></div>'),
  ("<div><span>fait · v0.1.0</span><b>Le Doc</b><p>Diagnostic d'incident de bout en bout : alerte, enquête en lecture seule, diagnostic sourcé sur Slack, trace et coût ; images et charts publiés.</p></div>",
   '<div><span>done · v0.1.0</span><b>The Doc</b><p>Incident diagnosis end to end: alert, read-only investigation, sourced diagnosis on Slack, trace and cost; images and charts published.</p></div>'),
  ('<div class="now"><span>maintenant · v0.2.0</span><b>Le Ranger, la Carte, plusieurs clusters</b><p>Le Ranger : les mêmes règles pour tous les agents à la passerelle, journal, masquage, filtrage, plafonds, modèles autorisés. La Carte, lue par le Doc. Un cluster d\'administration qui supervise plusieurs clusters de charge. Une route de modèle par rôle.</p></div>',
   '<div class="now"><span>now · v0.2.0</span><b>The Ranger, the Map, several clusters</b><p>The Ranger: the same rules for every agent at the gateway, journal, masking, filtering, caps, allowed models. The Map, read by the Doc. An administration cluster supervising several workload clusters. One model route per role.</p></div>'),
- ("<div><span>bientôt</span><b>L'Intendant, le Psy, le Kiné</b><p>L'Intendant (la Carte tenue, la découverte), le Psy, le Kiné : une release par rôle.</p></div>",
-  '<div><span>soon</span><b>The Intendant, the Psy, the Kiné</b><p>The Intendant (the Map kept, discovery), the Psy, the Kiné: one release per role.</p></div>'),
- ('<div><span>plus tard</span><b>Le Mécano, puis le Guide, puis le Coach et le Nutri</b><p>Ordre de la feuille de route actuelle ; il peut bouger.</p></div>',
-  '<div><span>later</span><b>The Mécano, then the Guide, then the Coach and the Nutri</b><p>The current roadmap order; it may change.</p></div>'),
+ ("<div><span>bientôt</span><b>L'Intendant</b><p>La Carte tenue : l'inventaire du cluster, la découverte par les connecteurs et une passe agent, des propositions que vos équipes relisent.</p></div><div><span>ensuite</span><b>Une release de corrections, puis l'interface en terminal</b><p>D'abord les corrections, puis un terminal pour installer, suivre et relire TakeCare.</p></div><div><span>puis</span><b>Le Kiné, le Mécano Apprenti, le Psy</b><p>Une release par rôle, dans cet ordre.</p></div>",
+  "<div><span>soon</span><b>The Intendant</b><p>The Map kept: the cluster's inventory, discovery through the connectors and an agent pass, proposals your teams review.</p></div><div><span>next</span><b>A corrections release, then the terminal interface</b><p>First the corrections, then a terminal to install, follow and review TakeCare.</p></div><div><span>then</span><b>The Kiné, the Mécano at Apprentice, the Psy</b><p>One release per role, in that order.</p></div>"),
+ ('<div><span>plus tard</span><b>Le Mécano au complet, puis le Guide, puis le Coach et le Nutri</b><p>Ordre de la feuille de route actuelle ; il peut bouger.</p></div>',
+  '<div><span>later</span><b>The full Mécano, then the Guide, then the Coach and the Nutri</b><p>The current roadmap order; it may change.</p></div>'),
  ('<div><p class="eyebrow">Maintenu par Agaetis</p><p style="margin-top:.6rem">Notre métier, c\'est de faire tourner la production de nos clients. TakeCare, c\'est l\'outil qu\'on voulait avoir pour '
   'mieux le faire. On le construit en open source, et on accompagne ceux qui veulent le déployer.</p></div>\n'
   '    <a class="btn" href="${VITRINE}" target="_blank" rel="noopener">Se faire accompagner ↗</a>',
@@ -173,7 +169,8 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
   '<div class="sec-head"><p class="eyebrow">The deck · ${R.length} cards</p><h2>Every card in the game.</h2><p class="lead">Nine roles do the work; the exercises make them progress; the equipment and places are what they share. Every card has its counterpart in the cluster and carries its version; greyed out: not coded yet. The card artwork is in French for now.</p></div>'),
  ('aria-label="Filtrer les cartes"', 'aria-label="Filter the cards"'),
  ('${grp("Les exercices","3 · ce que les rôles pratiquent ensemble",fam(["exo"]))}', '${grp("The exercises","3 · what the roles practise together",fam(["exo"]))}'),
- ('${grp("Le matériel","11 · ce que les rôles préparent et emportent",fam(["mat"]))}', '${grp("The equipment","11 · what the roles prepare and carry",fam(["mat"]))}'),
+ ('${grp("Le matériel","13 · ce que les rôles préparent et emportent",fam(["mat"]))}',
+  '${grp("The equipment","13 · what the roles prepare and carry",fam(["mat"]))}'),
  ('${grp("Les lieux","2 · d\'où tout part",fam(["lieu"]))}', '${grp("The places","2 · where it all starts",fam(["lieu"]))}'),
  ('const state = r.since ? "Disponible depuis v"+r.since : r.next ? "Prévu · "+NEXT[r.next].toLowerCase() : "";',
   'const state = r.since ? "Available since v"+r.since : r.next ? "Planned · "+NEXT[r.next].toLowerCase() : "";'),
@@ -208,16 +205,12 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
   'const mb = [["Doc · Kiné",["doc","kine"],"A powerful model","A long investigation, many tools to query, a line of reasoning to hold."],["Guide",["guide"],"A fast model","Answers drawn from your '
   'procedures, possibly on a model hosted on your premises."],["Coach · Nutri",["coach","nutri"],"A thrifty model","Regular analyses of figures, where cost matters more than '
   'finesse."],["Psy",["psy"],"A different model","The one judging the answers must not be the one that wrote them."]];'),
- ('<div class="sec-head"><p class="eyebrow">Architecture</p><h2>Tout passe par la passerelle.</h2><p class="lead">Neuf rôles, une seule plateforme. L\'opérateur traduit les ressources TakeCare, '
-  "kagent fait tourner les agents, et tous leurs appels (modèles, outils, entre agents) traversent agentgateway. Le Ranger y pose les règles, le Psy relit les traces, l'Intendant tient le registre "
-  'et la Carte.</p></div>',
-  '<div class="sec-head"><p class="eyebrow">Architecture</p><h2>Everything goes through the gateway.</h2><p class="lead">Nine roles, a single platform. The operator translates the TakeCare '
-  'resources, kagent runs the agents, and all their calls (models, tools, between agents) cross agentgateway. The Ranger sets the rules there, the Psy reads the traces, the Intendant keeps the '
-  'registry and the Map.</p></div>'),
+ ('<div class="sec-head"><p class="eyebrow">Architecture</p><h2>Tout passe par la passerelle.</h2><p class="lead">Neuf rôles, une seule plateforme. L\'opérateur traduit les ressources TakeCare, kagent fait tourner les agents, et tous leurs appels (modèles, outils, entre agents) traversent agentgateway. Le Ranger y pose les règles, le Psy relit les traces, l\'Intendant tient le matériel validé et la Carte.</p></div>',
+  '<div class="sec-head"><p class="eyebrow">Architecture</p><h2>Everything goes through the gateway.</h2><p class="lead">Nine roles, a single platform. The operator translates the TakeCare resources, kagent runs the agents, and all their calls (models, tools, between agents) cross agentgateway. The Ranger sets the rules there, the Psy reads the traces, the Intendant keeps the validated equipment and the Map.</p></div>'),
  ('<p class="legend"><span><i class="dot live"></i>disponible</span><span><i class="dot"></i>pointillés : prévu</span></p>',
   '<p class="legend"><span><i class="dot live"></i>available</span><span><i class="dot"></i>dashed: planned</span></p>'),
- ('aria-label="Architecture de TakeCare Agents : déclencheurs, opérateur, agents kagent, agentgateway, modèles et connecteurs MCP, traces et registre"',
-  'aria-label="TakeCare Agents architecture: triggers, operator, kagent agents, agentgateway, models and MCP connectors, traces and registry"'),
+ ('aria-label="Architecture de TakeCare Agents : déclencheurs, opérateur, agents kagent, agentgateway, modèles et connecteurs MCP, traces et matériel validé"',
+  'aria-label="TakeCare Agents architecture: triggers, operator, kagent agents, agentgateway, models and MCP connectors, traces and validated equipment"'),
  ('text-anchor="start">DÉCLENCHEURS</text>', 'text-anchor="start">TRIGGERS</text>'),
  ('text-anchor="middle">une alerte</text>', 'text-anchor="middle">an alert</text>'),
  ('text-anchor="middle">une échéance</text>', 'text-anchor="middle">a deadline</text>'),
@@ -244,18 +237,14 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
   'text-anchor="start">relues par le Psy, avec un modèle juge</text>',
   'text-anchor="start">OpenTelemetry traces</text><text class="ts" x="440" y="394" text-anchor="start">one per action, GenAI conventions, OTLP</text><text class="tp" x="440" y="418" '
   'text-anchor="start">read by the Psy, with a judge model</text>'),
- ('text-anchor="start">Registre et Carte</text><text class="ts" x="780" y="394" text-anchor="start">agentregistry · agents, serveurs MCP, outils, infra</text><text class="tp" x="780" y="418" '
-  'text-anchor="start">tenus par l\'Intendant, qui remet les Dossards</text>',
-  'text-anchor="start">Registry and Map</text><text class="ts" x="780" y="394" text-anchor="start">agentregistry · agents, MCP servers, tools, infra</text><text class="tp" x="780" y="418" '
-  'text-anchor="start">kept by the Intendant, who hands out the Bibs</text>'),
+ ('text-anchor="start">Matériel validé et Carte</text><text class="ts" x="780" y="394" text-anchor="start">dans votre Git · Sacs, compétences, consignes, Carte</text><text class="tp" x="780" y="418" text-anchor="start">tenus par l\'Intendant, validés par vos équipes</text>',
+  'text-anchor="start">Validated equipment and Map</text><text class="ts" x="780" y="394" text-anchor="start">in your Git · Bags, skills, prompts, Map</text><text class="tp" x="780" y="418" text-anchor="start">kept by the Intendant, validated by your teams</text>'),
  ('text-anchor="start">Dossards vérifiés</text>', 'text-anchor="start">Bibs checked</text>'),
- ('${br("kubernetes","opérateur")}<p>Traduit les ressources TakeCare en configuration des briques et en RBAC, déclenche le travail des agents et publie leurs résultats. Il n\'installe rien et ne '
-  'raisonne pas.</p>',
-  '${br("kubernetes","operator")}<p>Translates the TakeCare resources into building-block configuration and RBAC, triggers the agents\' work and publishes their results. It installs nothing and does '
-  'no reasoning.</p>'),
+ ('${br("kubernetes","opérateur")}<p>Traduit les ressources TakeCare en configuration des briques et en RBAC, déclenche le travail des agents et publie leurs résultats. Il n\'installe rien et ne raisonne pas. Un cluster d\'administration supervise plusieurs clusters de charge, chacun derrière son front mTLS. Des alertes d\'autres outils lui parviendront par le Talkie (prévu).</p>',
+  '${br("kubernetes","operator")}<p>Translates the TakeCare resources into building-block configuration and RBAC, triggers the agents\' work and publishes their results. It installs nothing and does no reasoning. An administration cluster supervises several workload clusters, each behind its mTLS front. Alerts from other tools will reach it through the Talkie (planned).</p>'),
  ('<div class="layer"><div><b>Les agents</b><span>kagent, en A2A</span></div>', '<div class="layer"><div><b>The agents</b><span>kagent, over A2A</span></div>'),
- ('<p>kagent fait tourner les sept agents, et ils se parlent en A2A : le Kiné part des enquêtes du Doc, par exemple. Chacun a sa ressource, son niveau et son modèle. Dans la v0.1 : le Doc.</p>',
-  "<p>kagent runs the seven agents, and they talk over A2A: the Kiné starts from the Doc's investigations, for instance. Each has its resource, its level and its model. In v0.1: the Doc.</p>"),
+ ("<p>kagent fait tourner les sept agents, et ils se parlent en A2A : le Kiné part des enquêtes du Doc, par exemple. Chacun a sa ressource, son niveau et son modèle. Disponibles : le Doc, et l'Intendant (son inventaire, ses propositions et leur résumé). Les assistants IA de vos équipes poseront leurs questions au Guide par la Corde (prévu).</p>",
+  "<p>kagent runs the seven agents, and they talk over A2A: the Kiné starts from the Doc's investigations, for instance. Each has its resource, its level and its model. Available: the Doc, and the Intendant (its inventory, its proposals and their digest). Your teams' AI assistants will ask the Guide their questions through the Rope (planned).</p>"),
  ('<div class="layer hl"><div><b>agentgateway</b><span>le seul point de contrôle</span></div>', '<div class="layer hl"><div><b>agentgateway</b><span>the single control point</span></div>'),
  ("<p>Chaque appel de modèle (la clé du fournisseur n'est jamais exposée, le coût est mesuré), chaque appel d'outil (autorisé outil par outil), chaque appel entre agents. Le Ranger y pose les "
   'Balises : les mêmes règles pour tous les agents. Y faire passer aussi les agents de vos éditeurs est à venir.</p>',
@@ -265,17 +254,18 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
  ('<p>Tout fournisseur compatible OpenAI, ou votre vLLM, déclaré dans TakeCarePlatform. À ce jour, un seul modèle a été mesuré au banc : <code>gemini-3.7-flash</code>.</p>',
   '<p>Any OpenAI-compatible provider, or your vLLM, declared in TakeCarePlatform. So far, a single model has been measured on the bench: <code>gemini-3.7-flash</code>.</p>'),
  ('<div><b>Les connecteurs</b><span>TakeCareConnector, en MCP</span></div>', '<div><b>The connectors</b><span>TakeCareConnector, over MCP</span></div>'),
- ("<p>Tout ce qu'un agent lit ou écrit est un serveur MCP derrière la passerelle. Le niveau décide des outils autorisés.</p>",
-  '<p>Everything an agent reads or writes is an MCP server behind the gateway. The level decides which tools are allowed.</p>'),
- ('<div><b>Le registre et la Carte</b><span>agentregistry, prévu</span></div>', '<div><b>The registry and the Map</b><span>agentregistry, planned</span></div>'),
- ("<p>L'Intendant recense agents, serveurs MCP et outils, propose chaque entrée au Camp de base, remet son Dossard à chaque agent et tient la Carte de l'infra.</p>",
-  '<p>The Intendant lists agents, MCP servers and tools, proposes every entry into Base camp, hands each agent its Bib and keeps the Map of the infra.</p>'),
+ ("<p>Tout ce qu'un agent lit ou écrit est un serveur MCP derrière la passerelle, la Carte comprise. Le niveau décide des outils autorisés ; la passerelle vérifie aussi les arguments d'un outil quand une règle le demande.</p>",
+  "<p>Everything an agent reads or writes is an MCP server behind the gateway, the Map included. The level decides which tools are allowed; the gateway also checks a tool's arguments when a rule asks for it.</p>"),
+ ('<div><b>Le matériel validé et la Carte</b><span>dans votre Git</span></div>',
+  '<div><b>The validated equipment and the Map</b><span>in your Git</span></div>'),
+ ("<p>L'Intendant recense les agents et les connecteurs en circulation, propose chaque entrée, que vos équipes transforment en pull request dans leur Git, et tient la Carte de l'infra. Seul ce que vos équipes ont validé équipe un agent.</p>",
+  '<p>The Intendant lists the agents and connectors in circulation, proposes each entry, which your teams turn into a pull request in their Git, and keeps the Map of the infra. Only what your teams have validated equips an agent.</p>'),
  ('<div><b>La télémétrie</b><span>OpenTelemetry, dès le premier jour</span></div>', '<div><b>Telemetry</b><span>OpenTelemetry, from day one</span></div>'),
  ('${br(null,"Jaeger (démo)")}', '${br(null,"Jaeger (demo)")}'),
  ("<p>Une trace par action, selon les conventions GenAI. Le Psy les relit avec un modèle juge, jamais celui qu'il juge.</p>",
   '<p>One trace per action, following the GenAI conventions. The Psy reads them with a judge model, never the one it judges.</p>'),
- ('<p class="note">Le chart <code>takecare</code> installe l\'opérateur, ses CRD et les briques tierces, avec un profil <code>prod</code> ou <code>demo</code>. <b>Disponible :</b> l\'opérateur, le Doc, le Ranger, la Carte, la passerelle, les connecteurs et la télémétrie. Le reste est prévu. Les choix et leurs raisons sont dans les <a href="${REPO}/tree/main/docs/adr" target="_blank" rel="noopener">ADR du dépôt</a>.</p>',
-  '<p class="note">The <code>takecare</code> chart installs the operator, its CRDs and the third-party building blocks, with a <code>prod</code> or <code>demo</code> profile. <b>Available:</b> the operator, the Doc, the Ranger, the Map, the gateway, the connectors and telemetry. The rest is planned. The choices and their reasons are in the <a href="${REPO}/tree/main/docs/adr" target="_blank" rel="noopener">repository\'s ADRs</a>.</p>'),
+ ('<p class="note">Le chart <code>takecare</code> installe l\'opérateur, ses CRD et les briques tierces, avec un profil <code>prod</code> ou <code>demo</code>. <b>Disponible :</b> l\'opérateur, le Doc, le Ranger, l\'Intendant, la Carte, la passerelle, les connecteurs et la télémétrie. Le reste est prévu. Les choix et leurs raisons sont dans les <a href="${REPO}/tree/main/docs/adr" target="_blank" rel="noopener">ADR du dépôt</a>.</p>',
+  '<p class="note">The <code>takecare</code> chart installs the operator, its CRDs and the third-party building blocks, with a <code>prod</code> or <code>demo</code> profile. <b>Available:</b> the operator, the Doc, the Ranger, the Intendant, the Map, the gateway, the connectors and telemetry. The rest is planned. The choices and their reasons are in the <a href="${REPO}/tree/main/docs/adr" target="_blank" rel="noopener">repository\'s ADRs</a>.</p>'),
  ('<div class="sec-head" style="margin-top:4rem"><p class="eyebrow">Un modèle par rôle</p><h2>Chaque rôle a son travail, donc son modèle.</h2><p class="lead">Le modèle se choisit rôle par rôle (ADR '
   '0004), et la passerelle mesure le coût de chaque appel. Les profils ci-dessous sont une illustration, <b>à mesurer</b> : seule la règle du Psy est écrite dans les specs.</p></div>',
   '<div class="sec-head" style="margin-top:4rem"><p class="eyebrow">A model per role</p><h2>Each role has its job, so its model.</h2><p class="lead">The model is chosen role by role (ADR 0004), and '
@@ -294,27 +284,19 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
  ('<span class="c"># on range tout</span>', '<span class="c"># tidy everything up</span>'),
  ('<p class="note">Les images et les charts de la dernière release sont sur <code>ghcr.io/agaetis-it</code> ; <code>DEMO_IMAGES=build</code> construit les images depuis le code et les importe dans le cluster. Un second <code>make demo-up</code> ne change rien et prend quelques secondes.</p>',
   '<p class="note">The images and charts of the latest release are on <code>ghcr.io/agaetis-it</code>; <code>DEMO_IMAGES=build</code> builds the images from the code and imports them into the cluster. A second <code>make demo-up</code> changes nothing and takes a few seconds.</p>'),
- ('<p class="eyebrow" style="margin-bottom:.8rem">Prérequis</p><ul class="todo" style="--x:0"><li>Docker, avec au moins 4 Go de mémoire (la pile en prend 3,5 Gio pendant un incident)</li><li>k3d, '
-  'kubectl, make</li><li>Helm 4 : téléchargé par le Makefile</li><li>Une clé pour un modèle compatible OpenAI</li></ul>',
-  '<p class="eyebrow" style="margin-bottom:.8rem">Prerequisites</p><ul class="todo" style="--x:0"><li>Docker, with at least 4 GB of memory (the stack uses 3.5 GiB during an incident)</li><li>k3d, '
-  'kubectl, make</li><li>Helm 4: downloaded by the Makefile</li><li>A key for an OpenAI-compatible model</li></ul>'),
+ ('<p class="eyebrow" style="margin-bottom:.8rem">Prérequis</p><ul class="todo" style="--x:0"><li>Docker, avec au moins 5 Go de mémoire (la pile en prend 3,5 Gio au repos et 4,1 Gio pendant un incident)</li><li>k3d, kubectl, make</li><li>Helm 4 : téléchargé par le Makefile</li><li>Une clé pour un modèle compatible OpenAI</li></ul>',
+  '<p class="eyebrow" style="margin-bottom:.8rem">Prerequisites</p><ul class="todo" style="--x:0"><li>Docker, with at least 5 GB of memory (the stack uses 3.5 GiB idle and 4.1 GiB during an incident)</li><li>k3d, kubectl, make</li><li>Helm 4: downloaded by the Makefile</li><li>A key for an OpenAI-compatible model</li></ul>'),
  ('<p class="eyebrow" style="margin-bottom:.8rem">En option : Slack</p><p style="color:var(--mute);font-size:.94rem">Avec <code>TAKECARE_SLACK_BOT_TOKEN</code> et '
   "<code>TAKECARE_SLACK_ONCALL_CHANNEL</code> (et <code>TAKECARE_SLACK_REVIEW_CHANNEL</code> pour le canal de relecture d'un Apprenti), les diagnostics partent sur Slack. Sans, ils restent dans le "
   "journal du serveur de publication, et <code>make demo-verdict</code> les lit dans l'enquête.</p>",
   '<p class="eyebrow" style="margin-bottom:.8rem">Optional: Slack</p><p style="color:var(--mute);font-size:.94rem">With <code>TAKECARE_SLACK_BOT_TOKEN</code> and '
   "<code>TAKECARE_SLACK_ONCALL_CHANNEL</code> (and <code>TAKECARE_SLACK_REVIEW_CHANNEL</code> for an Apprentice's review channel), diagnoses go to Slack. Without them, they stay in the publishing "
   "server's log, and <code>make demo-verdict</code> reads them from the investigation.</p>"),
- ('<p class="eyebrow" style="margin-bottom:.8rem">En production · bientôt</p><p style="color:var(--mute);font-size:.94rem">Deux charts : <a href="${REPO}/blob/main/charts/takecare-crds/README.md" '
-  'target="_blank" rel="noopener"><code>takecare-crds</code></a> d\'abord (jamais désinstallé tant que TakeCare tourne), puis <a href="${REPO}/blob/main/charts/takecare/README.md" target="_blank" '
-  'rel="noopener"><code>takecare</code></a> avec <code>values-prod.yaml</code>, chaque valeur à fournir marquée <code>REQUIRED</code>. Lisez le README de chaque chart avant d\'installer ; les charts '
-  'sont publiés avec la 0.1.0.</p>',
-  '<p class="eyebrow" style="margin-bottom:.8rem">In production · soon</p><p style="color:var(--mute);font-size:.94rem">Two charts: <a href="${REPO}/blob/main/charts/takecare-crds/README.md" '
-  'target="_blank" rel="noopener"><code>takecare-crds</code></a> first (never uninstalled while TakeCare runs), then <a href="${REPO}/blob/main/charts/takecare/README.md" target="_blank" '
-  'rel="noopener"><code>takecare</code></a> with <code>values-prod.yaml</code>, every value to provide marked <code>REQUIRED</code>. Read each chart\'s README before installing; the charts are '
-  'published with 0.1.0.</p>'),
+ ('<p class="eyebrow" style="margin-bottom:.8rem">En production</p><p style="color:var(--mute);font-size:.94rem">Deux charts : <a href="${REPO}/blob/main/charts/takecare-crds/README.md" target="_blank" rel="noopener"><code>takecare-crds</code></a> d\'abord (jamais désinstallé tant que TakeCare tourne), puis <a href="${REPO}/blob/main/charts/takecare/README.md" target="_blank" rel="noopener"><code>takecare</code></a> avec <code>values-prod.yaml</code>, chaque valeur à fournir marquée <code>REQUIRED</code>. Lisez le README de chaque chart avant d\'installer ; les charts sont publiés avec la 0.1.0.</p>',
+  '<p class="eyebrow" style="margin-bottom:.8rem">In production</p><p style="color:var(--mute);font-size:.94rem">Two charts: <a href="${REPO}/blob/main/charts/takecare-crds/README.md" target="_blank" rel="noopener"><code>takecare-crds</code></a> first (never uninstalled while TakeCare runs), then <a href="${REPO}/blob/main/charts/takecare/README.md" target="_blank" rel="noopener"><code>takecare</code></a> with <code>values-prod.yaml</code>, every value to provide marked <code>REQUIRED</code>. Read each chart\'s README before installing; the charts are published with 0.1.0.</p>'),
  ('target="_blank" rel="noopener">Le README, à jour ↗</a>', 'target="_blank" rel="noopener">The README, up to date ↗</a>'),
- ('sub:"Le Camp de base : modèles, passerelle, moteur, télémétrie. Une seule instance, rendue par le chart. agentregistry, prévu."',
-  'sub:"Base camp: models, gateway, engine, telemetry. A single instance, rendered by the chart. agentregistry, planned."'),
+ ('sub:"Le Camp de base : modèles, passerelle, moteur, télémétrie. Une seule instance, rendue par le chart. Le matériel des agents vient du Git du client, par une liste approuvée (ADR 0019)."',
+  'sub:"Base camp: models, gateway, engine, telemetry. A single instance, rendered by the chart. The agents\' equipment comes from the customer\'s Git, through an approved list (ADR 0019)."'),
  ('sub:"Le Doc : son niveau, son périmètre, ses connecteurs, où partent ses diagnostics."', 'sub:"The Doc: its level, its scope, its connectors, where its diagnoses go."'),
  ('sub:"Une enquête par alerte : sa phase, son diagnostic, son coût et sa trace."', 'sub:"One investigation per alert: its phase, its diagnosis, its cost and its trace."'),
  ('sub:"Un accès du Sac : un serveur MCP derrière la passerelle, avec ses outils classés read, propose ou act."',
@@ -437,4 +419,14 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
   'appartiennent à leurs propriétaires.</p>`)}',
   '${b("Intellectual property",`<p>The TakeCare Agents software is open source, under the <a href="${REPO}/blob/main/LICENSE" target="_blank" rel="noopener">Apache 2.0 license ↗</a>, copyright '
   'Agaetis. The texts, illustrations, videos and the TakeCare name belong to Agaetis; the illustrations were made for Agaetis with the help of AI tools. The logos and brands mentioned belong to '
-  'their owners.</p>`)}')]
+  'their owners.</p>`)}'),
+ (' talkie:"Un add-on de TakeCare (ADR 0018) : chaque source d\'alertes est convertie puis poussée dans l\'Alertmanager de TakeCare, avec les étiquettes qui permettent au Doc de regrouper et de router. Pas encore codé.",\n corde:"Un outil « demander au Guide », servi par un serveur MCP derrière la passerelle (en A2A pour les agents qui le parlent). Chaque assistant a son Dossard ; aucun outil d\'action ne passe par la Corde. Pas encore spécifié.",\n',
+  ' talkie:"A TakeCare add-on (ADR 0018): each alert source is converted, then pushed into TakeCare\'s Alertmanager, with the labels that let the Doc group and route. Not coded yet.",\n corde:"An “ask the Guide” tool, served by an MCP server behind the gateway (over A2A for the agents that speak it). Each assistant has its Bib; no action tool goes through the Rope. Not specified yet.",\n'),
+ ('text-anchor="middle">Talkie · vos outils</text>',
+  'text-anchor="middle">Talkie · your tools</text>'),
+ ('text-anchor="middle">Corde · assistants</text>',
+  'text-anchor="middle">Rope · assistants</text>'),
+ ('text-anchor="middle">au Guide</text>',
+  'text-anchor="middle">to the Guide</text>'),
+ ('<span class="c"># le banc de l\'Intendant, sur la démo</span>',
+  '<span class="c"># the Intendant\'s bench, on the demo</span>')]
