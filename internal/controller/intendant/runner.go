@@ -143,15 +143,18 @@ type Runner struct {
 	// report connector (spec 10 §6); none when nil. Backoff is the first
 	// wait between two attempts (report.Backoff when zero), After waits
 	// (time.After when nil), Recorder records a final failure.
-	Poster   report.Poster
-	Backoff  time.Duration
-	After    func(time.Duration) <-chan time.Time
-	Recorder recorder.EventRecorder
+	Poster  report.Poster
+	Backoff time.Duration
+	// PublishTimeout bounds one digest from its Intendant's lock
+	// (publishTimeout when zero).
+	PublishTimeout time.Duration
+	After          func(time.Duration) <-chan time.Time
+	Recorder       recorder.EventRecorder
 
 	mu      sync.Mutex
 	running map[types.NamespacedName]bool // by Intendant
-	// digestLocks hold one *sync.Mutex per Intendant: its digests are
-	// compared, posted and recorded one at a time.
+	// digestLocks hold one lock per Intendant (a chan struct{} of one):
+	// its digests are compared, posted and recorded one at a time.
 	digestLocks sync.Map
 	freed       chan struct{}
 	wg          sync.WaitGroup

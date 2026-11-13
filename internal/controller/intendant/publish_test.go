@@ -395,3 +395,61 @@ func TestDigestRace(t *testing.T) {
 		t.Errorf("%d digests posted for the same set, want 1", n)
 	}
 }
+
+// A digest waiting for its Intendant's lock keeps its whole time: the
+// first post, held past its bound, fails; the second, which waited longer
+// than the bound, still posts.
+func TestDigestWaitsForTheLock(t *testing.T) {
+	f := startRunner(t)
+	f.publishTimeout = 2 * time.Second
+	f.restart(t)
+	f.poster.hold = newGate()
+	f.grounded(t)
+	f.connector(t, connReport, v1alpha1.ConnectorReport, []string{postTool})
+	f.reporting(t, "lock", v1alpha1.LevelPractitioner, connReport)
+	seen := map[string]bool{}
+	f.waitPhase(t, "lock", 1, v1alpha1.RunCompleted)
+	f.mapRevision(t, rev2)
+	f.waitPhase(t, "lock", 2, v1alpha1.RunCompleted)
+	first := f.newPublished(t, "lock", 1, seen)
+	if p := first.Status.Published; p.OK {
+		t.Fatalf("the held post: published %+v, want its bound's failure", p)
+	}
+	f.poster.hold.release()
+	if p := f.newPublished(t, "lock", 2, seen).Status.Published; !p.OK || p.Reason != "" {
+		t.Errorf("the digest that waited for the lock: published %+v", p)
+	}
+}
+
+// A digest posted and recorded on the Intendant, the operator stopped
+// before the survey's own record: the next leader records it as posted,
+// without posting it again.
+func TestDigestRecordedBeforeStop(t *testing.T) {
+	f := startRunner(t)
+	f.grounded(t)
+	f.connector(t, connReport, v1alpha1.ConnectorReport, []string{postTool})
+	f.reporting(t, "recorded", v1alpha1.LevelPractitioner, connReport)
+	seen := map[string]bool{}
+	s := f.newPublished(t, "recorded", 1, seen)
+	f.stop()
+	before := s.DeepCopy()
+	s.Status.Published = nil
+	if err := f.c.Status().Patch(context.Background(), &s, client.MergeFrom(before)); err != nil {
+		t.Fatal(err)
+	}
+	f.startManager(t)
+	var got v1alpha1.TakeCareSurvey
+	deadline := time.Now().Add(waitFor)
+	for time.Now().Before(deadline) {
+		if err := f.c.Get(context.Background(), client.ObjectKeyFromObject(&s), &got); err == nil && got.Status.Published != nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if p := got.Status.Published; p == nil || !p.OK || p.Reason != "" || p.Destination != onCall {
+		t.Errorf("resumed: published %+v, want posted", p)
+	}
+	if n := len(f.poster.posted()); n != 1 {
+		t.Errorf("%d posts, want 1", n)
+	}
+}

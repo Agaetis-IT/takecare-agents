@@ -11,7 +11,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -75,11 +74,9 @@ func (w *Runner) startPublish(ctx context.Context, key types.NamespacedName) {
 // publication goroutines take. At least once: an operator stopped between
 // the post and the record posts again.
 func (w *Runner) publish(parent context.Context, key types.NamespacedName) {
-	ctx, cancel := context.WithTimeout(parent, publishTimeout)
-	defer cancel()
-	logger := log.FromContext(ctx).WithValues("survey", key.Name)
+	logger := log.FromContext(parent).WithValues("survey", key.Name)
 	var s v1alpha1.TakeCareSurvey
-	if err := w.Reader.Get(ctx, key, &s); err != nil {
+	if err := w.Reader.Get(parent, key, &s); err != nil {
 		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "read the survey to publish")
 		}
@@ -88,8 +85,18 @@ func (w *Runner) publish(parent context.Context, key types.NamespacedName) {
 	if s.Status.Phase != v1alpha1.RunCompleted || s.Status.Published != nil {
 		return
 	}
-	unlock := w.digestLock(types.NamespacedName{Namespace: s.Namespace, Name: s.Spec.IntendantRef.Name})
+	unlock, ok := w.digestLock(parent, types.NamespacedName{Namespace: s.Namespace, Name: s.Spec.IntendantRef.Name})
+	if !ok {
+		return // the operator stops: the next leader publishes
+	}
 	defer unlock()
+	// The bound counts from the lock: a digest waiting behind another's
+	// retries keeps its whole time.
+	ctx, cancel := context.WithTimeout(parent, w.publishTimeout())
+	defer cancel()
+	if err := w.Reader.Get(ctx, key, &s); err != nil || s.Status.Published != nil {
+		return
+	}
 	result, last := w.post(ctx, &s)
 	if parent.Err() != nil {
 		return // the operator stops: the next leader publishes
@@ -107,12 +114,24 @@ func (w *Runner) publish(parent context.Context, key types.NamespacedName) {
 	}
 }
 
-// digestLock locks the Intendant's digests and returns the unlock.
-func (w *Runner) digestLock(in types.NamespacedName) func() {
-	v, _ := w.digestLocks.LoadOrStore(in, &sync.Mutex{})
-	mu, _ := v.(*sync.Mutex)
-	mu.Lock()
-	return mu.Unlock
+func (w *Runner) publishTimeout() time.Duration {
+	if w.PublishTimeout > 0 {
+		return w.PublishTimeout
+	}
+	return publishTimeout
+}
+
+// digestLock takes the Intendant's digest lock, or gives up when ctx
+// ends; it returns the unlock.
+func (w *Runner) digestLock(ctx context.Context, in types.NamespacedName) (func(), bool) {
+	v, _ := w.digestLocks.LoadOrStore(in, make(chan struct{}, 1))
+	ch, _ := v.(chan struct{})
+	select {
+	case ch <- struct{}{}:
+		return func() { <-ch }, true
+	case <-ctx.Done():
+		return nil, false
+	}
 }
 
 // post posts the survey's digest unless there is nothing to post or it is
@@ -140,6 +159,12 @@ func (w *Runner) post(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alpha1
 	}
 	all := w.allProposals(ctx, s)
 	this := &v1alpha1.LastDigest{Survey: s.Name, Connector: result.Connector, Destination: dest, Fingerprint: fingerprint(all, s.Status.ProposalCounts.Total)}
+	if l := in.Status.LastDigest; l != nil && l.Survey == s.Name {
+		// Posted and recorded, the operator stopped before the survey's
+		// own record.
+		result.Connector, result.Destination, result.OK = l.Connector, l.Destination, true
+		return result, nil
+	}
 	if l := in.Status.LastDigest; l != nil && l.Fingerprint == this.Fingerprint && l.Connector == this.Connector && l.Destination == this.Destination {
 		result.OK, result.Reason = true, reasonSame+l.Survey
 		return result, nil
