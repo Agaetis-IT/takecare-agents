@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Proposed |
+| Status | Accepted |
 | Date | 2026-11-13 |
 | Amends | spec 06 §11 (Base camp), spec 10 §8 |
 | Relates to | ADR 0001, ADR 0007, ADR 0008, ADR 0015, spec 06 §5 |

@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -150,6 +151,9 @@ type Runner struct {
 	PublishTimeout time.Duration
 	After          func(time.Duration) <-chan time.Time
 	Recorder       recorder.EventRecorder
+	// AgentKinds are the engine's agent kinds; the inventory lists those
+	// of kind Agent in EngineNamespace from the operator's cache.
+	AgentKinds []schema.GroupVersionKind
 
 	mu      sync.Mutex
 	running map[types.NamespacedName]bool // by Intendant
@@ -414,6 +418,16 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 	if err != nil {
 		return out, none, err // the operator stopped: nothing is written
 	}
+	// The inventory (spec 10 §8): the cluster's agents and connectors.
+	own, err := w.ownItems(ctx, &in)
+	if err != nil {
+		return out, none, fail(failImport, err)
+	}
+	invLayer, items, err := discovery.Inventory(ctx, w.Caller, grounds, own)
+	if err != nil {
+		return out, none, fail(failImport, err)
+	}
+	res.Layers = append(res.Layers, invLayer)
 	// The full set, before the status: the not-seen line of what does not
 	// fit goes into both.
 	name := proposalsName(s.Name)
@@ -433,7 +447,7 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 		ls.End(trace.WithTimestamp(end))
 	}
 	out = outcome(res, idx.revision, blind)
-	out.ProposalsConfigMap, out.Usage = name, passUsage
+	out.ProposalsConfigMap, out.Usage, out.Inventory = name, passUsage, inventory(items)
 	return out, res, nil
 }
 
@@ -549,13 +563,22 @@ func (w *Runner) grounds(ctx context.Context, in *v1alpha1.TakeCareIntendant, id
 			}
 		}
 		if len(nss) > 0 {
-			grounds = append(grounds, discovery.Ground{Connector: b.name, Cluster: cluster, Endpoint: b.ep, Namespaces: nss})
+			grounds = append(grounds, discovery.Ground{Connector: b.name, Cluster: cluster, Endpoint: b.ep, Namespaces: nss, Agents: readsAgents(b.conn)})
 		}
 	}
 	return grounds, res.BlindSpots, nil
 }
 
 // parsePlace reads the namespace of a kubernetes source.
+// readsAgents says whether a cluster connector's add-on may list kagent
+// Agents: its opt-in read rule on kagent.dev agents (spec 10 §8).
+func readsAgents(c *v1alpha1.TakeCareConnector) bool {
+	if c.Spec.Kubernetes == nil {
+		return false
+	}
+	return slices.Contains(c.Spec.Kubernetes.ExtraResources, v1alpha1.ResourceRef{Group: "kagent.dev", Resource: "agents"})
+}
+
 func parsePlace(ref string) (coverage.Place, bool) {
 	src, ok := mapschema.ParseKubernetes(ref)
 	return coverage.Place{Cluster: src.Cluster, Namespace: v1alpha1.Namespace(src.Namespace)}, ok

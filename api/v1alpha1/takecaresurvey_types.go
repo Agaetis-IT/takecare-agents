@@ -131,13 +131,39 @@ type Proposal struct {
 	Source ProposalSource `json:"source"`
 }
 
-// Inventory counts the agents and MCP servers in circulation, from the
-// cluster and the registry (spec 10 §8).
+// Inventory lists the agents and MCP servers in circulation on the
+// cluster (spec 10 §8): the counts over all of them, the items for the
+// first 100.
 type Inventory struct {
+	// The kagent Agents: the engine namespace's, and those in the
+	// Intendant's scope when the kubernetes connector may list them.
 	// +kubebuilder:validation:Minimum=0
 	Agents int32 `json:"agents"`
+	// The TakeCareConnectors, each an MCP server.
 	// +kubebuilder:validation:Minimum=0
 	MCPServers int32 `json:"mcpServers"`
+	// The tools in circulation: the connectors' discovered tools. An
+	// agent's given tools are among them and are not counted again; each
+	// item keeps its own.
+	// +kubebuilder:validation:Minimum=0
+	Tools int32 `json:"tools"`
+	// The first 100 items, sorted by kind, namespace and name; the counts
+	// above count them all.
+	// +kubebuilder:validation:MaxItems=100
+	// +listType=atomic
+	// +optional
+	Items []InventoryItem `json:"items,omitempty"`
+}
+
+// InventoryItem is one agent or connector of the inventory.
+type InventoryItem struct {
+	// +kubebuilder:validation:Enum=Agent;Connector
+	Kind      string `json:"kind"`
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+	// A connector's tools as discovered; an engine agent's tools as it is
+	// given them; 0 for an agent listed through the kubernetes connector,
+	// whose listing does not say.
 	// +kubebuilder:validation:Minimum=0
 	Tools int32 `json:"tools"`
 }

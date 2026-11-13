@@ -240,18 +240,61 @@ spec:
                 type: object
               inventory:
                 description: |-
-                  Inventory counts the agents and MCP servers in circulation, from the
-                  cluster and the registry (spec 10 §8).
+                  Inventory lists the agents and MCP servers in circulation on the
+                  cluster (spec 10 §8): the counts over all of them, the items for the
+                  first 100.
                 properties:
                   agents:
+                    description: |-
+                      The kagent Agents: the engine namespace's, and those in the
+                      Intendant's scope when the kubernetes connector may list them.
                     format: int32
                     minimum: 0
                     type: integer
+                  items:
+                    description: |-
+                      The first 100 items, sorted by kind, namespace and name; the counts
+                      above count them all.
+                    items:
+                      description: InventoryItem is one agent or connector of the
+                        inventory.
+                      properties:
+                        kind:
+                          enum:
+                          - Agent
+                          - Connector
+                          type: string
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                        tools:
+                          description: |-
+                            A connector's tools as discovered; an engine agent's tools as it is
+                            given them; 0 for an agent listed through the kubernetes connector,
+                            whose listing does not say.
+                          format: int32
+                          minimum: 0
+                          type: integer
+                      required:
+                      - kind
+                      - name
+                      - namespace
+                      - tools
+                      type: object
+                    maxItems: 100
+                    type: array
+                    x-kubernetes-list-type: atomic
                   mcpServers:
+                    description: The TakeCareConnectors, each an MCP server.
                     format: int32
                     minimum: 0
                     type: integer
                   tools:
+                    description: |-
+                      The tools in circulation: the connectors' discovered tools. An
+                      agent's given tools are among them and are not counted again; each
+                      item keeps its own.
                     format: int32
                     minimum: 0
                     type: integer

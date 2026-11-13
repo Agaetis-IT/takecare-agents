@@ -30,7 +30,6 @@ func intendantFixture() *v1alpha1.TakeCareIntendant {
 				Knowledge: []string{"runbooks"},
 				Map:       []string{connMap},
 				Metrics:   []string{connPrometheus},
-				Registry:  []string{connRegistry},
 				Report:    connReport,
 			},
 			Report: v1alpha1.ReportDestinations{Practitioner: destOnCall},
@@ -56,9 +55,6 @@ func TestIntendantValidation(t *testing.T) {
 		{"two metrics connectors", func(i *v1alpha1.TakeCareIntendant) {
 			i.Spec.Connectors.Metrics = []string{connPrometheus, "other-prometheus"}
 		}, "metrics"},
-		{"two registry connectors", func(i *v1alpha1.TakeCareIntendant) {
-			i.Spec.Connectors.Registry = []string{connRegistry, "other-registry"}
-		}, "registry"},
 		{"unknown importer", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Importers = []v1alpha1.Importer{addonKubernetes} }, "importers"},
 		{"duplicate importer", func(i *v1alpha1.TakeCareIntendant) {
 			i.Spec.Importers = []v1alpha1.Importer{v1alpha1.ImporterKubernetes, v1alpha1.ImporterKubernetes}

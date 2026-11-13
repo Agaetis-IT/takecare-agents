@@ -46,7 +46,6 @@ const (
 	badLevel         = "expert"
 	connReport       = "report"
 	connMap          = "map"
-	connRegistry     = "registry"
 	colLevel         = "Level"
 	colPhase         = "Phase"
 	addonKubernetes  = "kubernetes"

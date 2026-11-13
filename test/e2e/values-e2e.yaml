@@ -20,6 +20,17 @@ platform:
         currency: USD
 
 addons:
+  # The demo's extra resources (a list replaces, it does not merge), plus
+  # the opt-in read rule on kagent Agents, allowed for the e2e only: the
+  # Intendant's inventory lists the Agents in its scope through the
+  # kubernetes connector (spec 10 §8). get, list and watch.
+  kubernetes:
+    extraResources:
+      - group: rds.services.k8s.aws
+        resource: dbproxies
+      - resource: configmaps
+      - group: kagent.dev
+        resource: agents
   reportSlack:
     apiURL: http://fake-slack.takecare-e2e.svc:8080/api
     egress:

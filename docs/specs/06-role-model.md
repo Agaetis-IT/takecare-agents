@@ -51,7 +51,7 @@ What is shared is extracted from today's `TakeCareInvestigationStatus` into a **
 | Role | Record kind | Spec (what was asked) | Output (status) |
 |---|---|---|---|
 | Doc | `TakeCareInvestigation` (exists) | alert, level, silent | diagnosis, publication |
-| Intendant | `TakeCareSurvey` | the ground surveyed, the registry entries to review | the inventory layer by layer with what could not be seen; proposals for the Map and the registry, in status; a human turns them into pull requests |
+| Intendant | `TakeCareSurvey` | the ground surveyed, the Map revision | the survey layer by layer with what could not be seen; proposals for the Map and the inventory of the agents and connectors, in status; a human turns the proposals into pull requests |
 | Kiné | `TakeCareReview` | the investigations reviewed, the period | problem statement, corrective actions, publication; at `Expert` the changes made |
 | Mécano | `TakeCareMaintenance` | the inventory scope, the component targeted | state of the fleet, upgrade plan (a PR at `Practitioner`), changes applied at `Expert` |
 | Coach | `TakeCarePeakReview` | the peak window, the past peaks replayed | what gave or would give, the preparation plan |
@@ -86,7 +86,7 @@ The rule of the concept: the Apprentice replays without touching anything, the P
 | Nutri | `read`: weighs every resource, agents' cost included | `read`; priced adjustments | `act`: resizes within the validated envelope |
 | Guide | `read`: answers questions on the infra | `read`; walks runbooks step by step, **the team executes** | `read`: the team leads, the Guide checks and debriefs. At this level the **team** grows, not the agent |
 | Ranger | audit mode (logs, no enforcement) | enforces: masking, allowed models and tools, caps, alerts | per-agent identity and rights, tool by tool |
-| Intendant | `read`: inventory of the agents, MCP servers and skills in circulation; a first Map, proposed | proposes each registry entry and each Map update through its record's status; the team validates | checks each new version (provenance, rights asked), removes what is no longer compliant, keeps the Map current: `act` tools listed one by one |
+| Intendant | `read`: inventory of the agents, MCP servers and skills in circulation; a first Map, proposed | proposes each Map update through its record's status and keeps the inventory of the agents and connectors; the team validates | checks each new version (provenance, rights asked), removes what is no longer compliant, keeps the Map current: `act` tools listed one by one |
 | Psy | samples and scores | scores every run, flags drift | gates: holds an out-of-frame answer before its publication and tells a human; can still pause a drifting role (`suspend`) |
 
 Four invariants that hold for all roles and must be enforced in the generic code, not role by role:
@@ -153,7 +153,7 @@ Steps ordered with the concept (2026-11-04). Step 1 is the Doc alone (v0.1). Ste
 | `history` MCP server exposed by the operator | step 2 (replay at Apprentice; the Kiné) |
 | Spec 00 roadmap replaced by §9 | now, with this spec |
 | The Map as a connector, one internal alert format keyed by Map entity, readiness by ground coverage | two ADRs before step 2 |
-| `TakeCareIntendant`, `TakeCareSurvey`, the Kubernetes import, the registry connector | step 2 (spec 10) |
+| `TakeCareIntendant`, `TakeCareSurvey`, the Kubernetes import, the inventory | step 2 (spec 10) |
 
 ## 11. Equipment and places → build
 
@@ -172,7 +172,7 @@ The cards name things the product already has; one vocabulary for labels, CRD de
 | Le Carnet d'entretien | Service log | versions, end of support, planned upgrades, component by component | Mécano |
 | Le Plan | Plan | the capacity plan of a peak | Coach |
 | La Ration | Ration | the validated cost envelope, never exceeded at Expert | Nutri |
-| Le Camp de base | Base camp | `TakeCarePlatform` plus agentregistry; it records the validated equipment, each piece living in its own brick (Markers in agentgateway, Logbooks in the trace backend, the Map in the customer's Git). Never "Basecamp" in a public name (a 37signals trademark) | kept by the Intendant |
+| Le Camp de base | Base camp | `TakeCarePlatform` and what the customer's Git holds (ADR 0019); it records the validated equipment, each piece living in its own brick (Markers in agentgateway, Logbooks in the trace backend, the Map in the customer's Git). Never "Basecamp" in a public name (a 37signals trademark) | kept by the Intendant |
 | Le Terrain d'entraînement | Training ground | the replay and simulation bench; the demo mode is its first version; replaying the customer's history needs the `history` connector (step 2) | all |
 
 ## Open questions

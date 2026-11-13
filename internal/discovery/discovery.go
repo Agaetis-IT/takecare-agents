@@ -106,6 +106,9 @@ type Ground struct {
 	// Namespaces surveyed; empty: every namespace namespaces_list returns
 	// but the kube-* ones.
 	Namespaces []string
+	// Agents says the connector may list kagent Agents: its add-on has the
+	// opt-in read rule on kagent.dev agents (spec 10 §8).
+	Agents bool
 }
 
 // Metrics is the metrics connector whose rules tool lists the alerting
