@@ -8,7 +8,7 @@ const PIL = {
 /* fam : role (nat agent|guard) · exo · mat · lieu. Each product card (role, mat, lieu) carries
    since: the version it arrived in (a coloured card), or next: "soon"|"later" (a grey one). */
 const R = [
- ["intendant","encadrer","role","agent","Infra inventory and mapping","The Intendant","Agents and tools coming in from everywhere?","It runs Base camp: only what has been validated gets in, and every agent receives its Bib there. With your teams, it also draws the Map that every agent shares.",{next:"soon"}],
+ ["intendant","encadrer","role","agent","Infra inventory and mapping","The Intendant","Agents and tools coming in from everywhere?","It runs Base camp: only what has been validated gets in, and every agent receives its Bib there. With your teams, it also draws the Map that every agent shares.",{since:"0.3"}],
  ["ranger","encadrer","role","guard","AI agent governance","The Ranger","Agents tempted to go off-trail?","It sets the Markers and checks every Bib: allowed tools, masked data, capped costs, for every agent.",{since:"0.2"}],
  ["psy","encadrer","role","guard","AI agent quality control","The Psy","Agents that make up paths, lose their bearings or go round in circles?","It reads each agent's Logbook and flags the answers that drift.",{next:"soon"}],
  ["coach","preparer","role","agent","Peak readiness","The Coach","A traffic peak ahead?","It checks what will hold at the peak and prepares the fixes.",{next:"later"}],

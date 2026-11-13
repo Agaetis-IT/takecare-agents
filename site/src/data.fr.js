@@ -8,7 +8,7 @@ const PIL = {
 /* fam : role (nat agent|guard) · exo · mat · lieu. Each product card (role, mat, lieu) carries
    since: the version it arrived in (a coloured card), or next: "soon"|"later" (a grey one). */
 const R = [
- ["intendant","encadrer","role","agent","Inventaire et cartographie de l'infra","L'Intendant","Des agents et des outils qui arrivent de partout ?","Il tient le Camp de base : seul ce qui est validé y entre, et chaque agent y reçoit son Dossard. Il prépare aussi avec vos équipes la Carte que partagent tous les agents.",{next:"soon"}],
+ ["intendant","encadrer","role","agent","Inventaire et cartographie de l'infra","L'Intendant","Des agents et des outils qui arrivent de partout ?","Il tient le Camp de base : seul ce qui est validé y entre, et chaque agent y reçoit son Dossard. Il prépare aussi avec vos équipes la Carte que partagent tous les agents.",{since:"0.3"}],
  ["ranger","encadrer","role","guard","Gouvernance des agents IA","Le Ranger","Vos agents tentés par le hors-piste ?","Il pose les Balises et vérifie chaque Dossard : outils autorisés, données masquées, coûts plafonnés, pour tous les agents.",{since:"0.2"}],
  ["psy","encadrer","role","guard","Contrôle qualité des agents IA","Le Psy","Des agents qui inventent des chemins, perdent le nord ou tournent en rond ?","Il relit le Journal de chaque agent et signale les réponses qui dérivent.",{next:"soon"}],
  ["coach","preparer","role","agent","Préparation des pics","Le Coach","Un pic d'activité en vue ?","Il vérifie ce qui tiendra au pic et prépare les corrections.",{next:"later"}],

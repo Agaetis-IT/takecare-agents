@@ -6,34 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.0-rc.1] - 2026-11-13
+
+The step 2 Intendant's prerelease: the survey of the ground through the connectors, the agent pass, the digest, the cluster's inventory, and each role's usage on its own model route. On the benches of 2026-11-13 (`google/gemini-3.7-flash`), the Doc scores 5 out of 5 (`test/bench/report-2026-11-13T1529Z.json`) and the Intendant 5 runs ok out of 5 (`test/bench/intendant-report-2026-11-13T1535Z.json`).
+
 ### Added
 
-- The Intendant (spec 10): its import, then its agent pass.
+- The Intendant (spec 10), the role that keeps the Map with your teams.
   - **The kinds:** `TakeCareIntendant` and `TakeCareSurvey`.
-  - **The controller:** an Intendant has its conditions, a cron schedule, and its routes on the gateway: the Map's `map_at`, the cluster's read tools, and `get_rules`, whose arguments both the gateway (a route-level rule on the metrics route) and the operator check.
-  - **Survey triggers:** the schedule, a new Map revision, a registration (a bound connector or an engine agent appearing or changing), and a survey created by hand. Triggers are debounced, with one pending trigger kept in status.
-  - **The survey:** one at a time per Intendant. It reads the Map at one revision and imports the cluster and the alerting rules into proposals (add, update, remove) by layer, with what it could not read and the scope's blind spots.
-  - **Where the results go:** the first 20 proposals are in the survey's status and the full set in a ConfigMap owned by the survey. Each survey is one trace, and the gauges `takecare_survey_proposals` and `takecare_survey_not_seen` hold what awaits review.
-  - **Retention:** an ended survey is deleted after seven days, each Intendant keeping its newest.
-  - **The demo** runs an Intendant over its scenery.
-  - **The agent:** each Intendant has its kagent agent, its model route and its A2A route, given the Map's, the cluster's and the knowledge connectors' read tools (never `get_rules`); a finalizer removes them with the Intendant. Its engine agents no longer count as registrations.
-  - **The agent pass:** after the import, the agent reads the cluster and the knowledge connectors and proposes dependencies, owners and runbooks, each with its evidence. Its answer is read strictly, and only Map keys, knowledge sources and tool names pass. A pass that does not run, does not finish, or answers what cannot be read leaves the import's proposals and says why. Its usage is measured on its own model route.
-  - **Operator rights:** the operator gains `delete` on `takecaresurveys`, `create`, `get` and `delete` on ConfigMaps, and `update` and `patch` on `takecareintendants` with `update` on their finalizers, in its own namespace.
-- The Intendant's digest (spec 10 §6): at the Practitioner level, each survey whose proposals changed since the Intendant's last digest is posted to the Intendant's report destination through its report connector, with the counts, the first 20 keys, the survey and its Map revision, never an entry or its evidence. The outcome is in the survey's `status.published` and the last digest posted in the Intendant's `status.lastDigest`; the same proposals are not posted twice to the same destination, and the platform's `role-without-report` gap now counts an Intendant at Practitioner with no report connector. The demo's Intendant posts to the review destination.
-- The Intendant's inventory (spec 10 §8), in each survey's `status.inventory` and an `inventory` layer. It lists the cluster's agents and connectors in circulation: the engine namespace's kagent Agents with the tools they are given, and the TakeCareConnectors with their discovered tools. The kagent Agents in the Intendant's scope are listed through the kubernetes connector when its add-on has the opt-in read rule `{group: kagent.dev, resource: agents}` in `addons.kubernetes.extraResources` (off by default). It gives counts for all of them and items for the first 100. No agent registry is installed (ADR 0019).
-- A how-to for reviewing the Intendant's proposals by hand and turning them into a Map pull request: `docs/how-to/review-proposals.md`.
-- The Intendant bench, `make demo-bench-intendant N=5`: N surveys of the demo with a real model, each agent pass scored against a hand-written expected set. Its report gives, per run, the recall, the precision, what the merge dropped and by which reason, the forbidden proposals, and the usage (keys and counts only).
+  - **The controller:** each Intendant gets its conditions, an optional cron schedule, and its routes on the gateway: the Map's `map_at`, the cluster's read tools, and `get_rules`. `get_rules`' arguments are checked twice, by the gateway (a route-level rule on the metrics route) and by the operator.
+  - **Survey triggers:** the schedule, a new Map revision, a registration (a bound connector or an engine agent appearing or changing; the Intendant's own agent does not count), and a survey created by hand. Triggers are debounced, and one pending trigger is kept in status.
+  - **The survey:** one at a time per Intendant. It reads the Map at one revision, then imports the cluster's objects and Prometheus's alerting rules into proposals (add, update, remove), layer by layer. It also says what it could not read and which parts of the scope are blind spots.
+  - **The agent pass:** after the import, the Intendant's kagent agent reads the cluster and the knowledge connectors and proposes dependencies, owners and runbooks, each with its evidence. Its answer is read strictly: only Map keys, knowledge sources and tool names pass. A pass that does not run, does not finish, or answers what cannot be read leaves the import's proposals and says why. Its usage is measured on its own model route.
+  - **The inventory:** each survey lists, in `status.inventory` and an `inventory` layer, the agents and connectors in circulation on the cluster: the engine namespace's kagent Agents with the tools they are given, and the TakeCareConnectors with their discovered tools. The kagent Agents in the Intendant's scope are listed through the kubernetes connector, only when its add-on has the opt-in read rule `{group: kagent.dev, resource: agents}` in `addons.kubernetes.extraResources` (off by default). There are counts for all of them, and items for the first 100. No agent registry is installed (ADR 0019).
+  - **Where the results go:** the first 20 proposals are in the survey's status, and the full set is in a ConfigMap owned by the survey. Each survey is one trace, and the gauges `takecare_survey_proposals` and `takecare_survey_not_seen` hold what awaits review. An ended survey is deleted after seven days; each Intendant keeps its newest.
+  - **The digest:** at the Practitioner level, a survey whose proposals changed since the Intendant's last digest is posted to its report destination, through its report connector as the Doc's diagnoses are. The digest gives the counts, the first 20 keys, the survey and its Map revision, never an entry or its evidence. The outcome is in the survey's `status.published`, and the last digest posted is in the Intendant's `status.lastDigest`. The platform's `role-without-report` gap now counts an Intendant at Practitioner without a report connector.
+  - **Operator rights**, in its own namespace:
+    - get, list, watch, update and patch on `takecareintendants` and their status, and update on their finalizers;
+    - create, get, list, watch and delete on `takecaresurveys`, and get, update and patch on their status;
+    - create, get and delete on ConfigMaps, with no list, watch or update.
+  - **The demo** runs an Intendant over its scenery and posts its digests to the review destination.
 - The Map accepts a `knowledge` source on runbook entries, naming the record of a knowledge connector, and an alert's expression on `alertedBy` (spec 08).
+- A how-to for reviewing the Intendant's proposals by hand and turning them into a Map pull request: `docs/how-to/review-proposals.md`.
+- The Intendant bench, `make demo-bench-intendant N=5`: N surveys of the demo with a real model, each agent pass scored against a hand-written expected set. Its report gives per run the recall, the precision, what the merge dropped and why, the forbidden proposals and the usage, with keys and counts only. A release needs five runs ok out of five.
 
 ### Changed
 
-- The demo needs 5 GB of Docker memory, up from 4 GB: with the Intendant's agent pass the stack uses about 4.1 GiB in an incident (ADR 0017 §6).
 - A role's model usage is measured on its own model route: the Doc's usage no longer counts another role's calls, such as an Intendant's agent pass, and `approximate` now means two runs of the same Doc overlapping (spec 02 §5).
+- The demo needs 5 GB of Docker memory, up from 4 GB: with the Intendant's agent pass, the stack uses about 3.5 GiB idle and 4.1 GiB in an incident (ADR 0017 §6).
+- The product site describes 0.3.0: the Intendant, the Base camp on the customer's Git (ADR 0019), and the Talkie and the Rope to come.
+- The A2A client library is a2a-go 2.8.0.
 
 ### Fixed
 
-- A retried investigation records its attempts exactly: the worker read the record from the cache before patching its status, and a copy that had not caught up with its own last write made the retry's increment undo it (`attempts: 1` on a run that took two). The worker now reads the record outside the cache and patches it with its resourceVersion, applying the change again on a conflict.
-- `NOTICE` no longer depends on a network probe and carries no links: each package is listed with its name, version and license type, the full texts shipping in the release images. The links came from a probe of GitHub whose failures silently changed them from one run to the next, and three of them were dead (`github.com/blang/semver/v4`, `github.com/evanphx/json-patch/v5`, `gomodules.xyz/jsonpatch/v2`).
+- A retried investigation records its attempts exactly. The worker read the record from the cache before patching its status, and a copy that had not caught up with its own last write made the retry's increment undo it (`attempts: 1` on a run that took two). The worker now reads the record outside the cache and patches it with its resourceVersion, applying the change again on a conflict.
+- `NOTICE` no longer depends on a network probe and carries no links: each package is listed with its name, version and license type, and the full texts ship in the release images. The links came from a probe of GitHub whose failures silently changed them from one run to the next, and three of them were dead (`github.com/blang/semver/v4`, `github.com/evanphx/json-patch/v5`, `gomodules.xyz/jsonpatch/v2`).
 
 ## [0.2.0] - 2026-11-10
 
