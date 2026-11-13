@@ -206,6 +206,13 @@ func (f *fixture) checkInventory(t *testing.T, s *v1alpha1.TakeCareSurvey) {
 	if int(inv.MCPServers) != len(conns.Items) {
 		t.Errorf("inventory: %d MCP servers, want the %d connectors", inv.MCPServers, len(conns.Items))
 	}
+	tools := 0
+	for _, c := range conns.Items {
+		tools += len(c.Status.Tools)
+	}
+	if int(inv.Tools) != tools {
+		t.Errorf("inventory: %d tools, want the connectors' %d (an agent's given tools are among them)", inv.Tools, tools)
+	}
 	found := map[string]int32{}
 	for _, it := range inv.Items {
 		found[it.Kind+" "+it.Namespace+"/"+it.Name] = it.Tools

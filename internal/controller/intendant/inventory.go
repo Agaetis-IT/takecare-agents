@@ -64,8 +64,10 @@ func givenTools(o *unstructured.Unstructured) int32 {
 	return n
 }
 
-// inventory is status.inventory: the counts over all items, the first
-// maxInventoryItems of them.
+// inventory is status.inventory: the counts over all items, the tools
+// being the connectors' (the tools in circulation: an agent's given tools
+// are those of connectors already counted), and the first
+// maxInventoryItems items.
 func inventory(items []discovery.Item) *v1alpha1.Inventory {
 	inv := &v1alpha1.Inventory{}
 	for _, it := range items {
@@ -74,8 +76,8 @@ func inventory(items []discovery.Item) *v1alpha1.Inventory {
 			inv.Agents++
 		case discovery.ItemConnector:
 			inv.MCPServers++
+			inv.Tools += it.Tools
 		}
-		inv.Tools += it.Tools
 		if len(inv.Items) < maxInventoryItems {
 			inv.Items = append(inv.Items, v1alpha1.InventoryItem{Kind: it.Kind, Namespace: it.Namespace, Name: it.Name, Tools: it.Tools})
 		}

@@ -6,6 +6,21 @@ layer identity seen=0 matched=0 proposed=0
 layer storage seen=0 matched=0 proposed=0
 layer alerting seen=4 matched=1 proposed=1
 layer agent seen=1 matched=1 proposed=1
+layer inventory seen=14 matched=0 proposed=0
 Add network/billing-api 7ea96a023f5377bf
 Update runbook/proxy-timeout 200ea0648e2f8914
 Update service/billing-api c99d0a2b8b21007e
+inventory agent demo-apps/e2e-inventory
+inventory agent kagent/takecare-doc-doc
+inventory agent kagent/takecare-doc-ops
+inventory agent kagent/takecare-intendant-intendant
+inventory connector takecare-system/deployments tools=3
+inventory connector takecare-system/east tools=13
+inventory connector takecare-system/incidents tools=3
+inventory connector takecare-system/kubernetes tools=13
+inventory connector takecare-system/map tools=5
+inventory connector takecare-system/prometheus tools=19
+inventory connector takecare-system/report tools=0
+inventory connector takecare-system/runbooks tools=3
+inventory connector takecare-system/support tools=3
+inventory connector takecare-system/vendor tools=3

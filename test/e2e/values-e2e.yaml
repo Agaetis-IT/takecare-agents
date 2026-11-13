@@ -21,9 +21,9 @@ platform:
 
 addons:
   # The demo's extra resources (a list replaces, it does not merge), plus
-  # the opt-in read rule on kagent Agents, in the e2e only (Pierre's go,
-  # 2026-11-13): the Intendant's inventory lists the Agents in its scope
-  # through the kubernetes connector (spec 10 §8). get, list and watch.
+  # the opt-in read rule on kagent Agents, allowed for the e2e only: the
+  # Intendant's inventory lists the Agents in its scope through the
+  # kubernetes connector (spec 10 §8). get, list and watch.
   kubernetes:
     extraResources:
       - group: rds.services.k8s.aws

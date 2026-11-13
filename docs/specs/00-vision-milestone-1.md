@@ -69,7 +69,7 @@ Milestone 1 is step 1 of the concept → build mapping (spec 06 §9); later step
 
 - The `Expert` level (actions executed by the Doc): the API schema accepts it, but the operator rejects it with an explicit condition until it is implemented.
 - The other roles: see the concept → build mapping of [spec 06, section 9](06-role-model.md#9-concept--build-mapping-replaces-the-roadmap-of-spec-00).
-- agentregistry, Langfuse: they come with the first role that needs them.
+- Langfuse: it comes with the first role that needs it. No agent registry is installed: an agent's equipment is packed from the customer's Git (ADR 0019).
 - Agent-to-agent exchanges and `TakeCareFinding` (ADR 0009): with the Kiné, step 2. The Doc exposes its A2A endpoint from milestone 1.
 - Localized agent output: English only in milestone 1 (see spec 90).
 - Microsoft Teams, a web UI, multi-cluster, distribution through OLM.
@@ -101,7 +101,7 @@ The nine roles, their natures and their steps are in the concept → build mappi
 | Exercise | no kind | What the roles practise with (Bootcamp, Stress Test, Handover): a scenery, scenarios, scripts and reports, run with the customer's teams on a copy or without touching anything; tooling only; spec 06 |
 | Pillar | no kind | A grouping of roles: Govern, Prepare, Heal |
 | Equipment | no kind | Names for things the product already has (Map, Bib, Markers, Logbook, Bag, Topo, First-aid kit, Rehab, Service log, Plan, Ration); spec 06 §11 |
-| Place | no kind | Base camp: `TakeCarePlatform` plus agentregistry. Training ground: the replay and simulation bench, of which the demo mode is the first version; spec 06 §11 |
+| Place | no kind | Base camp: `TakeCarePlatform` and what the customer's Git holds (ADR 0019); no agent registry is installed. Training ground: the replay and simulation bench, of which the demo mode is the first version; spec 06 §11 |
 | Run status | `RunStatus` | The status every agent role's record shares: phase, times, engine, usage, trace, conditions; spec 06 §3 |
 
 Role names keep their French flavour (Doc, Kiné, Mécano, Nutri…): they are the brand. Everything else in this repository is in English.

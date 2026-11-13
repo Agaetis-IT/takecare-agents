@@ -120,7 +120,7 @@ The survey's inventory is the cluster's: the agents and MCP servers in circulati
 - the `TakeCareConnector`s, from the operator's cache, with their discovered tools;
 - the kagent `Agent`s in the Intendant's scope, through the `kubernetes` connectors only, when the add-on has the opt-in read rule on `kagent.dev` agents (`addons.kubernetes.extraResources`, off by default; get, list and watch). Otherwise a not-seen line says so: "agents in scope cannot be listed: the kubernetes add-on has no kagent.dev rule". The operator's own client never reads a customer namespace.
 
-`status.inventory` counts all of them and lists the first 100, sorted by kind, namespace and name. An agent listed through the kubernetes connector shows 0 tools: its listing does not say.
+`status.inventory` counts all of them and lists the first 100, sorted by kind, namespace and name. Its `tools` count is the connectors' discovered tools, the tools in circulation; an agent's given tools are among them, so they are not counted again, and each item keeps its own. An agent listed through the kubernetes connector shows 0 tools: its listing does not say.
 
 No agent registry is installed in 0.3.0. Where an agent's equipment lives is ADR 0019: a Bag is packed from Git at configuration time. agentregistry was assessed on 2026-11-13 at v0.4.0. It is not installed because it does not offer what ADR 0019 needs (an approval state on its entries, an install without rights on the cluster, an engine that consumes it). It is watched, and taking it up would be a new ADR.
 

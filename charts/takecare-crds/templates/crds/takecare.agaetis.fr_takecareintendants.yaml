@@ -60,7 +60,8 @@ spec:
             description: |-
               TakeCareIntendantSpec configures the Intendant, the infra inventory and
               mapping role (spec 10): it surveys the ground and proposes the Map's
-              entries and inventories its agents and connectors, never writing the Map.
+              entries and lists the agents and connectors in circulation, never
+              writing the Map.
             properties:
               connectors:
                 description: |-

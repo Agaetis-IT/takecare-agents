@@ -142,7 +142,9 @@ type Inventory struct {
 	// The TakeCareConnectors, each an MCP server.
 	// +kubebuilder:validation:Minimum=0
 	MCPServers int32 `json:"mcpServers"`
-	// The tools of all the items.
+	// The tools in circulation: the connectors' discovered tools. An
+	// agent's given tools are among them and are not counted again; each
+	// item keeps its own.
 	// +kubebuilder:validation:Minimum=0
 	Tools int32 `json:"tools"`
 	// The first 100 items, sorted by kind, namespace and name; the counts

@@ -291,7 +291,10 @@ spec:
                     minimum: 0
                     type: integer
                   tools:
-                    description: The tools of all the items.
+                    description: |-
+                      The tools in circulation: the connectors' discovered tools. An
+                      agent's given tools are among them and are not counted again; each
+                      item keeps its own.
                     format: int32
                     minimum: 0
                     type: integer
