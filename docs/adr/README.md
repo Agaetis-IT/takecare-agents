@@ -22,5 +22,6 @@ One decision per file, numbered, never rewritten: a decision that changes gives 
 | [0016](0016-workload-cluster-front-and-registration.md) | A workload cluster is read through its own mTLS front and registered as a cluster connector by URL | Accepted |
 | [0017](0017-embedded-observability-stack.md) | An observability stack ships with TakeCare and watches TakeCare only | Accepted |
 | [0018](0018-grounds-beyond-kubernetes.md) | Grounds beyond Kubernetes: coverage by access type, alerts resolved by source, the Talkie | Accepted |
+| [0019](0019-bag-packed-from-git.md) | An agent's Bag is packed from Git, at configuration time | Proposed |
 
 Format: Context, Decision, Consequences, Rejected alternatives. Statuses: Proposed, Accepted, Superseded.
