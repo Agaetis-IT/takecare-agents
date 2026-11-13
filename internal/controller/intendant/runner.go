@@ -21,6 +21,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/recorder"
 
 	mapschema "github.com/agaetis-it/takecare-agents/api/map"
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
@@ -29,6 +30,7 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/discovery"
 	"github.com/agaetis-it/takecare-agents/internal/engine"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
+	"github.com/agaetis-it/takecare-agents/internal/report"
 	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/runs"
 	"github.com/agaetis-it/takecare-agents/internal/telemetry/semconv"
@@ -137,6 +139,14 @@ type Runner struct {
 	// Prometheus; ScrapeWait is one scrape interval (spec 02 §5).
 	Usage      func(p *v1alpha1.TakeCarePlatform) usage.Source
 	ScrapeWait time.Duration
+	// Poster publishes a completed survey's digest through the Intendant's
+	// report connector (spec 10 §6); none when nil. Backoff is the first
+	// wait between two attempts (report.Backoff when zero), After waits
+	// (time.After when nil), Recorder records a final failure.
+	Poster   report.Poster
+	Backoff  time.Duration
+	After    func(time.Duration) <-chan time.Time
+	Recorder recorder.EventRecorder
 
 	mu      sync.Mutex
 	running map[types.NamespacedName]bool // by Intendant
@@ -166,6 +176,7 @@ func (w *Runner) Start(ctx context.Context) error {
 	if err := w.resume(ctx); err != nil {
 		log.FromContext(ctx).Error(err, "resume the surveys left running")
 	}
+	w.resumePublish(ctx)
 	ownerOf := map[types.NamespacedName]types.NamespacedName{}
 	blocked := map[types.NamespacedName]bool{}
 	held := func(k types.NamespacedName) bool { return blocked[ownerOf[k]] }
@@ -315,6 +326,10 @@ func (w *Runner) run(ctx context.Context, s *v1alpha1.TakeCareSurvey) {
 		*st = out
 	}); err != nil {
 		logger.Error(err, "record the survey's outcome")
+		return
+	}
+	if out.Phase == v1alpha1.RunCompleted {
+		w.startPublish(ctx, client.ObjectKeyFromObject(s))
 	}
 }
 

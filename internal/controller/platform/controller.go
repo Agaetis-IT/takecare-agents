@@ -628,9 +628,19 @@ func (r *Reconciler) resourceGaps(ctx context.Context, add func(id, detail strin
 			unreported = append(unreported, "TakeCareDoc "+d.Name)
 		}
 	}
+	// An Intendant's digest (spec 10 §6) likewise.
+	var intendants v1alpha1.TakeCareIntendantList
+	if err := r.List(ctx, &intendants, client.InNamespace(r.OperatorNamespace)); err != nil {
+		return fmt.Errorf("list TakeCareIntendants in %s: %w", r.OperatorNamespace, err)
+	}
+	for _, in := range intendants.Items {
+		if (in.Spec.Level == v1alpha1.LevelPractitioner || in.Spec.Level == v1alpha1.LevelExpert) && in.Spec.Connectors.Report == "" {
+			unreported = append(unreported, "TakeCareIntendant "+in.Name)
+		}
+	}
 	if len(unreported) > 0 {
 		slices.Sort(unreported)
-		add(GapRoleWithoutReport, fmt.Sprintf("role(s) at the Practitioner level without a report connector, whose diagnoses reach no one: %s", strings.Join(unreported, ", ")))
+		add(GapRoleWithoutReport, fmt.Sprintf("role(s) at the Practitioner level without a report connector, whose diagnoses or digests reach no one: %s", strings.Join(unreported, ", ")))
 	}
 
 	// connector-not-ready (spec 05): any connector of the operator namespace
@@ -825,6 +835,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	b = b.Watches(&networkingv1.NetworkPolicy{}, toMain, builder.WithPredicates(inEngineNS))
 	b = b.Watches(&v1alpha1.TakeCareConnector{}, toMain, builder.WithPredicates(inOperatorNS))
 	b = b.Watches(&v1alpha1.TakeCareDoc{}, toMain, builder.WithPredicates(inOperatorNS, predicate.GenerationChangedPredicate{}))
+	b = b.Watches(&v1alpha1.TakeCareIntendant{}, toMain, builder.WithPredicates(inOperatorNS, predicate.GenerationChangedPredicate{}))
 	if r.Probe != nil {
 		b = b.WatchesRawSource(source.TypedChannel(r.Probe.Events(), handler.TypedEnqueueRequestsFromMapFunc(
 			func(_ context.Context, req reconcile.Request) []reconcile.Request { return []reconcile.Request{req} })))

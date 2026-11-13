@@ -342,6 +342,8 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		// The agent pass (spec 10 §5), over the same A2A client as the Doc's.
 		Runs: &kagent0103.Runs{HTTP: a2aClient}, EngineKind: kagent0103.Kind, EngineNamespace: cfg.engineNamespace, RunMetrics: runMetrics,
 		Usage: usageSource, ScrapeWait: cfg.usageScrapeWait,
+		// The digest (spec 10 §6), posted as the Doc's diagnoses are.
+		Poster: &mcp.Client{HTTP: mcpClient}, Recorder: mgr.GetEventRecorder("takecare-operator"),
 	}); err != nil {
 		return nil, fmt.Errorf("add the survey runner: %w", err)
 	}

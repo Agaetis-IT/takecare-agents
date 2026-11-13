@@ -35,6 +35,9 @@ spec:
     - jsonPath: .status.proposalCounts.total
       name: Proposals
       type: integer
+    - jsonPath: .status.published.ok
+      name: Published
+      type: boolean
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -420,6 +423,23 @@ spec:
                   The ConfigMap, owned by the survey, that holds the full set of
                   proposals.
                 type: string
+              published:
+                description: |-
+                  The digest's publication through the Intendant's report connector
+                  (spec 10 §6): unset while the operator still has to publish it, or
+                  says why nothing is published.
+                properties:
+                  connector:
+                    type: string
+                  destination:
+                    type: string
+                  ok:
+                    type: boolean
+                  reason:
+                    type: string
+                required:
+                - ok
+                type: object
               reason:
                 description: Why the run is in its phase, for Failed and Dropped.
                 type: string

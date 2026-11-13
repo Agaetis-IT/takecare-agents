@@ -38,6 +38,7 @@ const (
 	gatewayNm    = "agentgateway-proxy"
 	defaultModel = "default"
 	operatorName = "takecare-operator"
+	connReport   = "report"
 	condAccepted = "Accepted"
 	statusTrue   = "True"
 	keyConds     = "conditions"
@@ -566,7 +567,7 @@ func TestProductionGaps(t *testing.T) {
 
 	t.Run("a report connector with the log adapter is a gap", func(t *testing.T) {
 		c := &v1alpha1.TakeCareConnector{
-			Name: "report", Namespace: operatorNS,
+			Name: connReport, Namespace: operatorNS,
 			Spec: v1alpha1.TakeCareConnectorSpec{
 				Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorReport}, MCP: v1alpha1.MCPSpec{Addon: "report-log"},
 				Report: &v1alpha1.ReportSpec{Adapter: "log", Destinations: []v1alpha1.Destination{{Name: "on-call", Target: "log"}}},
@@ -592,10 +593,29 @@ func TestProductionGaps(t *testing.T) {
 		h.waitGaps()
 		h.must(h.c.Get(h.ctx, client.ObjectKeyFromObject(d), d))
 		d.Spec.Level = v1alpha1.LevelPractitioner
-		d.Spec.Connectors.Report = "report"
+		d.Spec.Connectors.Report = connReport
 		h.must(h.c.Update(h.ctx, d))
 		h.waitGaps()
 		h.must(h.c.Delete(h.ctx, d))
+	})
+
+	t.Run("an Intendant at the Practitioner level without a report connector is a gap", func(t *testing.T) {
+		in := &v1alpha1.TakeCareIntendant{Name: "intendant", Namespace: operatorNS}
+		in.Spec.Level = v1alpha1.LevelPractitioner
+		in.Spec.Scope.Namespaces = []v1alpha1.Namespace{"shop"}
+		in.Spec.Connectors.Map = []string{"map"}
+		h.must(h.c.Create(h.ctx, in))
+		h.waitGaps(GapRoleWithoutReport)
+		var cur v1alpha1.TakeCarePlatform
+		h.must(h.c.Get(h.ctx, client.ObjectKey{Name: PlatformName}, &cur))
+		if d := cur.Status.ProductionGaps[0].Detail; !strings.Contains(d, "TakeCareIntendant intendant") {
+			t.Errorf("detail = %q", d)
+		}
+		h.must(h.c.Get(h.ctx, client.ObjectKeyFromObject(in), in))
+		in.Spec.Connectors.Report = connReport
+		h.must(h.c.Update(h.ctx, in))
+		h.waitGaps()
+		h.must(h.c.Delete(h.ctx, in))
 	})
 
 	t.Run("a Prometheus that stops answering is a gap with the cause, never Ready=False", func(t *testing.T) {

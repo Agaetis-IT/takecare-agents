@@ -86,7 +86,7 @@ The pass runs after the import when the Intendant's agent is ready (`EngineReady
 ## 6. Levels
 
 - **Apprentice**: the survey and its proposals in status. Nothing is published; the proposals stay in the status (or go to its `review` destination when one is set, as for the Doc, spec 02).
-- **Practitioner**: the same, plus a digest that the operator publishes to the Intendant's report destination, so that a team reviews the proposals (decided 2026-11-10). The digest holds counts and keys, never content.
+- **Practitioner**: the same, plus a digest that the operator publishes to the Intendant's report destination, so that a team reviews the proposals (decided 2026-11-10). The digest holds counts and keys, never content. It is one message per Completed survey that has proposals, posted through the report connector as the Doc's diagnoses are: the counts by action and by source, the first 20 keys in the status's order and how many more, the survey's name, its Map revision and its ConfigMap. Its outcome is in the survey's `status.published`. It is posted after the survey ends, so its retries never hold the next survey. It is posted at least once: an operator stopped between the post and its record posts it again. A survey that Failed or was Dropped posts nothing. `docs/how-to/review-proposals.md` says how to review the proposals by hand.
 - **Expert**: not implemented in 0.3.0; `LevelSupported` says so.
 
 Invariant 4 (spec 06 §5) holds: there is no `propose` tool, and `takecare review` is a human's act.

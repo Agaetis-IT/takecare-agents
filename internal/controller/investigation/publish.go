@@ -5,7 +5,6 @@ package investigation
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -14,17 +13,14 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
-	"github.com/agaetis-it/takecare-agents/internal/controller/connector"
 	"github.com/agaetis-it/takecare-agents/internal/doc"
-	"github.com/agaetis-it/takecare-agents/internal/mcp"
-	"github.com/agaetis-it/takecare-agents/internal/reportslack"
+	"github.com/agaetis-it/takecare-agents/internal/report"
 	"github.com/agaetis-it/takecare-agents/internal/roleagent"
 	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/telemetry/semconv"
@@ -36,16 +32,8 @@ import (
 // usage is then absent, never a wrong number.
 const ConditionUsageAttributed = "UsageAttributed"
 
-// Publication's retries (spec 02 §4): three after the first attempt.
-const (
-	publishRetries = 3
-	publishBackoff = 2 * time.Second
-)
-
 // Poster calls the report connector's tool: internal/mcp in production.
-type Poster interface {
-	Call(ctx context.Context, ep mcp.Endpoint, tool string, args map[string]any) (mcp.Result, error)
-}
+type Poster = report.Poster
 
 // UsageSource gives the usage source of the platform, nil when it declares
 // no Prometheus.
@@ -59,7 +47,7 @@ type Accounting struct {
 	ScrapeWait time.Duration
 	Poster     Poster
 	// Backoff is the first wait between two publication attempts; it
-	// doubles. publishBackoff when zero.
+	// doubles. report.Backoff when zero.
 	Backoff time.Duration
 	// Duration observes alert accepted to diagnosis published
 	// (takecare_investigation_duration_seconds).
@@ -238,47 +226,8 @@ func (w *Worker) publish(ctx context.Context, inv *v1alpha1.TakeCareInvestigatio
 	}
 }
 
-// post calls post_message, retrying a failed attempt.
+// post calls post_message through the Doc's report connector.
 func (w *Worker) post(ctx context.Context, d *v1alpha1.TakeCareDoc, destination string, pub doc.Publication) error {
-	var c v1alpha1.TakeCareConnector
-	if err := w.Client.Get(ctx, client.ObjectKey{Namespace: d.Namespace, Name: d.Spec.Connectors.Report}, &c); err != nil {
-		if apierrors.IsNotFound(err) {
-			return fmt.Errorf("report connector %s does not exist", d.Spec.Connectors.Report)
-		}
-		return fmt.Errorf("read report connector %s: %w", d.Spec.Connectors.Report, err)
-	}
-	ep, err := connector.ReportEndpoint(ctx, w.Client, &c)
-	if err != nil {
-		return err
-	}
-	blocks, err := json.Marshal(pub.Blocks())
-	if err != nil {
-		return fmt.Errorf("render the message: %w", err)
-	}
-	args := map[string]any{"destination": destination, "blocks": json.RawMessage(blocks), "text": pub.Text()}
-	backoff := w.Accounting.Backoff
-	if backoff <= 0 {
-		backoff = publishBackoff
-	}
-	var last error
-	for attempt := 0; attempt <= publishRetries; attempt++ {
-		if attempt > 0 {
-			select {
-			case <-ctx.Done():
-				return fmt.Errorf("publish: %w", ctx.Err())
-			case <-w.clock().After(backoff):
-			}
-			backoff *= 2
-		}
-		res, err := w.Accounting.Poster.Call(ctx, ep, reportslack.ToolName, args)
-		switch {
-		case err != nil:
-			last = err
-		case res.IsError:
-			last = fmt.Errorf("the report server refused the message: %s", res.Text)
-		default:
-			return nil
-		}
-	}
-	return fmt.Errorf("publish to %s after %d attempts: %w", destination, publishRetries+1, last)
+	return report.Post(ctx, w.Client, w.Accounting.Poster, w.clock().After, w.Accounting.Backoff,
+		d.Namespace, d.Spec.Connectors.Report, destination, report.Message{Blocks: pub.Blocks(), Text: pub.Text()})
 }
