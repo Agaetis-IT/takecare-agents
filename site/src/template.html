@@ -710,7 +710,7 @@ function archi(){
         <div class="layer" style="grid-template-columns:1fr"><div><b>Le modèle</b><span>compatible OpenAI, au choix</span></div><div class="cont">${[["mistral","Mistral"],["claude","Claude"],["openai","OpenAI"],["gemini","Gemini"],["vllm","vLLM"]].map(([l,t])=>br(l,t)).join("")}<p>Tout fournisseur compatible OpenAI, ou votre vLLM, déclaré dans TakeCarePlatform. À ce jour, un seul modèle a été mesuré au banc : <code>gemini-3.7-flash</code>.</p></div></div>
         <div class="layer" style="grid-template-columns:1fr"><div><b>Les connecteurs</b><span>TakeCareConnector, en MCP</span></div><div class="cont">${tools.map(([l,t])=>br(l,t)).join("")}<p>Tout ce qu'un agent lit ou écrit est un serveur MCP derrière la passerelle, la Carte comprise. Le niveau décide des outils autorisés ; la passerelle vérifie aussi les arguments d'un outil quand une règle le demande.</p></div></div>
       </div>
-      <div class="layer"><div><b>Le matériel validé et la Carte</b><span>dans votre Git</span></div><div class="cont">${br("git","Git")}${who(["intendant"])}<p>L'Intendant recense les agents et les connecteurs en circulation, propose chaque entrée, que vos équipes transforment en pull request dans leur Git, et tient la Carte de l'infra. Seul ce que vos équipes ont validé équipe un agent.</p></div></div>
+      <div class="layer"><div><b>Le matériel validé et la Carte</b><span>dans votre Git</span></div><div class="cont">${br("git","Git")}${who(["intendant"])}<p>L'Intendant recense les agents et les connecteurs en circulation, propose chaque entrée, que vos équipes transforment en pull request dans leur Git, et tient la Carte de l'infra. Seul ce que vos équipes ont validé équipe un agent (liste approuvée : prévue).</p></div></div>
       <div class="layer"><div><b>La télémétrie</b><span>OpenTelemetry, dès le premier jour</span></div><div class="cont">${br(null,"OTLP")}${br(null,"Jaeger (démo)")}${who(["psy"])}<p>Une trace par action, selon les conventions GenAI. Le Psy les relit avec un modèle juge, jamais celui qu'il juge.</p></div></div>
     </div>
     <p class="note">Le chart <code>takecare</code> installe l'opérateur, ses CRD et les briques tierces, avec un profil <code>prod</code> ou <code>demo</code>. <b>Disponible :</b> l'opérateur, le Doc, le Ranger, l'Intendant, la Carte, la passerelle, les connecteurs et la télémétrie. Le reste est prévu. Les choix et leurs raisons sont dans les <a href="${REPO}/tree/main/docs/adr" target="_blank" rel="noopener">ADR du dépôt</a>.</p>
@@ -752,7 +752,7 @@ function demarrer(){
 
 const SPECS = "https://github.com/Agaetis-IT/takecare-agents/blob/main/docs/specs/";
 const KINDS = [
- {kind:"TakeCarePlatform", card:"campdebase", sub:"Le Camp de base : modèles, passerelle, moteur, télémétrie. Une seule instance, rendue par le chart. Le matériel des agents vient du Git du client, par une liste approuvée (ADR 0019).", spec:"01-platform.md", yaml:`apiVersion: takecare.agaetis.fr/v1alpha1
+ {kind:"TakeCarePlatform", card:"campdebase", sub:"Le Camp de base : modèles, passerelle, moteur, télémétrie. Une seule instance, rendue par le chart. Le matériel des agents vient du Git du client, par une liste approuvée (ADR 0019, prévue).", spec:"01-platform.md", yaml:`apiVersion: takecare.agaetis.fr/v1alpha1
 kind: TakeCarePlatform
 metadata:
   name: main
