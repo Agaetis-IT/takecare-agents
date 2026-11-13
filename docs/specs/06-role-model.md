@@ -141,7 +141,7 @@ Already in place: `RoleCommonSpec.model`, the `takecare.role` and `takecare.leve
 
 Steps ordered with the concept (2026-11-04). Step 1 is the Doc alone (v0.1). Step 2 makes the Govern pillar real, since its three roles serve every other role: the Ranger (policies and identities), the Intendant (a light Map and Kubernetes discovery) and the Psy (logbooks from the first day); it adds the Kiné, so that the incident chain starts and the Doc is commissioned on a mapped ground. Step 3 and later: the Mécano and the Bootcamp, then the Guide and the Handover, then the Coach, the Nutri and the Stress Test, with cloud grounds. A group of roles opens on a ground only when all of them can work there. Exercises follow the roles they serve and block no step.
 
-After 0.3.0, which delivers the Intendant beside the Doc and the Ranger, the order is: a corrections release, the TUI (spec 13), the Kiné, the Mécano at Apprentice, then the Psy. The site's roadmap follows the same order.
+After 0.3.0, which delivers the Intendant beside the Doc and the Ranger, the order is: a corrections release, the TUI (spec 13), the Kiné, the Mécano at Apprentice, then the Psy. This order replaces the grouping of step 2 above for the Psy and the Kiné, and the Mécano's Apprentice level comes before the rest of step 3. The site's roadmap follows the same order.
 
 ## 10. What this changes in the build, and when
 
