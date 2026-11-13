@@ -34,7 +34,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=35
+CHECKS_EXPECTED=36
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s %s\n' "$(date +%H:%M:%S)" "$*"; }
@@ -112,6 +112,15 @@ intendant() {
     bash -c "[[ \"\$(kubectl -n $NS get takecaresurvey e2e-first -o jsonpath='{.status.usage.inputTokens} {.status.usage.outputTokens} {.status.usage.modelCalls}')\" == '$want' ]]"
   check "its ConfigMap holds every proposal the status counts (spec 10 §7)" \
     bash -c "[[ \$(kubectl -n $NS get configmap survey-e2e-first-proposals -o json | jq '.data | length') == \$(kubectl -n $NS get takecaresurvey e2e-first -o jsonpath='{.status.proposalCounts.total}') ]]"
+  # The digest is posted after the survey ends, in its own goroutine.
+  for _ in $(seq 30); do
+    [[ -n "$(kubectl -n "$NS" get takecaresurvey e2e-first -o jsonpath='{.status.published}')" ]] && break
+    sleep 2
+  done
+  fake_get fake-slack /messages >bin/demo/slack-digest.json
+  check "its digest reached the review channel once, keys and counts only, matching the golden (spec 10 §6)" \
+    env E2E_SLACK_MESSAGES="${PWD}/bin/demo/slack-digest.json" E2E_REVIEW_CHANNEL="$TAKECARE_SLACK_REVIEW_CHANNEL" E2E_SURVEY=e2e-first \
+    go test -tags e2e -count=1 ./test/e2e/ -run TestSlackDigest
 
   # A scope no connector reads, in the e2e only: kube-public.
   kubectl apply -f - >/dev/null <<EOF
@@ -341,7 +350,7 @@ run() {
   fake_get fake-slack /messages >bin/demo/slack-messages.json
   check "the fake Slack got exactly one message, matching the golden (spec 02 AC 9)" \
     env E2E_SLACK_MESSAGES="${PWD}/bin/demo/slack-messages.json" E2E_ONCALL_CHANNEL="$TAKECARE_SLACK_ONCALL_CHANNEL" \
-    go test -tags e2e -count=1 ./test/e2e/ -run TestSlackMessage
+    E2E_REVIEW_CHANNEL="$TAKECARE_SLACK_REVIEW_CHANNEL" go test -tags e2e -count=1 ./test/e2e/ -run TestSlackMessage
   check "the invoke_agent doc trace is in Jaeger (spec 02 AC 7)" \
     bash -c "kubectl -n $NS port-forward svc/jaeger 18686:16686 >/dev/null 2>&1 & pf=\$!; sleep 2; t=\$($get='{.status.traceID}'); curl -s http://localhost:18686/api/traces/\$t | grep -q '\"operationName\":\"invoke_agent doc\"'; r=\$?; kill \$pf; exit \$r"
   local stats

@@ -180,6 +180,12 @@ type TakeCareSurveyStatus struct {
 	// +listMapKey=entity
 	// +optional
 	BlindSpots []BlindSpot `json:"blindSpots,omitempty"`
+
+	// The digest's publication through the Intendant's report connector
+	// (spec 10 §6): unset while the operator still has to publish it, or
+	// says why nothing is published.
+	// +optional
+	Published *Publication `json:"published,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -191,6 +197,7 @@ type TakeCareSurveyStatus struct {
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Revision",type=string,JSONPath=`.status.mapRevision`
 // +kubebuilder:printcolumn:name="Proposals",type=integer,JSONPath=`.status.proposalCounts.total`
+// +kubebuilder:printcolumn:name="Published",type=boolean,JSONPath=`.status.published.ok`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // TakeCareSurvey is one survey of the ground by the Intendant: a record of

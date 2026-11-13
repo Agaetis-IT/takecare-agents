@@ -35,15 +35,27 @@ func TestSlackMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("E2E_SLACK_MESSAGES: %v (run through hack/e2e.sh)", err)
 	}
-	var msgs []fakeslack.Message
-	if err := json.Unmarshal(raw, &msgs); err != nil {
+	var all []fakeslack.Message
+	if err := json.Unmarshal(raw, &all); err != nil {
 		t.Fatal(err)
 	}
-	if len(msgs) != 1 {
-		t.Fatalf("%d messages posted, want exactly one", len(msgs))
+	// The Intendant's digests go to the review channel (spec 10 §6); the
+	// Doc's diagnosis is the one message to the on-call channel.
+	var msgs []fakeslack.Message
+	for _, m := range all {
+		switch m.Channel {
+		case os.Getenv("E2E_ONCALL_CHANNEL"):
+			msgs = append(msgs, m)
+		case os.Getenv("E2E_REVIEW_CHANNEL"):
+			if !strings.HasPrefix(m.Text, "Intendant ") {
+				t.Errorf("a message to the review channel that is not a digest: %.80q", m.Text)
+			}
+		default:
+			t.Errorf("a message to %s, neither on-call nor review", m.Channel)
+		}
 	}
-	if want := os.Getenv("E2E_ONCALL_CHANNEL"); msgs[0].Channel != want {
-		t.Errorf("posted to %s, want the on-call channel %s", msgs[0].Channel, want)
+	if len(msgs) != 1 {
+		t.Fatalf("%d messages posted to the on-call channel, want exactly one", len(msgs))
 	}
 	var blocks []map[string]any
 	if err := json.Unmarshal(msgs[0].Blocks, &blocks); err != nil {
@@ -73,4 +85,43 @@ func TestSlackMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	golden.Assert(t, "slack-message.json", out.Bytes())
+}
+
+// The Intendant's digest of one survey as Slack received it (spec 10 §6):
+// exactly one message to the review channel naming the survey, against a
+// golden file of keys and counts only.
+func TestSlackDigest(t *testing.T) {
+	raw, err := os.ReadFile(os.Getenv("E2E_SLACK_MESSAGES")) //nolint:gosec // the file hack/e2e.sh wrote for this test
+	if err != nil {
+		t.Fatalf("E2E_SLACK_MESSAGES: %v (run through hack/e2e.sh)", err)
+	}
+	var all []fakeslack.Message
+	if err := json.Unmarshal(raw, &all); err != nil {
+		t.Fatal(err)
+	}
+	survey := " Survey " + os.Getenv("E2E_SURVEY") + " "
+	var found []fakeslack.Message
+	for _, m := range all {
+		if m.Channel == os.Getenv("E2E_REVIEW_CHANNEL") && strings.Contains("\n"+m.Text, "\n"+strings.TrimPrefix(survey, " ")) {
+			found = append(found, m)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("%d digests of%sposted to the review channel, want exactly one", len(found), survey)
+	}
+	var blocks []map[string]any
+	if err := json.Unmarshal(found[0].Blocks, &blocks); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	enc := json.NewEncoder(&out)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(map[string]any{"text": found[0].Text, "blocks": blocks}); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(out.Bytes(), []byte("status: ")) || bytes.Contains(out.Bytes(), []byte("provenance")) {
+		t.Errorf("the digest holds an entry's content:\n%s", out.Bytes())
+	}
+	golden.Assert(t, "slack-digest.json", out.Bytes())
 }

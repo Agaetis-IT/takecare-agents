@@ -90,6 +90,8 @@ type fixture struct {
 	// usageURL, when set, is the Prometheus the runner measures its
 	// passes with.
 	usageURL atomic.Value
+	// poster receives the digests the runner publishes.
+	poster *fakePoster
 }
 
 func start(t *testing.T) *fixture { return startWith(t, false) }
@@ -122,7 +124,7 @@ func startWith(t *testing.T, runner bool) *fixture {
 	f := &fixture{
 		c: c, clock: &clock{now: testStart}, cfg: cfg, scheme: scheme, runner: runner,
 		spans: tracetest.NewInMemoryExporter(), metrics: metrics,
-		runs: &fakeRuns{}, passClock: &offsetClock{base: testStart, t0: time.Now()},
+		runs: &fakeRuns{}, passClock: &offsetClock{base: testStart, t0: time.Now()}, poster: &fakePoster{},
 	}
 	f.startManager(t)
 	return f
@@ -164,6 +166,7 @@ func (f *fixture) startManager(t *testing.T) {
 			Caller: &mcp.Client{HTTP: &http.Client{Timeout: time.Minute}}, Now: f.passClock.Now, Metrics: f.metrics,
 			Runs: f.runs, EngineKind: kagent0103.Kind, EngineNamespace: engineNS, Usage: f.usage, PassTimeout: passTimeout, PassInterval: 50 * time.Millisecond, PassClock: f.passClock,
 			Tracer: sdktrace.NewTracerProvider(sdktrace.WithSyncer(f.spans)).Tracer("test"),
+			Poster: f.poster, Backoff: time.Millisecond, Recorder: mgr.GetEventRecorder("test"),
 			Route: func(_ string, role routes.Role, connector string) string {
 				u, _ := f.routes.Load(role.Name + "/" + connector)
 				s, _ := u.(string)
@@ -211,6 +214,9 @@ func (f *fixture) connector(t *testing.T, name string, typ v1alpha1.ConnectorTyp
 	c.Spec.MCP.Addon = name
 	if typ == v1alpha1.ConnectorCluster {
 		c.Spec.Kubernetes = &v1alpha1.KubernetesSpec{Namespaces: []v1alpha1.Namespace{"shop"}}
+	}
+	if typ == v1alpha1.ConnectorReport {
+		c.Spec.Report = &v1alpha1.ReportSpec{Adapter: "log", Destinations: []v1alpha1.Destination{{Name: onCall, Target: "#on-call"}}}
 	}
 	if err := f.c.Create(ctx, c); err != nil {
 		t.Fatal(err)

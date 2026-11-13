@@ -277,7 +277,7 @@ func TestEntityScope(t *testing.T) {
 	f := startRunner(t)
 	f.grounded(t)
 	f.surveyed(t, "entities", mapServer(t, nil), func(in *v1alpha1.TakeCareIntendant) {
-		in.Spec.Scope = v1alpha1.Scope{Entities: []v1alpha1.EntityKey{"service/billing-api"}}
+		in.Spec.Scope = v1alpha1.Scope{Entities: []v1alpha1.EntityKey{billingService}}
 	})
 	st := f.waitPhase(t, "entities", 1, v1alpha1.RunCompleted)[0].Status
 	if compute := st.Layers[1]; compute.Name != "compute" || compute.Seen == 0 {
@@ -306,7 +306,7 @@ func TestEntityBlindSpots(t *testing.T) {
 	f := startRunner(t)
 	f.grounded(t)
 	f.surveyed(t, "blind", mapServerAt(t, dir, nil), func(in *v1alpha1.TakeCareIntendant) {
-		in.Spec.Scope = v1alpha1.Scope{Entities: []v1alpha1.EntityKey{"service/billing-api", "network/billing-db-proxy", "service/notifications", "service/payments"}}
+		in.Spec.Scope = v1alpha1.Scope{Entities: []v1alpha1.EntityKey{billingService, "network/billing-db-proxy", "service/notifications", "service/payments"}}
 	})
 	st := f.waitPhase(t, "blind", 1, v1alpha1.RunCompleted)[0].Status
 	want := map[v1alpha1.EntityKey]struct {

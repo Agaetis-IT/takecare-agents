@@ -147,7 +147,7 @@ func TestCRDsExposeTheStaff(t *testing.T) {
 		{"takecaredemos.takecare.agaetis.fr", "tcdemo", apiextensionsv1.NamespaceScoped, []string{"Scenario", colPhase, colReady, colAge}},
 		{"takecarerangers.takecare.agaetis.fr", "tcranger", apiextensionsv1.ClusterScoped, []string{colLevel, "Enforcing", colReady, colAge}},
 		{"takecareintendants.takecare.agaetis.fr", "tcintendant", apiextensionsv1.NamespaceScoped, []string{colLevel, colReady, "Last survey", colAge}},
-		{"takecaresurveys.takecare.agaetis.fr", "tcsurvey", apiextensionsv1.NamespaceScoped, []string{"Intendant", "Trigger", colPhase, "Revision", "Proposals", colAge}},
+		{"takecaresurveys.takecare.agaetis.fr", "tcsurvey", apiextensionsv1.NamespaceScoped, []string{"Intendant", "Trigger", colPhase, "Revision", "Proposals", "Published", colAge}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.crd, func(t *testing.T) {
