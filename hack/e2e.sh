@@ -73,12 +73,15 @@ EOF
 
 # proposals SURVEY prints a survey's record as the golden holds it: each
 # layer's counts from its status, then each proposal of its ConfigMap as
-# `action key id`, sorted.
+# `action key id`, sorted, then its inventory's items, sorted.
 proposals() {
   kubectl -n "$NS" get takecaresurvey "$1" \
     -o jsonpath='{range .status.layers[*]}layer {.name} seen={.seen} matched={.matched} proposed={.proposed}{"\n"}{end}'
   kubectl -n "$NS" get configmap "survey-$1-proposals" -o json | jq -r '.data | to_entries[]
     | "\(.value | capture("(^|\n)action: (?<a>\\S+)").a) \(.value | capture("(^|\n)key: (?<k>\\S+)").k) \(.key)"' | sort
+  # The inventory (spec 10 §8): agents by name, connectors with their tools.
+  kubectl -n "$NS" get takecaresurvey "$1" -o json | jq -r '.status.inventory.items // [] | .[]
+    | if .kind == "Agent" then "inventory agent \(.namespace)/\(.name)" else "inventory connector \(.namespace)/\(.name) tools=\(.tools)" end' | sort
 }
 
 # intendant_idle waits until no survey of the demo Intendant is queued or
@@ -281,6 +284,8 @@ run() {
   fakes
   hack/demo.sh up
   kubectl apply -f test/e2e/doc-ops.yaml >/dev/null
+  # An Agent in the demo Intendant's scope, for its inventory: no pod.
+  kubectl apply -f test/e2e/inventory-agent.yaml >/dev/null
   workload_cluster
   # A short ramp: the alert in about 2 minutes instead of 3.
   kubectl -n "$NS" patch takecaredemo demo --type=merge -p '{"spec":{"rampMinutes":2}}' >/dev/null

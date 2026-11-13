@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Agaetis
+# SPDX-License-Identifier: Apache-2.0
+#
+# An Agent in the demo Intendant's scope, for its inventory (spec 10 §8):
+# listed through the kubernetes connector whatever its state. BYO with no
+# replica: kagent v0.10.3 passes deployment.replicas through as is, so its
+# Deployment runs no pod. The image is under the reserved .invalid domain:
+# it is never pulled, and a mistake in replicas could fetch nothing.
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: e2e-inventory
+  namespace: demo-apps
+spec:
+  type: BYO
+  description: An agent of the inventory check, never run.
+  byo:
+    deployment:
+      image: registry.invalid/none:0
+      replicas: 0

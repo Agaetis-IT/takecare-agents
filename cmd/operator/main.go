@@ -344,6 +344,8 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		Usage: usageSource, ScrapeWait: cfg.usageScrapeWait,
 		// The digest (spec 10 §6), posted as the Doc's diagnoses are.
 		Poster: &mcp.Client{HTTP: mcpClient}, Recorder: mgr.GetEventRecorder("takecare-operator"),
+		// The inventory (spec 10 §8) lists the engine's agents.
+		AgentKinds: (&kagent0103.Agents{}).AgentTypes(),
 	}); err != nil {
 		return nil, fmt.Errorf("add the survey runner: %w", err)
 	}

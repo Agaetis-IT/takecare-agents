@@ -30,6 +30,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 )
 
@@ -417,7 +419,42 @@ func checkAddonRule(t *testing.T, refKind, refName, sa string, r rbacv1.PolicyRu
 }
 
 func TestAddonRBACIsReadOnly(t *testing.T) {
-	objs := render(t, releaseName, profileArgs("demo")...)
+	demo := render(t, releaseName, profileArgs("demo")...)
+	checkAddonRBAC(t, demo)
+	if rule := kagentAgentsRule(t, demo); rule != nil {
+		t.Errorf("the demo profile reads kagent Agents (%v): the rule is the e2e's opt-in only", rule)
+	}
+	// The end-to-end test's render, as hack/e2e.sh installs it: the same
+	// guard, and the opt-in read rule on kagent Agents (spec 10 §8),
+	// exactly get, list and watch.
+	e2e := render(t, releaseName, append(profileArgs("demo"), "-f", filepath.Join(repoRoot, "test", "e2e", "values-e2e.yaml"))...)
+	checkAddonRBAC(t, e2e)
+	want := &rbacv1.PolicyRule{APIGroups: []string{"kagent.dev"}, Resources: []string{"agents"}, Verbs: []string{verbGet, verbList, verbWatch}}
+	if diff := cmp.Diff(want, kagentAgentsRule(t, e2e)); diff != "" {
+		t.Errorf("the e2e's rule on kagent Agents (-want +got):\n%s", diff)
+	}
+}
+
+// kagentAgentsRule is the kubernetes add-on's rule on kagent.dev in its
+// Role in demo-apps, nil when it has none.
+func kagentAgentsRule(t *testing.T, objs []*unstructured.Unstructured) *rbacv1.PolicyRule {
+	t.Helper()
+	for _, o := range ofKind(objs, kindRole) {
+		if o.GetName() != "takecare-addon-kubernetes" || o.GetNamespace() != "demo-apps" {
+			continue
+		}
+		for _, r := range rulesByRole(t, []*unstructured.Unstructured{o})[kindRole+"/"+o.GetName()] {
+			if slices.Contains(r.APIGroups, "kagent.dev") {
+				return &r
+			}
+		}
+	}
+	return nil
+}
+
+// checkAddonRBAC is the read-only guard on a render's add-on RBAC.
+func checkAddonRBAC(t *testing.T, objs []*unstructured.Unstructured) {
+	t.Helper()
 	addonSAs := map[string]bool{}
 	for _, o := range ofKind(objs, kindSA) {
 		if strings.HasPrefix(o.GetName(), "takecare-addon-") {

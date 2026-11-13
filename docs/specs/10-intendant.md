@@ -8,9 +8,9 @@
 
 ## 1. Purpose
 
-The Intendant (infra inventory and mapping) keeps the Base camp: it surveys the ground, proposes the Map's entries and keeps the inventory of the agents and MCP servers in circulation.
+The Intendant (infra inventory and mapping) keeps the Base camp: it surveys the ground, proposes the Map's entries and keeps the inventory of the agents and MCP servers in circulation on the cluster.
 
-It never writes the Map or the registry. It proposes in its record's status, and a human turns the proposals into a pull request with `takecare review` (spec 13).
+It never writes the Map. It proposes in its record's status, and a human turns the proposals into a pull request with `takecare review` (spec 13).
 
 Out of scope for 0.3.0: the Bib (its own ADR and spec), cloud importers, any write.
 
@@ -19,12 +19,12 @@ Out of scope for 0.3.0: the Bib (its own ADR and spec), cloud importers, any wri
 - **`TakeCareIntendant`**, namespaced, one per Map scope. It embeds `RoleCommonSpec` (level, scope, connectors, model, report) and adds:
   - `schedule`: a cron expression, daily by default (`0 3 * * *`);
   - `importers`: `Kubernetes` for 0.3.0, the default;
-  - `connectors`: `cluster`, `knowledge`, `map` (required, exactly one), `metrics` (optional, at most one), `registry` (optional, at most one) and `report`;
+  - `connectors`: `cluster`, `knowledge`, `map` (required, exactly one), `metrics` (optional, at most one) and `report`;
   - `report`: the report connector's destinations by level, as the Doc's.
 - **`TakeCareSurvey`**, one record per survey, with a `RunStatus` (spec 06 §3).
   - Spec, immutable: `intendantRef`, `trigger` (`Schedule`, `OnDemand`, `MapRevision`, `Registration`; `OnDemand` by default) and `mapRevision`, the Map revision to survey against (empty: the one served when the survey starts).
-  - Status: `layers[]` (per layer: seen, matched, proposed, not seen with the reason), `proposals[]` (§7), `inventory` (agents, MCP servers and tools, from the cluster and the registry), `blindSpots`.
-  - Printer columns: phase, trigger, revision, proposals, age.
+  - Status: `layers[]` (per layer: seen, matched, proposed, not seen with the reason), `proposals[]` (§7), `inventory` (agents, MCP servers and tools on the cluster, with the first 100 items, §8), `blindSpots`.
+  - Printer columns: phase, trigger, revision, proposals, published, age.
 
 ## 3. Triggers
 
@@ -112,33 +112,23 @@ The status is bounded in size: it keeps the counts and the first 20 proposals (2
 
 The operator's rights on ConfigMaps in its own namespace are create, get and delete: no list, no watch, no update. It reads them through the API reader, not the cache.
 
-## 8. The registry (Base camp)
+## 8. The inventory and the Intendant's routes
 
-agentregistry (`agentregistry-dev/agentregistry`, Apache-2.0) is installed by the `takecare` chart from its OCI chart (`oci://ghcr.io/agentregistry-dev/agentregistry/charts/agentregistry`), pinned in `hack/versions.env`, and sits behind the gateway. Its Service exposes an HTTP port (12121) and an MCP port (31313). Its MCP endpoint is registered as a connector of type `registry`, with `read` tools only, listed one by one.
+The survey's inventory is the cluster's: the agents and MCP servers in circulation there, in `status.inventory` and an `inventory` layer that only counts (nothing is matched or proposed). It has three parts, each read in one place:
+
+- the kagent `Agent`s of the engine namespace, from the operator's own cache (it already watches them for registrations), with the tools each is given. These are the operator's own objects or the engine's, not the customer's ground, so discovery through the connectors (§4) is not bent;
+- the `TakeCareConnector`s, from the operator's cache, with their discovered tools;
+- the kagent `Agent`s in the Intendant's scope, through the `kubernetes` connectors only, when the add-on has the opt-in read rule on `kagent.dev` agents (`addons.kubernetes.extraResources`, off by default; get, list and watch). Otherwise a not-seen line says so: "agents in scope cannot be listed: the kubernetes add-on has no kagent.dev rule". The operator's own client never reads a customer namespace.
+
+`status.inventory` counts all of them and lists the first 100, sorted by kind, namespace and name. An agent listed through the kubernetes connector shows 0 tools: its listing does not say.
+
+No agent registry is installed in 0.3.0. Where an agent's equipment lives is ADR 0019: a Bag is packed from Git at configuration time. agentregistry was assessed on 2026-11-13 at v0.4.0. It is not installed because it does not offer what ADR 0019 needs (an approval state on its entries, an install without rights on the cluster, an engine that consumes it). It is watched, and taking it up would be a new ADR.
 
 The Intendant's routes on the gateway (to its map, cluster and metrics connectors) identify it by their path alone, as the Doc's do (ADR 0008): any pod the gateway admits, the engine's included, could call them, and would get only their allow-list, the listing tools and `get_rules`; the Bib (spec 09) closes this. Each route's allow-list carries the operator's tools and the agent's (§5): the Map's read tools, the cluster's read tools without content and the knowledge connectors' read tools. `get_rules` is the operator's and is never given to the agent.
 
 The gateway checks tool names in its MCP authorization (`backend.mcp.authorization`), and `get_rules`' arguments in a route-level authorization of its own on the metrics route (`traffic.authorization`, action `Require`, a policy `<route>-calls`). In agentgateway v1.6.0, MCP authorization rules never see a call's arguments (`mcp.tool.arguments` is not set there), while a route-level rule reads them on `tools/call`; list requests have no `mcp.tool`, so the rule lets them through and the tool stays listed ([agentgateway 1.6.x, CEL variables](https://agentgateway.dev/docs/kubernetes/1.6.x/reference/cel/variables.md)). So `get_rules`' arguments have two layers, the route's rule and the operator's client check (§4), as ADR 0008 asks.
 
 A call the rule refuses gets an HTTP 403. Until the gateway has both Accepted and Attached the rule, the metrics connector counts as not usable: `ConnectorsReady` names the problem (reason `ConnectorsDegraded`), the Intendant stays Ready, and its surveys do not call `get_rules`, their alerting layer saying "the gateway does not enforce the argument rule on the metrics route". The prometheus add-on's egress NetworkPolicy also keeps a caller's `prometheus_url` from reaching anything but its Prometheus. These rules are tested again on the chart smoke at each agentgateway version.
-
-The Intendant's inventory has three parts, each read in one place:
-
-- the kagent `Agent`s of every namespace in scope, through the `kubernetes` connectors (the operator's rights do not grow, §4);
-- the `TakeCareConnector`s, from the operator's own cache (it already watches them);
-- the registry's entries, through the `registry` connector.
-
-Every difference between the cluster and the registry (in the cluster but not in the registry, or the reverse) is a proposal.
-
-**Database** (decided 2026-11-10). agentregistry stores its catalogue in PostgreSQL; it does not need pgvector.
-
-- By default, the customer's PostgreSQL: its connection string comes from a Secret (`registry.database.urlSecretRef`, mapped to the upstream chart's `external.secretRef`).
-- When the customer cannot provide one, `registry.database.embedded: true` makes the `takecare` chart install a durable PostgreSQL of its own: a StatefulSet with a PersistentVolumeClaim, its image pinned in `hack/versions.env`, its password from a Secret, and a NetworkPolicy that admits the registry only. The customer backs up its volume (the `takecare` chart's README says how: a volume snapshot or `pg_dump`); upgrades follow our pin.
-- The demo profile uses the same embedded path: one code path, covered by the e2e.
-
-The upstream chart's bundled PostgreSQL, documented as for development and evaluation only, is never used. No database operator is installed.
-
-No credential is ever generated into values: every key or password the registry needs comes from a Secret.
 
 ## 9. Spec 08 amendments
 
@@ -179,7 +169,7 @@ Retention: an ended survey (Completed, Failed or Dropped) older than seven days 
 4. A Deployment deleted from the scenery gives a removal proposal; its entry keeps `lastSeen`.
 5. A namespace no connector reads is a blind spot of the survey, with its reason, not an omission.
 6. The read-only guard test is unchanged and green; the add-ons' RBAC is unchanged; the operator gains only create, get, list, watch and delete on `takecaresurveys`, get, update and patch on its status, and create, get and delete on ConfigMaps in its own namespace (§7).
-7. agentregistry installs from the chart, and its connector is Ready with read tools only.
+7. The survey's inventory lists the cluster's agents and connectors with their tools; the agents in the Intendant's scope are listed when the kubernetes add-on may read them, and a not-seen line says so otherwise.
 8. A new Map revision triggers one survey; two triggers during a run give one more survey, not two (proven in envtest).
 9. A scored bench of the Intendant on a real model, its agent's proposals compared with a hand-written expected set (`make demo-bench-intendant`, `test/bench/README.md`). It surveys the demo against the demo Map without `service/billing-api`'s `documentedBy`. Its threshold is set from its first reports.
 

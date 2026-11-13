@@ -18,7 +18,8 @@ const ImporterKubernetes Importer = "Kubernetes"
 
 // TakeCareIntendantSpec configures the Intendant, the infra inventory and
 // mapping role (spec 10): it surveys the ground and proposes the Map's
-// entries and the registry's, never writing either.
+// entries and lists the agents and connectors in circulation, never
+// writing the Map.
 type TakeCareIntendantSpec struct {
 	RoleCommonSpec `json:",inline"`
 
@@ -68,12 +69,6 @@ type IntendantConnectors struct {
 	// +listType=set
 	// +optional
 	Metrics []string `json:"metrics,omitempty"`
-	// The registry connector (type registry, spec 10 §8), when the Base
-	// camp's registry is installed.
-	// +kubebuilder:validation:MaxItems=1
-	// +listType=set
-	// +optional
-	Registry []string `json:"registry,omitempty"`
 	// The report connector: where the operator publishes the digest.
 	// +optional
 	Report string `json:"report,omitempty"`

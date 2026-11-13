@@ -177,15 +177,59 @@ func TestSurveyRuns(t *testing.T) {
 	f.surveyed(t, "runs", mapServer(t, nil), nil)
 	s := f.waitPhase(t, "runs", 1, v1alpha1.RunCompleted)[0]
 	st := s.Status
-	if len(st.Layers) != 8 || st.ProposalCounts == nil || st.ProposalCounts.Total == 0 || len(st.Proposals) > maxProposals || st.MapRevision == "" {
+	if len(st.Layers) != 9 || st.ProposalCounts == nil || st.ProposalCounts.Total == 0 || len(st.Proposals) > maxProposals || st.MapRevision == "" {
 		t.Fatalf("status: layers %d, counts %+v, %d proposals, revision %q", len(st.Layers), st.ProposalCounts, len(st.Proposals), st.MapRevision)
 	}
 	if st.StartedAt == nil || st.CompletedAt == nil || st.Attempts != 1 {
 		t.Errorf("run: started %v, completed %v, attempts %d", st.StartedAt, st.CompletedAt, st.Attempts)
 	}
 	f.checkProposals(t, &s)
+	f.checkInventory(t, &s)
 	f.mapRevision(t, rev2)
 	f.waitPhase(t, "runs", 2, v1alpha1.RunCompleted)
+}
+
+// checkInventory checks a survey's inventory (spec 10 §8): the connectors
+// from the cache with their tools, the engine's Agents, and, the cluster
+// connector having no kagent.dev rule, the line saying the Agents in scope
+// are not listed; its layer only counts.
+func (f *fixture) checkInventory(t *testing.T, s *v1alpha1.TakeCareSurvey) {
+	t.Helper()
+	inv := s.Status.Inventory
+	if inv == nil {
+		t.Fatal("no inventory")
+	}
+	var conns v1alpha1.TakeCareConnectorList
+	if err := f.c.List(context.Background(), &conns, client.InNamespace(ns)); err != nil {
+		t.Fatal(err)
+	}
+	if int(inv.MCPServers) != len(conns.Items) {
+		t.Errorf("inventory: %d MCP servers, want the %d connectors", inv.MCPServers, len(conns.Items))
+	}
+	found := map[string]int32{}
+	for _, it := range inv.Items {
+		found[it.Kind+" "+it.Namespace+"/"+it.Name] = it.Tools
+	}
+	for _, c := range conns.Items {
+		if tools, ok := found["Connector "+ns+"/"+c.Name]; !ok || int(tools) != len(c.Status.Tools) {
+			t.Errorf("inventory: connector %s with %d tools, want %d (items %v)", c.Name, tools, len(c.Status.Tools), inv.Items)
+		}
+	}
+	for _, it := range inv.Items {
+		if it.Kind == "Agent" && it.Namespace != engineNS {
+			t.Errorf("inventory: an Agent outside the engine namespace without the kagent.dev rule: %+v", it)
+		}
+	}
+	var layer *v1alpha1.SurveyLayer
+	for i := range s.Status.Layers {
+		if s.Status.Layers[i].Name == "inventory" {
+			layer = &s.Status.Layers[i]
+		}
+	}
+	if layer == nil || int(layer.Seen) != len(inv.Items) || layer.Matched != 0 || layer.Proposed != 0 ||
+		len(layer.NotSeen) != 1 || layer.NotSeen[0].Reason != "agents in scope cannot be listed: the kubernetes add-on has no kagent.dev rule" {
+		t.Errorf("inventory layer %+v", layer)
+	}
 }
 
 // An Intendant whose survey runs holds back only its own: another's runs.
@@ -265,7 +309,7 @@ func TestSurveyResumed(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if got.Status.Phase != v1alpha1.RunCompleted || got.Status.Attempts != 2 || len(got.Status.Layers) != 8 || got.Status.Layers[0].Name == "half" {
+	if got.Status.Phase != v1alpha1.RunCompleted || got.Status.Attempts != 2 || len(got.Status.Layers) != 9 || got.Status.Layers[0].Name == "half" {
 		t.Fatalf("resumed survey: %+v", got.Status)
 	}
 	f.checkProposals(t, &got)

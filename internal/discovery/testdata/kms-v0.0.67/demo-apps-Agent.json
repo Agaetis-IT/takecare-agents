@@ -1,0 +1,23 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "NAMESPACE   APIVERSION            KIND    NAME            TYPE   RUNTIME   READY   ACCEPTED   LABELS\ndemo-apps   kagent.dev/v1alpha2   Agent   e2e-inventory   BYO                                 <none>\n"
+    }
+  ],
+  "structuredContent": {
+    "items": [
+      {
+        "Accepted": null,
+        "Labels": "<none>",
+        "Name": "e2e-inventory",
+        "Namespace": "demo-apps",
+        "Ready": null,
+        "Runtime": null,
+        "Type": "BYO",
+        "apiVersion": "kagent.dev/v1alpha2",
+        "kind": "Agent"
+      }
+    ]
+  }
+}

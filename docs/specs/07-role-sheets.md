@@ -17,12 +17,12 @@ Template: nature · business name · the promise (recto of the card) · trigger 
 
 - **Nature**: agent. **Pillar**: Govern.
 - **Promise**: "It keeps the Base camp: only validated equipment gets in, every agent receives its identity there, and it keeps with your teams the Map that all agents share."
-- **Trigger**: schedule (the survey), on demand (when the ground changes) and a registration (a new connector or agent). **Reads**: `cluster` (read-only), the agent registry (agentregistry, the platform's), `knowledge`.
-- **Produces**: `TakeCareSurvey`: the ground surveyed layer by layer, including what it could not see; proposals for the Map and the registry, in its status; a human turns them into pull requests (spec 10).
+- **Trigger**: schedule (the survey), on demand (when the ground changes) and a registration (a new connector or agent). **Reads**: `cluster` (read-only), the engine's agents and the connectors (the platform's), `knowledge`.
+- **Produces**: `TakeCareSurvey`: the ground surveyed layer by layer, including what it could not see; proposals for the Map, in its status, and the inventory of the agents and connectors in circulation; a human turns the proposals into pull requests (spec 10).
 - **Levels**: `Apprentice` "It lists the agents, MCP servers and skills in circulation, and draws a first Map, without blocking anything" · `Practitioner` "It proposes each entry at the Base camp and each Map update: your teams validate" · `Expert` "It checks each new version (provenance, rights asked), removes what is no longer compliant and keeps the Map current" (`act` tools listed one by one).
-- **Build**: spec 10. `TakeCareIntendant` embeds `RoleCommonSpec`. The deterministic discovery (importers without an LLM, the Kubernetes API first) is operator code the Intendant drives, not the agent's reasoning. The Map is the customer's: versioned files in their Git, validated by pull request, reached by every agent through a Map connector with a few graph tools (entry by key, neighbours, blast radius, path, map at a date), so that the storage can change without touching the agents; its ontology and that connector get their own spec and ADR before step 2. The identity it hands each agent is, in milestone 1, the role's route at the gateway (ADR 0008); it becomes an identity recorded at registration and checked at every call by the Ranger's policies. The registry is agentregistry behind `TakeCarePlatform`, from the start and with no in-house substitute: if it lacks something at step 2, we contribute upstream or narrow what the Intendant does first (decided 2026-11-05); refusing an unknown agent or tool is enforced by the Ranger's policies: one enforcement point.
+- **Build**: spec 10. `TakeCareIntendant` embeds `RoleCommonSpec`. The deterministic discovery (importers without an LLM, the Kubernetes API first) is operator code the Intendant drives, not the agent's reasoning. The Map is the customer's: versioned files in their Git, validated by pull request, reached by every agent through a Map connector with a few graph tools (entry by key, neighbours, blast radius, path, map at a date), so that the storage can change without touching the agents; its ontology and that connector get their own spec and ADR before step 2. The identity it hands each agent is, in milestone 1, the role's route at the gateway (ADR 0008); it becomes an identity recorded at registration and checked at every call by the Ranger's policies. Where an agent's equipment lives is ADR 0019: a Bag is packed from Git at configuration time, and no agent registry is installed in 0.3.0 (agentregistry was assessed on 2026-11-13 and is watched); refusing an unknown agent or tool is enforced by the Ranger's policies: one enforcement point.
 - **Partners**: Ranger, Psy, Mécano (tells it what changes on the ground). **Step**: 2.
-- **Open**: agentregistry's maturity, assessed in spec 10's build (its database requirement is in spec 10 §8).
+- **Open**: the approved list's shape and the first role to take a skill (ADR 0019).
 
 ## 02 Ranger — AI agent governance
 
@@ -77,7 +77,14 @@ Template: nature · business name · the promise (recto of the card) · trigger 
 - **Levels**: `Apprentice` "He scouts" (answers questions, read-only) · `Practitioner` "He opens the way" (walks runbooks step by step, **the team executes every step**) · `Expert` "He hands over" (the team leads, he belays, stages situations and debriefs). At `Expert` the **team** becomes autonomous, not the agent: the Guide never gets `act` tools.
 - **Build**: the role that tests the model hardest: a session (one run per conversation, with memory within it) rather than one run per message; a `chat` connector that delivers inbound messages to the operator; a scope in teams or channels, not namespaces (spec 06 §1). The engine boundary must allow a multi-turn run.
 - **Partners**: Doc (each incident becomes a lesson), Mécano, Handover, Kiné. **Step**: 3+ (after the Mécano).
-- **Open**: session model in `engine.Engine`; how a conversation is scoped (channel, thread); retention of conversations.
+- **Open**:
+  - the session model in `engine.Engine`; how a conversation is scoped (channel, thread); the retention of conversations;
+  - two modes, chosen team by team: the full mode, where the conversation lives with TakeCare on the customer's model, and the lead-climber mode, where the team's own assistant delegates its question to the Guide. The level says what the Guide does; the mode says where the conversation lives. Which mode is built first is the product owner's call (the lead-climber mode needs no multi-turn run);
+  - delegation only: the Map and the Topo are never exposed directly to a third-party assistant, so that levels and traces cover the reasoning;
+  - the Rope (la Corde), the Guide's equipment card, is how assistants call the Guide, as the Talkie is how a ground calls TakeCare (ADR 0018);
+  - each caller has an identity: the Bib, extended from agents to the teams' assistants;
+  - under delegation, `TakeCareConversation` records the question received and the answer returned, and the Guide's reasoning is traced like any role's;
+  - what a team's assistants may be equipped with comes from the same approved list as the agents' Bags (ADR 0019): the team installs, never the Guide.
 
 ## 07 Doc — Incident diagnosis
 
