@@ -15,7 +15,7 @@ description: Use to run the TakeCare accuracy benches on the demo (real model), 
 
 Run it for a change of the Intendant's instructions, its agent pass, the merge of its answer, its connectors, the corpus or the demo Map.
 
-1. Prerequisites: `TAKECARE_MODEL_API_KEY` set; demo running (`make demo-up`); no incident needed. Run long local benches under `caffeinate -i`: a sleep of the machine pauses the cluster.
+1. Prerequisites: `TAKECARE_MODEL_API_KEY` set; demo running (`make demo-up`); no incident needed. On macOS, run long local benches under `caffeinate -i`: a sleep of the machine pauses the cluster.
 2. Run `make demo-bench-intendant N=5`. It surveys the demo against the bench's Map, the demo Map without `service/billing-api`'s `documentedBy`, and restores the demo Map on exit. The Map's revision reaches the Intendant at the connector's next discovery, so allow about 12 minutes before the first run, and as long between two benches.
 3. Read `test/bench/intendant-report-<date>.json`. Report the runs ok / N, the median recall and precision, the merge's drops by reason, any forbidden or other proposal (action and key), the median duration, model calls, tokens and cost.
 4. Compare with the latest `intendant-report-*.json` on `main` (same model). A run that is not ok, a forbidden proposal, or a rise in drops blocks the change: say so in the PR, with both tables.
