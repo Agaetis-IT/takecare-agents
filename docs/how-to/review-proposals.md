@@ -65,7 +65,7 @@ kubectl -n takecare-system get takecaresurvey intendant-q6w6z -o json |
   jq -r '.status.proposals[] | select(.id == "200ea0648e2f8914") | .entry' > map/runbook/proxy-timeout.yaml
 ```
 
-For any other proposal, read it from the ConfigMap, whose values are YAML, for example with `yq`:
+For any other proposal, read it from the ConfigMap, whose values are YAML, for example with `yq`. The form below is accepted by both mikefarah's `yq` v4 and the Python `yq`:
 
 ```bash
 kubectl -n takecare-system get configmap survey-intendant-q6w6z-proposals -o json |

@@ -5,6 +5,8 @@ package intendant
 
 import (
 	"context"
+	"slices"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -18,9 +20,10 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/report"
 )
 
-// publishTimeout bounds one digest's publication, its retries included
-// (report.Post waits 14 s at most between attempts).
-const publishTimeout = 2 * time.Minute
+// publishTimeout bounds one digest's publication: report.Post's four
+// attempts of at most 30 s each (the MCP client's timeout) and its 2+4+8 s
+// of waits between them, 134 s, within 3 minutes.
+const publishTimeout = 3 * time.Minute
 
 // Why a digest is not posted, in status.published.reason.
 const (
@@ -139,7 +142,9 @@ func (w *Runner) allProposals(ctx context.Context, s *v1alpha1.TakeCareSurvey) [
 }
 
 // resumePublish publishes what a stopped operator left Completed and not
-// yet published.
+// yet published: in one goroutine, one survey after another, oldest
+// first, so that a long stop gives neither a fan-out of goroutines nor a
+// burst of digests at once.
 func (w *Runner) resumePublish(ctx context.Context) {
 	if w.Poster == nil {
 		return
@@ -149,9 +154,27 @@ func (w *Runner) resumePublish(ctx context.Context) {
 		log.FromContext(ctx).Error(err, "list the surveys to publish")
 		return
 	}
-	for i := range list.Items {
-		if s := &list.Items[i]; s.Status.Phase == v1alpha1.RunCompleted && s.Status.Published == nil {
-			w.startPublish(ctx, client.ObjectKeyFromObject(s))
+	var pending []v1alpha1.TakeCareSurvey
+	for _, s := range list.Items {
+		if s.Status.Phase == v1alpha1.RunCompleted && s.Status.Published == nil {
+			pending = append(pending, s)
 		}
 	}
+	if len(pending) == 0 {
+		return
+	}
+	slices.SortStableFunc(pending, func(a, b v1alpha1.TakeCareSurvey) int {
+		if c := a.CreationTimestamp.Compare(b.CreationTimestamp.Time); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
+	w.wg.Go(func() {
+		for i := range pending {
+			if ctx.Err() != nil {
+				return
+			}
+			w.publish(ctx, client.ObjectKeyFromObject(&pending[i]))
+		}
+	})
 }

@@ -6,6 +6,7 @@ package intendant
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -28,12 +29,21 @@ type fakePoster struct {
 	calls []map[string]any
 	fail  bool
 	hold  *gate
+	// inflight counts the calls in progress; most is its highest value.
+	inflight, most int
 }
 
 func (p *fakePoster) Call(ctx context.Context, _ mcp.Endpoint, tool string, args map[string]any) (mcp.Result, error) {
 	p.mu.Lock()
 	hold := p.hold
+	p.inflight++
+	p.most = max(p.most, p.inflight)
 	p.mu.Unlock()
+	defer func() {
+		p.mu.Lock()
+		p.inflight--
+		p.mu.Unlock()
+	}()
 	if hold != nil {
 		select {
 		case <-hold.ch:
@@ -176,6 +186,42 @@ func TestDigestResumed(t *testing.T) {
 	s := f.waitPublished(t, "resumed", 1)[0]
 	if !s.Status.Published.OK || len(f.poster.posted()) != 1 {
 		t.Errorf("published %+v, %d posts", s.Status.Published, len(f.poster.posted()))
+	}
+}
+
+// After a stop, the digests left unposted go one after another, oldest
+// first, never two at once.
+func TestDigestResumedInOrder(t *testing.T) {
+	f := startRunner(t)
+	f.poster.hold = newGate()
+	f.grounded(t)
+	f.connector(t, connReport, v1alpha1.ConnectorReport, []string{postTool})
+	f.reporting(t, "order", v1alpha1.LevelPractitioner, connReport)
+	f.waitPhase(t, "order", 1, v1alpha1.RunCompleted)
+	f.mapRevision(t, rev2)
+	f.waitPhase(t, "order", 2, v1alpha1.RunCompleted)
+	f.mapRevision(t, "rev-3")
+	f.waitPhase(t, "order", 3, v1alpha1.RunCompleted)
+	f.restart(t) // the three held posts are cut, nothing recorded
+	f.poster.mu.Lock()
+	f.poster.most = 0
+	f.poster.mu.Unlock()
+	f.poster.hold.release()
+	surveys := f.waitPublished(t, "order", 3)
+	slices.SortFunc(surveys, func(a, b v1alpha1.TakeCareSurvey) int { return a.CreationTimestamp.Compare(b.CreationTimestamp.Time) })
+	calls := f.poster.posted()
+	if len(calls) != 3 {
+		t.Fatalf("%d posts, want 3", len(calls))
+	}
+	for i, s := range surveys {
+		if !strings.Contains(calls[i]["text"].(string), "Survey "+s.Name+" ") {
+			t.Errorf("post %d is not %s's digest: %.120q", i, s.Name, calls[i]["text"])
+		}
+	}
+	f.poster.mu.Lock()
+	defer f.poster.mu.Unlock()
+	if f.poster.most != 1 {
+		t.Errorf("%d digests posted at once after the restart, want one at a time", f.poster.most)
 	}
 }
 
