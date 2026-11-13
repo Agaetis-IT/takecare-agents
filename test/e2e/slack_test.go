@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -123,5 +124,48 @@ func TestSlackDigest(t *testing.T) {
 	if bytes.Contains(out.Bytes(), []byte("status: ")) || bytes.Contains(out.Bytes(), []byte("provenance")) {
 		t.Errorf("the digest holds an entry's content:\n%s", out.Bytes())
 	}
-	golden.Assert(t, "slack-digest.json", out.Bytes())
+	// The survey whose digest stands depends on the startup surveys'
+	// timing: its name is masked, its keys and counts are not.
+	masked := bytes.ReplaceAll(out.Bytes(), []byte(os.Getenv("E2E_SURVEY")), []byte("<survey>"))
+	golden.Assert(t, "slack-digest.json", masked)
+}
+
+// A digest is posted only when the proposals changed (spec 10 §6): the
+// review channel's digests are exactly the surveys E2E_POSTED names (those
+// published and not status only), one each, and no two digests in a row
+// are alike.
+func TestSlackDigestsOnChange(t *testing.T) {
+	raw, err := os.ReadFile(os.Getenv("E2E_SLACK_MESSAGES")) //nolint:gosec // the file hack/e2e.sh wrote for this test
+	if err != nil {
+		t.Fatalf("E2E_SLACK_MESSAGES: %v (run through hack/e2e.sh)", err)
+	}
+	var all []fakeslack.Message
+	if err := json.Unmarshal(raw, &all); err != nil {
+		t.Fatal(err)
+	}
+	surveyOf := regexp.MustCompile(`(?m)^Survey (\S+) against the Map at `)
+	var names []string
+	prev := ""
+	for _, m := range all {
+		if m.Channel != os.Getenv("E2E_REVIEW_CHANNEL") {
+			continue
+		}
+		match := surveyOf.FindStringSubmatch(m.Text)
+		if match == nil {
+			t.Fatalf("a review message without its survey: %.80q", m.Text)
+		}
+		names = append(names, match[1])
+		// The digest without its survey's name: its counts and keys.
+		body := strings.ReplaceAll(m.Text, match[1], "")
+		if body == prev {
+			t.Errorf("the digest of %s repeats the one before it", match[1])
+		}
+		prev = body
+	}
+	want := strings.Fields(os.Getenv("E2E_POSTED"))
+	slices.Sort(names)
+	slices.Sort(want)
+	if !slices.Equal(names, want) {
+		t.Errorf("digests posted for %v, want one for each survey published: %v", names, want)
+	}
 }

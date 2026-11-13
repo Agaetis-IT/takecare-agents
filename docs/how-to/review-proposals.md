@@ -4,7 +4,7 @@ The Intendant proposes changes to the Map (spec 10): it never writes the Map its
 
 ## 1. Find the survey
 
-Each survey is a `TakeCareSurvey` in the operator's namespace. At the Practitioner level, the Intendant also posts a digest of each survey that has proposals to its report destination: the counts, the first 20 keys and the survey's name. Start from the name the digest gives, or list the surveys:
+Each survey is a `TakeCareSurvey` in the operator's namespace. At the Practitioner level, the Intendant also posts a digest to its report destination when a survey's proposals changed since its last digest: the counts, the first 20 keys and the survey's name. A survey with the same proposals posts nothing, and its `status.published` names the survey whose digest still stands. Start from the name the digest gives, or list the surveys:
 
 ```bash
 kubectl -n takecare-system get takecaresurveys

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
 )
@@ -208,14 +210,21 @@ func TestDigestResumedInOrder(t *testing.T) {
 	f.poster.mu.Unlock()
 	f.poster.hold.release()
 	surveys := f.waitPublished(t, "order", 3)
-	slices.SortFunc(surveys, func(a, b v1alpha1.TakeCareSurvey) int { return a.CreationTimestamp.Compare(b.CreationTimestamp.Time) })
+	// The oldest is published first and posts; the two others have the
+	// same proposals and repeat it.
+	slices.SortFunc(surveys, func(a, b v1alpha1.TakeCareSurvey) int {
+		if c := a.CreationTimestamp.Compare(b.CreationTimestamp.Time); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
 	calls := f.poster.posted()
-	if len(calls) != 3 {
-		t.Fatalf("%d posts, want 3", len(calls))
+	if len(calls) != 1 || !strings.Contains(calls[0]["text"].(string), "Survey "+surveys[0].Name+" ") {
+		t.Fatalf("posts %d, want the oldest's (%s) alone", len(calls), surveys[0].Name)
 	}
-	for i, s := range surveys {
-		if !strings.Contains(calls[i]["text"].(string), "Survey "+s.Name+" ") {
-			t.Errorf("post %d is not %s's digest: %.120q", i, s.Name, calls[i]["text"])
+	for _, s := range surveys[1:] {
+		if p := s.Status.Published; p.Reason != reasonSame+surveys[0].Name {
+			t.Errorf("%s: published %+v, want the same proposals as %s", s.Name, p, surveys[0].Name)
 		}
 	}
 	f.poster.mu.Lock()
@@ -229,11 +238,160 @@ func TestDigestResumedInOrder(t *testing.T) {
 func TestDigestNothing(t *testing.T) {
 	var w Runner
 	s := &v1alpha1.TakeCareSurvey{}
-	if p := w.post(context.Background(), s); !p.OK || p.Reason != reasonNothing {
+	if p, _ := w.post(context.Background(), s); !p.OK || p.Reason != reasonNothing {
 		t.Errorf("no proposal: %+v", p)
 	}
 	s.Status.ProposalCounts = &v1alpha1.ProposalCounts{}
-	if p := w.post(context.Background(), s); !p.OK || p.Reason != reasonNothing {
+	if p, _ := w.post(context.Background(), s); !p.OK || p.Reason != reasonNothing {
 		t.Errorf("zero proposals: %+v", p)
+	}
+}
+
+// The fingerprint is the set of ids and the total: their order does not
+// change it, one id more or fewer or another total does.
+func TestDigestFingerprint(t *testing.T) {
+	ps := func(ids ...string) []v1alpha1.Proposal {
+		out := make([]v1alpha1.Proposal, 0, len(ids))
+		for _, id := range ids {
+			out = append(out, v1alpha1.Proposal{ID: id, Entry: "key: " + id})
+		}
+		return out
+	}
+	base := fingerprint(ps("a", "b", "c"), 3)
+	if fingerprint(ps("c", "a", "b"), 3) != base {
+		t.Error("the order changes the fingerprint")
+	}
+	for name, fp := range map[string]string{
+		"one id fewer": fingerprint(ps("a", "b"), 2),
+		"one id more":  fingerprint(ps("a", "b", "c", "d"), 4),
+		"another id":   fingerprint(ps("a", "b", "x"), 3),
+		"a total cut":  fingerprint(ps("a", "b", "c"), 4),
+	} {
+		if fp == base {
+			t.Errorf("%s keeps the fingerprint", name)
+		}
+	}
+	if strings.Contains(base, "key:") {
+		t.Error("the fingerprint holds an entry")
+	}
+}
+
+// lastDigest reads the Intendant's last posted digest.
+func (f *fixture) lastDigest(t *testing.T, name string) *v1alpha1.LastDigest {
+	t.Helper()
+	var in v1alpha1.TakeCareIntendant
+	if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: name}, &in); err != nil {
+		t.Fatal(err)
+	}
+	return in.Status.LastDigest
+}
+
+// newPublished waits for the Intendant's n surveys to be published and
+// returns the one not in seen, adding it there: surveys created in the
+// same second cannot be ordered by their timestamps.
+func (f *fixture) newPublished(t *testing.T, name string, n int, seen map[string]bool) v1alpha1.TakeCareSurvey {
+	t.Helper()
+	for _, s := range f.waitPublished(t, name, n) {
+		if !seen[s.Name] {
+			seen[s.Name] = true
+			return s
+		}
+	}
+	t.Fatalf("%s: no new survey among %d", name, n)
+	return v1alpha1.TakeCareSurvey{}
+}
+
+// The same proposals twice post one digest; the second survey says whose
+// digest it repeats, and the Intendant records the first.
+func TestDigestOnChange(t *testing.T) {
+	f := startRunner(t)
+	f.grounded(t)
+	f.connector(t, connReport, v1alpha1.ConnectorReport, []string{postTool})
+	f.reporting(t, "same", v1alpha1.LevelPractitioner, connReport)
+	seen := map[string]bool{}
+	first := f.newPublished(t, "same", 1, seen)
+	last := f.lastDigest(t, "same")
+	if last == nil || last.Survey != first.Name || last.Connector != connReport || last.Destination != onCall || len(last.Fingerprint) != 64 {
+		t.Fatalf("last digest %+v after %s", last, first.Name)
+	}
+
+	// The same set again: nothing posted.
+	f.mapRevision(t, rev2)
+	if p := f.newPublished(t, "same", 2, seen).Status.Published; !p.OK || p.Reason != reasonSame+first.Name {
+		t.Errorf("the same set: published %+v", p)
+	}
+
+	// After a restart, the same set still posts nothing.
+	f.restart(t)
+	f.mapRevision(t, "rev-3")
+	if p := f.newPublished(t, "same", 3, seen).Status.Published; p.Reason != reasonSame+first.Name {
+		t.Errorf("after a restart: published %+v", p)
+	}
+
+	// Another destination posts, even with the same set.
+	f.update(t, "same", func(in *v1alpha1.TakeCareIntendant) { in.Spec.Report.Practitioner = review })
+	f.mapRevision(t, "rev-4")
+	if p := f.newPublished(t, "same", 4, seen).Status.Published; !p.OK || p.Reason != "" || p.Destination != review {
+		t.Errorf("another destination: published %+v", p)
+	}
+
+	// Another set posts: the recorded fingerprint no longer matches.
+	var in v1alpha1.TakeCareIntendant
+	if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: "same"}, &in); err != nil {
+		t.Fatal(err)
+	}
+	before := in.DeepCopy()
+	in.Status.LastDigest.Fingerprint = strings.Repeat("0", 64)
+	if err := f.c.Status().Patch(context.Background(), &in, client.MergeFrom(before)); err != nil {
+		t.Fatal(err)
+	}
+	f.mapRevision(t, "rev-5")
+	if p := f.newPublished(t, "same", 5, seen).Status.Published; !p.OK || p.Reason != "" {
+		t.Errorf("another set: published %+v", p)
+	}
+	if n := len(f.poster.posted()); n != 3 {
+		t.Errorf("%d digests posted, want 3 (the first, another destination, another set)", n)
+	}
+}
+
+// A failed post records nothing as the last digest: the next survey with
+// the same set posts.
+func TestDigestAfterFailure(t *testing.T) {
+	f := startRunner(t)
+	f.poster.fail = true
+	f.grounded(t)
+	f.connector(t, connReport, v1alpha1.ConnectorReport, []string{postTool})
+	f.reporting(t, "failed", v1alpha1.LevelPractitioner, connReport)
+	seen := map[string]bool{}
+	if p := f.newPublished(t, "failed", 1, seen).Status.Published; p.OK {
+		t.Fatalf("published %+v, want a failure", p)
+	}
+	if last := f.lastDigest(t, "failed"); last != nil {
+		t.Fatalf("a failed post was recorded: %+v", last)
+	}
+	f.poster.mu.Lock()
+	f.poster.fail = false
+	f.poster.mu.Unlock()
+	f.mapRevision(t, rev2)
+	if p := f.newPublished(t, "failed", 2, seen).Status.Published; !p.OK || p.Reason != "" {
+		t.Errorf("after a failure: published %+v", p)
+	}
+}
+
+// Two surveys with the same set published at once post one digest: the
+// compare, the post and the record are one step per Intendant.
+func TestDigestRace(t *testing.T) {
+	f := startRunner(t)
+	f.poster.hold = newGate()
+	f.grounded(t)
+	f.connector(t, connReport, v1alpha1.ConnectorReport, []string{postTool})
+	f.reporting(t, "race", v1alpha1.LevelPractitioner, connReport)
+	f.waitPhase(t, "race", 1, v1alpha1.RunCompleted)
+	f.mapRevision(t, rev2)
+	f.waitPhase(t, "race", 2, v1alpha1.RunCompleted)
+	f.poster.hold.release()
+	f.waitPublished(t, "race", 2)
+	if n := len(f.poster.posted()); n != 1 {
+		t.Errorf("%d digests posted for the same set, want 1", n)
 	}
 }

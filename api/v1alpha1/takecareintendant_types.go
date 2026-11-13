@@ -110,6 +110,24 @@ type TakeCareIntendantStatus struct {
 	// +kubebuilder:validation:MaxLength=64
 	// +optional
 	Registrations string `json:"registrations,omitempty"`
+
+	// The last digest actually posted (spec 10 §6): a survey whose
+	// proposals have the same fingerprint, to the same connector and
+	// destination, posts nothing. Written only after a successful post.
+	// +optional
+	LastDigest *LastDigest `json:"lastDigest,omitempty"`
+}
+
+// LastDigest records the Intendant's last posted digest.
+type LastDigest struct {
+	// The survey whose digest was posted.
+	Survey string `json:"survey"`
+	// The report connector and the destination it was posted to.
+	Connector   string `json:"connector"`
+	Destination string `json:"destination"`
+	// A hash of the survey's proposal ids and their total: nothing of an
+	// entry.
+	Fingerprint string `json:"fingerprint"`
 }
 
 // +kubebuilder:object:root=true

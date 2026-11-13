@@ -318,6 +318,32 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              lastDigest:
+                description: |-
+                  The last digest actually posted (spec 10 §6): a survey whose
+                  proposals have the same fingerprint, to the same connector and
+                  destination, posts nothing. Written only after a successful post.
+                properties:
+                  connector:
+                    description: The report connector and the destination it was posted
+                      to.
+                    type: string
+                  destination:
+                    type: string
+                  fingerprint:
+                    description: |-
+                      A hash of the survey's proposal ids and their total: nothing of an
+                      entry.
+                    type: string
+                  survey:
+                    description: The survey whose digest was posted.
+                    type: string
+                required:
+                - connector
+                - destination
+                - fingerprint
+                - survey
+                type: object
               lastMapRevision:
                 description: |-
                   The map connector's revision the last survey was triggered for: a

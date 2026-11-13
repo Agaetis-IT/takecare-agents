@@ -150,8 +150,11 @@ type Runner struct {
 
 	mu      sync.Mutex
 	running map[types.NamespacedName]bool // by Intendant
-	freed   chan struct{}
-	wg      sync.WaitGroup
+	// digestLocks hold one *sync.Mutex per Intendant: its digests are
+	// compared, posted and recorded one at a time.
+	digestLocks sync.Map
+	freed       chan struct{}
+	wg          sync.WaitGroup
 }
 
 // NeedLeaderElection implements manager.LeaderElectionRunnable: the runs

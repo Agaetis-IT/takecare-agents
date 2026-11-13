@@ -34,7 +34,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=36
+CHECKS_EXPECTED=37
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s %s\n' "$(date +%H:%M:%S)" "$*"; }
@@ -118,9 +118,23 @@ intendant() {
     sleep 2
   done
   fake_get fake-slack /messages >bin/demo/slack-digest.json
-  check "its digest reached the review channel once, keys and counts only, matching the golden (spec 10 §6)" \
-    env E2E_SLACK_MESSAGES="${PWD}/bin/demo/slack-digest.json" E2E_REVIEW_CHANNEL="$TAKECARE_SLACK_REVIEW_CHANNEL" E2E_SURVEY=e2e-first \
-    go test -tags e2e -count=1 ./test/e2e/ -run TestSlackDigest
+  # A digest is posted only when the proposals changed: e2e-first's own,
+  # or the earlier survey's whose proposals it repeats, which its status
+  # names.
+  local reason shown same="status only: the same proposals as survey "
+  reason="$(kubectl -n "$NS" get takecaresurvey e2e-first -o jsonpath='{.status.published.reason}')"
+  case "$reason" in
+    "") shown=e2e-first ;;
+    "$same"*) shown="${reason#"$same"}" ;;
+    *) shown="" ;;
+  esac
+  check "the digest of e2e-first's proposals reached the review channel once, keys and counts only, matching the golden (spec 10 §6)" \
+    env E2E_SLACK_MESSAGES="${PWD}/bin/demo/slack-digest.json" E2E_REVIEW_CHANNEL="$TAKECARE_SLACK_REVIEW_CHANNEL" E2E_SURVEY="$shown" \
+    go test -tags e2e -count=1 ./test/e2e/ -run 'TestSlackDigest$'
+  check "a digest is posted only when the proposals changed: one per survey published, none repeating the one before (spec 10 §6)" \
+    env E2E_SLACK_MESSAGES="${PWD}/bin/demo/slack-digest.json" E2E_REVIEW_CHANNEL="$TAKECARE_SLACK_REVIEW_CHANNEL" \
+    E2E_POSTED="$(kubectl -n "$NS" get takecaresurveys -o json | jq -r '[.items[] | select(.status.published.ok == true and (.status.published.reason // "") == "") | .metadata.name] | join(" ")')" \
+    go test -tags e2e -count=1 ./test/e2e/ -run 'TestSlackDigestsOnChange$'
 
   # A scope no connector reads, in the e2e only: kube-public.
   kubectl apply -f - >/dev/null <<EOF

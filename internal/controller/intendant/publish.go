@@ -5,8 +5,13 @@ package intendant
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -32,6 +37,7 @@ const (
 	reasonNoDest     = "status only: the Intendant's level has no report destination"
 	reasonNoReport   = "the Intendant has no report connector"
 	reasonGone       = "status only: the Intendant no longer exists"
+	reasonSame       = "status only: the same proposals as survey "
 )
 
 // destination is where an Intendant's digest goes (spec 10 §6), the
@@ -62,8 +68,12 @@ func (w *Runner) startPublish(ctx context.Context, key types.NamespacedName) {
 
 // publish posts the digest of a Completed survey not yet published through
 // its Intendant's report connector, and records the outcome in
-// status.published; a final failure is also a warning event. At least
-// once: an operator stopped between the post and the record posts again.
+// status.published; a final failure is also a warning event. A digest
+// whose proposals are those of the Intendant's last posted one, to the
+// same connector and destination, is not posted again. The compare, the
+// post and the record hold the Intendant's digest lock, which only the
+// publication goroutines take. At least once: an operator stopped between
+// the post and the record posts again.
 func (w *Runner) publish(parent context.Context, key types.NamespacedName) {
 	ctx, cancel := context.WithTimeout(parent, publishTimeout)
 	defer cancel()
@@ -78,9 +88,16 @@ func (w *Runner) publish(parent context.Context, key types.NamespacedName) {
 	if s.Status.Phase != v1alpha1.RunCompleted || s.Status.Published != nil {
 		return
 	}
-	result := w.post(ctx, &s)
+	unlock := w.digestLock(types.NamespacedName{Namespace: s.Namespace, Name: s.Spec.IntendantRef.Name})
+	defer unlock()
+	result, last := w.post(ctx, &s)
 	if parent.Err() != nil {
 		return // the operator stops: the next leader publishes
+	}
+	if last != nil {
+		if err := w.recordDigest(parent, &s, last); err != nil {
+			logger.Error(err, "record the Intendant's last digest")
+		}
 	}
 	if err := w.patch(parent, &s, func(st *v1alpha1.TakeCareSurveyStatus) { st.Published = &result }); err != nil {
 		logger.Error(err, "record the publication")
@@ -90,37 +107,80 @@ func (w *Runner) publish(parent context.Context, key types.NamespacedName) {
 	}
 }
 
-func (w *Runner) post(ctx context.Context, s *v1alpha1.TakeCareSurvey) v1alpha1.Publication {
+// digestLock locks the Intendant's digests and returns the unlock.
+func (w *Runner) digestLock(in types.NamespacedName) func() {
+	v, _ := w.digestLocks.LoadOrStore(in, &sync.Mutex{})
+	mu, _ := v.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
+}
+
+// post posts the survey's digest unless there is nothing to post or it is
+// the Intendant's last; it returns the outcome, and what to record as the
+// Intendant's last digest when one was posted.
+func (w *Runner) post(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alpha1.Publication, *v1alpha1.LastDigest) {
 	if c := s.Status.ProposalCounts; c == nil || c.Total == 0 {
-		return v1alpha1.Publication{OK: true, Reason: reasonNothing}
+		return v1alpha1.Publication{OK: true, Reason: reasonNothing}, nil
 	}
 	var in v1alpha1.TakeCareIntendant
 	if err := w.Reader.Get(ctx, client.ObjectKey{Namespace: s.Namespace, Name: s.Spec.IntendantRef.Name}, &in); err != nil {
 		if apierrors.IsNotFound(err) {
-			return v1alpha1.Publication{OK: true, Reason: reasonGone}
+			return v1alpha1.Publication{OK: true, Reason: reasonGone}, nil
 		}
-		return v1alpha1.Publication{Reason: "read the Intendant: " + err.Error()}
+		return v1alpha1.Publication{Reason: "read the Intendant: " + err.Error()}, nil
 	}
 	dest, why := destination(&in)
 	if dest == "" {
-		return v1alpha1.Publication{OK: true, Reason: why}
+		return v1alpha1.Publication{OK: true, Reason: why}, nil
 	}
 	result := v1alpha1.Publication{Connector: in.Spec.Connectors.Report, Destination: dest}
 	if in.Spec.Connectors.Report == "" {
 		result.Reason = reasonNoReport
-		return result
+		return result, nil
 	}
-	d := NewDigest(s, w.allProposals(ctx, s))
+	all := w.allProposals(ctx, s)
+	this := &v1alpha1.LastDigest{Survey: s.Name, Connector: result.Connector, Destination: dest, Fingerprint: fingerprint(all, s.Status.ProposalCounts.Total)}
+	if l := in.Status.LastDigest; l != nil && l.Fingerprint == this.Fingerprint && l.Connector == this.Connector && l.Destination == this.Destination {
+		result.OK, result.Reason = true, reasonSame+l.Survey
+		return result, nil
+	}
+	d := NewDigest(s, all)
 	after := w.After
 	if after == nil {
 		after = time.After
 	}
 	if err := report.Post(ctx, w.Client, w.Poster, after, w.Backoff, s.Namespace, in.Spec.Connectors.Report, dest, d.Message()); err != nil {
 		result.Reason = err.Error()
-		return result
+		return result, nil
 	}
 	result.OK = true
-	return result
+	return result, this
+}
+
+// fingerprint is a hash of the proposals' ids, sorted, and their total,
+// which counts those a full ConfigMap left out: nothing of an entry.
+func fingerprint(all []v1alpha1.Proposal, total int32) string {
+	ids := make([]string, 0, len(all))
+	for _, p := range all {
+		ids = append(ids, p.ID)
+	}
+	slices.Sort(ids)
+	sum := sha256.Sum256([]byte(strings.Join(ids, "\n") + "\n" + strconv.Itoa(int(total))))
+	return hex.EncodeToString(sum[:])
+}
+
+// recordDigest records the survey's digest as the Intendant's last posted.
+func (w *Runner) recordDigest(ctx context.Context, s *v1alpha1.TakeCareSurvey, last *v1alpha1.LastDigest) error {
+	var in v1alpha1.TakeCareIntendant
+	if err := w.Reader.Get(ctx, client.ObjectKey{Namespace: s.Namespace, Name: s.Spec.IntendantRef.Name}, &in); err != nil {
+		return fmt.Errorf("read the Intendant %s: %w", s.Spec.IntendantRef.Name, err)
+	}
+	before := in.DeepCopy()
+	in.Status.LastDigest = last
+	if err := w.Client.Status().Patch(ctx, &in, client.MergeFrom(before)); err != nil {
+		return fmt.Errorf("update the Intendant %s: %w", in.Name, err)
+	}
+	return nil
 }
 
 // allProposals reads the survey's full set from its ConfigMap; the

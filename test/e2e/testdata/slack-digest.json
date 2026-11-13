@@ -24,12 +24,12 @@
     {
       "elements": [
         {
-          "text": "Survey e2e-first against the Map at 470725dee572 · 1 not seen · 0 blind spots · kubectl -n takecare-system get takecaresurvey e2e-first · the full set: ConfigMap survey-e2e-first-proposals",
+          "text": "Survey <survey> against the Map at 470725dee572 · 1 not seen · 0 blind spots · kubectl -n takecare-system get takecaresurvey <survey> · the full set: ConfigMap survey-<survey>-proposals",
           "type": "mrkdwn"
         }
       ],
       "type": "context"
     }
   ],
-  "text": "Intendant intendant: 3 proposals to review\nAdd 1 · Update 2 · Remove 0 · from the import 2, from the agent 1\nAdd network/billing-api\nUpdate service/billing-api\nUpdate runbook/proxy-timeout\nSurvey e2e-first against the Map at 470725dee572 · 1 not seen · 0 blind spots · kubectl -n takecare-system get takecaresurvey e2e-first · the full set: ConfigMap survey-e2e-first-proposals\n"
+  "text": "Intendant intendant: 3 proposals to review\nAdd 1 · Update 2 · Remove 0 · from the import 2, from the agent 1\nAdd network/billing-api\nUpdate service/billing-api\nUpdate runbook/proxy-timeout\nSurvey <survey> against the Map at 470725dee572 · 1 not seen · 0 blind spots · kubectl -n takecare-system get takecaresurvey <survey> · the full set: ConfigMap survey-<survey>-proposals\n"
 }
