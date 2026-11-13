@@ -126,20 +126,22 @@ Already in place: `RoleCommonSpec.model`, the `takecare.role` and `takecare.leve
 
 | # | Role | Nature | Business name | Build shape | Record | Step |
 |---|---|---|---|---|---|---|
-| 01 | Intendant | agent | Infra inventory and mapping | `TakeCareIntendant` | `TakeCareSurvey` | **2** |
-| 02 | Ranger | guardrail | AI agent governance | `TakeCareRanger` (gateway policies, identities) | — | **2** |
-| 03 | Psy | guardrail | AI agent quality control | `TakeCarePsy` (traces) | `TakeCareEvaluation` | **2** |
+| 01 | Intendant | agent | Infra inventory and mapping | `TakeCareIntendant` | `TakeCareSurvey` | **2** (0.3.0) |
+| 02 | Ranger | guardrail | AI agent governance | `TakeCareRanger` (gateway policies, identities) | — | **2** (0.2.0) |
+| 03 | Psy | guardrail | AI agent quality control | `TakeCarePsy` (traces) | `TakeCareEvaluation` | after the Mécano at Apprentice |
 | 04 | Coach | agent | Peak readiness | `TakeCareCoach` | `TakeCarePeakReview` | 3+ (last, with the Nutri) |
 | 05 | Nutri | agent | Cloud cost control (FinOps) | `TakeCareNutri` | `TakeCareCostReview` | 3+ (last, with the Coach) |
 | 06 | Guide | agent | Team upskilling | `TakeCareGuide` | `TakeCareConversation` | 3+ (after the Mécano) |
 | 07 | Doc | agent | Incident diagnosis | `TakeCareDoc` | `TakeCareInvestigation` | **1** (v0.1) |
-| 08 | Kiné | agent | Problem management | `TakeCareKine` | `TakeCareReview` | **2** |
-| 09 | Mécano | agent | Lifecycle management | `TakeCareMecano` | `TakeCareMaintenance` | 3 |
+| 08 | Kiné | agent | Problem management | `TakeCareKine` | `TakeCareReview` | after the TUI |
+| 09 | Mécano | agent | Lifecycle management | `TakeCareMecano` | `TakeCareMaintenance` | Apprentice after the Kiné; its other levels in step 3 |
 | 10 | Bootcamp | exercise | Disaster recovery testing | tooling (scenery, scenarios) | — | the scenery from step 1; with the Mécano |
 | 11 | Stress Test | exercise | Load testing and sizing | tooling | — | with the Coach and the Nutri |
 | 12 | Handover | exercise | Knowledge transfer | tooling | — | with the Guide and the Mécano |
 
 Steps ordered with the concept (2026-11-04). Step 1 is the Doc alone (v0.1). Step 2 makes the Govern pillar real, since its three roles serve every other role: the Ranger (policies and identities), the Intendant (a light Map and Kubernetes discovery) and the Psy (logbooks from the first day); it adds the Kiné, so that the incident chain starts and the Doc is commissioned on a mapped ground. Step 3 and later: the Mécano and the Bootcamp, then the Guide and the Handover, then the Coach, the Nutri and the Stress Test, with cloud grounds. A group of roles opens on a ground only when all of them can work there. Exercises follow the roles they serve and block no step.
+
+After 0.3.0, which delivers the Intendant beside the Doc and the Ranger, the order is: a corrections release, the TUI (spec 13), the Kiné, the Mécano at Apprentice, then the Psy. The site's roadmap follows the same order.
 
 ## 10. What this changes in the build, and when
 

@@ -171,7 +171,7 @@ Retention: an ended survey (Completed, Failed or Dropped) older than seven days 
 6. The read-only guard test is unchanged and green; the add-ons' RBAC is unchanged; the operator gains only create, get, list, watch and delete on `takecaresurveys`, get, update and patch on its status, and create, get and delete on ConfigMaps in its own namespace (§7).
 7. The survey's inventory lists the cluster's agents and connectors with their tools; the agents in the Intendant's scope are listed when the kubernetes add-on may read them, and a not-seen line says so otherwise.
 8. A new Map revision triggers one survey; two triggers during a run give one more survey, not two (proven in envtest).
-9. A scored bench of the Intendant on a real model, its agent's proposals compared with a hand-written expected set (`make demo-bench-intendant`, `test/bench/README.md`). It surveys the demo against the demo Map without `service/billing-api`'s `documentedBy`. Its threshold is set from its first reports.
+9. A scored bench of the Intendant on a real model, its agent's proposals compared with a hand-written expected set (`make demo-bench-intendant`, `test/bench/README.md`). It surveys the demo against the demo Map without `service/billing-api`'s `documentedBy`. Its bar at a release is five runs ok out of five (`BENCH_MIN=5`, docs/release.md), set by the product owner after the first report, 5/5 on 2026-11-12.
 
 ## Open questions
 
