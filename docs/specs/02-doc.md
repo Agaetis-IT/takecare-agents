@@ -209,6 +209,7 @@ The Doc has no RBAC of its own: it reads the cluster through its `cluster` conne
 - Root span `invoke_agent doc`, from alert acceptance to publication. Attributes: `gen_ai.operation.name=invoke_agent`, `gen_ai.agent.name=doc`, `gen_ai.agent.id=<TakeCareDoc UID>`, `gen_ai.conversation.id=<investigation name>`, `gen_ai.provider.name`, `gen_ai.request.model`, `takecare.role=doc`, `takecare.level`, `takecare.alert.name`, `takecare.alert.fingerprint`.
 - Span events: `alert.accepted`, `investigation.started`, `investigation.completed`, `diagnosis.published`.
 - The A2A call carries `traceparent`; kagent's spans, the gateway's `chat` spans and the MCP servers' spans should join the trace (spike 001 checks where the chain breaks; fallback: correlation by `gen_ai.conversation.id`).
+- kagent keeps each run as a session in its database, with its events (prompts, tool calls and results, answers) and its task; `captureContent` governs the traces, not that database. The chart sets kagent's `sessionRetentionDays` to 30: a session idle for 30 days (counted from its last write) is deleted with its events and tasks by kagent's daily cleanup, for every agent of that kagent.
 
 ### 7. The `Expert` level in milestone 1
 

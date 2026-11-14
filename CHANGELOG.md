@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- kagent now deletes a session idle for 30 days (`kagent.database.postgres.sessionRetentionDays: 30`; it kept everything before). A session holds a run's events (the prompts, tool calls and results, answers) and its task. The idle clock is the session's last write, and kagent's cleanup runs every 24 hours. At the first cleanup after the upgrade, every session already idle for more than 30 days is deleted with its events and tasks. The setting is kagent's own and applies to every agent of that kagent: set the value other agents on it need, or 0 to keep everything.
+
 ### Fixed
 
 - After an operator restart, a survey left running stayed Running and its Intendant ran no further survey, and the digests of surveys completed just before the restart were not posted: the operator listed surveys at the cluster scope, which its namespaced rights refuse. It now lists them in its own namespace. On 0.3.0, delete the stuck survey (`kubectl -n takecare-system delete takecaresurvey <name>`); the Intendant's next trigger starts a new one.

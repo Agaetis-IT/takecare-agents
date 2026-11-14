@@ -410,6 +410,13 @@ kagent:
       bundled:
         enabled: false
       url: ""
+      # -- kagent keeps each session's events (the prompts, tool calls and
+      # answers) and its tasks in this database. A session idle for this many
+      # days is deleted with its events and tasks by a cleanup kagent runs
+      # every 24 hours; the idle clock is the session's last write, not its
+      # creation. kagent's own setting: it applies to every agent of this kagent,
+      # not only TakeCare's roles. 0 keeps everything (kagent's default).
+      sessionRetentionDays: 30
   # -- The chart always renders a default ModelConfig: point it at the gateway
   # with a dummy key too, so that nothing in kagent can reach a provider
   # directly (ADR 0004). TakeCare's roles use the ModelConfigs the operator
