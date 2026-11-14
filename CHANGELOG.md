@@ -6,9 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-14
+
+A patch release of 0.3.0: two fixes and kagent's retention. On the benches of 2026-11-14 (`google/gemini-3.7-flash`), the Doc scores 5 out of 5 (`test/bench/report-2026-11-14T2034Z.json`) and the Intendant 5 runs ok out of 5 (`test/bench/intendant-report-2026-11-14T2050Z.json`).
+
 ### Changed
 
-- kagent now deletes a session idle for 30 days (`kagent.database.postgres.sessionRetentionDays: 30`; it kept everything before). A session holds a run's events (the prompts, tool calls and results, answers) and its task. The idle clock is the session's last write, and kagent's cleanup runs every 24 hours. At the first cleanup after the upgrade, every session already idle for more than 30 days is deleted with its events and tasks. The setting is kagent's own and applies to every agent of that kagent: set the value other agents on it need, or 0 to keep everything.
+- On upgrade, kagent's first daily cleanup deletes every session already idle for more than 30 days, with its events and tasks: kagent now deletes a session idle for 30 days (`kagent.database.postgres.sessionRetentionDays: 30`; it kept everything before). A session holds a run's events (the prompts, tool calls and results, answers) and its task. The idle clock is the session's last write, and the cleanup runs every 24 hours. The setting is kagent's own and applies to every agent of that kagent: set the value other agents on it need, or 0 to keep everything.
 
 ### Fixed
 

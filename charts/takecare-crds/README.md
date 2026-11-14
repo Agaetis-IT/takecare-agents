@@ -1,6 +1,6 @@
 # takecare-crds
 
-Chart version 0.3.0, application version 0.3.0.
+Chart version 0.3.1, application version 0.3.1.
 
 The CRDs of TakeCare Agents and of the third-party building blocks it configures. Install and upgrade it **before** the [`takecare`](../takecare/README.md) chart.
 
