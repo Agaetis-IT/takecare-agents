@@ -830,11 +830,22 @@ status() {
 }
 
 # mask_secrets hides credentials a log line may carry: the user and
-# password of a database URL (kagent's controller logs its configuration,
+# password of any URL (kagent's controller logs its configuration,
 # database URL included, at start) and password or token assignments.
 mask_secrets() {
-  sed -E -e 's#(postgres(ql)?://)[^@/[:space:]]+@#\1***@#g' \
+  sed -E -e 's#([A-Za-z][A-Za-z0-9+.-]*://)[^@/[:space:]]+@#\1***@#g' \
     -e 's#((password|passwd|token|apikey|api_key)[=:][[:space:]]*)[^[:space:]&,"}]+#\1***#gI'
+}
+
+# mask_test checks mask_secrets on sample lines: no credential survives,
+# and a line without one is left as it is.
+mask_test() {
+  local in out
+  in=$'config {Url:postgres://user:s3cr3t@db:5432/postgres}\nproxy https://bob:hunter2@proxy.example:8080\nPASSWORD=s3cr3t other=1\npassword: s3cr3t\napi_key=abc123 token=xyz789\nplain line http://host/path'
+  out="$(mask_secrets <<<"$in")"
+  if grep -qE 's3cr3t|hunter2|bob:|user:|abc123|xyz789' <<<"$out"; then echo "mask_test: a credential survived:"; echo "$out"; return 1; fi
+  grep -qx 'plain line http://host/path' <<<"$out" || { echo "mask_test: a line without a credential changed"; return 1; }
+  echo "mask_test: ok"
 }
 
 # not_ready_dump says why a pod is not Ready, for every pod of the release
@@ -869,8 +880,9 @@ case "${1:-all}" in
   install) CHECKS_EXPECTED=108 install ;;
   upgrade) CHECKS_EXPECTED=108 upgrade ;;
   status) status ;;
+  mask-test) mask_test ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=4 cluster_chart ;;
-  all) up; CHECKS_EXPECTED=108 install; CHECKS_EXPECTED=108 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
-  *) echo "usage: $0 [up|install|upgrade|cluster|status|down|all]"; exit 2 ;;
+  all) mask_test; up; CHECKS_EXPECTED=108 install; CHECKS_EXPECTED=108 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
+  *) echo "usage: $0 [up|install|upgrade|cluster|status|mask-test|down|all]"; exit 2 ;;
 esac
