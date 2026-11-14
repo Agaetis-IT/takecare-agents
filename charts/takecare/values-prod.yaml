@@ -108,7 +108,16 @@ kagent:
       # kagent's bundled PostgreSQL is documented as dev and evaluation only.
       bundled:
         enabled: false
-      url: ""              # REQUIRED: postgres://user:password@host:5432/kagent?sslmode=require (or urlFile, mounted from a Secret)
+      # REQUIRED, one of the two. Prefer urlFile: the path of a file holding the
+      # URL (postgres://user:password@host:5432/kagent?sslmode=require), mounted
+      # from a Secret in the kagent namespace, under kagent.controller above:
+      #   volumes: [{name: kagent-db, secret: {secretName: kagent-db}}]
+      #   volumeMounts: [{name: kagent-db, mountPath: /etc/kagent-db, readOnly: true}]
+      # and here: urlFile: /etc/kagent-db/url (the Secret's key "url").
+      urlFile: ""
+      # The alternative, the URL inline: its credential is then in this values
+      # file and written to the engine's controller log at each start.
+      url: ""
   otel:
     tracing:
       enabled: true
