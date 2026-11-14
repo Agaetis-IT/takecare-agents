@@ -244,6 +244,25 @@ mcp_forbidden() {
   return 1
 }
 
+# mcp_stream_and_close NAMESPACE POD URL: succeeds when a session's
+# standalone stream (GET) is opened and its close (DELETE) accepted, as the
+# operator's MCP client does them: a route-level rule must let both through.
+mcp_stream_and_close() {
+  local out
+  # shellcheck disable=SC2016 # the script expands in the pod, not here
+  out="$(kubectl -n "$1" exec "$2" -- sh -c '
+    url=$0 accept="Accept: application/json, text/event-stream" json="Content-Type: application/json"
+    sid=$(curl -s -m 10 -D - -o /dev/null -X POST -H "$json" -H "$accept" \
+      -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"smoke\",\"version\":\"0\"}}}" "$url" |
+      tr -d "\r" | sed -n "s/^[Mm]cp-[Ss]ession-[Ii]d: //p")
+    echo "GET $(curl -s -m 3 -o /dev/null -w "%{http_code}" -H "Accept: text/event-stream" -H "Mcp-Session-Id: $sid" "$url")"
+    echo "DELETE $(curl -s -m 10 -o /dev/null -w "%{http_code}" -X DELETE -H "Mcp-Session-Id: $sid" "$url")"
+  ' "$3")"
+  grep -q '^GET 200$' <<<"$out" && grep -qE '^DELETE 20[02]$' <<<"$out" && return 0
+  echo "      answers: $(tr '\n' ' ' <<<"$out")" >>"${DIAG:-/dev/stderr}"
+  return 1
+}
+
 # mcp_refused NAMESPACE POD URL TOOL [ARGS]: succeeds when the call is
 # answered with an error and no result: a refusal, not a broken network.
 mcp_refused() {
@@ -591,6 +610,15 @@ EOF
     check "get_rules with ${bad} is refused by the gateway's argument rule (403)" \
       mcp_forbidden kagent smoke-a2a "${iroute}/prometheus" get_rules "$bad"
   done
+  # The route is a PathPrefix: the rule holds on every path below it,
+  # those where the gateway does not read the request as MCP included.
+  local sfx
+  for sfx in /client-registration /register /sse /message /.well-known/oauth-protected-resource /.well-known/oauth-authorization-server /x7q2 //; do
+    check "get_rules with {\"type\":\"alert\"} through ${sfx} below the route is refused by the argument rule (403)" \
+      mcp_forbidden kagent smoke-a2a "${iroute}/prometheus${sfx}" get_rules '{"type":"alert"}'
+  done
+  check "the argument rule lets a session's stream (GET) and close (DELETE) through" \
+    mcp_stream_and_close kagent smoke-a2a "${iroute}/prometheus"
   check "get_alerts, off the Intendant's allow-list, is refused on its metrics route" \
     mcp_refused kagent smoke-a2a "${iroute}/prometheus" get_alerts '{}'
   check "map_at through the Intendant's map route is let through" \
@@ -788,11 +816,11 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=95 install ;;
-  upgrade) CHECKS_EXPECTED=95 upgrade ;;
+  install) CHECKS_EXPECTED=104 install ;;
+  upgrade) CHECKS_EXPECTED=104 upgrade ;;
   status) status ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=4 cluster_chart ;;
-  all) up; CHECKS_EXPECTED=95 install; CHECKS_EXPECTED=95 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
+  all) up; CHECKS_EXPECTED=104 install; CHECKS_EXPECTED=104 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|cluster|status|down|all]"; exit 2 ;;
 esac

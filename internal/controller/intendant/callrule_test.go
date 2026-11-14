@@ -166,7 +166,7 @@ func TestArgumentRuleGate(t *testing.T) {
 		t.Errorf("once enforced: alerting layer %+v, %d get_rules calls", l, calls.Load())
 	}
 	got, ok := f.policyAt(t, routes.CallsPolicyName(roleOf(&v1alpha1.TakeCareIntendant{Name: "gated", Namespace: ns}), connMetrics), "spec", "traffic", "authorization", "policy", "matchExpressions")
-	if !ok || got != RulesCallCEL {
+	if !ok || got != routes.CallsExpression(RulesCallCEL) {
 		t.Errorf("the argument rule: %q", got)
 	}
 }
