@@ -219,8 +219,13 @@ func (w *Runner) Start(ctx context.Context) error {
 // Running, from the start: the import is a snapshot, so a re-run is safe,
 // and no half status is kept.
 func (w *Runner) resume(ctx context.Context) error {
+	// Through the cached client, as the investigation worker resumes: the
+	// cache holds surveys in the operator's namespace only (cache.ByObject in
+	// cmd/operator), where its Role may list them, and the manager fills the
+	// caches before a leader-election runnable starts. The API reader would
+	// list at the cluster scope, which those rights refuse.
 	var list v1alpha1.TakeCareSurveyList
-	if err := w.Reader.List(ctx, &list); err != nil {
+	if err := w.Client.List(ctx, &list); err != nil {
 		return fmt.Errorf("list surveys: %w", err)
 	}
 	for i := range list.Items {

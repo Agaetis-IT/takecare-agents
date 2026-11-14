@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- After an operator restart, a survey left running stayed Running and its Intendant ran no further survey, and the digests of surveys completed just before the restart were not posted: the operator listed surveys at the cluster scope, which its namespaced rights refuse. It now lists them in its own namespace. On 0.3.0, delete the stuck survey (`kubectl -n takecare-system delete takecaresurvey <name>`); the Intendant's next trigger starts a new one.
+
 ## [0.3.0] - 2026-11-14
 
 The step 2 Intendant's release. The survey of the ground through the connectors, the agent pass, the digest, the cluster's inventory, and each role's usage on its own model route. On the benches of 2026-11-13 (`google/gemini-3.7-flash`), the Doc scores 5 out of 5 (`test/bench/report-2026-11-13T1529Z.json`) and the Intendant 5 runs ok out of 5 (`test/bench/intendant-report-2026-11-13T1535Z.json`).

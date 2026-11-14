@@ -234,8 +234,11 @@ func (w *Runner) resumePublish(ctx context.Context) {
 	if w.Poster == nil {
 		return
 	}
+	// Through the cached client, as resume does and for the same reason: the
+	// cache is scoped to the operator's namespace, where its Role may list
+	// surveys; the API reader would list at the cluster scope.
 	var list v1alpha1.TakeCareSurveyList
-	if err := w.Reader.List(ctx, &list); err != nil {
+	if err := w.Client.List(ctx, &list); err != nil {
 		log.FromContext(ctx).Error(err, "list the surveys to publish")
 		return
 	}

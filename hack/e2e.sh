@@ -34,7 +34,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=37
+CHECKS_EXPECTED=41
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s %s\n' "$(date +%H:%M:%S)" "$*"; }
@@ -96,6 +96,52 @@ intendant_idle() {
   done
   echo "the Intendant's surveys did not end" >&2
   return 1
+}
+
+# operator_not_forbidden fails when the operator's log has a line saying
+# the API server refused it something, and prints the count and the first
+# lines: its rights are part of the release.
+operator_not_forbidden() {
+  local lines
+  lines="$(kubectl -n "$NS" logs deploy/takecare-operator 2>/dev/null | grep -i forbidden || true)"
+  [[ -z "$lines" ]] && return 0
+  echo "$(wc -l <<<"$lines" | tr -d ' ') forbidden lines in the operator's log, the first:" >&2
+  head -3 <<<"$lines" | cut -c1-300 >&2
+  return 1
+}
+
+# resumed restarts the operator after a stop that left a survey Running and
+# a Completed survey without its publication, and checks that it takes both
+# up (spec 10 §4, §6): the survey is run again to its end, the digest is
+# published. The operator is scaled to 0 first, so both states are made by
+# hand, not raced.
+resumed() {
+  log "restarting the operator after a stop (the surveys' resume)"
+  check "the operator's log has no forbidden line before the restart" operator_not_forbidden
+  kubectl -n "$NS" scale deploy/takecare-operator --replicas=0 >/dev/null
+  kubectl -n "$NS" wait --for=delete pod -l app.kubernetes.io/component=operator --timeout=120s >/dev/null 2>&1 || true
+  kubectl apply -f - >/dev/null <<YAML
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareSurvey
+metadata: {name: e2e-resume, namespace: $NS}
+spec:
+  intendantRef: {kind: TakeCareIntendant, name: intendant}
+YAML
+  kubectl -n "$NS" patch takecaresurvey e2e-resume --subresource=status --type=merge \
+    -p "{\"status\":{\"phase\":\"Running\",\"attempts\":1,\"startedAt\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}}" >/dev/null
+  kubectl -n "$NS" patch takecaresurvey e2e-first --subresource=status --type=json -p '[{"op":"remove","path":"/status/published"}]' >/dev/null
+  kubectl -n "$NS" scale deploy/takecare-operator --replicas=1 >/dev/null
+  kubectl -n "$NS" rollout status deploy/takecare-operator --timeout=180s >/dev/null
+  local phase=""
+  for _ in $(seq 60); do
+    phase="$(kubectl -n "$NS" get takecaresurvey e2e-resume -o jsonpath='{.status.phase}')"
+    [[ "$phase" =~ ^(Completed|Failed)$ ]] && break
+    sleep 5
+  done
+  check "a survey a stopped operator left Running is run again to its end after the restart (spec 10 §4)" test "$phase" = Completed
+  check "a Completed survey whose digest was not recorded is published after the restart (spec 10 §6)" \
+    bash -c "for _ in \$(seq 30); do [[ -n \"\$(kubectl -n $NS get takecaresurvey e2e-first -o jsonpath='{.status.published}')\" ]] && exit 0; sleep 2; done; exit 1"
+  check "the operator's log has no forbidden line after the restart" operator_not_forbidden
 }
 
 # intendant checks the demo's Intendant (spec 10 §11): its survey against
@@ -391,6 +437,7 @@ run() {
   check "the Ranger says the masked request in a RequestsMasked Warning event (spec 09 §5)" \
     bash -c "for _ in \$(seq 36); do kubectl get events -A --field-selector reason=RequestsMasked,type=Warning -o jsonpath='{range .items[*]}{.involvedObject.kind}{\"\\n\"}{end}' | grep -q TakeCareRanger && exit 0; sleep 5; done; exit 1"
   intendant
+  resumed
   if [[ "$checks" -ne "$CHECKS_EXPECTED" || "$failed" -ne 0 ]]; then
     echo "checks: ${checks} run (expected ${CHECKS_EXPECTED}), ${failed} failed"
     exit 1
