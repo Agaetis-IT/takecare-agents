@@ -826,6 +826,73 @@ status() {
   df -h / /var/lib/docker 2>/dev/null || df -h /
   docker system df 2>/dev/null || true
   free -m 2>/dev/null || true
+  not_ready_dump
+}
+
+# mask_secrets hides credentials a log line may carry: the user and
+# password of any URL (kagent's controller logs its configuration,
+# database URL included, at start), a bearer token, and the value of a
+# password, token or secret field, as name=value, name: value or a JSON
+# key ("name":"value"); names ending in _key, -key, _secret or -secret
+# count, ordinary words do not. Known limit: a URL password holding an
+# unencoded "/" is not matched by the URL pattern.
+mask_secrets() {
+  sed -E -e 's#([A-Za-z][A-Za-z0-9+.-]*://)[^@/[:space:]]+@#\1***@#g' \
+    -e 's#(bearer[[:space:]]+)[^[:space:]",}]+#\1***#gI' \
+    -e 's#((password|passwd|token|apikey|secret|[A-Za-z0-9]+[_-](secret|key))"?[[:space:]]*[=:][[:space:]]*"?)[^[:space:]&,"}]+#\1***#gI'
+}
+
+# dump_lines is how the dump prints a log: masked first, then cut, so that
+# a cut never splits a credential out of the mask's reach.
+dump_lines() { mask_secrets | cut -c1-400; }
+
+# mask_test checks the dump's pipe on sample lines: no credential
+# survives, a line longer than the cut included, and a line without one is
+# left as it is.
+mask_test() {
+  local in out pad
+  pad="$(printf '%380s' '' | tr ' ' x)"
+  in="config {Url:postgres://user:s3cr3t@db:5432/postgres}
+proxy https://bob:hunter2@proxy.example:8080
+PASSWORD=s3cr3t other=1
+password: s3cr3t
+api_key=abc123 token=xyz789
+{\"password\":\"s3cr3t\",\"token\": \"xyz789\",\"client_secret\":\"cs123\"}
+Authorization: Bearer eyJhbGciOi.payload.sig
+{\"authorization\":\"Bearer eyJhbGciOi.payload.sig\"}
+api-key: abc123 access_key=abc123 AWS_SECRET_ACCESS_KEY=abc123
+${pad}postgres://user:s3cr3t@db:5432/postgres
+plain line http://host/path with a key and a secret word"
+  out="$(dump_lines <<<"$in")"
+  if grep -qE 's3cr3t|hunter2|bob:|user:|abc123|xyz789|cs123|eyJhbGciOi' <<<"$out"; then
+    echo "mask_test: a credential survived:"
+    grep -E 's3cr3t|hunter2|bob:|user:|abc123|xyz789|cs123|eyJhbGciOi' <<<"$out" | cut -c1-120
+    return 1
+  fi
+  grep -qx 'plain line http://host/path with a key and a secret word' <<<"$out" || { echo "mask_test: a line without a credential changed"; return 1; }
+  echo "mask_test: ok"
+}
+
+# not_ready_dump says why a pod is not Ready, for every pod of the release
+# and engine namespaces with a container not Ready: its containers' state
+# and last termination (reason, exit code, times), its events, and its
+# containers' previous and current logs, 60 lines each, masked.
+not_ready_dump() {
+  local ns pod
+  for ns in "$NS" kagent; do
+    for pod in $(kubectl get pods -n "$ns" --no-headers 2>/dev/null | awk '{split($2, r, "/"); if (r[1] != r[2] && $3 != "Completed") print $1}'); do
+      echo "=== ${ns}/${pod} not Ready"
+      kubectl get pod -n "$ns" "$pod" -o jsonpath='{range .status.containerStatuses[*]}{.name}: ready={.ready} restarts={.restartCount} state={.state} last={.lastState}{"\n"}{end}' 2>/dev/null | mask_secrets || true
+      kubectl get events -n "$ns" --field-selector "involvedObject.name=${pod}" -o jsonpath='{range .items[*]}{.lastTimestamp} {.reason}: {.message}{"\n"}{end}' 2>/dev/null | tail -15 | mask_secrets || true
+      local c
+      for c in $(kubectl get pod -n "$ns" "$pod" -o jsonpath='{.spec.containers[*].name}' 2>/dev/null); do
+        echo "--- ${c}, previous logs"
+        kubectl logs -n "$ns" "$pod" -c "$c" --previous --tail=60 2>&1 | dump_lines || true
+        echo "--- ${c}, current logs"
+        kubectl logs -n "$ns" "$pod" -c "$c" --tail=60 2>&1 | dump_lines || true
+      done
+    done
+  done
 }
 
 down() {
@@ -838,8 +905,9 @@ case "${1:-all}" in
   install) CHECKS_EXPECTED=108 install ;;
   upgrade) CHECKS_EXPECTED=108 upgrade ;;
   status) status ;;
+  mask-test) mask_test ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=4 cluster_chart ;;
-  all) up; CHECKS_EXPECTED=108 install; CHECKS_EXPECTED=108 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
-  *) echo "usage: $0 [up|install|upgrade|cluster|status|down|all]"; exit 2 ;;
+  all) mask_test; up; CHECKS_EXPECTED=108 install; CHECKS_EXPECTED=108 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
+  *) echo "usage: $0 [up|install|upgrade|cluster|status|mask-test|down|all]"; exit 2 ;;
 esac
