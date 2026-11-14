@@ -214,7 +214,7 @@ func TestCallRule(t *testing.T) {
 	target, _, _ := unstructured.NestedSlice(calls.Object, "spec", "targetRefs")
 	action, _, _ := unstructured.NestedString(calls.Object, "spec", "traffic", "authorization", "action")
 	exprs, _, _ := unstructured.NestedStringSlice(calls.Object, "spec", "traffic", "authorization", "policy", "matchExpressions")
-	if len(target) != 1 || target[0].(map[string]any)["name"] != "role-intendant-main-mcp-prometheus" || action != "Require" || len(exprs) != 1 || exprs[0] != `(request.method != "POST" || has(mcp.methodName) || has(mcp.sessionId)) && (`+rule+`)` {
+	if len(target) != 1 || target[0].(map[string]any)["name"] != "role-intendant-main-mcp-prometheus" || action != "Require" || len(exprs) != 1 || exprs[0] != `(request.method in ["GET", "DELETE"] || has(mcp.methodName)) && (`+rule+`)` {
 		t.Errorf("calls policy: target %v, action %s, expressions %v", target, action, exprs)
 	}
 	if _, found, _ := unstructured.NestedMap(calls.Object, "spec", "backend"); found {

@@ -95,19 +95,20 @@ type MCP struct {
 }
 
 // MCPRequest is what a route-level rule requires before its own body: a
-// POST the gateway read as an MCP JSON-RPC request. agentgateway sets the
-// mcp variable only on those (CEL variables reference, 1.6.x: "The request
+// request the gateway read as MCP JSON-RPC, or one of the two methods the
+// MCP client sends that carry no call: GET (the session's standalone
+// stream) and DELETE (its close). agentgateway sets the mcp variable only
+// on an MCP JSON-RPC POST (CEL variables reference, 1.6.x: "The request
 // is an MCP JSON-RPC POST request"; not "for /sse, well-known OAuth
-// metadata, or client registration requests"), and the route is a
-// PathPrefix: without this, a POST on a path below the route where mcp is
-// not set would pass a rule written as !has(mcp.tool) || .... GET (the
-// client's standalone stream) and DELETE (its session's close) carry no
-// call and keep passing. Observed on v1.6.0, where the docs are silent:
-// mcp.methodName is set on every MCP POST, a JSON-RPC batch is not read
-// as one (refused), and of the paths below the route only
-// /client-registration leaves mcp unset. The chart smoke checks the
-// forbidden call on each such path, the guard at every gateway bump.
-const MCPRequest = `(request.method != "POST" || has(mcp.methodName) || has(mcp.sessionId))`
+// metadata, or client registration requests"), and mcp.methodName is
+// always set then. The route is a PathPrefix: without this, a POST on a
+// path below the route where mcp is not set would pass a rule written as
+// !has(mcp.tool) || .... Observed on v1.6.0, where the docs are silent: a
+// JSON-RPC batch is not read as MCP (refused), and of the paths below the
+// route only /client-registration leaves mcp unset. The chart smoke
+// checks the forbidden call on each such path and with PUT and PATCH, the
+// guard at every gateway bump.
+const MCPRequest = `(request.method in ["GET", "DELETE"] || has(mcp.methodName))`
 
 // CallsExpression is the route-level expression of a CallRule: the rule,
 // on MCP requests only.

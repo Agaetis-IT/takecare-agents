@@ -165,20 +165,21 @@ wait_condition_long() {
 # the JSON-RPC answer. An allowed tool answers a "result" (an error result
 # when arguments are missing); a tool the gateway refuses answers a
 # JSON-RPC "error".
+# The call is a POST, or METHOD when set in the environment.
 mcp_call() {
   local args="${5:-}"
   [[ -n "$args" ]] || args='{}'
   # shellcheck disable=SC2016 # the script expands in the pod, not here
   kubectl -n "$1" exec "$2" -- sh -c '
-    url=$0 tool=$1 args=$2 accept="Accept: application/json, text/event-stream" json="Content-Type: application/json"
+    url=$0 tool=$1 args=$2 method=$3 accept="Accept: application/json, text/event-stream" json="Content-Type: application/json"
     sid=$(curl -s -m 10 -D - -o /dev/null -X POST -H "$json" -H "$accept" \
       -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"smoke\",\"version\":\"0\"}}}" "$url" |
       tr -d "\r" | sed -n "s/^[Mm]cp-[Ss]ession-[Ii]d: //p")
     curl -s -m 10 -o /dev/null -X POST -H "$json" -H "$accept" -H "Mcp-Session-Id: $sid" \
       -d "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}" "$url"
-    curl -s -m 20 -X POST -H "$json" -H "$accept" -H "Mcp-Session-Id: $sid" \
+    curl -s -m 20 -X "$method" -H "$json" -H "$accept" -H "Mcp-Session-Id: $sid" \
       -d "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"$tool\",\"arguments\":$args}}" -w "\nHTTP %{http_code}" "$url"
-  ' "$3" "$4" "$args"
+  ' "$3" "$4" "$args" "${METHOD:-POST}"
 }
 
 # mcp_allowed NAMESPACE POD URL TOOL [ARGS]: succeeds when the call gets a
@@ -242,6 +243,14 @@ mcp_forbidden() {
   grep -q '^HTTP 403$' <<<"$out" && ! grep -q '"result"' <<<"$out" && return 0
   mcp_diagnose "$3" "$out"
   return 1
+}
+
+# mcp_forbidden_with METHOD NAMESPACE POD URL TOOL [ARGS]: mcp_forbidden,
+# the call sent with METHOD instead of POST.
+mcp_forbidden_with() {
+  local METHOD="$1" # read by mcp_call, which mcp_forbidden calls
+  shift
+  mcp_forbidden "$@"
 }
 
 # mcp_stream_and_close NAMESPACE POD URL: succeeds when a session's
@@ -611,11 +620,21 @@ EOF
       mcp_forbidden kagent smoke-a2a "${iroute}/prometheus" get_rules "$bad"
   done
   # The route is a PathPrefix: the rule holds on every path below it,
-  # those where the gateway does not read the request as MCP included.
+  # those where the gateway does not read the request as MCP included, and
+  # on methods other than POST. {"type":"alert"} is a call the rule forbids
+  # (it requires exclude_alerts true), valid for the tool's own schema: a
+  # refusal here is the gateway's rule, not the server's.
   local sfx
   for sfx in /client-registration /register /sse /message /.well-known/oauth-protected-resource /.well-known/oauth-authorization-server /x7q2 //; do
     check "get_rules with {\"type\":\"alert\"} through ${sfx} below the route is refused by the argument rule (403)" \
       mcp_forbidden kagent smoke-a2a "${iroute}/prometheus${sfx}" get_rules '{"type":"alert"}'
+  done
+  local m
+  for m in PUT PATCH; do
+    for sfx in "" /client-registration; do
+      check "get_rules with {\"type\":\"alert\"} sent with ${m} on ${sfx:-the route} is refused by the argument rule (403)" \
+        mcp_forbidden_with "$m" kagent smoke-a2a "${iroute}/prometheus${sfx}" get_rules '{"type":"alert"}'
+    done
   done
   check "the argument rule lets a session's stream (GET) and close (DELETE) through" \
     mcp_stream_and_close kagent smoke-a2a "${iroute}/prometheus"
@@ -816,11 +835,11 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=104 install ;;
-  upgrade) CHECKS_EXPECTED=104 upgrade ;;
+  install) CHECKS_EXPECTED=108 install ;;
+  upgrade) CHECKS_EXPECTED=108 upgrade ;;
   status) status ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=4 cluster_chart ;;
-  all) up; CHECKS_EXPECTED=104 install; CHECKS_EXPECTED=104 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
+  all) up; CHECKS_EXPECTED=108 install; CHECKS_EXPECTED=108 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|cluster|status|down|all]"; exit 2 ;;
 esac
