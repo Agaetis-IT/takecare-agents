@@ -54,7 +54,10 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
-        run: echo "deploy=$(hack/site-deploy.sh "$EVENT" "$REF_NAME")" >> "$GITHUB_OUTPUT"
+        run: |
+          deploy="$(hack/site-deploy.sh "$EVENT" "$REF_NAME")"
+          echo "site deploy decided: ${deploy} (event ${EVENT}, ref ${REF_NAME})"
+          echo "deploy=${deploy}" >> "$GITHUB_OUTPUT"
       - run: make site
       - if: steps.decide.outputs.deploy == 'true'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

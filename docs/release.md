@@ -34,7 +34,7 @@ The workflow refuses a tag that is not `v<major>.<minor>.<patch>` with an option
    - the charts pull: `helm pull oci://ghcr.io/agaetis-it/charts/takecare --version x.y.z`;
    - `make demo-up` without `DEMO_IMAGES=build` installs the released images;
    - the release page lists the notes, the images and the three charts;
-   - at a final tag only, the published site's Reference names the tag's commit, and its hero badge names the tag's version (fr at the root, `/en/`); at a prerelease, the `site` run only built the site, and the published one is still the last final release's.
+   - at a final tag only, the published site's Reference names the tag's commit, and its hero badge names the tag's version (fr at the root, `/en/`); at a prerelease, the `site` run only built the site, and the published one is still the last final release's. A final tag is where publishing is first exercised: if the published site does not name the tag's version, read the line `site deploy decided:` in the tag's `site` run (its build job), then run the `site` workflow by hand from the tag.
 
 **The first release of a milestone goes through a prerelease** (`v0.1.0-rc.1`, with its own `## [0.1.0-rc.1]` section): it rehearses the whole chain (registry login, six images on two architectures, three charts, the release page), which cannot be proven otherwise. The GitHub release is then marked as a prerelease. The final cut folds that section into the final one (step 2); the release candidates' tags and chart packages stay on GitHub and in the registry.
 
