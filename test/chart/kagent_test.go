@@ -4,6 +4,8 @@
 package chart
 
 import (
+	"slices"
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -43,4 +45,46 @@ func TestKagentSessionRetention(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The prod profile accepts kagent's database URL as a file (urlFile, the
+// recommended way) without an inline url, and refuses to render with
+// neither: the controller then reads the file, never an inline URL.
+func TestKagentDatabaseURLFile(t *testing.T) {
+	// prodSets pairs each value with its flag: keep every pair but the database.
+	args := profileArgs("prod")
+	for i := 0; i+1 < len(prodSets); i += 2 {
+		if prodSets[i+1] != dbSet {
+			args = append(args, prodSets[i], prodSets[i+1])
+		}
+	}
+	t.Run("urlFile alone renders", func(t *testing.T) {
+		objs := render(t, releaseName, append(slices.Clone(args), flagSet, "kagent.database.postgres.urlFile=/etc/kagent-db/url")...)
+		var env []string
+		for _, d := range ofKind(objs, "Deployment") {
+			if d.GetName() != "kagent-controller" {
+				continue
+			}
+			cs, _, _ := unstructured.NestedSlice(d.Object, "spec", "template", "spec", "containers")
+			for _, c := range cs {
+				es, _, _ := unstructured.NestedSlice(c.(map[string]any), "env")
+				for _, e := range es {
+					m := e.(map[string]any)
+					if n, _ := m["name"].(string); strings.HasPrefix(n, "POSTGRES_DATABASE_URL") {
+						v, _ := m["value"].(string)
+						env = append(env, n+"="+v)
+					}
+				}
+			}
+		}
+		if !slices.Equal(env, []string{"POSTGRES_DATABASE_URL_FILE=/etc/kagent-db/url"}) {
+			t.Errorf("kagent-controller's database env: %v, want the file only", env)
+		}
+	})
+	t.Run("neither refuses to render", func(t *testing.T) {
+		out, err := helmTemplate(t, releaseName, releaseNamespace, args...).CombinedOutput()
+		if err == nil || !strings.Contains(string(out), "database.postgres.urlFile") {
+			t.Errorf("rendered without a database, or without naming urlFile: %v\n%s", err, out)
+		}
+	})
 }

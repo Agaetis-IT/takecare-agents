@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- The chart and its README now recommend giving kagent's database URL as a file mounted from a Secret (`kagent.database.postgres.urlFile`), not inline: an inline `url` puts the credential in the values file, and the engine's controller writes it to its log at each start. An inline `url` still works.
 - kagent now deletes a session idle for 30 days (`kagent.database.postgres.sessionRetentionDays: 30`; it kept everything before). A session holds a run's events (the prompts, tool calls and results, answers) and its task. The idle clock is the session's last write, and kagent's cleanup runs every 24 hours. At the first cleanup after the upgrade, every session already idle for more than 30 days is deleted with its events and tasks. The setting is kagent's own and applies to every agent of that kagent: set the value other agents on it need, or 0 to keep everything.
 
 ### Fixed
