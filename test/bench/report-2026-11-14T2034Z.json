@@ -1,0 +1,83 @@
+{
+  "scenario": "proxy-timeout",
+  "date": "2026-11-14T20:34:31Z",
+  "commit": "2bac29266a5eaea49995d6bb7e3b82880248c3bd",
+  "model": "google/gemini-3.7-flash",
+  "n": 5,
+  "correct": 5,
+  "memoryLead": 5,
+  "median": {
+    "durationSeconds": 18,
+    "modelCalls": 6,
+    "inputTokens": 53213,
+    "outputTokens": 1029,
+    "cost": 0.0241
+  },
+  "runs": [
+    {
+      "run": 1,
+      "investigation": "doc-bench-1794-bf0575",
+      "phase": "Completed",
+      "correct": true,
+      "memoryLead": true,
+      "length": 971,
+      "durationSeconds": 16,
+      "modelCalls": 6,
+      "inputTokens": 53213,
+      "outputTokens": 803,
+      "cost": 0.0241
+    },
+    {
+      "run": 2,
+      "investigation": "doc-bench-1794-27b948",
+      "phase": "Completed",
+      "correct": true,
+      "memoryLead": true,
+      "length": 1003,
+      "durationSeconds": 54,
+      "modelCalls": 6,
+      "inputTokens": 58355,
+      "outputTokens": 2120,
+      "cost": 0.0330
+    },
+    {
+      "run": 3,
+      "investigation": "doc-bench-1794-abb815",
+      "phase": "Completed",
+      "correct": true,
+      "memoryLead": true,
+      "length": 1010,
+      "durationSeconds": 15,
+      "modelCalls": 5,
+      "inputTokens": 50643,
+      "outputTokens": 832,
+      "cost": 0.0195
+    },
+    {
+      "run": 4,
+      "investigation": "doc-bench-1794-d7b44d",
+      "phase": "Completed",
+      "correct": true,
+      "memoryLead": true,
+      "length": 1000,
+      "durationSeconds": 23,
+      "modelCalls": 5,
+      "inputTokens": 43222,
+      "outputTokens": 1107,
+      "cost": 0.0218
+    },
+    {
+      "run": 5,
+      "investigation": "doc-bench-1794-d1bfc7",
+      "phase": "Completed",
+      "correct": true,
+      "memoryLead": true,
+      "length": 1056,
+      "durationSeconds": 18,
+      "modelCalls": 8,
+      "inputTokens": 86995,
+      "outputTokens": 1029,
+      "cost": 0.0287
+    }
+  ]
+}

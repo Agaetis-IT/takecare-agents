@@ -102,8 +102,8 @@ PAIRS = [('aria-label="TakeCare Agents, accueil"', 'aria-label="TakeCare Agents,
   '      <p class="lead">TakeCare Agents runs an operations staff of AI agents in your cluster: nine roles, each with its own job. Every agent starts as an Apprentice, read-only, and earns its '
   "autonomy level by level. And all your agents go through the same rules, your vendors' included.</p>\n"
   '      <div class="acts"><a class="btn pri" href="${REPO}" target="_blank" rel="noopener">See the GitHub repository ↗</a><a class="btn" href="#deck">Open the deck</a></div>'),
- ('<span class="badge"><span>version</span><b class="m">v0.3.0 · le Doc, le Ranger et l\'Intendant</b></span>',
-  '<span class="badge"><span>version</span><b class="m">v0.3.0 · the Doc, the Ranger and the Intendant</b></span>'),
+ ('<span class="badge"><span>version</span><b class="m">v0.3.1 · le Doc, le Ranger et l\'Intendant</b></span>',
+  '<span class="badge"><span>version</span><b class="m">v0.3.1 · the Doc, the Ranger and the Intendant</b></span>'),
  ('<span class="badge"><span>moteur</span>', '<span class="badge"><span>engine</span>'),
  ('<span class="badge"><span>passerelle</span>', '<span class="badge"><span>gateway</span>'),
  ('<span class="badge"><span>licence</span>', '<span class="badge"><span>license</span>'),
