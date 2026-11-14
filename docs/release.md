@@ -6,7 +6,7 @@ A release is a tag `v<SemVer>` on `main`. The `release` workflow then publishes,
 - the three charts as OCI artifacts, `oci://ghcr.io/agaetis-it/charts/takecare-crds`, `oci://ghcr.io/agaetis-it/charts/takecare` and `oci://ghcr.io/agaetis-it/charts/takecare-cluster` (the workload-cluster package, ADR 0016), with chart version = app version = the release's version (spec 04); the `Chart.yaml` files carry that version since the cut (step 2);
 - the GitHub release: the tag's `CHANGELOG.md` section, the image and chart references, and the three chart packages attached.
 
-On the same tag, the `site` workflow builds the product site (`make site`) from the tagged tree, so that its Reference describes the released CRDs and charts, and publishes it to GitHub Pages at `https://agaetis-it.github.io/takecare-agents/`. A prerelease tag publishes it too, until the site's first version is out; afterwards final tags only. That is why the site's texts are updated in the cut (step 2), before the tag: the tag publishes what the tree says. It can also be published by hand (`workflow_dispatch`, from `main` or a tag).
+On the same tag, the `site` workflow builds the product site (`make site`) from the tagged tree, so that its Reference describes the released CRDs and charts, and, on a final tag (`vx.y.z`), publishes it to GitHub Pages at `https://agaetis-it.github.io/takecare-agents/`. A prerelease tag (`vx.y.z-rc.n`) only builds it: the published site stays at the last final release (`hack/site-deploy.sh` decides, and `make site-deploy-test` checks it on every site pull request and tag). That is why the site's texts are updated in the cut (step 2), before the tag: the final tag publishes what the tree says. It can also be published by hand (`workflow_dispatch`, from `main` or a tag).
 
 The workflow refuses a tag that is not `v<major>.<minor>.<patch>` with an optional prerelease (`v0.1.0-rc.1`; no build metadata), a tag whose commit is not on `main`, a tag without its `CHANGELOG.md` section, and a version already in the registry. Nothing published is ever replaced.
 
@@ -34,7 +34,7 @@ The workflow refuses a tag that is not `v<major>.<minor>.<patch>` with an option
    - the charts pull: `helm pull oci://ghcr.io/agaetis-it/charts/takecare --version x.y.z`;
    - `make demo-up` without `DEMO_IMAGES=build` installs the released images;
    - the release page lists the notes, the images and the three charts;
-   - the site's Reference names the tag's commit, and its hero badge names the tag's version (fr at the root, `/en/`).
+   - at a final tag only, the published site's Reference names the tag's commit, and its hero badge names the tag's version (fr at the root, `/en/`); at a prerelease, the `site` run only built the site, and the published one is still the last final release's. A final tag is where publishing is first exercised: if the published site does not name the tag's version, read the line `site deploy decided:` in the tag's `site` run (its build job), then run the `site` workflow by hand from the tag.
 
 **The first release of a milestone goes through a prerelease** (`v0.1.0-rc.1`, with its own `## [0.1.0-rc.1]` section): it rehearses the whole chain (registry login, six images on two architectures, three charts, the release page), which cannot be proven otherwise. The GitHub release is then marked as a prerelease. The final cut folds that section into the final one (step 2); the release candidates' tags and chart packages stay on GitHub and in the registry.
 

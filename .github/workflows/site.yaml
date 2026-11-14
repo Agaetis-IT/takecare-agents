@@ -1,11 +1,15 @@
 # SPDX-FileCopyrightText: 2026 Agaetis
 # SPDX-License-Identifier: Apache-2.0
 
-# The product site (site/), built and published to GitHub Pages on every
-# release tag, so that its Reference always matches the released CRDs and
-# charts; or by hand (workflow_dispatch), from the ref it is run on. On pull
-# requests touching the site, a build checks that the English rendering
-# still applies (site/src/i18n_en.py) and that the Reference reads.
+# The product site (site/), built on every release tag and published to
+# GitHub Pages on a final one (vX.Y.Z), so that its Reference matches the
+# released CRDs and charts; a prerelease tag (vX.Y.Z-rc.N) only builds it,
+# and the published site stays at the last final release
+# (hack/site-deploy.sh decides, hack/site-deploy-test.sh checks it). It can
+# be published by hand (workflow_dispatch), from the ref it is run on. On
+# pull requests touching the site, a build checks that the English
+# rendering still applies (site/src/i18n_en.py) and that the Reference
+# reads.
 #
 # Pages must use the source "GitHub Actions" (repository settings); the
 # github-pages environment must allow the v* tags to deploy.
@@ -23,6 +27,8 @@ on:
       - hack/versions.env
       - Makefile
       - .github/workflows/site.yaml
+      - hack/site-deploy.sh
+      - hack/site-deploy-test.sh
   workflow_dispatch: {}
 
 permissions:
@@ -36,20 +42,31 @@ jobs:
   build:
     name: build the site
     runs-on: ubuntu-24.04
+    outputs:
+      deploy: ${{ steps.decide.outputs.deploy }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
+      - run: make site-deploy-test
+      - id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          deploy="$(hack/site-deploy.sh "$EVENT" "$REF_NAME")"
+          echo "site deploy decided: ${deploy} (event ${EVENT}, ref ${REF_NAME})"
+          echo "deploy=${deploy}" >> "$GITHUB_OUTPUT"
       - run: make site
-      - if: github.event_name != 'pull_request'
+      - if: steps.decide.outputs.deploy == 'true'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site/dist
 
   deploy:
     name: publish to GitHub Pages
-    if: github.event_name != 'pull_request'
+    if: needs.build.outputs.deploy == 'true'
     needs: build
     runs-on: ubuntu-24.04
     permissions:

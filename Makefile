@@ -189,6 +189,10 @@ chart-package: chart-deps ## Package the three charts at RELEASE_VERSION into CH
 release-notes-test: ## Check hack/release-notes.sh against its fixture.
 	hack/release-notes-test.sh
 
+.PHONY: site-deploy-test
+site-deploy-test: ## Check which events publish the site (hack/site-deploy.sh): final tags and runs by hand only.
+	hack/site-deploy-test.sh
+
 ##@ Lint
 
 .PHONY: lint
