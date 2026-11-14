@@ -1,6 +1,6 @@
 # takecare
 
-Chart version 0.3.0, application version 0.3.0.
+Chart version 0.3.1, application version 0.3.1.
 
 TakeCare Agents: the operator, the `TakeCarePlatform` and the third-party building blocks it configures (agentgateway, kagent), the MCP add-ons, and for the demo Prometheus, an OpenTelemetry Collector and Jaeger. The CRDs come from the [`takecare-crds`](../takecare-crds/README.md) chart, installed first.
 
