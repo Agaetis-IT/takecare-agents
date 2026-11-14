@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - After an operator restart, a survey left running stayed Running and its Intendant ran no further survey, and the digests of surveys completed just before the restart were not posted: the operator listed surveys at the cluster scope, which its namespaced rights refuse. It now lists them in its own namespace. On 0.3.0, delete the stuck survey (`kubectl -n takecare-system delete takecaresurvey <name>`); the Intendant's next trigger starts a new one.
+- Since 0.3.0, the gateway's route-level rule on `get_rules`' arguments, on the Intendant's metrics route, was not evaluated on a path below the route where the gateway does not read the request as MCP. On that path, the arguments were checked only by the operator's own client. The tool allow-list held on every path. The rule now refuses any request on the route that the gateway does not read as MCP, except a session's stream (GET) and close (DELETE), and the chart smoke checks it on every such path.
 
 ## [0.3.0] - 2026-11-14
 

@@ -90,9 +90,29 @@ type MCP struct {
 	// one place agentgateway shows a call's arguments (mcp.tool.arguments
 	// on tools/call), which MCP authorization never sees. It must hold on
 	// requests without a tool (initialize, tools/list), which have no
-	// mcp.tool.
+	// mcp.tool. It is rendered behind MCPRequest.
 	CallRule string
 }
+
+// MCPRequest is what a route-level rule requires before its own body: a
+// request the gateway read as MCP JSON-RPC, or one of the two methods the
+// MCP client sends that carry no call: GET (the session's standalone
+// stream) and DELETE (its close). agentgateway sets the mcp variable only
+// on an MCP JSON-RPC POST (CEL variables reference, 1.6.x: "The request
+// is an MCP JSON-RPC POST request"; not "for /sse, well-known OAuth
+// metadata, or client registration requests"), and mcp.methodName is
+// always set then. The route is a PathPrefix: without this, a POST on a
+// path below the route where mcp is not set would pass a rule written as
+// !has(mcp.tool) || .... Observed on v1.6.0, where the docs are silent: a
+// JSON-RPC batch is not read as MCP (refused), and of the paths below the
+// route only /client-registration leaves mcp unset. The chart smoke
+// checks the forbidden call on each such path and with PUT and PATCH, the
+// guard at every gateway bump.
+const MCPRequest = `(request.method in ["GET", "DELETE"] || has(mcp.methodName))`
+
+// CallsExpression is the route-level expression of a CallRule: the rule,
+// on MCP requests only.
+func CallsExpression(rule string) string { return MCPRequest + " && (" + rule + ")" }
 
 // CallsPolicyName names the route-level policy of a route's CallRule.
 func CallsPolicyName(r Role, connector string) string { return mcpName(r, connector) + "-calls" }
@@ -177,7 +197,7 @@ func EnsureMCP(ctx context.Context, c client.Client, g Gateway, r Role, m MCP) e
 			"targetRefs": []any{map[string]any{keyGroup: gatewayAPIGroup, keyKind: HTTPRouteGVK.Kind, keyName: name}},
 			"traffic": map[string]any{"authorization": map[string]any{
 				"action": "Require",
-				"policy": map[string]any{"matchExpressions": []any{m.CallRule}},
+				"policy": map[string]any{"matchExpressions": []any{CallsExpression(m.CallRule)}},
 			}},
 		}
 		if err := apply.Strict(ctx, c, calls); err != nil {
