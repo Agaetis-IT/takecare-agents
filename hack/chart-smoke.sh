@@ -826,6 +826,37 @@ status() {
   df -h / /var/lib/docker 2>/dev/null || df -h /
   docker system df 2>/dev/null || true
   free -m 2>/dev/null || true
+  not_ready_dump
+}
+
+# mask_secrets hides credentials a log line may carry: the user and
+# password of a database URL (kagent's controller logs its configuration,
+# database URL included, at start) and password or token assignments.
+mask_secrets() {
+  sed -E -e 's#(postgres(ql)?://)[^@/[:space:]]+@#\1***@#g' \
+    -e 's#((password|passwd|token|apikey|api_key)[=:][[:space:]]*)[^[:space:]&,"}]+#\1***#gI'
+}
+
+# not_ready_dump says why a pod is not Ready, for every pod of the release
+# and engine namespaces with a container not Ready: its containers' state
+# and last termination (reason, exit code, times), its events, and its
+# containers' previous and current logs, 60 lines each, masked.
+not_ready_dump() {
+  local ns pod
+  for ns in "$NS" kagent; do
+    for pod in $(kubectl get pods -n "$ns" --no-headers 2>/dev/null | awk '{split($2, r, "/"); if (r[1] != r[2] && $3 != "Completed") print $1}'); do
+      echo "=== ${ns}/${pod} not Ready"
+      kubectl get pod -n "$ns" "$pod" -o jsonpath='{range .status.containerStatuses[*]}{.name}: ready={.ready} restarts={.restartCount} state={.state} last={.lastState}{"\n"}{end}' 2>/dev/null | mask_secrets || true
+      kubectl get events -n "$ns" --field-selector "involvedObject.name=${pod}" -o jsonpath='{range .items[*]}{.lastTimestamp} {.reason}: {.message}{"\n"}{end}' 2>/dev/null | tail -15 | mask_secrets || true
+      local c
+      for c in $(kubectl get pod -n "$ns" "$pod" -o jsonpath='{.spec.containers[*].name}' 2>/dev/null); do
+        echo "--- ${c}, previous logs"
+        kubectl logs -n "$ns" "$pod" -c "$c" --previous --tail=60 2>&1 | cut -c1-400 | mask_secrets || true
+        echo "--- ${c}, current logs"
+        kubectl logs -n "$ns" "$pod" -c "$c" --tail=60 2>&1 | cut -c1-400 | mask_secrets || true
+      done
+    done
+  done
 }
 
 down() {
