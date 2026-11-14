@@ -5,6 +5,7 @@ package intendant
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -164,7 +165,7 @@ func (f *fixture) startManager(t *testing.T) {
 			t.Fatal(err)
 		}
 		if err := mgr.Add(&Runner{
-			Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: queue, GateRetry: 100 * time.Millisecond,
+			Client: mgr.GetClient(), Reader: scopedReader{mgr.GetAPIReader()}, Queue: queue, GateRetry: 100 * time.Millisecond,
 			Caller: &mcp.Client{HTTP: &http.Client{Timeout: time.Minute}}, Now: f.passClock.Now, Metrics: f.metrics,
 			Runs: f.runs, EngineKind: kagent0103.Kind, EngineNamespace: engineNS, Usage: f.usage, PassTimeout: passTimeout, PassInterval: 50 * time.Millisecond, PassClock: f.passClock,
 			Tracer: sdktrace.NewTracerProvider(sdktrace.WithSyncer(f.spans)).Tracer("test"),
@@ -442,4 +443,23 @@ func TestRoutesPruned(t *testing.T) {
 		_, ok := f.policy(t, "pruned", connMetrics)
 		return !ok
 	})
+}
+
+// scopedReader is the runner's API reader in the tests: a List of a
+// namespaced kind without a namespace fails, as it does under the
+// operator's namespaced Role on a cluster (envtest runs as admin). Only
+// the cluster-scoped kinds may be listed at the cluster scope.
+type scopedReader struct{ client.Reader }
+
+func (r scopedReader) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	o := &client.ListOptions{}
+	o.ApplyOptions(opts)
+	switch list.(type) {
+	case *v1alpha1.TakeCarePlatformList, *v1alpha1.TakeCareRangerList:
+	default:
+		if o.Namespace == "" {
+			return fmt.Errorf("list %T at the cluster scope: the operator's Role is namespaced", list)
+		}
+	}
+	return r.Reader.List(ctx, list, opts...)
 }

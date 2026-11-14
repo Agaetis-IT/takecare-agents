@@ -288,6 +288,18 @@ EOF
 
 # platform_ready waits for the platform's Ready condition, printing the
 # conditions when it does not come.
+# operator_not_forbidden fails when the operator's log has a line saying
+# the API server refused it something: its rights are part of the release
+# (a list at the cluster scope under a namespaced Role, for one). The count
+# and the first lines go to the diagnostics.
+operator_not_forbidden() {
+  local lines
+  lines="$(kubectl -n "$NS" logs deploy/takecare-operator 2>/dev/null | grep -i forbidden || true)"
+  [[ -z "$lines" ]] && return 0
+  { echo "  $(wc -l <<<"$lines" | tr -d ' ') forbidden lines in the operator's log, the first:"; head -3 <<<"$lines" | cut -c1-300 | sed 's/^/  /'; } >>"$DIAG"
+  return 1
+}
+
 platform_ready() {
   for _ in $(seq 60); do
     [[ "$(kubectl get takecareplatform main -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)" == "True" ]] && return 0
@@ -682,6 +694,7 @@ EOF
   check "the demo platform keeps no gateway-metrics-not-scraped gap (Prometheus admitted to the metrics port)" \
     bash -c "sleep 45; g=\$(kubectl get takecareplatform main -o jsonpath='{.status.productionGaps[*].id}'); [[ \"\$g\" != *gateway-metrics-not-scraped* ]]"
   kubectl -n "$NS" delete httproute/smoke-kagent agentgatewaybackend/smoke-kagent >/dev/null
+  check "the operator's log has no forbidden line (its rights cover what it does)" operator_not_forbidden
   assert_checks "$CHECKS_EXPECTED"
 }
 
@@ -775,11 +788,11 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=94 install ;;
-  upgrade) CHECKS_EXPECTED=94 upgrade ;;
+  install) CHECKS_EXPECTED=95 install ;;
+  upgrade) CHECKS_EXPECTED=95 upgrade ;;
   status) status ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=4 cluster_chart ;;
-  all) up; CHECKS_EXPECTED=94 install; CHECKS_EXPECTED=94 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
+  all) up; CHECKS_EXPECTED=95 install; CHECKS_EXPECTED=95 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|cluster|status|down|all]"; exit 2 ;;
 esac
