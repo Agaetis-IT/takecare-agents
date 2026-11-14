@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.3.0] - 2026-11-14
 
-The step 2 Intendant's release: everything of `0.3.0-rc.1`. The survey of the ground through the connectors, the agent pass, the digest, the cluster's inventory, and each role's usage on its own model route. On the benches of 2026-11-13 (`google/gemini-3.7-flash`), the Doc scores 5 out of 5 (`test/bench/report-2026-11-13T1529Z.json`) and the Intendant 5 runs ok out of 5 (`test/bench/intendant-report-2026-11-13T1535Z.json`).
+The step 2 Intendant's release. The survey of the ground through the connectors, the agent pass, the digest, the cluster's inventory, and each role's usage on its own model route. On the benches of 2026-11-13 (`google/gemini-3.7-flash`), the Doc scores 5 out of 5 (`test/bench/report-2026-11-13T1529Z.json`) and the Intendant 5 runs ok out of 5 (`test/bench/intendant-report-2026-11-13T1535Z.json`).
 
 ### Added
 
