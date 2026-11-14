@@ -834,7 +834,8 @@ status() {
 # database URL included, at start), a bearer token, and the value of a
 # password, token or secret field, as name=value, name: value or a JSON
 # key ("name":"value"); names ending in _key, -key, _secret or -secret
-# count, ordinary words do not.
+# count, ordinary words do not. Known limit: a URL password holding an
+# unencoded "/" is not matched by the URL pattern.
 mask_secrets() {
   sed -E -e 's#([A-Za-z][A-Za-z0-9+.-]*://)[^@/[:space:]]+@#\1***@#g' \
     -e 's#(bearer[[:space:]]+)[^[:space:]",}]+#\1***#gI' \
