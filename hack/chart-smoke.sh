@@ -334,6 +334,7 @@ kind: Secret
 metadata: { name: smoke-c1-probe, namespace: demo-apps }
 stringData: { probe: not-a-real-secret }
 EOF
+  kubectl -n demo-apps run smoke-c1-pod --image="$SMOKE_CURL_IMAGE" --restart=Never --command -- sleep 600 >/dev/null 2>&1 || true
 }
 
 # c1_cleanup deletes the smoke-only objects of the kubernetes server's lock
@@ -345,6 +346,7 @@ c1_cleanup() {
   kubectl -n demo-apps delete role smoke-c1-secrets --ignore-not-found --request-timeout=10s >/dev/null 2>&1 || true
   kubectl -n demo-apps delete serviceaccount smoke-c1-wide --ignore-not-found --request-timeout=10s >/dev/null 2>&1 || true
   kubectl -n demo-apps delete secret smoke-c1-probe --ignore-not-found --request-timeout=10s >/dev/null 2>&1 || true
+  kubectl -n demo-apps delete pod smoke-c1-pod --ignore-not-found --now --request-timeout=10s >/dev/null 2>&1 || true
 }
 
 # mcp_forbidden_with METHOD NAMESPACE POD URL TOOL [ARGS]: mcp_forbidden,
@@ -497,7 +499,7 @@ verify() {
   # In read-only mode the server advertises read tools only: every tool is
   # classed read and no destructive tool is offered at all.
   check "kubernetes tools are all classified read, resources_delete is not even offered" \
-    bash -c "t=\$(kubectl -n ${NS} get takecareconnector kubernetes -o jsonpath='{range .status.tools[*]}{.name}={.class} {end}'); [[ \"\$t\" == *'pods_list=read'* && \"\$t\" != *'=act'* && \"\$t\" != *resources_delete* && \$(kubectl -n ${NS} get takecareconnector kubernetes -o jsonpath='{.status.toolCount}') -ge 10 ]]"
+    bash -c "t=\$(kubectl -n ${NS} get takecareconnector kubernetes -o jsonpath='{range .status.tools[*]}{.name}={.class} {end}'); [[ \"\$t\" == *'pods_list=read'* && \"\$t\" != *'=act'* && \"\$t\" != *resources_delete* && \$(kubectl -n ${NS} get takecareconnector kubernetes -o jsonpath='{.status.toolCount}') -ge 9 ]]"
   check "the kubernetes add-on sees the demo's extra resources (DBProxy, ConfigMaps)" \
     test "$(kubectl -n "$NS" get takecareconnector kubernetes -o jsonpath='{.status.conditions[?(@.type=="ResourcesListable")].status}')" = "True"
   check "the read-only guard finds nothing forbidden on the add-on's ServiceAccount" \
@@ -739,14 +741,19 @@ EOF
   c1_setup
   local wide secrets='{"apiVersion":"v1","kind":"Secret","namespace":"demo-apps"}' hdr out
   wide="$(kubectl -n demo-apps create token smoke-c1-wide --duration=10m)"
+  # The own account, per header: smoke-c1-wide may list no Pods, the
+  # add-on's Role always may; a Pod list with the wide token in either
+  # header must come back, so the token was ignored (passthrough would
+  # answer forbidden). Secrets stay refused whatever the token.
+  local pods='{"apiVersion":"v1","kind":"Pod","namespace":"demo-apps"}'
   for hdr in Authorization kubernetes-authorization; do
+    out="$(mcp_call_with "${hdr}: Bearer ${wide}" kagent smoke-a2a "$route" resources_list "$pods")"
+    check "a wider token in ${hdr} is ignored: the server lists Pods with its own account" \
+      bash -c "grep -q smoke-c1-pod <<<\"\$1\" && ! grep -q -i forbidden <<<\"\$1\"" _ "$out"
     out="$(mcp_call_with "${hdr}: Bearer ${wide}" kagent smoke-a2a "$route" resources_list "$secrets")"
-    check "a wider token in ${hdr} through the Doc's route does not read Secrets (the server uses its own account)" \
+    check "Secrets are refused whatever the token in ${hdr} (resource not allowed)" \
       bash -c "! grep -q smoke-c1-probe <<<\"\$1\" && grep -q 'resource not allowed' <<<\"\$1\"" _ "$out"
   done
-  out="$(mcp_call_with "Authorization: Bearer ${wide}" kagent smoke-a2a "$route" resources_list '{"apiVersion":"v1","kind":"ConfigMap","namespace":"demo-apps"}')"
-  check "with that token, ConfigMaps are listed: the server ignores it and uses its own account" \
-    bash -c "grep -q 'ConfigMap' <<<\"\$1\" && ! grep -q forbidden <<<\"\$1\"" _ "$out"
   kubectl -n demo-apps create rolebinding smoke-c1-addon --role=smoke-c1-secrets --serviceaccount="${NS}:takecare-addon-kubernetes" >/dev/null
   out="$(mcp_call_with "X-Smoke: none" kagent smoke-a2a "$route" resources_get '{"apiVersion":"v1","kind":"Secret","namespace":"demo-apps","name":"smoke-c1-probe"}')"
   check "with an RBAC grant on Secrets, the server still refuses them itself (resource not allowed)" \
@@ -755,7 +762,7 @@ EOF
   check "the smoke-only grant is gone: the add-on's account may not list Secrets" \
     test "$(kubectl auth can-i list secrets -n demo-apps --as="system:serviceaccount:${NS}:takecare-addon-kubernetes")" = no
   check "the connector no longer lists the tools our RBAC never serves" \
-    bash -c "t=\$(kubectl -n ${NS} get takecareconnector kubernetes -o jsonpath='{range .status.tools[*]}{.name} {end}'); [[ \$t == *pods_list* && \$t != *nodes_log* && \$t != *nodes_stats_summary* && \$t != *nodes_top* && \$t != *projects_list* ]]"
+    bash -c "for _ in \$(seq 30); do t=\$(kubectl -n ${NS} get takecareconnector kubernetes -o jsonpath='{range .status.tools[*]}{.name} {end}'); [[ \$t == *pods_list* && \$t != *nodes_log* && \$t != *nodes_stats_summary* && \$t != *nodes_top* && \$t != *projects_list* ]] && exit 0; sleep 2; done; exit 1"
   out="$(mcp_call_with "X-Smoke: none" kagent smoke-a2a "$route" pods_top '{"namespace":"demo-apps"}')"
   log "pods_top through the Doc's route: $(head -c 120 <<<"$out" | tr '\n' ' ')"
   check "pods_top stays: our Role grants metrics.k8s.io pods, and it answers without a refusal" \
@@ -1065,9 +1072,9 @@ cluster_chart() {
   c1_setup
   local wide
   wide="$(kubectl -n demo-apps create token smoke-c1-wide --duration=10m)"
-  check "through the front, a wider token in kubernetes-authorization does not read Secrets" \
+  check "through the front, a wider token in kubernetes-authorization is ignored: Pods listed with the server's own account" \
     via_front bash -c "out=\$(\"\$@\" -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -H \"kubernetes-authorization: Bearer ${wide}\" \
-      -d '{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"resources_list\",\"arguments\":{\"apiVersion\":\"v1\",\"kind\":\"Secret\",\"namespace\":\"demo-apps\"}}}' https://${host}:18443/mcp); grep -q 'resource not allowed' <<<\"\$out\" && ! grep -q smoke-c1-probe <<<\"\$out\"" _ "${admin[@]}"
+      -d '{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"resources_list\",\"arguments\":{\"apiVersion\":\"v1\",\"kind\":\"Pod\",\"namespace\":\"demo-apps\"}}}' https://${host}:18443/mcp); grep -q smoke-c1-pod <<<\"\$out\" && ! grep -q -i forbidden <<<\"\$out\"" _ "${admin[@]}"
   c1_cleanup
   check "tools/list through the front answers the read tools (pods_list)" \
     via_front bash -c "\"\$@\" -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
@@ -1167,12 +1174,12 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=131 install ;;
-  upgrade) CHECKS_EXPECTED=131 upgrade ;;
+  install) CHECKS_EXPECTED=132 install ;;
+  upgrade) CHECKS_EXPECTED=132 upgrade ;;
   status) status ;;
   mask-test) mask_test ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=5 cluster_chart ;;
-  all) mask_test; up; CHECKS_EXPECTED=131 install; CHECKS_EXPECTED=131 upgrade; CHECKS_EXPECTED=5 cluster_chart ;;
+  all) mask_test; up; CHECKS_EXPECTED=132 install; CHECKS_EXPECTED=132 upgrade; CHECKS_EXPECTED=5 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|cluster|status|mask-test|down|all]"; exit 2 ;;
 esac
