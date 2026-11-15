@@ -751,9 +751,11 @@ EOF
   check "the survey under the Override does not read the rules: its alerting layer says the canary was let through" \
     test "$open_layer" = "Completed ${let_through}"
   # Any survey under the Override sees it: one the Intendant starts itself
-  # may complete after smoke-canary-open and be the one named.
+  # may complete after smoke-canary-open and be the one named, with the
+  # let-through or the closed line; both name the rule (and the phrases'
+  # apostrophes stay out of the bash -c script).
   check "ConnectorsReady names a survey whose canary was not refused" \
-    bash -c "for _ in \$(seq 30); do m=\$(kubectl -n ${NS} get takecareintendant smoke-intendant -o jsonpath='{.status.conditions[?(@.type==\"ConnectorsReady\")].message}'); [[ \$m == *'survey smoke-'*': ${let_through}'* || \$m == *'survey smoke-'*': ${closed}'* ]] && exit 0; sleep 2; done; exit 1"
+    bash -c "for _ in \$(seq 30); do m=\$(kubectl -n ${NS} get takecareintendant smoke-intendant -o jsonpath='{.status.conditions[?(@.type==\"ConnectorsReady\")].message}'); [[ \$m == *'survey smoke-'*'argument rule on the metrics route'* ]] && exit 0; sleep 2; done; exit 1"
   # The route closed (spec 10 §8): its tool list no longer admits get_rules,
   # which a Gateway-level Override cannot drop; the forged call with the
   # survey's own arguments is refused by name (400, -32602), and a survey
