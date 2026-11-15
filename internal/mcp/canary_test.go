@@ -18,6 +18,9 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/mcp/mcptest"
 )
 
+// rulesReply is the fake get_rules answer of the canary's tests.
+const rulesReply = "rules"
+
 // A gateway in front of the server: it answers a tools/call with the
 // test's status, or holds it past the client's timeout, and passes the
 // session's other requests through.
@@ -72,7 +75,7 @@ func TestCallRuleCanary(t *testing.T) {
 			mcp.CanaryPending, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := mcptest.Start(t, mcptest.ToolSpec{Name: mcp.RulesTool, ReadOnly: true, Reply: "rules"})
+			srv := mcptest.Start(t, mcptest.ToolSpec{Name: mcp.RulesTool, ReadOnly: true, Reply: rulesReply})
 			c := &mcp.Client{HTTP: &http.Client{Timeout: time.Second}}
 			ep := mcp.Endpoint{URL: gateway(t, srv.URL, tc.call), Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorMetrics}, Addon: true}
 			got, status := c.CallRuleCanary(t.Context(), ep)

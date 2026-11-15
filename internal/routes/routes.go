@@ -101,13 +101,15 @@ type MCP struct {
 // on an MCP JSON-RPC POST (CEL variables reference, 1.6.x: "The request
 // is an MCP JSON-RPC POST request"; not "for /sse, well-known OAuth
 // metadata, or client registration requests"), and mcp.methodName is
-// always set then. The route is a PathPrefix: without this, a POST on a
-// path below the route where mcp is not set would pass a rule written as
-// !has(mcp.tool) || .... Observed on v1.6.0, where the docs are silent: a
-// JSON-RPC batch is not read as MCP (refused), and of the paths below the
-// route only /client-registration leaves mcp unset. The chart smoke
-// checks the forbidden call on each such path and with PUT and PATCH, the
-// guard at every gateway bump.
+// always set then. An MCP route matches its exact path (spec 05), so no
+// path below it reaches this rule any more; the guard stays as defense in
+// depth, and for a customer's own Gateway: without it, a POST where mcp is
+// not set would pass a rule written as !has(mcp.tool) || .... Observed on
+// v1.6.0, where the docs are silent: a JSON-RPC batch is not read as MCP
+// (refused), and of the paths below a prefix route only
+// /client-registration leaves mcp unset. The chart smoke checks the paths
+// below the route (404 from the gateway) and PUT and PATCH (refused by the
+// rule) at every gateway bump.
 const MCPRequest = `(request.method in ["GET", "DELETE"] || has(mcp.methodName))`
 
 // CallsExpression is the route-level expression of a CallRule: the rule,
@@ -209,7 +211,9 @@ func EnsureMCP(ctx context.Context, c client.Client, g Gateway, r Role, m MCP) e
 		}
 	}
 	route := r.object(HTTPRouteGVK, name)
-	route.Object["spec"] = g.routeSpec(MCPPath(r, m.Connector), m.Backend)
+	// Exact: every MCP client of ours uses the route's URL as rendered,
+	// with POST, GET and DELETE on that one path (spec 05).
+	route.Object["spec"] = g.routeSpec(MCPPath(r, m.Connector), pathExact, m.Backend)
 	if err := apply.Strict(ctx, c, route); err != nil {
 		return fmt.Errorf("apply route %s: %w", name, err)
 	}
@@ -232,7 +236,7 @@ func EnsureA2A(ctx context.Context, c client.Client, g Gateway, r Role, ep engin
 		return fmt.Errorf("apply backend %s: %w", name, err)
 	}
 	route := r.object(HTTPRouteGVK, name)
-	route.Object["spec"] = g.routeSpec(ep.Path, name)
+	route.Object["spec"] = g.routeSpec(ep.Path, pathPrefix, name)
 	if err := apply.Strict(ctx, c, route); err != nil {
 		return fmt.Errorf("apply route %s: %w", name, err)
 	}
@@ -248,20 +252,28 @@ func EnsureModel(ctx context.Context, c client.Client, g Gateway, r Role, model 
 	labels := route.GetLabels()
 	labels[ModelLabel] = model
 	route.SetLabels(labels)
-	route.Object["spec"] = g.routeSpec(ModelPath(r, model), ModelBackend(model))
+	route.Object["spec"] = g.routeSpec(ModelPath(r, model), pathPrefix, ModelBackend(model))
 	if err := apply.Strict(ctx, c, route); err != nil {
 		return fmt.Errorf("apply route %s: %w", name, err)
 	}
 	return nil
 }
 
-// routeSpec is an HTTPRoute's spec on the gateway: one path prefix to one
-// agentgateway backend.
-func (g Gateway) routeSpec(prefix, backend string) map[string]any {
+// The path match types of our routes: an MCP route's clients use its exact
+// URL; an A2A route serves the agent card below it, a model route the
+// provider's API paths below it.
+const (
+	pathExact  = "Exact"
+	pathPrefix = "PathPrefix"
+)
+
+// routeSpec is an HTTPRoute's spec on the gateway: one path, matched as
+// match says, to one agentgateway backend.
+func (g Gateway) routeSpec(path, match, backend string) map[string]any {
 	return map[string]any{
 		"parentRefs": g.parentRefs(),
 		"rules": []any{map[string]any{
-			"matches":     []any{map[string]any{"path": map[string]any{"type": "PathPrefix", "value": prefix}}},
+			"matches":     []any{map[string]any{"path": map[string]any{"type": match, "value": path}}},
 			"backendRefs": []any{map[string]any{keyGroup: agentgatewayGroup, keyKind: backendKind, keyName: backend}},
 		}},
 	}

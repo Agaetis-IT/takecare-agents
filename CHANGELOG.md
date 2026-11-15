@@ -8,10 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+- The chart's Gateway listener lets routes attach from the release namespace only (`allowedRoutes.namespaces.from: Same`); before this fix, an HTTPRoute in any namespace could attach to it and be served through the gateway. On upgrade, routes attached from other namespaces detach (their status says `NotAllowedByListeners`); every route TakeCare renders lives in the release namespace and stays.
+- The operator's MCP client no longer follows redirects: the endpoint's headers, a Secret's included, were added on every request, so a followed redirect carried them to the redirect's target. A redirect now fails the call with its status.
 - Before this fix, a caller able to reach the `kubernetes` connector's route through the gateway, and holding a Kubernetes token, could have the kubernetes MCP server act with that token instead of the add-on's read-only account, by sending it in the `Authorization` or `kubernetes-authorization` header; through the cluster chart's mTLS front, the `kubernetes-authorization` header passed the same way. Both charts now set the server's `cluster_auth_mode = "kubeconfig"`, so it always uses its own account; the server also refuses Secrets itself (`denied_resources`), and the front strips both headers. On upgrade, the server no longer offers `nodes_log`, `nodes_stats_summary`, `nodes_top` and `projects_list`, which our read-only RBAC never let succeed: they leave the connector's `status.tools` at its next discovery, `nodes_log` leaves the add-on's default content tools, and a Doc whose `spec.contentTools` still lists `nodes_log` gets a `ContentToolUnknown` Warning.
 
 ### Changed
 
+- A role's MCP route on the gateway matches its exact path: a path below it, or a trailing slash, now gets the gateway's 404 instead of reaching the route. The A2A and model routes are unchanged.
 - The demo profile caps each role's route to the default model at 2,000,000 tokens an hour (`ranger.caps.models`), so that a Doc investigation or an Intendant pass that kagent 0.10.3 cannot cancel stays bounded. Sized from the benches of 2026-11-14, it leaves room for about 22 of the largest runs an hour on each route.
 
 ### Fixed

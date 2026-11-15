@@ -259,6 +259,7 @@ func (c *Client) connect(ctx context.Context, ep Endpoint) (*sdk.ClientSession, 
 	if ep.HTTP != nil {
 		httpClient = ep.HTTP
 	}
+	httpClient = noRedirect(httpClient)
 	if len(ep.Headers) > 0 {
 		httpClient = withHeaders(httpClient, ep.Headers)
 	}
@@ -268,6 +269,17 @@ func (c *Client) connect(ctx context.Context, ep Endpoint) (*sdk.ClientSession, 
 		return nil, fmt.Errorf("connect to %s: %w", ep.URL, err)
 	}
 	return session, nil
+}
+
+// noRedirect copies the client so that it follows no redirect: the
+// endpoint's headers, a Secret's included, are added by a RoundTripper on
+// every request, so a followed redirect would carry them to the next host.
+// One rule, no exception: a same-host redirect is not followed either. A
+// redirect then fails the call with its status.
+func noRedirect(c *http.Client) *http.Client {
+	copied := *c
+	copied.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &copied
 }
 
 // withHeaders wraps the client so that every request carries the headers.

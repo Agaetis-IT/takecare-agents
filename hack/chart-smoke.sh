@@ -62,10 +62,10 @@ DIAG="$(mktemp "${TMPDIR:-/tmp}/chart-smoke-diag.XXXXXX")"
 # The canary checks' Gateway-level Override policy opens every route below
 # it while it stands, and the gateway-cap check sets a low gateway limit
 # that would starve the checks after it; the server-lock checks create an
-# account that may read Secrets: all are undone right after their checks,
-# and again on any exit.
+# account that may read Secrets; the listener check creates a namespace:
+# all are undone right after their checks, and again on any exit.
 RANGER_CAPS_SAVED=""
-trap 'c1_cleanup 2>/dev/null || true; rm -f "$DIAG"; kubectl -n "$NS" delete agentgatewaypolicy smoke-override --ignore-not-found --request-timeout=5s >/dev/null 2>&1 || true; [[ -z "$RANGER_CAPS_SAVED" ]] || kubectl patch takecareranger main --type=json -p "[{\"op\":\"replace\",\"path\":\"/spec/caps\",\"value\":${RANGER_CAPS_SAVED}}]" --request-timeout=5s >/dev/null 2>&1 || true' EXIT
+trap 'c1_cleanup 2>/dev/null || true; kubectl delete namespace smoke-foreign --ignore-not-found --wait=false --request-timeout=5s >/dev/null 2>&1 || true; rm -f "$DIAG"; kubectl -n "$NS" delete agentgatewaypolicy smoke-override --ignore-not-found --request-timeout=5s >/dev/null 2>&1 || true; [[ -z "$RANGER_CAPS_SAVED" ]] || kubectl patch takecareranger main --type=json -p "[{\"op\":\"replace\",\"path\":\"/spec/caps\",\"value\":${RANGER_CAPS_SAVED}}]" --request-timeout=5s >/dev/null 2>&1 || true' EXIT
 check() { # NAME COMMAND...: PASS when the command succeeds
   local name="$1"; shift
   checks=$((checks + 1))
@@ -347,6 +347,23 @@ c1_cleanup() {
   kubectl -n demo-apps delete serviceaccount smoke-c1-wide --ignore-not-found --request-timeout=10s >/dev/null 2>&1 || true
   kubectl -n demo-apps delete secret smoke-c1-probe --ignore-not-found --request-timeout=10s >/dev/null 2>&1 || true
   kubectl -n demo-apps delete pod smoke-c1-pod --ignore-not-found --now --request-timeout=10s >/dev/null 2>&1 || true
+}
+
+# mcp_not_found NAMESPACE POD URL TOOL [ARGS]: succeeds when the gateway
+# answers 404 (no route matches the path) and no result: an MCP route
+# matches its exact path only (spec 05). mcp_not_found_with METHOD … sends
+# the call with METHOD.
+mcp_not_found() {
+  local out
+  out="$(mcp_call "$@")"
+  grep -q '^HTTP 404$' <<<"$out" && ! grep -q '"result"' <<<"$out" && return 0
+  mcp_diagnose "$3" "$out"
+  return 1
+}
+mcp_not_found_with() {
+  local METHOD="$1" # read by mcp_call, which mcp_not_found calls
+  shift
+  mcp_not_found "$@"
 }
 
 # mcp_forbidden_with METHOD NAMESPACE POD URL TOOL [ARGS]: mcp_forbidden,
@@ -811,23 +828,43 @@ EOF
     check "get_rules with ${bad} is refused by the gateway's argument rule (403)" \
       mcp_forbidden kagent smoke-a2a "${iroute}/prometheus" get_rules "$bad"
   done
-  # The route is a PathPrefix: the rule holds on every path below it,
-  # those where the gateway does not read the request as MCP included, and
-  # on methods other than POST. {"type":"alert"} is a call the rule forbids
-  # (it requires exclude_alerts true), valid for the tool's own schema: a
-  # refusal here is the gateway's rule, not the server's.
+  # The MCP route matches its exact path (spec 05): no path below it
+  # reaches the server, the gateway answers 404 (no route), not the server
+  # and not the rule. On the route itself the rule holds on methods other
+  # than POST. {"type":"alert"} is a call the rule forbids (it requires
+  # exclude_alerts true), valid for the tool's own schema: a refusal on the
+  # route is the gateway's rule, not the server's.
   local sfx
   for sfx in /client-registration /register /sse /message /.well-known/oauth-protected-resource /.well-known/oauth-authorization-server /x7q2 //; do
-    check "get_rules with {\"type\":\"alert\"} through ${sfx} below the route is refused by the argument rule (403)" \
-      mcp_forbidden kagent smoke-a2a "${iroute}/prometheus${sfx}" get_rules '{"type":"alert"}'
+    check "get_rules with {\"type\":\"alert\"} through ${sfx} below the route gets the gateway's 404 (no route)" \
+      mcp_not_found kagent smoke-a2a "${iroute}/prometheus${sfx}" get_rules '{"type":"alert"}'
   done
   local m
   for m in PUT PATCH; do
-    for sfx in "" /client-registration; do
-      check "get_rules with {\"type\":\"alert\"} sent with ${m} on ${sfx:-the route} is refused by the argument rule (403)" \
-        mcp_forbidden_with "$m" kagent smoke-a2a "${iroute}/prometheus${sfx}" get_rules '{"type":"alert"}'
-    done
+    check "get_rules with {\"type\":\"alert\"} sent with ${m} on the route is refused by the argument rule (403)" \
+      mcp_forbidden_with "$m" kagent smoke-a2a "${iroute}/prometheus" get_rules '{"type":"alert"}'
+    check "get_rules with {\"type\":\"alert\"} sent with ${m} on /client-registration below the route gets the gateway's 404 (no route)" \
+      mcp_not_found_with "$m" kagent smoke-a2a "${iroute}/prometheus/client-registration" get_rules '{"type":"alert"}'
   done
+  # The listener (spec 01): a route from another namespace does not attach
+  # to our Gateway. The namespace is created and deleted around the check,
+  # and in the EXIT trap.
+  kubectl create namespace smoke-foreign >/dev/null
+  kubectl -n smoke-foreign apply -f - >/dev/null <<EOF
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: { name: smoke-foreign, namespace: smoke-foreign }
+spec:
+  parentRefs: [{ name: agentgateway-proxy, namespace: ${NS}, sectionName: http }]
+  rules:
+    - matches: [{ path: { type: PathPrefix, value: /smoke-foreign } }]
+      backendRefs: [{ name: takecare-addon-kubernetes, namespace: ${NS}, port: 8080 }]
+EOF
+  check "a route from another namespace is refused by the listener (NotAllowedByListeners) and its path is 404" \
+    bash -c "for _ in \$(seq 30); do [[ \$(kubectl -n smoke-foreign get httproute smoke-foreign -o jsonpath='{.status.parents[0].conditions[?(@.type==\"Accepted\")].status} {.status.parents[0].conditions[?(@.type==\"Accepted\")].reason}') == 'False NotAllowedByListeners' ]] && break; sleep 2; done; [[ \$(kubectl -n smoke-foreign get httproute smoke-foreign -o jsonpath='{.status.parents[0].conditions[?(@.type==\"Accepted\")].reason}') == NotAllowedByListeners && \$(kubectl -n kagent exec smoke-a2a -- curl -s -o /dev/null -m 10 -w '%{http_code}' ${gw}/smoke-foreign) == 404 ]]"
+  # Wait until it is gone: the upgrade pass creates it again, and a
+  # namespace still Terminating would fail that create.
+  kubectl delete namespace smoke-foreign --wait=true --timeout=60s >/dev/null
   check "the argument rule lets a session's stream (GET) and close (DELETE) through" \
     mcp_stream_and_close kagent smoke-a2a "${iroute}/prometheus"
   check "get_alerts, off the Intendant's allow-list, is refused on its metrics route" \
@@ -1174,12 +1211,12 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=132 install ;;
-  upgrade) CHECKS_EXPECTED=132 upgrade ;;
+  install) CHECKS_EXPECTED=133 install ;;
+  upgrade) CHECKS_EXPECTED=133 upgrade ;;
   status) status ;;
   mask-test) mask_test ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=5 cluster_chart ;;
-  all) mask_test; up; CHECKS_EXPECTED=132 install; CHECKS_EXPECTED=132 upgrade; CHECKS_EXPECTED=5 cluster_chart ;;
+  all) mask_test; up; CHECKS_EXPECTED=133 install; CHECKS_EXPECTED=133 upgrade; CHECKS_EXPECTED=5 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|cluster|status|mask-test|down|all]"; exit 2 ;;
 esac
