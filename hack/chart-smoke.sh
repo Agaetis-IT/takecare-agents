@@ -64,7 +64,7 @@ DIAG="$(mktemp "${TMPDIR:-/tmp}/chart-smoke-diag.XXXXXX")"
 # that would starve the checks after it: both are undone right after their
 # checks, and again on any exit.
 RANGER_CAPS_SAVED=""
-trap 'rm -f "$DIAG"; kubectl -n "$NS" delete agentgatewaypolicy smoke-override --ignore-not-found --request-timeout=5s >/dev/null 2>&1 || true; [[ -z "$RANGER_CAPS_SAVED" ]] || kubectl patch takecareranger main --type=merge -p "{\"spec\":{\"caps\":${RANGER_CAPS_SAVED}}}" --request-timeout=5s >/dev/null 2>&1 || true' EXIT
+trap 'rm -f "$DIAG"; kubectl -n "$NS" delete agentgatewaypolicy smoke-override --ignore-not-found --request-timeout=5s >/dev/null 2>&1 || true; [[ -z "$RANGER_CAPS_SAVED" ]] || kubectl patch takecareranger main --type=json -p "[{\"op\":\"replace\",\"path\":\"/spec/caps\",\"value\":${RANGER_CAPS_SAVED}}]" --request-timeout=5s >/dev/null 2>&1 || true' EXIT
 check() { # NAME COMMAND...: PASS when the command succeeds
   local name="$1"; shift
   checks=$((checks + 1))
