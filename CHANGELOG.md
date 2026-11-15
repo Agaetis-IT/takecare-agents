@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- The demo profile caps each role's route to the default model at 2,000,000 tokens an hour (`ranger.caps.models`), so that a Doc investigation or an Intendant pass that kagent 0.10.3 cannot cancel stays bounded. Sized from the benches of 2026-11-14, it leaves room for about 22 of the largest runs an hour on each route.
+
 ### Fixed
 
 - The Ranger's per-model Markers now cover the Intendant's model route: a cap on a model (`spec.caps.models`) caps the Intendant's route to it, and `spec.models` accepts `TakeCareIntendant`. Before this fix, the Intendant's model route had only the gateway-wide Markers: no per-model cap and no allowed-models refusal applied to it, even when set. A pass past its deadline, which kagent 0.10.3 cannot cancel, is bounded by that cap, and by the runtime's 500 model calls a run without one: set one.

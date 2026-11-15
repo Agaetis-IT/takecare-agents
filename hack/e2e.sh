@@ -34,7 +34,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=41
+CHECKS_EXPECTED=43
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s %s\n' "$(date +%H:%M:%S)" "$*"; }
@@ -150,6 +150,14 @@ intendant() {
   log "surveying the demo with the demo Intendant"
   check "the demo Intendant is Ready, its connectors bound (spec 10)" \
     bash -c "[[ \$(kubectl -n $NS get takecareintendant intendant -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}') == True ]]"
+  # The demo's model cap (values-demo.yaml): one budget on each role's
+  # route to the default model, the Doc's and the Intendant's, accepted by
+  # the gateway (spec 09 §4).
+  local route
+  for route in role-doc-doc-model-default role-intendant-intendant-model-default; do
+    check "the demo's model cap on ${route} is accepted by the gateway" \
+      bash -c "for _ in \$(seq 30); do [[ \$(kubectl -n $NS get agentgatewaypolicy ranger-cap-${route} -o jsonpath='{.status.ancestors[0].conditions[?(@.type==\"Accepted\")].status}' 2>/dev/null) == True ]] && exit 0; sleep 2; done; exit 1"
+  done
   local phase
   phase="$(survey e2e-first intendant)"
   check "a survey by hand of the demo Completes (spec 10 §4)" test "$phase" = Completed

@@ -953,3 +953,23 @@ func TestCRDChart(t *testing.T) {
 		t.Errorf("gatewayAPI.install=never still renders %d hook objects", n)
 	}
 }
+
+// The demo caps each role's route to its model (values-demo.yaml): the
+// Ranger's per-model budget names the platform's model, the production
+// profile sets none.
+func TestDemoModelCap(t *testing.T) {
+	objs := render(t, releaseName, profileArgs("demo")...)
+	caps, _, _ := unstructured.NestedSlice(ofKind(objs, "TakeCareRanger")[0].Object, "spec", "caps", "models")
+	models, _, _ := unstructured.NestedSlice(ofKind(objs, "TakeCarePlatform")[0].Object, "spec", "models")
+	if len(caps) != 1 || len(models) != 1 {
+		t.Fatalf("demo caps.models %v for the models %v, want one cap on the one model", caps, models)
+	}
+	c, m := caps[0].(map[string]any), models[0].(map[string]any)
+	if c["name"] != m["name"] || fmt.Sprint(c["tokensPerHour"]) != "2000000" || len(c) != 2 {
+		t.Errorf("demo model cap %v, want {name: %v, tokensPerHour: 2000000}", c, m["name"])
+	}
+	prod := ofKind(render(t, releaseName, append(profileArgs("prod"), prodSets...)...), "TakeCareRanger")[0]
+	if got, found, _ := unstructured.NestedFieldNoCopy(prod.Object, "spec", "caps"); found && fmt.Sprint(got) != "map[]" {
+		t.Errorf("prod Ranger caps = %v, want none", got)
+	}
+}
