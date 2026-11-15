@@ -5,7 +5,7 @@
 // terminates TLS, requires a client certificate that chains to a CA bundle
 // and names an accepted identity, and forwards /mcp to the read-only
 // kubernetes MCP server on localhost, in the same pod. The identity is the
-// certificate: the client's Authorization header never reaches the server.
+// certificate: no header that carries a bearer token reaches the server.
 package front
 
 import (
@@ -21,6 +21,13 @@ import (
 	"slices"
 	"time"
 )
+
+// bearerHeaders are the headers the kubernetes-mcp-server reads a caller's
+// bearer token from (v0.0.67, pkg/kubernetes/kubernetes.go l.29-30:
+// OAuthAuthorizationHeader "Authorization", CustomAuthorizationHeader
+// "kubernetes-authorization"). The server ignores them in kubeconfig mode;
+// the front strips them anyway. Check the list at each bump of the pin.
+var bearerHeaders = []string{"Authorization", "kubernetes-authorization"}
 
 // keyError is the field of the JSON error bodies.
 const keyError = "error"
@@ -80,7 +87,9 @@ func New(cfg Config) (*Front, error) {
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.SetURL(upstream)
 			r.Out.Host = upstream.Host
-			r.Out.Header.Del("Authorization")
+			for _, h := range bearerHeaders {
+				r.Out.Header.Del(h)
+			}
 		},
 		// Streamable HTTP answers with server-sent events: flush at once.
 		FlushInterval: -1,

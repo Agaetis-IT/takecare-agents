@@ -206,7 +206,7 @@ addons:
     #  - resource: configmaps
     # -- Tools whose result carries payload (ADR 0014): a role reads them only
     # when it lists them in spec.contentTools.
-    contentTools: [pods_log, nodes_log]
+    contentTools: [pods_log]
     # -- Tool overrides (spec 05): a class, a content mark, or both, by name;
     # recorded in the connector's status.
     tools: []

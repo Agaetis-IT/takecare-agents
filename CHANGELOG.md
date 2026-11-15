@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Security
+
+- Before this fix, a caller able to reach the `kubernetes` connector's route through the gateway, and holding a Kubernetes token, could have the kubernetes MCP server act with that token instead of the add-on's read-only account, by sending it in the `Authorization` or `kubernetes-authorization` header; through the cluster chart's mTLS front, the `kubernetes-authorization` header passed the same way. Both charts now set the server's `cluster_auth_mode = "kubeconfig"`, so it always uses its own account; the server also refuses Secrets itself (`denied_resources`), and the front strips both headers. On upgrade, the server no longer offers `nodes_log`, `nodes_stats_summary`, `nodes_top` and `projects_list`, which our read-only RBAC never let succeed: they leave the connector's `status.tools` at its next discovery, `nodes_log` leaves the add-on's default content tools, and a Doc whose `spec.contentTools` still lists `nodes_log` gets a `ContentToolUnknown` Warning.
+
 ### Changed
 
 - The demo profile caps each role's route to the default model at 2,000,000 tokens an hour (`ranger.caps.models`), so that a Doc investigation or an Intendant pass that kagent 0.10.3 cannot cancel stays bounded. Sized from the benches of 2026-11-14, it leaves room for about 22 of the largest runs an hour on each route.

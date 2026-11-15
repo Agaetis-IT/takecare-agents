@@ -35,3 +35,22 @@ wildcard (read-only guard, spec 04).
   verbs: [get, list, watch]
 {{- end }}
 {{- end -}}
+
+{{/*
+The kubernetes-mcp-server's own locks (v0.0.67, docs/configuration.md),
+whatever a caller sends (spec 05): kubeconfig always uses the server's own
+account, never a caller's Authorization or kubernetes-authorization bearer;
+the tools our read-only RBAC can never serve are not offered; Secrets are
+refused by the server itself, under the RBAC that already denies them.
+*/}}
+{{- define "takecare.kubernetes.hardening" -}}
+cluster_auth_mode = "kubeconfig"
+disabled_tools = ["nodes_log", "nodes_stats_summary", "nodes_top", "projects_list"]
+{{- end }}
+
+{{- define "takecare.kubernetes.deniedResources" -}}
+[[denied_resources]]
+group = ""
+version = "v1"
+kind = "Secret"
+{{- end }}
