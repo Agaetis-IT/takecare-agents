@@ -112,6 +112,9 @@ type Runner struct {
 	Reader client.Reader
 	Queue  *runs.Queue
 	Caller discovery.Caller
+	// Canary proves the call rule on the data plane before get_rules is
+	// called (spec 10 §8); without it the rule is never proven.
+	Canary CallRuleCanary
 	// Route is the URL of the Intendant's route to a connector: the
 	// gateway's address and the route's path when nil.
 	Route func(gatewayURL string, role routes.Role, connector string) string
@@ -390,17 +393,25 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 		return out, none, fail(failImport, err)
 	}
 	var metrics *discovery.Metrics
-	blocked := ""
+	blocked, why := "", notEnforced
 	if m, _ := w.endpoint(ctx, &in, c.Metrics, v1alpha1.ConnectorMetrics, []string{mcp.RulesTool}, stateTools, route); m != nil {
 		// Fail closed for that layer only: no get_rules while the gateway
-		// does not enforce its argument rule.
+		// does not enforce its argument rule, as its status says first and
+		// its refusal of the canary proves.
 		switch ok, _, err := callRuleEnforced(ctx, w.Reader, role, m.name); {
 		case err != nil:
 			return out, none, fail(failImport, err)
-		case ok:
-			metrics = &discovery.Metrics{Connector: m.name, Endpoint: m.ep}
-		default:
+		case !ok:
 			blocked = m.name
+		default:
+			switch v := w.checkCallRule(ctx, &in, m); v {
+			case mcp.CanaryRefused:
+				metrics = &discovery.Metrics{Connector: m.name, Endpoint: m.ep}
+			case mcp.CanaryLetThrough:
+				blocked, why = m.name, letThrough
+			default:
+				blocked, why = m.name, notChecked
+			}
 		}
 	}
 	res, err := discovery.Import(ctx, w.Caller, grounds, metrics, discovery.NewIndex(idx.entries), w.now(), w.observer(ctx))
@@ -410,7 +421,7 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 	if blocked != "" {
 		for i := range res.Layers {
 			if res.Layers[i].Name == discovery.LayerAlerting {
-				res.Layers[i].NotSeen = []discovery.NotSeen{{Ref: blocked, Reason: notEnforced}}
+				res.Layers[i].NotSeen = []discovery.NotSeen{{Ref: blocked, Reason: why}}
 			}
 		}
 	}

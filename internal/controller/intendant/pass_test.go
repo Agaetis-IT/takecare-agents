@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -37,9 +38,16 @@ const firstTask = "t-1"
 // dates stay the fixture's, its deadlines pass in real time.
 type offsetClock struct {
 	base, t0 time.Time
+	// jumped moves the clock forward (jump), for records a test orders.
+	jumped atomic.Int64
 }
 
-func (c *offsetClock) Now() time.Time                         { return c.base.Add(time.Since(c.t0)) }
+func (c *offsetClock) Now() time.Time {
+	return c.base.Add(time.Since(c.t0) + time.Duration(c.jumped.Load()))
+}
+
+// jump moves the clock forward by d.
+func (c *offsetClock) jump(d time.Duration)                   { c.jumped.Add(int64(d)) }
 func (c *offsetClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
 
 // fakeRuns plays the engine's run half: every task behaves as mode says.
