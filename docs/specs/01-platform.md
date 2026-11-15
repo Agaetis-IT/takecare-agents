@@ -85,6 +85,8 @@ Deployment concerns are **chart values**, not API fields, because they are about
 
 The gateway's Service is the one agentgateway creates for the Gateway; the controller finds it by the `gateway.networking.k8s.io/gateway-name` label agentgateway sets rather than assuming a name, and falls back to the Gateway's status addresses. The chart names its Gateway `agentgateway-proxy`.
 
+The chart's Gateway lets routes attach from its own namespace only (its listener's `allowedRoutes.namespaces.from: Same`): every route of ours lives there, since the operator's rights on HTTPRoutes are namespaced to it. A route from another namespace is refused, its status `Accepted=False` with the reason `NotAllowedByListeners`. A customer's agents reach the gateway by an exposure and an identity of their own (spec 09 §8), never by attaching a route to this Gateway. With `gateway.create: false` the Gateway is the customer's: its listener must let the release namespace's routes attach, and should not use `from: All`.
+
 > **Limitation (PR 3')**: the Gateway must live in the operator namespace, `takecare-system`. The model backends the operator generates sit in the Gateway's namespace and reference the provider key Secret from the same namespace; the operator never copies that Secret elsewhere (it has no right to write Secrets outside its namespace). A `gatewayRef` in another namespace gives `Ready=False`, reason `GatewayOutsideOperatorNamespace`. The engine namespace is likewise fixed at install time (`platform.engine.namespace` must equal the chart's `kagent.namespaceOverride`); another value gives `ModelsReady=False`, reason `EngineNamespaceForbidden`.
 
 ## Validation

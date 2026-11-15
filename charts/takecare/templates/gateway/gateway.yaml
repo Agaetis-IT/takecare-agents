@@ -15,9 +15,12 @@ spec:
     - name: http
       protocol: HTTP
       port: {{ .Values.gateway.port }}
+      # Only the release namespace's routes attach: every route of ours
+      # lives there (the operator's rights on HTTPRoutes are namespaced to
+      # it). A route from another namespace is refused, NotAllowedByListeners.
       allowedRoutes:
         namespaces:
-          from: All
+          from: Same
         kinds:
           - group: gateway.networking.k8s.io
             kind: HTTPRoute

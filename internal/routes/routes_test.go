@@ -100,6 +100,11 @@ func TestRoutes(t *testing.T) {
 	}
 	route := get(t, c, HTTPRouteGVK, "role-doc-doc-mcp-kubernetes")
 	path, _, _ := unstructured.NestedString(route.Object["spec"].(map[string]any)["rules"].([]any)[0].(map[string]any)["matches"].([]any)[0].(map[string]any), "path", "value")
+	// An MCP route matches its exact path (spec 05); the A2A and model
+	// routes keep a prefix, their clients use paths below them.
+	if typ := matchType(route); typ != pathExact {
+		t.Errorf("MCP route match type = %q, want Exact", typ)
+	}
 	if path != "/mcp/takecare-system/doc/kubernetes" {
 		t.Errorf("route path = %s", path)
 	}
@@ -126,6 +131,9 @@ func TestRoutes(t *testing.T) {
 	}
 	a2a := get(t, c, HTTPRouteGVK, "role-doc-doc-a2a")
 	path, _, _ = unstructured.NestedString(a2a.Object["spec"].(map[string]any)["rules"].([]any)[0].(map[string]any)["matches"].([]any)[0].(map[string]any), "path", "value")
+	if typ := matchType(a2a); typ != pathPrefix {
+		t.Errorf("A2A route match type = %q, want PathPrefix", typ)
+	}
 	if path != "/api/a2a/kagent/takecare-doc" {
 		t.Errorf("the A2A route must match the agent's path only, got %s", path)
 	}
@@ -160,6 +168,12 @@ func TestRoutes(t *testing.T) {
 }
 
 const testModel = "default"
+
+// matchType is a route's path match type.
+func matchType(route *unstructured.Unstructured) string {
+	typ, _, _ := unstructured.NestedString(route.Object["spec"].(map[string]any)["rules"].([]any)[0].(map[string]any)["matches"].([]any)[0].(map[string]any), "path", "type")
+	return typ
+}
 
 // checkModelRoute checks a role's route to the test model: its prefix, its
 // model label, and the platform's backend it leads to.
