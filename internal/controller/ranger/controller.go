@@ -65,10 +65,6 @@ const alertsPeriod = time.Minute
 
 var policyGVK = schema.GroupVersionKind{Group: "agentgateway.dev", Version: "v1alpha1", Kind: "AgentgatewayPolicy"}
 
-// roleKinds maps the role of a route (routes.RoleLabel, "<role>.<name>")
-// to the kind spec.models names.
-var roleKinds = map[string]string{"doc": v1alpha1.KindTakeCareDoc}
-
 // +kubebuilder:rbac:groups=agentgateway.dev,resources=agentgatewaypolicies;agentgatewaybackends,verbs=get;list;watch;create;update;patch;delete,namespace=takecare-system
 
 // Reconciler renders the Ranger's Markers.
@@ -285,14 +281,28 @@ func (r *Reconciler) modelRoutes(ctx context.Context) ([]modelRoute, error) {
 		return nil, fmt.Errorf("list the model routes: %w", err)
 	}
 	var out []modelRoute
-	for _, o := range list.Items {
-		role, _, _ := strings.Cut(o.GetLabels()[routes.RoleLabel], ".")
-		if kind, ok := roleKinds[role]; ok {
-			out = append(out, modelRoute{name: o.GetName(), kind: kind, model: o.GetLabels()[routes.ModelLabel]})
+	for i := range list.Items {
+		if kind, ok := roleKind(&list.Items[i]); ok {
+			out = append(out, modelRoute{name: list.Items[i].GetName(), kind: kind, model: list.Items[i].GetLabels()[routes.ModelLabel]})
 		}
 	}
 	slices.SortFunc(out, func(a, b modelRoute) int { return strings.Compare(a.name, b.name) })
 	return out, nil
+}
+
+// roleKind is the kind spec.models names for a model route: the kind of
+// the role resource that controls it (routes.Role.Owner). Every role's
+// routes carry it, so a new role kind needs no entry here.
+func roleKind(o *unstructured.Unstructured) (string, bool) {
+	ref := metav1.GetControllerOfNoCopy(o)
+	if ref == nil {
+		return "", false
+	}
+	gv, err := schema.ParseGroupVersion(ref.APIVersion)
+	if err != nil || gv.Group != v1alpha1.GroupVersion.Group {
+		return "", false
+	}
+	return ref.Kind, true
 }
 
 // prune deletes the Ranger's objects of a kind not in keep (all with keep nil).

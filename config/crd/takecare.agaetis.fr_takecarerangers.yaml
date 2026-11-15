@@ -266,6 +266,7 @@ spec:
                     kind:
                       enum:
                       - TakeCareDoc
+                      - TakeCareIntendant
                       type: string
                   required:
                   - allowed

@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -311,14 +312,18 @@ func TestLevelsRefusalAndSuspend(t *testing.T) {
 	}
 }
 
-// modelRoute creates a role's route to a model, as the Doc controller does.
-func (h *harness) modelRoute(name, model string) {
+// modelRoute creates a role's route to a model, as the role controllers
+// do: controlled by the role resource of kind (none when empty).
+func (h *harness) modelRoute(name, kind, model string) {
 	h.t.Helper()
 	r := &unstructured.Unstructured{}
 	r.SetGroupVersionKind(routes.HTTPRouteGVK)
 	r.SetName(name)
 	r.SetNamespace(operatorNS)
-	r.SetLabels(map[string]string{routes.RoleLabel: "doc.doc", routes.ModelLabel: model})
+	r.SetLabels(map[string]string{routes.ModelLabel: model})
+	if kind != "" {
+		r.SetOwnerReferences([]metav1.OwnerReference{*metav1.NewControllerRef(&metav1.ObjectMeta{Name: "role", UID: types.UID("uid-" + name)}, v1alpha1.GroupVersion.WithKind(kind))})
+	}
 	r.Object["spec"] = map[string]any{
 		"parentRefs": []any{map[string]any{keyName: gatewayNm}},
 		"rules": []any{map[string]any{"backendRefs": []any{map[string]any{
@@ -333,15 +338,19 @@ func (h *harness) modelRoute(name, model string) {
 // a route gone takes its Markers with it.
 func TestPerModelMarkers(t *testing.T) {
 	h := start(t)
-	h.modelRoute("role-doc-doc-model-default", modelDefault)
-	h.modelRoute("role-doc-doc-model-big", modelBig)
+	h.modelRoute("role-doc-doc-model-default", v1alpha1.KindTakeCareDoc, modelDefault)
+	h.modelRoute("role-doc-doc-model-big", v1alpha1.KindTakeCareDoc, modelBig)
+	h.modelRoute("role-intendant-intendant-model-big", v1alpha1.KindTakeCareIntendant, modelBig)
+	h.modelRoute("no-role-model-big", "", modelBig)
 	tokens := int64(1000)
 	h.must(h.c.Create(h.ctx, &v1alpha1.TakeCareRanger{Name: Name, Spec: v1alpha1.TakeCareRangerSpec{
 		Level:  v1alpha1.LevelPractitioner,
 		Caps:   v1alpha1.Caps{Models: []v1alpha1.ModelCap{{Name: modelBig, TokensPerHour: &tokens}}},
 		Models: []v1alpha1.RoleModels{{Kind: v1alpha1.KindTakeCareDoc, Allowed: []string{modelDefault}}},
 	}}))
-	want := []string{"ranger-cap-role-doc-doc-model-big", "ranger-deny-role-doc-doc-model-big", policyGuards, policyJournal}
+	// The Intendant's route is capped and, its kind not listed, not refused;
+	// a route no role controls gets nothing.
+	want := []string{"ranger-cap-role-doc-doc-model-big", intendantCapBig, "ranger-deny-role-doc-doc-model-big", policyGuards, policyJournal}
 	h.eventually("the per-model policies", func() (bool, string) {
 		got := h.policies()
 		return slices.Equal(got, want), strings.Join(got, ",")
@@ -356,6 +365,16 @@ func TestPerModelMarkers(t *testing.T) {
 		return len(e) == 1 && strings.Contains(e[0], "HTTPRoute/role-doc-doc-model-big"), strings.Join(e, " | ")
 	})
 
+	// A models entry for the Intendant refuses it the big model.
+	h.update(func(rg *v1alpha1.TakeCareRanger) {
+		rg.Spec.Models = append(rg.Spec.Models, v1alpha1.RoleModels{Kind: v1alpha1.KindTakeCareIntendant, Allowed: []string{modelDefault}})
+	})
+	intendantMarkers := []string{intendantCapBig, intendantDenyBig, policyGuards, policyJournal}
+	h.eventually("the Intendant's refusal", func() (bool, string) {
+		got := h.policies()
+		return slices.Contains(got, intendantDenyBig), strings.Join(got, ",")
+	})
+
 	r := &unstructured.Unstructured{}
 	r.SetGroupVersionKind(routes.HTTPRouteGVK)
 	r.SetName("role-doc-doc-model-big")
@@ -363,10 +382,10 @@ func TestPerModelMarkers(t *testing.T) {
 	h.must(h.c.Delete(h.ctx, r))
 	h.eventually("the route's Markers gone with it", func() (bool, string) {
 		got := h.policies()
-		return slices.Equal(got, []string{policyGuards, policyJournal}), strings.Join(got, ",")
+		return slices.Equal(got, intendantMarkers), strings.Join(got, ",")
 	})
-	if e := h.events(ReasonModelNotAllowed); len(e) != 1 {
-		t.Errorf("ModelNotAllowed events %v, want one", e)
+	if e := h.events(ReasonModelNotAllowed); len(e) != 2 {
+		t.Errorf("ModelNotAllowed events %v, want one per refused route", e)
 	}
 }
 

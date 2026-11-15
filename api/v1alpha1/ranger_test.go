@@ -49,6 +49,15 @@ func TestRangerValidation(t *testing.T) {
 			b := v1alpha1.Budget{RequestsPerMinute: new(int32(60))}
 			r.Spec.Caps.Models = []v1alpha1.ModelCap{{Name: modelDefault, Budget: b}, {Name: modelDefault, Budget: b}}
 		}, wantDuplicate},
+		{"the models of each role kind", func(r *v1alpha1.TakeCareRanger) {
+			r.Spec.Models = []v1alpha1.RoleModels{
+				{Kind: v1alpha1.KindTakeCareDoc, Allowed: []string{modelDefault}},
+				{Kind: v1alpha1.KindTakeCareIntendant, Allowed: []string{modelDefault}},
+			}
+		}, ""},
+		{"the models of a kind that is not a role", func(r *v1alpha1.TakeCareRanger) {
+			r.Spec.Models = []v1alpha1.RoleModels{{Kind: "TakeCareDemo", Allowed: []string{modelDefault}}}
+		}, "Unsupported value"},
 		{"extra Markers below Expert", func(r *v1alpha1.TakeCareRanger) {
 			r.Spec.Level = v1alpha1.LevelPractitioner
 			r.Spec.Extra = &v1alpha1.ExtraMarkers{SourceCIDRs: []string{"10.0.0.0/8"}}

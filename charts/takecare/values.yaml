@@ -116,12 +116,13 @@ ranger:
     patterns: []
   # -- Budgets and limits: `gateway: {tokensPerHour, requestsPerMinute,
   # burst}`, `models: [{name, tokensPerHour, ...}]`. Empty: no cap until
-  # you set one. The budgets are soft: the gateway counts the tokens of the
-  # answer. A request limit on the gateway counts every request (MCP and
-  # A2A calls included).
+  # you set one. A model's cap applies to every role's route to that model
+  # (the Doc's and the Intendant's), each route counted on its own. The
+  # budgets are soft: the gateway counts the tokens of the answer. A request
+  # limit on the gateway counts every request (MCP and A2A calls included).
   caps: {}
-  # -- The platform's models each role kind may call, as `[{kind, allowed}]`;
-  # a kind not listed may call all.
+  # -- The platform's models each role kind (TakeCareDoc, TakeCareIntendant)
+  # may call, as `[{kind, allowed}]`; a kind not listed may call all.
   models: []
   # -- Expert only: the extra Markers (`webhook`, `sourceCIDRs`,
   # `expressions`). The chart refuses them below Expert, as the API does.

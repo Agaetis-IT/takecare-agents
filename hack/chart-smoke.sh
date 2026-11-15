@@ -607,6 +607,22 @@ spec:
 EOF
   check "the Intendant reaches Ready=True, its three routes rendered" \
     wait_condition_long takecareintendant smoke-intendant Ready True 120
+  # The Ranger's per-model cap covers every role kind's model route
+  # (spec 09 §4): the Intendant's route to the capped model gets its own
+  # cap, and a run of quick calls is answered 429 by the gateway.
+  local icap=ranger-cap-role-intendant-smoke-intendant-model-default
+  check "the gateway accepted ${icap}, the per-model cap on the Intendant's model route" \
+    bash -c "for _ in \$(seq 30); do [[ \$(kubectl -n ${NS} get agentgatewaypolicy ${icap} -o jsonpath='{.status.ancestors[0].conditions[?(@.type==\"Accepted\")].status}' 2>/dev/null) == True ]] && exit 0; sleep 2; done; exit 1"
+  local ichat="${gw}/roles/intendant.smoke-intendant/models/default/v1/chat/completions" ilimited=() ilast
+  for _ in 1 2 3 4 5; do
+    ilast="$(kubectl -n kagent exec smoke-a2a -- curl -s -o /dev/null -m 10 -w '%{http_code}' -H 'Content-Type: application/json' \
+      -d '{"model":"default","messages":[{"role":"user","content":"ping"}]}' "$ichat")"
+    ilimited+=("$ilast")
+    [[ "$ilast" == 429 ]] && break
+  done
+  log "quick calls on the Intendant's model route: ${ilimited[*]}"
+  check "the per-model cap answers a run of quick calls on the Intendant's model route with 429" \
+    test "$ilast" = 429
   local iroute="${gw}/mcp/${NS}/smoke-intendant"
   check "get_rules with the survey's arguments is let through" \
     mcp_allowed kagent smoke-a2a "${iroute}/prometheus" get_rules '{"type":"alert","exclude_alerts":true}'
@@ -902,12 +918,12 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=108 install ;;
-  upgrade) CHECKS_EXPECTED=108 upgrade ;;
+  install) CHECKS_EXPECTED=110 install ;;
+  upgrade) CHECKS_EXPECTED=110 upgrade ;;
   status) status ;;
   mask-test) mask_test ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=4 cluster_chart ;;
-  all) mask_test; up; CHECKS_EXPECTED=108 install; CHECKS_EXPECTED=108 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
+  all) mask_test; up; CHECKS_EXPECTED=110 install; CHECKS_EXPECTED=110 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|cluster|status|mask-test|down|all]"; exit 2 ;;
 esac
