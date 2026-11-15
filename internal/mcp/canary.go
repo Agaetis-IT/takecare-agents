@@ -5,9 +5,11 @@ package mcp
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sync"
 
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -20,6 +22,11 @@ const (
 	// CanaryLetThrough means the call reached the server: the rule is not
 	// enforced.
 	CanaryLetThrough CanaryVerdict = "let-through"
+	// CanaryClosed means the route's tool list refused get_rules (HTTP 400,
+	// JSON-RPC -32602): the rule is not enforced, but the route does not
+	// admit the tool. The gateway checks the route rule before the tool
+	// list, so an enforced rule answers 403 whatever the list says.
+	CanaryClosed CanaryVerdict = "closed"
 	// CanaryPending means anything else (a timeout, a transport error, 5xx,
 	// 429, another status): unproven, never read as enforced.
 	CanaryPending CanaryVerdict = "pending"
@@ -72,11 +79,25 @@ func (c *Client) CallRuleCanary(ctx context.Context, ep Endpoint) (CanaryVerdict
 		return CanaryRefused, status
 	case err == nil && status >= 200 && status < 300:
 		return CanaryLetThrough, status
+	case status == http.StatusBadRequest && unknownTool(err):
+		return CanaryClosed, status
 	}
 	// A 2xx whose body is a JSON-RPC error lands here too: pending, which
 	// fails closed like a let-through.
 	return CanaryPending, status
 }
+
+// unknownTool says whether a call's error is the gateway's refusal of a
+// tool its MCP authorization does not list: JSON-RPC -32602 at
+// agentgateway 1.6 (mcp/tool-access).
+func unknownTool(err error) bool {
+	var rpc *jsonrpc.Error
+	return errors.As(err, &rpc) && rpc.Code == codeInvalidParams
+}
+
+// codeInvalidParams is JSON-RPC's invalid params code, which agentgateway
+// answers for an unknown or unlisted tool.
+const codeInvalidParams = -32602
 
 // statusRecorder keeps the status of the first POST after it is armed:
 // the tools/call, once the session's initialize and notification are done.

@@ -60,8 +60,13 @@ const (
 	ReasonConnectorsReady  = "ConnectorsReady"
 	ReasonMapMissing       = "MapConnectorMissing"
 	ReasonConnectorDegrade = "ConnectorsDegraded"
-	ReasonRendered         = "Rendered"
-	ReasonGatewayNotReady  = "GatewayNotReady"
+	// ReasonMetricsRouteClosed and ReasonMetricsRouteReopened are the events
+	// of the metrics route's state (spec 10 §8): it stops admitting
+	// get_rules, and admits it again.
+	ReasonMetricsRouteClosed   = "MetricsRouteClosed"
+	ReasonMetricsRouteReopened = "MetricsRouteReopened"
+	ReasonRendered             = "Rendered"
+	ReasonGatewayNotReady      = "GatewayNotReady"
 )
 
 const requeueNotReady = 30 * time.Second
@@ -206,8 +211,18 @@ func (r *Reconciler) render(ctx context.Context, in *v1alpha1.TakeCareIntendant,
 	keep := map[string]bool{}
 	for _, m := range b.routes {
 		keep[m.Connector] = true
+		state, metrics := b.rules[m.Connector]
+		var was, found bool
+		if metrics {
+			if was, found, err = admitsRules(ctx, r.Client, role, m.Connector); err != nil {
+				return false, err
+			}
+		}
 		if err := routes.EnsureMCP(ctx, r.Client, gw, role, m); err != nil {
 			return false, err
+		}
+		if metrics && found && was != state.open && state.canary {
+			r.rulesRouteEvent(in, m.Connector, state)
 		}
 	}
 	models, starting, err := r.renderAgent(ctx, in, b, p, gw, st)

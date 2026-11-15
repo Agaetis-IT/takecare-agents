@@ -16,9 +16,10 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/discovery"
 )
 
-// The condition follows the last completed survey's canary; surveys
-// completed in the same second all count, a problem in any of them wins.
-func TestLastCanary(t *testing.T) {
+// The route's state follows the gateway's status and the last completed
+// survey's canary line; surveys completed in the same second all count, a
+// problem in any of them wins, then a proof.
+func TestRulesRouteState(t *testing.T) {
 	at := func(sec int) *metav1.Time { m := metav1.NewTime(time.Unix(int64(1_800_000_000+sec), 0)); return &m }
 	survey := func(name, intendant string, phase v1alpha1.RunPhase, done *metav1.Time, reason string) *v1alpha1.TakeCareSurvey {
 		s := &v1alpha1.TakeCareSurvey{Name: name, Namespace: ns}
@@ -31,28 +32,39 @@ func TestLastCanary(t *testing.T) {
 		s.Status.Layers = []v1alpha1.SurveyLayer{l}
 		return s
 	}
+	const statusProblem = "the argument rule on prometheus's route is not enforced yet"
+	closed := func(survey, reason string) rulesRoute {
+		return rulesRoute{problem: "survey " + survey + ": " + reason, canary: true}
+	}
 	for _, tc := range []struct {
-		name    string
-		surveys []*v1alpha1.TakeCareSurvey
-		want    string
+		name     string
+		statusOK bool
+		surveys  []*v1alpha1.TakeCareSurvey
+		want     rulesRoute
 	}{
-		{"no survey completed", []*v1alpha1.TakeCareSurvey{survey("a", "i", v1alpha1.RunRunning, nil, "")}, ""},
-		{"let through, then refused", []*v1alpha1.TakeCareSurvey{
+		{"the status refuses: closed", false, nil, rulesRoute{problem: statusProblem}},
+		{"a new Intendant, no survey completed: open", true, []*v1alpha1.TakeCareSurvey{survey("a", "i", v1alpha1.RunRunning, nil, "")}, rulesRoute{open: true}},
+		{"let through, then refused on the open route: open", true, []*v1alpha1.TakeCareSurvey{
 			survey("b", "i", v1alpha1.RunCompleted, at(1), letThrough), survey("a", "i", v1alpha1.RunCompleted, at(2), ""),
-		}, ""},
-		{"refused, then unproven", []*v1alpha1.TakeCareSurvey{
+		}, rulesRoute{open: true}},
+		{"let through: closed", true, []*v1alpha1.TakeCareSurvey{survey("a", "i", v1alpha1.RunCompleted, at(1), letThrough)}, closed("a", letThrough)},
+		{"refused, then unproven: closed", true, []*v1alpha1.TakeCareSurvey{
 			survey("a", "i", v1alpha1.RunCompleted, at(1), ""), survey("b", "i", v1alpha1.RunCompleted, at(2), notChecked),
-		}, "survey b: " + notChecked},
-		{"the same second: the problem wins", []*v1alpha1.TakeCareSurvey{
-			survey("a", "i", v1alpha1.RunCompleted, at(3), letThrough), survey("z", "i", v1alpha1.RunCompleted, at(3), ""),
-		}, "survey a: " + letThrough},
-		{"blocked by the status: the status read reports it", []*v1alpha1.TakeCareSurvey{
+		}, closed("b", notChecked)},
+		{"refused by the tool list: closed", true, []*v1alpha1.TakeCareSurvey{survey("a", "i", v1alpha1.RunCompleted, at(1), canaryClosed)}, closed("a", canaryClosed)},
+		{"closed, then proven: open, no problem", true, []*v1alpha1.TakeCareSurvey{
+			survey("a", "i", v1alpha1.RunCompleted, at(1), canaryClosed), survey("b", "i", v1alpha1.RunCompleted, at(2), proven),
+		}, rulesRoute{open: true, canary: true}},
+		{"the same second: the problem wins over the proof", true, []*v1alpha1.TakeCareSurvey{
+			survey("a", "i", v1alpha1.RunCompleted, at(3), proven), survey("z", "i", v1alpha1.RunCompleted, at(3), letThrough),
+		}, closed("z", letThrough)},
+		{"blocked by the status: the status read reports it", true, []*v1alpha1.TakeCareSurvey{
 			survey("a", "i", v1alpha1.RunCompleted, at(1), notEnforced),
-		}, ""},
-		{"another Intendant's, or a failed survey", []*v1alpha1.TakeCareSurvey{
+		}, rulesRoute{open: true}},
+		{"another Intendant's, or a failed survey", true, []*v1alpha1.TakeCareSurvey{
 			survey("a", "other", v1alpha1.RunCompleted, at(5), letThrough), survey("b", "i", v1alpha1.RunFailed, at(6), letThrough),
 			survey("c", "i", v1alpha1.RunCompleted, at(1), ""),
-		}, ""},
+		}, rulesRoute{open: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			scheme := runtime.NewScheme()
@@ -63,10 +75,13 @@ func TestLastCanary(t *testing.T) {
 			for _, s := range tc.surveys {
 				objs = append(objs, s)
 			}
-			r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).WithStatusSubresource(&v1alpha1.TakeCareSurvey{}).Build()}
-			got, err := r.lastCanary(t.Context(), &v1alpha1.TakeCareIntendant{Name: "i", Namespace: ns}, connMetrics)
-			if err != nil || got != tc.want {
-				t.Errorf("lastCanary = %q, %v; want %q", got, err, tc.want)
+			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).WithStatusSubresource(&v1alpha1.TakeCareSurvey{}).Build()
+			last, err := lastCanary(t.Context(), c, &v1alpha1.TakeCareIntendant{Name: "i", Namespace: ns}, connMetrics)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := rulesRouteState(tc.statusOK, statusProblem, last); got != tc.want {
+				t.Errorf("rulesRouteState = %+v, want %+v", got, tc.want)
 			}
 		})
 	}

@@ -725,6 +725,8 @@ EOF
   log "the call rule's canary (spec 10 §8): a Gateway-level Override drops the argument rule"
   local canary='{"type":"alert","exclude_alerts":true,"takecare_canary":true}'
   local let_through="the gateway let through a call its argument rule on the metrics route refuses"
+  local closed="the gateway's argument rule on the metrics route is not enforced; the route's tool list refused the canary"
+  local proven="the gateway's argument rule on the metrics route is proven: the rules are read from the next survey"
   local calls=role-intendant-smoke-intendant-mcp-prometheus-calls
   kubectl -n "$NS" apply -f - >/dev/null <<EOF
 apiVersion: agentgateway.dev/v1alpha1
@@ -750,16 +752,37 @@ EOF
     test "$open_layer" = "Completed ${let_through}"
   # Any survey under the Override sees it: one the Intendant starts itself
   # may complete after smoke-canary-open and be the one named.
-  check "ConnectorsReady names a survey that saw the canary let through" \
-    bash -c "for _ in \$(seq 30); do [[ \$(kubectl -n ${NS} get takecareintendant smoke-intendant -o jsonpath='{.status.conditions[?(@.type==\"ConnectorsReady\")].message}') == *'survey smoke-'*': ${let_through}'* ]] && exit 0; sleep 2; done; exit 1"
+  check "ConnectorsReady names a survey whose canary was not refused" \
+    bash -c "for _ in \$(seq 30); do m=\$(kubectl -n ${NS} get takecareintendant smoke-intendant -o jsonpath='{.status.conditions[?(@.type==\"ConnectorsReady\")].message}'); [[ \$m == *'survey smoke-'*': ${let_through}'* || \$m == *'survey smoke-'*': ${closed}'* ]] && exit 0; sleep 2; done; exit 1"
+  # The route closed (spec 10 §8): its tool list no longer admits get_rules,
+  # which a Gateway-level Override cannot drop; the forged call with the
+  # survey's own arguments is refused by name (400, -32602), and a survey
+  # under the Override sees its canary refused by the tool list.
+  check "the route closed: a forged get_rules with the survey's arguments is refused by the tool list (Unknown tool)" \
+    mcp_unknown_tool kagent smoke-a2a "${iroute}/prometheus" get_rules '{"type":"alert","exclude_alerts":true}'
+  check "the Intendant has a MetricsRouteClosed Warning event" \
+    bash -c "kubectl -n ${NS} get events --field-selector reason=MetricsRouteClosed,type=Warning,involvedObject.name=smoke-intendant -o name | grep -q ."
+  local shut_layer
+  shut_layer="$(survey_alerting smoke-canary-shut)"
+  log "the survey on the closed route under the Override: ${shut_layer}"
+  check "on the closed route under the Override, the survey's canary is refused by the tool list" \
+    test "$shut_layer" = "Completed ${closed}"
   kubectl -n "$NS" delete agentgatewaypolicy smoke-override --ignore-not-found >/dev/null
   check "the Override removed, the forged canary is refused again (403)" \
     retry_forbidden kagent smoke-a2a "${iroute}/prometheus" get_rules "$canary"
-  local closed_layer
-  closed_layer="$(survey_alerting smoke-canary-closed)"
-  log "the survey after the Override: ${closed_layer}"
-  check "the next survey's canary is refused: it reads the rules, and ConnectorsReady no longer names a canary" \
-    bash -c "[[ '${closed_layer}' == Completed* && '${closed_layer}' != *'argument rule'* ]] && for _ in \$(seq 30); do [[ \$(kubectl -n ${NS} get takecareintendant smoke-intendant -o jsonpath='{.status.conditions[?(@.type==\"ConnectorsReady\")].message}') != *'argument rule on the metrics route'* ]] && exit 0; sleep 2; done; exit 1"
+  # Recovery takes two surveys: the first proves the rule on the closed
+  # route and does not read, the route reopens, the second reads.
+  local proof_layer read_layer
+  proof_layer="$(survey_alerting smoke-canary-proof)"
+  log "the survey after the Override: ${proof_layer}"
+  check "the next survey's canary is refused by the rule on the closed route: it proves the rule and does not read" \
+    test "$proof_layer" = "Completed ${proven}"
+  check "proven, the route reopens: the forged get_rules with the survey's arguments is let through again" \
+    retry_allowed kagent smoke-a2a "${iroute}/prometheus" get_rules '{"type":"alert","exclude_alerts":true}'
+  read_layer="$(survey_alerting smoke-canary-read)"
+  log "the survey after the proof: ${read_layer}"
+  check "the survey after the proof reads the rules, and ConnectorsReady no longer names a canary" \
+    bash -c "[[ '${read_layer}' == Completed* && '${read_layer}' != *'argument rule'* ]] && for _ in \$(seq 30); do [[ \$(kubectl -n ${NS} get takecareintendant smoke-intendant -o jsonpath='{.status.conditions[?(@.type==\"ConnectorsReady\")].message}') != *'argument rule on the metrics route'* ]] && exit 0; sleep 2; done; exit 1"
   kubectl -n "$NS" delete takecareintendant smoke-intendant --timeout=60s >/dev/null
   check "deleting the Intendant removed its agent and model configuration in kagent, and its routes" \
     bash -c "[[ -z \$(kubectl -n kagent get agents,modelconfigs,remotemcpservers -l takecare.agaetis.fr/owner=smoke-intendant -o name) && -z \$(kubectl -n ${NS} get httproutes,agentgatewaypolicies -l takecare.agaetis.fr/role-instance=intendant.smoke-intendant -o name) ]]"
@@ -1008,12 +1031,12 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=116 install ;;
-  upgrade) CHECKS_EXPECTED=116 upgrade ;;
+  install) CHECKS_EXPECTED=121 install ;;
+  upgrade) CHECKS_EXPECTED=121 upgrade ;;
   status) status ;;
   mask-test) mask_test ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=4 cluster_chart ;;
-  all) mask_test; up; CHECKS_EXPECTED=116 install; CHECKS_EXPECTED=116 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
+  all) mask_test; up; CHECKS_EXPECTED=121 install; CHECKS_EXPECTED=121 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|cluster|status|mask-test|down|all]"; exit 2 ;;
 esac

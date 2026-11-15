@@ -114,6 +114,8 @@ func (c *fakeCanary) CallRuleCanary(context.Context, mcp.Endpoint) (mcp.CanaryVe
 		return v, http.StatusOK
 	case mcp.CanaryPending:
 		return v, 0
+	case mcp.CanaryClosed:
+		return v, http.StatusBadRequest
 	}
 	return mcp.CanaryRefused, http.StatusForbidden
 }

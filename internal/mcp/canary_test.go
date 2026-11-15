@@ -60,6 +60,14 @@ func TestCallRuleCanary(t *testing.T) {
 			mcp.CanaryPending, http.StatusTooManyRequests},
 		{"another refusal", func(w http.ResponseWriter) bool { http.Error(w, "no", http.StatusUnauthorized); return true },
 			mcp.CanaryPending, http.StatusUnauthorized},
+		{"refused by the route's tool list", func(w http.ResponseWriter) bool {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":2,"error":{"code":-32602,"message":"Unknown tool: get_rules"}}`))
+			return true
+		}, mcp.CanaryClosed, http.StatusBadRequest},
+		{"a 400 of another kind", func(w http.ResponseWriter) bool { http.Error(w, "bad", http.StatusBadRequest); return true },
+			mcp.CanaryPending, http.StatusBadRequest},
 		{"no answer before the timeout", func(http.ResponseWriter) bool { time.Sleep(2 * time.Second); return false },
 			mcp.CanaryPending, 0},
 	} {

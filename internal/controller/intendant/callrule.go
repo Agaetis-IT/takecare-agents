@@ -11,6 +11,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -120,21 +121,80 @@ func (w *Runner) checkCallRule(ctx context.Context, in *v1alpha1.TakeCareIntenda
 	return verdict
 }
 
-// lastCanary is what the latest completed survey of the Intendant found
-// on a metrics connector whose rule the gateway's status calls enforced:
-// the canary let through, or unproven, in the alerting layer's fixed
-// phrase (a survey blocked by the status itself says notEnforced, which
-// the status read already reports); empty when the canary was refused or
-// no survey has completed.
-// Read from the surveys' status, it survives a restart; each survey proves
-// the rule again, so the last one completed is the one that counts (its
-// completedAt, which the runner writes; surveys of one Intendant run one at
-// a time). Surveys completed in the same second all count: a problem in any
-// of them wins.
-func (r *Reconciler) lastCanary(ctx context.Context, in *v1alpha1.TakeCareIntendant, connector string) (string, error) {
+// canaryClosed is the alerting layer's line when the canary passed the
+// argument rule and the route's tool list refused it: the rule is not
+// enforced, and the route no longer admits get_rules.
+const canaryClosed = "the gateway's argument rule on the metrics route is not enforced; the route's tool list refused the canary"
+
+// proven is the alerting layer's line in the survey whose canary the rule
+// refused while the route did not admit get_rules: informational, not a
+// problem; the next survey reads the rules.
+const proven = "the gateway's argument rule on the metrics route is proven: the rules are read from the next survey"
+
+// canaryRecord is the last completed survey's canary line on a connector.
+type canaryRecord struct {
+	survey, reason string
+}
+
+// problem says whether the line keeps the route closed.
+func (c canaryRecord) problem() bool {
+	return c.reason == letThrough || c.reason == notChecked || c.reason == canaryClosed
+}
+
+// rulesRoute is whether the metrics route admits get_rules by name, and
+// what ConnectorsReady says about it.
+type rulesRoute struct {
+	open    bool
+	problem string
+	// canary says the state comes from a survey's canary (closed by one,
+	// or reopened by a proof), the transitions a person should see; a
+	// route closed by the status alone, as before the gateway accepts the
+	// rule, is reported by the condition only.
+	canary bool
+}
+
+// rulesRouteState decides the metrics route (spec 10 §8), in one place:
+// closed while the gateway's status refuses the rule, and from a survey
+// whose canary was not refused until a survey's canary is refused again;
+// open otherwise, a new Intendant's included (the product owner's choice,
+// 2026-11-15: its first survey proves the rule before it reads).
+func rulesRouteState(statusOK bool, statusProblem string, last canaryRecord) rulesRoute {
+	switch {
+	case !statusOK:
+		return rulesRoute{problem: statusProblem}
+	case last.problem():
+		return rulesRoute{problem: fmt.Sprintf("survey %s: %s", last.survey, last.reason), canary: true}
+	}
+	return rulesRoute{open: true, canary: last.reason == proven}
+}
+
+// rulesRouteOf reads the state's two inputs: the gateway's status of the
+// rule, and the last completed survey of the Intendant.
+func rulesRouteOf(ctx context.Context, c client.Reader, in *v1alpha1.TakeCareIntendant, connector string) (rulesRoute, error) {
+	ok, problem, err := callRuleEnforced(ctx, c, roleOf(in), connector)
+	if err != nil {
+		return rulesRoute{}, err
+	}
+	last, err := lastCanary(ctx, c, in, connector)
+	if err != nil {
+		return rulesRoute{}, err
+	}
+	return rulesRouteState(ok, problem, last), nil
+}
+
+// lastCanary is the canary line the latest completed survey of the
+// Intendant left on a connector: let through, unproven, closed or proven;
+// empty when its canary was refused on an open route, it sent none, or no
+// survey has completed. A survey blocked by the status says notEnforced,
+// which the status read already reports. Read from the surveys' status, it
+// survives a restart; each survey proves the rule again, so the last one
+// completed counts (its completedAt, which the runner writes; surveys of
+// one Intendant run one at a time). Surveys completed in the same second
+// all count: a problem in any of them wins, then a proof.
+func lastCanary(ctx context.Context, c client.Reader, in *v1alpha1.TakeCareIntendant, connector string) (canaryRecord, error) {
 	var list v1alpha1.TakeCareSurveyList
-	if err := r.reader().List(ctx, &list, client.InNamespace(in.Namespace)); err != nil {
-		return "", fmt.Errorf("list surveys: %w", err)
+	if err := c.List(ctx, &list, client.InNamespace(in.Namespace)); err != nil {
+		return canaryRecord{}, fmt.Errorf("list surveys: %w", err)
 	}
 	var latest *metav1.Time
 	done := make([]*v1alpha1.TakeCareSurvey, 0, len(list.Items))
@@ -150,26 +210,65 @@ func (r *Reconciler) lastCanary(ctx context.Context, in *v1alpha1.TakeCareIntend
 	}
 	last := slices.DeleteFunc(done, func(s *v1alpha1.TakeCareSurvey) bool { return !s.Status.CompletedAt.Equal(latest) })
 	slices.SortFunc(last, func(a, b *v1alpha1.TakeCareSurvey) int { return strings.Compare(a.Name, b.Name) })
+	var out canaryRecord
 	for _, s := range last {
-		if reason := canaryProblem(s, connector); reason != "" {
-			return fmt.Sprintf("survey %s: %s", s.Name, reason), nil
+		r := canaryRecord{survey: s.Name, reason: canaryLine(s, connector)}
+		if r.problem() {
+			return r, nil
+		}
+		if r.reason == proven && out.reason == "" {
+			out = r
 		}
 	}
-	return "", nil
+	return out, nil
 }
 
-// canaryProblem is a survey's alerting-layer line on a connector when its
-// canary was let through or unproven.
-func canaryProblem(s *v1alpha1.TakeCareSurvey, connector string) string {
+// canaryLine is a survey's alerting-layer line on a connector left by its
+// canary, if any.
+func canaryLine(s *v1alpha1.TakeCareSurvey, connector string) string {
 	for _, l := range s.Status.Layers {
 		if l.Name != discovery.LayerAlerting {
 			continue
 		}
 		for _, n := range l.NotSeen {
-			if n.Ref == connector && (n.Reason == letThrough || n.Reason == notChecked) {
+			switch {
+			case n.Ref != connector:
+			case n.Reason == letThrough, n.Reason == notChecked, n.Reason == canaryClosed, n.Reason == proven:
 				return n.Reason
 			}
 		}
 	}
 	return ""
+}
+
+// admitsRules says whether a metrics route's MCP authorization admits
+// get_rules as the gateway has it now; found is false before the first
+// rendering.
+func admitsRules(ctx context.Context, c client.Reader, role routes.Role, connector string) (admits, found bool, err error) {
+	policy := &unstructured.Unstructured{}
+	policy.SetGroupVersionKind(routes.PolicyGVK)
+	err = c.Get(ctx, client.ObjectKey{Namespace: role.Namespace, Name: routes.MCPPolicyName(role, connector)}, policy)
+	switch {
+	case apierrors.IsNotFound(err):
+		return false, false, nil
+	case err != nil:
+		return false, false, fmt.Errorf("get the tool list of %s: %w", connector, err)
+	}
+	exprs, _, _ := unstructured.NestedStringSlice(policy.Object, "spec", "backend", "mcp", "authorization", "policy", "matchExpressions")
+	return slices.Equal(exprs, []string{routes.Expression([]string{mcp.RulesTool})}), true, nil
+}
+
+// rulesRouteEvent says a metrics route's change of state, for a person:
+// closed (Warning, with the survey and its line) or reopened (Normal).
+func (r *Reconciler) rulesRouteEvent(in *v1alpha1.TakeCareIntendant, connector string, state rulesRoute) {
+	if r.Recorder == nil {
+		return
+	}
+	if state.open {
+		r.Recorder.Eventf(in, nil, corev1.EventTypeNormal, ReasonMetricsRouteReopened, "Reconcile",
+			"the route to %s admits get_rules again: the gateway's argument rule is proven", connector)
+		return
+	}
+	r.Recorder.Eventf(in, nil, corev1.EventTypeWarning, ReasonMetricsRouteClosed, "Reconcile",
+		"the route to %s no longer admits get_rules: %s", connector, state.problem)
 }
