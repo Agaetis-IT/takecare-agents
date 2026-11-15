@@ -16,7 +16,7 @@ The Ranger applies the same rules to every agent that goes through the gateway: 
 
 - `masking`: the built-in patterns applied (default: credit card, email, phone number, social security number) and the customer's own named patterns; what matches is replaced before it reaches the provider.
 - `filtering`: the patterns whose match rejects the request (default: a shipped list of secret shapes: private keys, cloud access keys, API tokens of common services) and the customer's own.
-- `caps`: a token budget and a request limit for the whole gateway, and per model; per agent at Expert (§3). Units per minute or per hour.
+- `caps`: a token budget and a request limit for the gateway, and per model; per agent at Expert (§3). Units per minute or per hour. The gateway's budget is not a ceiling on its total traffic: it is shared by the routes without a model cap, and repeated on each route with one, under the Marker lines `gateway-budget` and `gateway-request-limit` (§4).
 - `models`: which of the platform's models each role kind may call (default: all). The kinds accepted: `TakeCareDoc`, `TakeCareIntendant`.
 - `extra` (Expert): the customer's additional Markers: a webhook guard (their own logic, at an `https` address with a host and an optional port, no path: the gateway reaches it as a backend and calls the paths of its own webhook protocol), allowed source networks (CIDRs only: they are written into the gateway's network rule), CEL expressions on the traffic. The webhook is called **without credentials** today: a header value could only reach the gateway written in its policy, where whoever reads policies would read it. When a customer needs the guard authenticated, it is the backend's mTLS, in the shape of the cluster connector's TLS block (ADR 0016): a follow-up, not built.
 
@@ -67,6 +67,10 @@ The tool allow-lists of the roles (ADR 0008) are not the Ranger's and exist at e
 
 On the Gateway, a request limit counts every request through it, MCP and A2A calls included; a token budget counts only the model answers.
 
+On a route that carries a per-model cap, a route-level rate limit replaces the gateway's (agentgateway 1.6: a more specific traffic policy wins the whole field), so the Ranger repeats the gateway's budget in that route's cap, with its own Marker lines (`gateway-budget`, `gateway-request-limit`): both hold on that route, each counted on that route alone, and the stricter answers first. The gateway budget is therefore one budget shared by the routes without a model cap, plus one copy per capped route, each per proxy replica: it is not a ceiling on the gateway's total traffic; the total can reach the gateway budget once for the uncapped routes together and once more for each capped route. A shared ceiling needs the gateway's global rate limit service (§10). A changed limit starts from a fresh bucket (measured on agentgateway 1.6.0, per proxy replica): a change to a cap resets what was consumed under it.
+
+The Ranger counts a Marker as enforced when every ancestor of its policy reports both `Accepted` and `Attached` True; either False refuses it, and a missing or Unknown one leaves it pending. The pair proves the plain failures only (a policy the gateway refuses, a target gone), not enforcement: a field can be dropped, or the proxy keep an older configuration, while both stay True (spec 10 §8 is why the Intendant proves its call rule with a canary).
+
 The budgets are soft, as the gateway counts tokens from the answer: the request that crosses the limit passes, the next ones are refused until the window resets. The Ranger says it in its status and its documentation; a hard ceiling is the provider's own quota.
 
 ## 5. Status and events
@@ -101,7 +105,7 @@ Proven so far, at `Practitioner`:
 
 - criterion 2, the mask: the e2e posts an alert whose description carries a card number and an email; the request the fake model receives (`GET /last`) holds `<CREDIT_CARD>` and `<EMAIL_ADDRESS>` instead (`hack/e2e.sh`).
 - criterion 2, the refusal: the chart smoke's request carrying a private key on the Doc's model route gets 403 with the Ranger's message (`hack/chart-smoke.sh`).
-- criterion 2, the limit: with a per-model cap of 2 requests a minute and a burst of 1 on the smoke, a run of quick calls on the Doc's model route gets 429, and so does a run on the Intendant's. The gateway lets three through before it. The token budget's 429 is not proven yet.
+- criterion 2, the limit: with a per-model cap of 2 requests a minute and a burst of 1 on the smoke, a run of quick calls on the Doc's model route gets 429, and so does a run on the Intendant's. The gateway lets three through before it. With a gateway request limit far below a generous per-model cap, a run of quick calls on the Doc's model route also gets 429, from the gateway's entry repeated in the route's cap; the repeated token budget is rendered, not proven (no answer carries usage on the smoke). The token budget's 429 is not proven yet.
 - criterion 2, the warning and the count: the e2e finds the masked request on the gateway's guardrail counter (`action="Mask"`) and a `RequestsMasked` Warning event on the Ranger; the envtest covers the three kinds, the metric and the conditions.
 
 ## 10. Open questions
@@ -109,5 +113,6 @@ Proven so far, at `Practitioner`:
 - Per-model caps: checked on agentgateway 1.6 (2026-11-08), a policy's `targetRefs` accept a Gateway, an HTTPRoute, a GRPCRoute, a ListenerSet, a Service, an AgentgatewayBackend or an InferencePool, never an `AgentgatewayModel` (the CRD refuses it); a prompt guard on the Gateway is accepted and attached. The model-side Markers therefore target the Gateway. A `traffic` policy (rate limits, authorization) cannot target an `AgentgatewayBackend` either (the CRD's rule: a Gateway, an HTTPRoute, a GRPCRoute, a ListenerSet or an InferencePool), so the per-model caps and the allowed models target each role's route to the model. A cap per model therefore counts per role route, as the gateway counts per route; a budget shared by every role on one model needs the gateway's global rate limit service: open, not built.
 - The webhook guard when it does not answer: the gateway's default, `FailClosed` (agentgateway 1.6 CRD: an unavailable webhook or an error rejects the request), which the Ranger keeps: a customer's guard that is down stops every model call through the gateway. Whether a customer may choose `FailOpen` (an `extra.webhook.failureMode` field) is open.
 - Masking of streamed answers: unsupported by the gateway; rejection works; say which the Doc's engine uses.
-- Per-agent budgets before the Bib: the model route is shared by every agent, so a budget per agent needs an identity; the Practitioner caps are per model and gateway-wide.
+- Per-agent budgets before the Bib: the model route is shared by every agent, so a budget per agent needs an identity; the Practitioner caps are per model and per gateway, the gateway's repeated on each capped route (§4).
+- A budget shared by every route, capped or not: agentgateway's global rate limit service, not built. With local limits, one policy targeting several routes still keeps a bucket per route (measured on agentgateway 1.6.0, 2026-11-15).
 - The shipped list of secret shapes: its home (the chart's values, or the operator's defaults) and how a customer extends it.

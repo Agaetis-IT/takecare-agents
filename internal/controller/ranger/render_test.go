@@ -4,7 +4,9 @@
 package ranger
 
 import (
+	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"sigs.k8s.io/yaml"
@@ -96,6 +98,52 @@ func TestRenderIntendantRoutes(t *testing.T) {
 		intendantCapDefault}
 	if !slices.Equal(got, want) {
 		t.Errorf("policies %v, want %v", got, want)
+	}
+}
+
+// The gateway budget on capped routes: repeated in each route cap after the
+// model's entries, with its own Marker lines; a route without a model cap
+// gets no policy, and a cap without a gateway budget is unchanged.
+func TestRenderGatewayOnCappedRoutes(t *testing.T) {
+	no := false
+	tokens, gwTokens, gwRPM, gwBurst := int64(1000), int64(5000), int32(60), int32(10)
+	for _, tc := range []struct {
+		name    string
+		gateway *v1alpha1.Budget
+		local   int
+		markers []string
+	}{
+		{"no gateway budget", nil, 1, []string{markerBudget}},
+		{"a gateway budget with both kinds and a burst", &v1alpha1.Budget{TokensPerHour: &gwTokens, RequestsPerMinute: &gwRPM, Burst: &gwBurst},
+			3, []string{markerBudget, "gateway-budget", "gateway-request-limit"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rg := &v1alpha1.TakeCareRanger{Spec: v1alpha1.TakeCareRangerSpec{
+				Level:     v1alpha1.LevelPractitioner,
+				Filtering: v1alpha1.Filtering{Shipped: &no},
+				Caps:      v1alpha1.Caps{Gateway: tc.gateway, Models: []v1alpha1.ModelCap{{Name: modelBig, TokensPerHour: &tokens}}},
+			}}
+			var capped []policy
+			for _, p := range render(rg, "gw", docRoutes) {
+				if strings.HasPrefix(p.name, policyCapPrefix) {
+					capped = append(capped, p)
+				}
+			}
+			if len(capped) != 1 || capped[0].name != "ranger-cap-role-doc-doc-model-big" {
+				t.Fatalf("route caps %v, want the big model's route only", capped)
+			}
+			local := capped[0].spec["traffic"].(map[string]any)["rateLimit"].(map[string]any)["local"].([]any)
+			names := make([]string, 0, len(capped[0].markers))
+			for _, m := range capped[0].markers {
+				names = append(names, m.Name)
+			}
+			if len(local) != tc.local || !slices.Equal(names, tc.markers) {
+				t.Errorf("local %v, markers %v; want %d entries and %v", local, names, tc.local, tc.markers)
+			}
+			if tc.gateway != nil && fmt.Sprint(local[2]) != "map[burst:10 requests:60 unit:Minutes]" {
+				t.Errorf("the gateway's request limit on the route: %v", local[2])
+			}
+		})
 	}
 }
 
