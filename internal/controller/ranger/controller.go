@@ -247,29 +247,40 @@ func (r *Reconciler) gateway(ctx context.Context) (name, reason, message string,
 	return ref.Name, "", "", nil
 }
 
-// acceptance reads the gateway's verdict on a policy: the Accepted
-// condition of its ancestors (nil while there is none).
+// acceptance reads the gateway's verdict on a policy: every ancestor must
+// report both Accepted and Attached True; either False on any ancestor
+// refuses it, with its reason; a condition missing leaves it pending (nil),
+// never read as enforced. The pair proves the plain failures only, not
+// enforcement: a field can be dropped while both stay True (spec 09 §4).
 func acceptance(obj *unstructured.Unstructured) (*bool, string) {
 	ancestors, _, _ := unstructured.NestedSlice(obj.Object, "status", "ancestors")
-	var verdict *bool
 	var messages []string
+	complete := len(ancestors) > 0
 	for _, a := range ancestors {
+		seen := map[string]bool{}
 		conditions, _, _ := unstructured.NestedSlice(a.(map[string]any), "conditions")
 		for _, c := range conditions {
 			cond, _ := c.(map[string]any)
-			if cond["type"] != "Accepted" {
+			typ, _ := cond["type"].(string)
+			if typ != "Accepted" && typ != "Attached" {
 				continue
 			}
-			ok := cond["status"] == "True"
-			if verdict == nil || !ok {
-				verdict = &ok
-			}
-			if !ok {
-				messages = append(messages, strings.TrimSpace(fmt.Sprint(cond["reason"], " ", cond["message"])))
+			seen[typ] = true
+			if cond["status"] != "True" {
+				messages = append(messages, strings.TrimSpace(fmt.Sprint(typ, " ", cond["reason"], " ", cond["message"])))
 			}
 		}
+		complete = complete && seen["Accepted"] && seen["Attached"]
 	}
-	return verdict, strings.Join(messages, "; ")
+	switch {
+	case len(messages) > 0:
+		refused := false
+		return &refused, strings.Join(messages, "; ")
+	case !complete:
+		return nil, ""
+	}
+	ok := true
+	return &ok, ""
 }
 
 // modelRoutes are the roles' routes to the platform's models, which the

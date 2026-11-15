@@ -60,8 +60,11 @@ checks=0 failed=0
 # check prints it under its FAIL line, and empties it for the next check.
 DIAG="$(mktemp "${TMPDIR:-/tmp}/chart-smoke-diag.XXXXXX")"
 # The canary checks' Gateway-level Override policy opens every route below
-# it while it stands: removed right after them, and again on any exit.
-trap 'rm -f "$DIAG"; kubectl -n "$NS" delete agentgatewaypolicy smoke-override --ignore-not-found --request-timeout=5s >/dev/null 2>&1 || true' EXIT
+# it while it stands, and the gateway-cap check sets a low gateway limit
+# that would starve the checks after it: both are undone right after their
+# checks, and again on any exit.
+RANGER_CAPS_SAVED=""
+trap 'rm -f "$DIAG"; kubectl -n "$NS" delete agentgatewaypolicy smoke-override --ignore-not-found --request-timeout=5s >/dev/null 2>&1 || true; [[ -z "$RANGER_CAPS_SAVED" ]] || kubectl patch takecareranger main --type=merge -p "{\"spec\":{\"caps\":${RANGER_CAPS_SAVED}}}" --request-timeout=5s >/dev/null 2>&1 || true' EXIT
 check() { # NAME COMMAND...: PASS when the command succeeds
   local name="$1"; shift
   checks=$((checks + 1))
@@ -595,6 +598,38 @@ EOF
   log "quick calls on the model route: ${limited[*]}"
   check "the per-model cap (2 a minute, burst 1) answers a run of quick calls with 429" \
     test "$last" = 429
+  # The gateway budget on a capped route (spec 09 §4): a route-level limit
+  # replaces the gateway's in agentgateway, so the Ranger repeats the
+  # gateway's budget in the route's cap. With the gateway at 30 a minute
+  # (burst 30) and the model cap at 1000, quick calls on the Doc's model
+  # route meet the gateway's entry. A changed limit starts a fresh bucket;
+  # the restore waits on the data plane, and the EXIT trap restores too.
+  local droute=role-doc-smoke-doc-model-default glimited=() g429=0 code
+  RANGER_CAPS_SAVED="$(kubectl get takecareranger main -o jsonpath='{.spec.caps}')"
+  kubectl patch takecareranger main --type=merge \
+    -p '{"spec":{"caps":{"gateway":{"requestsPerMinute":30,"burst":30},"models":[{"name":"default","requestsPerMinute":1000,"burst":1000}]}}}' >/dev/null
+  for _ in $(seq 30); do
+    [[ "$(kubectl -n "$NS" get agentgatewaypolicy "ranger-cap-${droute}" -o jsonpath='{.spec.traffic.rateLimit.local[1].requests}')" == 30 ]] && break
+    sleep 2
+  done
+  check "the Ranger lists gateway-request-limit on the Doc's capped route" \
+    bash -c "kubectl get takecareranger main -o jsonpath='{range .status.markers[?(@.policy==\"ranger-cap-${droute}\")]}{.name} {end}' | grep -q gateway-request-limit"
+  for _ in $(seq 80); do
+    code="$(kubectl -n kagent exec smoke-a2a -- curl -s -o /dev/null -m 10 -w '%{http_code}' -H 'Content-Type: application/json' \
+      -d '{"model":"default","messages":[{"role":"user","content":"ping"}]}' "$chat")"
+    glimited+=("$code")
+    [[ "$code" == 429 ]] && g429=$((g429 + 1))
+  done
+  log "quick calls on the Doc's model route under the gateway's 30 a minute: ${g429} of ${#glimited[@]} answered 429"
+  check "with a generous model cap, the gateway's request limit repeated on the route answers 429" \
+    test "$g429" -gt 0
+  kubectl patch takecareranger main --type=merge -p "{\"spec\":{\"caps\":${RANGER_CAPS_SAVED}}}" >/dev/null
+  RANGER_CAPS_SAVED=""
+  for _ in $(seq 30); do
+    code="$(kubectl -n kagent exec smoke-a2a -- curl -s -o /dev/null -m 10 -w '%{http_code}' -H 'Content-Type: application/json' -d '{}' "${gw}/mcp/${NS}/smoke-doc/kubernetes")"
+    [[ "$code" != 429 ]] && break
+    sleep 2
+  done
 
   log "the Doc's runs (spec 02 §2): no model provider in the smoke, a run fails"
   local reports_before run_payload
@@ -1033,12 +1068,12 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=121 install ;;
-  upgrade) CHECKS_EXPECTED=121 upgrade ;;
+  install) CHECKS_EXPECTED=123 install ;;
+  upgrade) CHECKS_EXPECTED=123 upgrade ;;
   status) status ;;
   mask-test) mask_test ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=4 cluster_chart ;;
-  all) mask_test; up; CHECKS_EXPECTED=121 install; CHECKS_EXPECTED=121 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
+  all) mask_test; up; CHECKS_EXPECTED=123 install; CHECKS_EXPECTED=123 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|cluster|status|mask-test|down|all]"; exit 2 ;;
 esac

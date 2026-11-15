@@ -6,6 +6,7 @@ package ranger
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -159,25 +160,39 @@ func (h *harness) policies() []string {
 	return names
 }
 
-// accept writes the gateway's verdict on a policy, as agentgateway would.
+// accept writes the gateway's verdict on a policy, as agentgateway would:
+// Accepted and Attached True, or Accepted False with the message.
 func (h *harness) accept(name string, ok bool, message string) {
+	h.t.Helper()
+	if ok {
+		h.conditions(name, map[string]string{condAccepted: statusTrue, condAttached: statusTrue}, "")
+		return
+	}
+	h.conditions(name, map[string]string{condAccepted: statusFalse, condAttached: statusTrue}, message)
+}
+
+// conditions writes a policy's ancestor conditions, by type and status; a
+// False one carries the reason Invalid and the message.
+func (h *harness) conditions(name string, statuses map[string]string, message string) {
 	h.t.Helper()
 	h.must(retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		obj, err := h.policy(name)
 		if err != nil {
 			return err
 		}
-		st, reason := "True", "Accepted"
-		if !ok {
-			st, reason = "False", "Invalid"
-		}
-		obj.Object["status"] = map[string]any{"ancestors": []any{map[string]any{
-			"ancestorRef":    gatewayRef(),
-			"controllerName": "agentgateway.dev/agentgateway",
-			"conditions": []any{map[string]any{
-				"type": "Accepted", "status": st, "reason": reason, "message": message,
+		var conds []any
+		for _, typ := range slices.Sorted(maps.Keys(statuses)) {
+			reason, msg := typ, ""
+			if statuses[typ] != statusTrue {
+				reason, msg = "Invalid", message
+			}
+			conds = append(conds, map[string]any{
+				"type": typ, keyStatus: statuses[typ], "reason": reason, "message": msg,
 				"lastTransitionTime": metav1.Now().UTC().Format(time.RFC3339),
-			}},
+			})
+		}
+		obj.Object[keyStatus] = map[string]any{"ancestors": []any{map[string]any{
+			"ancestorRef": gatewayRef(), "controllerName": "agentgateway.dev/agentgateway", "conditions": conds,
 		}}}
 		return h.c.Status().Update(h.ctx, obj)
 	}))
@@ -258,6 +273,34 @@ func TestApprenticeAudits(t *testing.T) {
 	}
 }
 
+// A Marker is enforced only when the gateway reports both Accepted and
+// Attached: Attached missing is pending, Attached False refuses it with its
+// reason (the pair proves the plain failures, not enforcement).
+func TestMarkerAttached(t *testing.T) {
+	h := start(t)
+	requests := int32(60)
+	h.must(h.c.Create(h.ctx, &v1alpha1.TakeCareRanger{Name: Name, Spec: v1alpha1.TakeCareRangerSpec{
+		Level: v1alpha1.LevelPractitioner,
+		Caps:  v1alpha1.Caps{Gateway: &v1alpha1.Budget{RequestsPerMinute: &requests}},
+	}}))
+	h.condition(ConditionEnforcing, metav1.ConditionTrue, ReasonEnforcing)
+	for _, p := range []string{policyGuards, policyJournal} {
+		h.accept(p, true, "")
+	}
+	h.conditions(policyCaps, map[string]string{condAccepted: statusTrue}, "")
+	rg := h.condition(v1alpha1.ConditionReady, metav1.ConditionFalse, ReasonMarkersPending)
+	if c := meta.FindStatusCondition(rg.Status.Conditions, v1alpha1.ConditionReady); !strings.Contains(c.Message, policyCaps) {
+		t.Errorf("Ready message = %q, want the caps pending", c.Message)
+	}
+	h.conditions(policyCaps, map[string]string{condAccepted: statusTrue, condAttached: statusFalse}, "no matching target")
+	rg = h.condition(v1alpha1.ConditionReady, metav1.ConditionFalse, ReasonMarkerRefused)
+	if c := meta.FindStatusCondition(rg.Status.Conditions, v1alpha1.ConditionReady); !strings.Contains(c.Message, "ranger-caps: Attached Invalid no matching target") {
+		t.Errorf("Ready message = %q", c.Message)
+	}
+	h.accept(policyCaps, true, "")
+	h.condition(v1alpha1.ConditionReady, metav1.ConditionTrue, ReasonReady)
+}
+
 // Practitioner enforces and caps; Expert says what waits for the Bib; a
 // refused Marker is said once; suspend removes every Marker.
 func TestLevelsRefusalAndSuspend(t *testing.T) {
@@ -293,7 +336,7 @@ func TestLevelsRefusalAndSuspend(t *testing.T) {
 
 	h.accept(policyGuards, false, "regex does not compile")
 	rg = h.condition(v1alpha1.ConditionReady, metav1.ConditionFalse, ReasonMarkerRefused)
-	if c := meta.FindStatusCondition(rg.Status.Conditions, v1alpha1.ConditionReady); !strings.Contains(c.Message, "ranger-guards: Invalid regex does not compile") {
+	if c := meta.FindStatusCondition(rg.Status.Conditions, v1alpha1.ConditionReady); !strings.Contains(c.Message, "ranger-guards: Accepted Invalid regex does not compile") {
 		t.Errorf("Ready message = %q", c.Message)
 	}
 	h.eventually("one MarkerRefused event", func() (bool, string) {
@@ -386,6 +429,29 @@ func TestPerModelMarkers(t *testing.T) {
 	})
 	if e := h.events(ReasonModelNotAllowed); len(e) != 2 {
 		t.Errorf("ModelNotAllowed events %v, want one per refused route", e)
+	}
+
+	// A gateway budget is repeated in each capped route's cap: a route-level
+	// limit replaces the gateway's on that route (spec 09 §4).
+	rpm := int32(60)
+	h.update(func(rg *v1alpha1.TakeCareRanger) { rg.Spec.Caps.Gateway = &v1alpha1.Budget{RequestsPerMinute: &rpm} })
+	h.eventually("the gateway budget repeated on the capped route", func() (bool, string) {
+		p, err := h.policy(intendantCapBig)
+		if err != nil {
+			return false, err.Error()
+		}
+		local, _, _ := unstructured.NestedSlice(p.Object, "spec", "traffic", "rateLimit", "local")
+		return len(local) == 2 && fmt.Sprint(local[1]) == "map[requests:60 unit:Minutes]", fmt.Sprint(local)
+	})
+	rg := h.condition(v1alpha1.ConditionReady, metav1.ConditionFalse, ReasonMarkersPending)
+	var names []string
+	for _, m := range rg.Status.Markers {
+		if m.Policy == intendantCapBig {
+			names = append(names, m.Name)
+		}
+	}
+	if !slices.Equal(names, []string{markerBudget, "gateway-request-limit"}) {
+		t.Errorf("the capped route's Marker lines %v, want the model's budget and the gateway's request limit", names)
 	}
 }
 

@@ -128,7 +128,7 @@ func render(rg *v1alpha1.TakeCareRanger, gateway string, routes []modelRoute) []
 		return out
 	}
 	if b := rg.Spec.Caps.Gateway; b != nil {
-		out = append(out, capPolicy(policyCaps, target, *b, func(name string) v1alpha1.Marker { return marker(name, policyCaps, actionLimit) }))
+		out = append(out, capPolicy(policyCaps, target, []namedBudget{{budget: *b}}, func(name string) v1alpha1.Marker { return marker(name, policyCaps, actionLimit) }))
 	}
 	out = append(out, routePolicies(rg, routes, lvl)...)
 	if p, ok := extra(rg, target, marker); ok {
@@ -137,22 +137,25 @@ func render(rg *v1alpha1.TakeCareRanger, gateway string, routes []modelRoute) []
 	return out
 }
 
-// capPolicy is a local rate limit: the token budget and the request limit
-// the budget sets, one Marker line each.
-func capPolicy(name string, target []any, b v1alpha1.Budget, marker func(string) v1alpha1.Marker) policy {
+// capPolicy is a local rate limit: each budget's token budget and request
+// limit, one Marker line each, named with the budget's prefix.
+func capPolicy(name string, target []any, budgets []namedBudget, marker func(string) v1alpha1.Marker) policy {
 	var local []any
 	var markers []v1alpha1.Marker
-	if b.TokensPerHour != nil {
-		local = append(local, map[string]any{"tokens": *b.TokensPerHour, "unit": "Hours"})
-		markers = append(markers, marker("budget"))
-	}
-	if b.RequestsPerMinute != nil {
-		limit := map[string]any{"requests": int64(*b.RequestsPerMinute), "unit": "Minutes"}
-		if b.Burst != nil {
-			limit["burst"] = int64(*b.Burst)
+	for _, nb := range budgets {
+		b := nb.budget
+		if b.TokensPerHour != nil {
+			local = append(local, map[string]any{"tokens": *b.TokensPerHour, "unit": "Hours"})
+			markers = append(markers, marker(nb.prefix+"budget"))
 		}
-		local = append(local, limit)
-		markers = append(markers, marker("request-limit"))
+		if b.RequestsPerMinute != nil {
+			limit := map[string]any{"requests": int64(*b.RequestsPerMinute), "unit": "Minutes"}
+			if b.Burst != nil {
+				limit["burst"] = int64(*b.Burst)
+			}
+			local = append(local, limit)
+			markers = append(markers, marker(nb.prefix+"request-limit"))
+		}
 	}
 	return policy{
 		name:    name,
@@ -160,6 +163,16 @@ func capPolicy(name string, target []any, b v1alpha1.Budget, marker func(string)
 		markers: markers,
 	}
 }
+
+// namedBudget is a budget and the prefix of its Marker lines.
+type namedBudget struct {
+	budget v1alpha1.Budget
+	prefix string
+}
+
+// gatewayPrefix names the Marker lines of the gateway budget repeated on a
+// capped route: a person reading the status sees what is counted there.
+const gatewayPrefix = "gateway-"
 
 // routePolicies are the per-model Markers, on each role's route to a model:
 // the model's cap (counted per route: a budget shared by every role on one
@@ -175,7 +188,14 @@ func routePolicies(rg *v1alpha1.TakeCareRanger, routes []modelRoute, lvl v1alpha
 		for _, c := range rg.Spec.Caps.Models {
 			if c.Name == r.model {
 				name := policyCapPrefix + r.name
-				out = append(out, capPolicy(name, target, c.Budget, func(m string) v1alpha1.Marker { return marker(m, name, actionLimit) }))
+				// A route-level limit replaces the gateway's on that route
+				// (agentgateway 1.6, rate-limit-http): the gateway budget is
+				// repeated here, counted on this route alone (spec 09 §4).
+				budgets := []namedBudget{{budget: c.Budget}}
+				if g := rg.Spec.Caps.Gateway; g != nil {
+					budgets = append(budgets, namedBudget{budget: *g, prefix: gatewayPrefix})
+				}
+				out = append(out, capPolicy(name, target, budgets, func(m string) v1alpha1.Marker { return marker(m, name, actionLimit) }))
 			}
 		}
 		if allowed, listed := allowedModels(rg, r.kind); listed && !slices.Contains(allowed, r.model) {

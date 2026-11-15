@@ -4,6 +4,16 @@ markers:
   name: budget
   policy: ranger-cap-role-doc-doc-model-default
   target: HTTPRoute/role-doc-doc-model-default
+- action: Limit
+  level: Practitioner
+  name: gateway-budget
+  policy: ranger-cap-role-doc-doc-model-default
+  target: HTTPRoute/role-doc-doc-model-default
+- action: Limit
+  level: Practitioner
+  name: gateway-request-limit
+  policy: ranger-cap-role-doc-doc-model-default
+  target: HTTPRoute/role-doc-doc-model-default
 spec:
   targetRefs:
   - group: gateway.networking.k8s.io
@@ -14,3 +24,8 @@ spec:
       local:
       - tokens: 2000000
         unit: Hours
+      - tokens: 2000000
+        unit: Hours
+      - burst: 20
+        requests: 120
+        unit: Minutes
