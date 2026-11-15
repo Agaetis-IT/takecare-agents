@@ -316,8 +316,12 @@ masked_phase() {
 # mask, then the Reject. The samples are made up.
 tool_output_guards() {
   kubectl -n "$NS" port-forward svc/agentgateway-proxy 18982:80 >/dev/null 2>&1 &
-  local pf=$!
-  sleep 2
+  local pf=$! up=false _
+  for _ in $(seq 40); do
+    if (exec 3<>/dev/tcp/127.0.0.1/18982) 2>/dev/null; then up=true; break; fi
+    sleep 0.25
+  done
+  [[ "$up" == true ]] || echo "the gateway's port-forward never accepted a connection: the tool-output checks will fail" >&2
   local url=http://localhost:18982/roles/doc.doc/models/default/v1/chat/completions
   # The made-up key is assembled, so that a secret scanner does not
   # read the sample as a leaked key.
@@ -337,8 +341,10 @@ tool_output_guards() {
   local code
   code="$(call tool "log: ${key} token xoxb-1234567890-abcdefghijkl card ${MASKED_CARD} mail ${MASKED_EMAIL}")"
   fake_get fake-llm /last >bin/demo/fakellm-tool.json
+  # The call passes the gateway: the fake model, with no fixture for it,
+  # answers 500 (a 000 is a port-forward not up, a 403 the Ranger).
   check "a tool output's private key, Slack token, card and email reach the provider masked whole, the call passing (spec 09 §4)" \
-    bash -c "[[ $code != 403 ]] && t=\$(jq -r '.messages[-1].content' bin/demo/fakellm-tool.json) && [[ \$t == *'<masked>'* && \$t == *'<CREDIT_CARD>'* && \$t == *'<EMAIL_ADDRESS>'* && \$t != *PRIVATE* && \$t != *MIIEpA* && \$t != *1234567890* && \$t != *abcdefghijkl* && \$t != *'${MASKED_CARD}'* && \$t != *'${MASKED_EMAIL}'* ]]"
+    bash -c "[[ $code == 500 ]] && t=\$(jq -r '.messages[-1].content' bin/demo/fakellm-tool.json) && [[ \$t == *'<masked>'* && \$t == *'<CREDIT_CARD>'* && \$t == *'<EMAIL_ADDRESS>'* && \$t != *PRIVATE* && \$t != *MIIEpA* && \$t != *1234567890* && \$t != *abcdefghijkl* && \$t != *'${MASKED_CARD}'* && \$t != *'${MASKED_EMAIL}'* ]]"
   code="$(call tool "log: ${cut}")"
   fake_get fake-llm /last >bin/demo/fakellm-cut.json
   check "a tool output's key cut before its END line is refused by the Ranger (403), the provider receiving nothing" \
