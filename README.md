@@ -121,7 +121,7 @@ The demo also runs an Intendant ([spec 10](docs/specs/10-intendant.md)), which s
 
 Prerequisites: Docker with at least 5 GB of memory (the stack uses about 3.5 GiB idle and 4.1 GiB in an incident, measured on k3d with the Intendant's agent pass), k3d, kubectl, make; Helm 4 is downloaded by the Makefile.
 
-The demo caps each role's route to its model at 2,000,000 tokens an hour (`ranger.caps.models` in `charts/takecare/values-demo.yaml`), so that a run the engine cannot cancel stays bounded; a bench never meets it.
+The demo caps each role's route to its model at 2,000,000 tokens an hour (`ranger.caps.models` in `charts/takecare/values-demo.yaml`), so that a run the engine cannot cancel stays bounded; the benches stay far below it.
 
 ## Documentation
 
