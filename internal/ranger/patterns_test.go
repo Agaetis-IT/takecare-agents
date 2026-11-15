@@ -12,7 +12,7 @@ import (
 // Each shipped shape matches a sample and misses a near miss.
 func TestShippedPatterns(t *testing.T) {
 	samples := map[string]struct{ match, miss string }{
-		"private-key":       {"-----BEGIN RSA PRIVATE KEY-----", "-----BEGIN PUBLIC KEY-----"},
+		keyShape:            {"-----BEGIN RSA PRIVATE KEY-----", "-----BEGIN PUBLIC KEY-----"},
 		"aws-access-key-id": {"key AKIAIOSFODNN7EXAMPLE here", "AKIAshort"},
 		"github-token":      {"ghp_" + strings.Repeat("a", 36), "ghp_" + strings.Repeat("a", 10)},
 		"slack-token":       {"xoxb-1234567890-abcdef", "xoxz-1234567890-abcdef"},

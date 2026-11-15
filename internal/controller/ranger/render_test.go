@@ -180,6 +180,50 @@ func TestRenderExpertGolden(t *testing.T) {
 	}
 }
 
+// Every regex guard names its scope, in the order that is the guarantee
+// (spec 09 §4): the shapes masked whole in tool outputs, the PII mask, the
+// Reject; at every level. 1.6 and 1.7 differ on the default scope, ours
+// must never fall back to it.
+func TestGuardScopes(t *testing.T) {
+	for _, level := range []v1alpha1.Level{v1alpha1.LevelApprentice, v1alpha1.LevelPractitioner, v1alpha1.LevelExpert} {
+		rg := &v1alpha1.TakeCareRanger{Spec: v1alpha1.TakeCareRangerSpec{
+			Level:     level,
+			Masking:   v1alpha1.Masking{Builtins: []v1alpha1.MaskingBuiltin{"Email"}},
+			Filtering: v1alpha1.Filtering{Patterns: []v1alpha1.NamedPattern{{Name: "theirs", Regex: "itk_[a-z]+"}}},
+		}}
+		var got []string
+		var theirs []int
+		for _, e := range guards(rg, level != v1alpha1.LevelApprentice).request {
+			entry := e.(map[string]any)
+			regex, ok := entry[keyRegex].(map[string]any)
+			if !ok {
+				continue
+			}
+			scope, ok := entry[keyScope].([]any)
+			if !ok || len(scope) == 0 {
+				t.Fatalf("%s: a regex guard without a scope: %v", level, entry)
+			}
+			got = append(got, fmt.Sprintf("%s %v", regex[keyAction], scope))
+			if matches, _ := regex["matches"].([]any); slices.Contains(matches, any("itk_[a-z]+")) {
+				theirs = append(theirs, len(got)-1)
+			}
+		}
+		// The customer's filtering pattern is in the last entry, the
+		// refusal, and never in a mask.
+		if len(theirs) != 1 || theirs[0] != len(got)-1 {
+			t.Errorf("%s: the customer's filtering pattern is in entries %v of %d", level, theirs, len(got))
+		}
+		mask, reject := actionMask, actionReject
+		if level == v1alpha1.LevelApprentice {
+			mask, reject = actionAudit, actionAudit
+		}
+		want := []string{mask + " [ToolOutput]", mask + " [SystemPrompt Messages ToolOutput]", reject + " [SystemPrompt Messages ToolOutput]"}
+		if !slices.Equal(got, want) {
+			t.Errorf("%s: guards %v, want %v", level, got, want)
+		}
+	}
+}
+
 // What the level and the material leave out.
 func TestRenderByLevel(t *testing.T) {
 	no := false
@@ -192,7 +236,7 @@ func TestRenderByLevel(t *testing.T) {
 		{"apprentice: no caps even when set", v1alpha1.TakeCareRangerSpec{
 			Masking: v1alpha1.Masking{Builtins: []v1alpha1.MaskingBuiltin{"Ssn"}},
 			Caps:    v1alpha1.Caps{Gateway: &v1alpha1.Budget{TokensPerHour: &tokens}},
-		}, []string{journalLog, "filtering:Audit", "masking:Audit"}},
+		}, []string{journalLog, "secret-masking:Audit", "masking:Audit", "filtering:Audit"}},
 		{"practitioner without caps nor material: the journal alone", v1alpha1.TakeCareRangerSpec{
 			Level:     v1alpha1.LevelPractitioner,
 			Filtering: v1alpha1.Filtering{Shipped: &no},
@@ -216,7 +260,7 @@ func TestRenderByLevel(t *testing.T) {
 		{"expert renders the practitioner's", v1alpha1.TakeCareRangerSpec{
 			Level: v1alpha1.LevelExpert,
 			Caps:  v1alpha1.Caps{Gateway: &v1alpha1.Budget{TokensPerHour: &tokens}},
-		}, []string{journalLog, "filtering:Reject", "budget:Limit"}},
+		}, []string{journalLog, "secret-masking:Mask", "filtering:Reject", "budget:Limit"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var got []string

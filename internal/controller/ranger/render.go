@@ -38,6 +38,7 @@ const (
 	keyRegex      = "regex"
 	keyName       = "name"
 	keyKind       = "kind"
+	keyScope      = "scope"
 	keyAction     = "action"
 	keyGroup      = "group"
 	keyMatch      = "matchExpressions"
@@ -293,28 +294,46 @@ type guardEntries struct {
 	markers  [][2]string
 }
 
-// guards builds the filtering entry, then the masking one, each in Audit
-// below Practitioner (spec 09 §3), then the Expert's webhook guard. The
-// masking entry also guards the model's answers when they are not streamed.
+// The parts of a request a regex guard inspects (agentgateway 1.6 prompt
+// guard scope). Every regex entry names its scope: 1.6 leaves tool outputs
+// out by default and 1.7 puts them in, so ours behave alike on both.
+var (
+	scopeToolOutput = []any{"ToolOutput"}
+	scopeAll        = []any{"SystemPrompt", "Messages", "ToolOutput"}
+)
+
+// guards builds the request guards in an order that is the guarantee
+// (spec 09 §4): first the shipped secret shapes, masked whole in tool
+// outputs; then the PII mask; then the Reject, on messages and tool outputs
+// alike. A secret the first entry masked whole no longer matches the
+// Reject, so the run goes on; a shape it could not match whole (a key
+// without its END line) keeps its marker and is refused; the PII mask runs
+// after the shapes, which it would otherwise cut (a token's digits read as
+// a phone number). The customer's own filtering patterns are never masks:
+// they refuse. Below Practitioner every action is Audit (spec 09 §3). Then
+// the Expert's webhook guard, which cannot take a scope. The PII mask also
+// guards the model's answers when they are not streamed.
 func guards(rg *v1alpha1.TakeCareRanger, enforcing bool) guardEntries {
 	var g guardEntries
 	f := rg.Spec.Filtering
-	var matches []any
-	if f.Shipped == nil || *f.Shipped {
+	shipped := f.Shipped == nil || *f.Shipped
+	var matches, whole []any
+	if shipped {
 		for _, p := range shapes.ShippedPatterns {
 			matches = append(matches, p.Regex)
+			whole = append(whole, p.MaskRegex())
 		}
 	}
 	for _, p := range f.Patterns {
 		matches = append(matches, p.Regex)
 	}
-	if len(matches) > 0 {
-		action := pick(enforcing, actionReject)
+	if len(whole) > 0 {
+		action := pick(enforcing, actionMask)
 		g.request = append(g.request, map[string]any{
-			keyRegex:   map[string]any{keyAction: action, "matches": matches},
-			"response": map[string]any{"message": RejectMessage},
+			keyRegex: map[string]any{keyAction: action, "matches": whole},
+			keyScope: scopeToolOutput,
 		})
-		g.markers = append(g.markers, [2]string{"filtering", action})
+		g.markers = append(g.markers, [2]string{"secret-masking", action})
 	}
 
 	m := rg.Spec.Masking
@@ -336,9 +355,19 @@ func guards(rg *v1alpha1.TakeCareRanger, enforcing bool) guardEntries {
 	if len(regex) > 0 {
 		action := pick(enforcing, actionMask)
 		regex["action"] = action
-		g.request = append(g.request, map[string]any{keyRegex: regex})
+		g.request = append(g.request, map[string]any{keyRegex: regex, keyScope: scopeAll})
 		g.response = map[string]any{keyRegex: regex}
 		g.markers = append(g.markers, [2]string{"masking", action})
+	}
+
+	if len(matches) > 0 {
+		action := pick(enforcing, actionReject)
+		g.request = append(g.request, map[string]any{
+			keyRegex:   map[string]any{keyAction: action, "matches": matches},
+			keyScope:   scopeAll,
+			"response": map[string]any{"message": RejectMessage},
+		})
+		g.markers = append(g.markers, [2]string{"filtering", action})
 	}
 	if _, ok := webhook(rg); ok {
 		g.request = append(g.request, map[string]any{"webhook": map[string]any{

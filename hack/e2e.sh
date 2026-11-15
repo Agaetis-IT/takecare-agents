@@ -34,7 +34,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=43
+CHECKS_EXPECTED=46
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s %s\n' "$(date +%H:%M:%S)" "$*"; }
@@ -309,6 +309,46 @@ masked_phase() {
   kubectl -n "$NS" get takecareinvestigations -o jsonpath='{range .items[?(@.spec.alert.service=="e2e-masking")]}{.status.phase}{end}'
 }
 
+# tool_output_guards checks the Ranger's guards on what a tool returns
+# (spec 09 §4), on the Doc's model route through the gateway, the fake
+# model's /last showing what the provider received. The order of the
+# entries is the guarantee: secret shapes masked whole first, then the PII
+# mask, then the Reject. The samples are made up.
+tool_output_guards() {
+  kubectl -n "$NS" port-forward svc/agentgateway-proxy 18982:80 >/dev/null 2>&1 &
+  local pf=$!
+  sleep 2
+  local url=http://localhost:18982/roles/doc.doc/models/default/v1/chat/completions
+  # The made-up key is assembled, so that a secret scanner does not
+  # read the sample as a leaked key.
+  local begin='-----BEGIN RSA PRIVATE' end='-----END RSA PRIVATE'
+  local key="${begin} KEY-----\nMIIEpAIBAAKCAQEAe2e\n${end} KEY-----"
+  local cut="${begin} KEY-----\nMIIEpAIBAAKCAQEAe2e"
+  call() { # ROLE CONTENT: one chat request; prints the HTTP status
+    local msgs
+    if [[ "$1" == tool ]]; then
+      msgs='{"role":"user","content":"read the logs"},{"role":"assistant","content":null,"tool_calls":[{"id":"t1","type":"function","function":{"name":"pods_log","arguments":"{}"}}]},{"role":"tool","tool_call_id":"t1","content":"'"$2"'"}'
+    else
+      msgs='{"role":"user","content":"'"$2"'"}'
+    fi
+    curl -s -o /dev/null -m 15 -w '%{http_code}' -H 'Content-Type: application/json' \
+      -d '{"model":"default","messages":[{"role":"system","content":"e2e"},'"$msgs"']}' "$url"
+  }
+  local code
+  code="$(call tool "log: ${key} token xoxb-1234567890-abcdefghijkl card ${MASKED_CARD} mail ${MASKED_EMAIL}")"
+  fake_get fake-llm /last >bin/demo/fakellm-tool.json
+  check "a tool output's private key, Slack token, card and email reach the provider masked whole, the call passing (spec 09 §4)" \
+    bash -c "[[ $code != 403 ]] && t=\$(jq -r '.messages[-1].content' bin/demo/fakellm-tool.json) && [[ \$t == *'<masked>'* && \$t == *'<CREDIT_CARD>'* && \$t == *'<EMAIL_ADDRESS>'* && \$t != *PRIVATE* && \$t != *MIIEpA* && \$t != *1234567890* && \$t != *abcdefghijkl* && \$t != *'${MASKED_CARD}'* && \$t != *'${MASKED_EMAIL}'* ]]"
+  code="$(call tool "log: ${cut}")"
+  fake_get fake-llm /last >bin/demo/fakellm-cut.json
+  check "a tool output's key cut before its END line is refused by the Ranger (403), the provider receiving nothing" \
+    bash -c "[[ $code == 403 ]] && cmp -s bin/demo/fakellm-tool.json bin/demo/fakellm-cut.json"
+  check "a private key in a user message is still refused by the Ranger (403)" \
+    test "$(call user "${key}")" = 403
+  kill "$pf" 2>/dev/null || true
+  wait "$pf" 2>/dev/null || true
+}
+
 # east_alert posts HighErrorRate of demo-apps with east's token, once the
 # Doc east cannot run (Practitioner without a report connector): its record
 # waits Queued and the fake model sees nothing new.
@@ -444,6 +484,7 @@ run() {
     bash -c "kubectl -n $NS port-forward svc/prometheus-server 18991:80 >/dev/null 2>&1 & pf=\$!; sleep 2; r=1; for _ in \$(seq 24); do curl -s 'http://localhost:18991/api/v1/query?query=agentgateway_guardrail_checks_total%7Bphase%3D%22Request%22%2Caction%3D%22Mask%22%7D' | jq -e '[.data.result[] | select((.value[1] | tonumber) > 0)] | length > 0' >/dev/null && { r=0; break; }; sleep 5; done; kill \$pf; exit \$r"
   check "the Ranger says the masked request in a RequestsMasked Warning event (spec 09 §5)" \
     bash -c "for _ in \$(seq 36); do kubectl get events -A --field-selector reason=RequestsMasked,type=Warning -o jsonpath='{range .items[*]}{.involvedObject.kind}{\"\\n\"}{end}' | grep -q TakeCareRanger && exit 0; sleep 5; done; exit 1"
+  tool_output_guards
   intendant
   resumed
   if [[ "$checks" -ne "$CHECKS_EXPECTED" || "$failed" -ne 0 ]]; then

@@ -1,7 +1,7 @@
 markers:
-- action: Reject
+- action: Mask
   level: Practitioner
-  name: filtering
+  name: secret-masking
   policy: ranger-guards
   target: Gateway/agentgateway-proxy
 - action: Mask
@@ -9,11 +9,39 @@ markers:
   name: masking
   policy: ranger-guards
   target: Gateway/agentgateway-proxy
+- action: Reject
+  level: Practitioner
+  name: filtering
+  policy: ranger-guards
+  target: Gateway/agentgateway-proxy
 spec:
   backend:
     ai:
       promptGuard:
         request:
+        - regex:
+            action: Mask
+            matches:
+            - (?s)-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----.*?-----END
+              (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----
+            - \bAKIA[0-9A-Z]{16}\b
+            - \b(?:ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,})\b
+            - \bxox[abp]-[A-Za-z0-9-]{10,}
+            - \bAIza[0-9A-Za-z_-]{35}\b
+            - (?i)api[_-]?key\s*[:=]\s*\S{16,}
+          scope:
+          - ToolOutput
+        - regex:
+            action: Mask
+            builtins:
+            - CreditCard
+            - Email
+            matches:
+            - '[A-Z]{2}\d{2}[A-Z0-9]{11,30}'
+          scope:
+          - SystemPrompt
+          - Messages
+          - ToolOutput
         - regex:
             action: Reject
             matches:
@@ -26,13 +54,10 @@ spec:
             - itk_[A-Za-z0-9]{32}
           response:
             message: 'rejected by the Ranger: a secret shape in the request'
-        - regex:
-            action: Mask
-            builtins:
-            - CreditCard
-            - Email
-            matches:
-            - '[A-Z]{2}\d{2}[A-Z0-9]{11,30}'
+          scope:
+          - SystemPrompt
+          - Messages
+          - ToolOutput
         response:
         - regex:
             action: Mask
