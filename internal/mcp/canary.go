@@ -73,6 +73,8 @@ func (c *Client) CallRuleCanary(ctx context.Context, ep Endpoint) (CanaryVerdict
 	case err == nil && status >= 200 && status < 300:
 		return CanaryLetThrough, status
 	}
+	// A 2xx whose body is a JSON-RPC error lands here too: pending, which
+	// fails closed like a let-through.
 	return CanaryPending, status
 }
 

@@ -109,8 +109,10 @@ func (w *Runner) checkCallRule(ctx context.Context, in *v1alpha1.TakeCareIntenda
 	ctx, span := w.tracer().Start(ctx, "check call rule")
 	defer span.End()
 	verdict, status := w.Canary.CallRuleCanary(ctx, m.ep)
-	span.SetAttributes(attribute.String(semconv.SurveyConnector, m.name), attribute.String(semconv.CallRuleVerdict, string(verdict)),
-		attribute.Int(semconv.HTTPResponseStatusCode, status))
+	span.SetAttributes(attribute.String(semconv.SurveyConnector, m.name), attribute.String(semconv.CallRuleVerdict, string(verdict)))
+	if status != 0 { // no response came back: no status to record
+		span.SetAttributes(attribute.Int(semconv.HTTPResponseStatusCode, status))
+	}
 	if verdict != mcp.CanaryRefused {
 		span.SetStatus(codes.Error, string(verdict))
 		log.FromContext(ctx).Info("the gateway's argument rule is not proven", "intendant", in.Name, "connector", m.name, "verdict", string(verdict))
@@ -122,7 +124,8 @@ func (w *Runner) checkCallRule(ctx context.Context, in *v1alpha1.TakeCareIntenda
 // on a metrics connector whose rule the gateway's status calls enforced:
 // the canary let through, or unproven, in the alerting layer's fixed
 // phrase (a survey blocked by the status itself says notEnforced, which
-// the status read already reports); empty when the canary was refused or no survey has completed.
+// the status read already reports); empty when the canary was refused or
+// no survey has completed.
 // Read from the surveys' status, it survives a restart; each survey proves
 // the rule again, so the last one completed is the one that counts (its
 // completedAt, which the runner writes; surveys of one Intendant run one at

@@ -6,6 +6,7 @@ package intendant
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -218,13 +219,23 @@ func canarySteps(t *testing.T, f *fixture, calls *atomic.Int32) {
 		if sp.Name != "check call rule" {
 			continue
 		}
+		attrs := map[string]string{}
 		for _, a := range sp.Attributes {
-			if string(a.Key) == semconv.CallRuleVerdict {
-				verdicts[a.Value.AsString()] = true
-			}
+			attrs[string(a.Key)] = a.Value.String()
 		}
-		if len(sp.Attributes) != 3 {
-			t.Errorf("the canary's span carries %v: the connector, the verdict and the status only", sp.Attributes)
+		verdict := attrs[semconv.CallRuleVerdict]
+		verdicts[verdict] = true
+		// The connector and the verdict, and the status only when one came
+		// back (the fake answers 200 let through, 403 refused, none pending).
+		want := map[string]string{semconv.SurveyConnector: connMetrics, semconv.CallRuleVerdict: verdict}
+		switch mcp.CanaryVerdict(verdict) {
+		case mcp.CanaryLetThrough:
+			want[semconv.HTTPResponseStatusCode] = "200"
+		case mcp.CanaryRefused:
+			want[semconv.HTTPResponseStatusCode] = "403"
+		}
+		if !maps.Equal(attrs, want) {
+			t.Errorf("the canary's span carries %v, want %v", attrs, want)
 		}
 	}
 	if !verdicts[string(mcp.CanaryLetThrough)] || !verdicts[string(mcp.CanaryPending)] {

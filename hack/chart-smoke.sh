@@ -247,6 +247,18 @@ mcp_forbidden() {
   return 1
 }
 
+# retry_allowed NAMESPACE POD URL TOOL [ARGS]: mcp_allowed once a policy
+# change has reached the proxy (mcp_allowed retries already; this bounds the
+# wait the same way as retry_forbidden).
+retry_allowed() {
+  local _
+  for _ in $(seq 15); do
+    mcp_allowed "$@" && return 0
+    sleep 2
+  done
+  return 1
+}
+
 # retry_forbidden NAMESPACE POD URL TOOL [ARGS]: mcp_forbidden, retried
 # while a policy change reaches the proxy.
 retry_forbidden() {
@@ -260,9 +272,11 @@ retry_forbidden() {
 
 # survey_alerting NAME: creates a survey of the smoke Intendant by hand and
 # prints its phase and its alerting layer's first not-seen reason once it is
-# Completed (or the phase it stopped at).
+# Completed (or the phase it stopped at). A survey of that name left by an
+# earlier pass (surveys outlive their Intendant) is deleted first.
 survey_alerting() {
-  kubectl -n "$NS" apply -f - >/dev/null <<EOF
+  kubectl -n "$NS" delete takecaresurvey "$1" --ignore-not-found --timeout=60s >/dev/null
+  kubectl -n "$NS" create -f - >/dev/null <<EOF
 apiVersion: takecare.agaetis.fr/v1alpha1
 kind: TakeCareSurvey
 metadata: { name: $1, namespace: ${NS} }
@@ -721,17 +735,23 @@ spec:
   strategy: { inheritance: Override }
   traffic: { authorization: { action: Require, policy: { matchExpressions: ["true"] } } }
 EOF
+  local seen_open=false
+  if retry_allowed kagent smoke-a2a "${iroute}/prometheus" get_rules "$canary"; then seen_open=true; fi
   check "under a Gateway-level Override, the forged canary is let through" \
-    mcp_allowed kagent smoke-a2a "${iroute}/prometheus" get_rules "$canary"
+    test "$seen_open" = true
+  # Read once the canary was seen let through: the Override has reached the
+  # proxy, and the argument rule's status is what it says meanwhile.
   check "under the Override, the argument rule still reports Accepted and Attached" \
-    test "$(kubectl -n "$NS" get agentgatewaypolicy "$calls" -o jsonpath='{.status.ancestors[*].conditions[?(@.type=="Accepted")].status} {.status.ancestors[*].conditions[?(@.type=="Attached")].status}')" = "True True"
+    bash -c "[[ ${seen_open} == true && \$(kubectl -n ${NS} get agentgatewaypolicy ${calls} -o jsonpath='{.status.ancestors[*].conditions[?(@.type==\"Accepted\")].status} {.status.ancestors[*].conditions[?(@.type==\"Attached\")].status}') == 'True True' ]]"
   local open_layer
   open_layer="$(survey_alerting smoke-canary-open)"
   log "the survey under the Override: ${open_layer}"
   check "the survey under the Override does not read the rules: its alerting layer says the canary was let through" \
     test "$open_layer" = "Completed ${let_through}"
-  check "ConnectorsReady names the survey that saw the canary let through" \
-    bash -c "for _ in \$(seq 30); do [[ \$(kubectl -n ${NS} get takecareintendant smoke-intendant -o jsonpath='{.status.conditions[?(@.type==\"ConnectorsReady\")].message}') == *'survey smoke-canary-open: ${let_through}'* ]] && exit 0; sleep 2; done; exit 1"
+  # Any survey under the Override sees it: one the Intendant starts itself
+  # may complete after smoke-canary-open and be the one named.
+  check "ConnectorsReady names a survey that saw the canary let through" \
+    bash -c "for _ in \$(seq 30); do [[ \$(kubectl -n ${NS} get takecareintendant smoke-intendant -o jsonpath='{.status.conditions[?(@.type==\"ConnectorsReady\")].message}') == *'survey smoke-'*': ${let_through}'* ]] && exit 0; sleep 2; done; exit 1"
   kubectl -n "$NS" delete agentgatewaypolicy smoke-override --ignore-not-found >/dev/null
   check "the Override removed, the forged canary is refused again (403)" \
     retry_forbidden kagent smoke-a2a "${iroute}/prometheus" get_rules "$canary"
@@ -739,7 +759,7 @@ EOF
   closed_layer="$(survey_alerting smoke-canary-closed)"
   log "the survey after the Override: ${closed_layer}"
   check "the next survey's canary is refused: it reads the rules, and ConnectorsReady no longer names a canary" \
-    bash -c "[[ '${closed_layer}' == Completed* && '${closed_layer}' != *'argument rule'* ]] && for _ in \$(seq 30); do [[ \$(kubectl -n ${NS} get takecareintendant smoke-intendant -o jsonpath='{.status.conditions[?(@.type==\"ConnectorsReady\")].message}') != *'survey smoke-canary'* ]] && exit 0; sleep 2; done; exit 1"
+    bash -c "[[ '${closed_layer}' == Completed* && '${closed_layer}' != *'argument rule'* ]] && for _ in \$(seq 30); do [[ \$(kubectl -n ${NS} get takecareintendant smoke-intendant -o jsonpath='{.status.conditions[?(@.type==\"ConnectorsReady\")].message}') != *'argument rule on the metrics route'* ]] && exit 0; sleep 2; done; exit 1"
   kubectl -n "$NS" delete takecareintendant smoke-intendant --timeout=60s >/dev/null
   check "deleting the Intendant removed its agent and model configuration in kagent, and its routes" \
     bash -c "[[ -z \$(kubectl -n kagent get agents,modelconfigs,remotemcpservers -l takecare.agaetis.fr/owner=smoke-intendant -o name) && -z \$(kubectl -n ${NS} get httproutes,agentgatewaypolicies -l takecare.agaetis.fr/role-instance=intendant.smoke-intendant -o name) ]]"
