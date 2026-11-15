@@ -106,6 +106,20 @@ kagent:
 # the demo show it.
 ranger:
   level: Practitioner
+  # A budget on each role's route to the default model (ranger-cap-<route>,
+  # counted per route): kagent 0.10.3 cannot cancel a run, so a Doc
+  # investigation or an Intendant pass past its deadline runs on, bounded by
+  # this cap and by the runtime's 500 model calls (spec 10 §5). Sized from
+  # the benches of 2026-11-14 (gemini-3.7-flash): a Doc investigation takes
+  # about 54,000 tokens (88,000 at most), an Intendant pass about 49,000
+  # (78,000 at most); 2,000,000 an hour leaves room for about 22 of the
+  # largest Doc runs an hour on each route, so a bench never meets it, and
+  # cuts a runaway long before 500 calls. Change it here; 0 is refused, and
+  # removing the entry removes the cap.
+  caps:
+    models:
+      - name: default
+        tokensPerHour: 2000000
 
 demo:
   enabled: true
