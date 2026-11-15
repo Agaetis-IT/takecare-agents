@@ -865,6 +865,32 @@ status:
     - { name: filtering, policy: ranger-guards, target: Gateway/agentgateway-proxy, action: Reject }
     - { name: masking, policy: ranger-guards, target: Gateway/agentgateway-proxy, action: Mask }
     - { name: budget, policy: ranger-caps, target: Gateway/agentgateway-proxy, action: Limit }`},
+ {kind:"TakeCareIntendant", card:"intendant", sub:"L'Intendant : son niveau, son périmètre, ses connecteurs. Il relève le terrain par les connecteurs de cluster, recense les agents et les connecteurs en circulation, et propose les entrées de la Carte ; au Compagnon, un résumé des propositions part vers la relecture.", spec:"10-intendant.md", yaml:`apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareIntendant
+metadata:
+  name: intendant
+  namespace: takecare-system
+spec:
+  level: Practitioner
+  scope:
+    namespaces: [demo-apps]
+    entities: [service/billing-api]
+  connectors:
+    map: [map]
+    cluster: [kubernetes]
+    metrics: [prometheus]
+    knowledge: [runbooks]
+    report: report
+  report:
+    practitioner: review`},
+ {kind:"TakeCareSurvey", card:"intendant", sub:"Un relevé de l'Intendant, à la demande ou sur un déclencheur : son statut porte les propositions d'entrées de la Carte et l'inventaire des agents et des connecteurs.", spec:"10-intendant.md", yaml:`apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareSurvey
+metadata:
+  name: survey-by-hand
+  namespace: takecare-system
+spec:
+  intendantRef: { kind: TakeCareIntendant, name: intendant }
+  trigger: OnDemand`},
  {kind:"TakeCareDemo", card:"terrain", sub:"Le Terrain d'entraînement de la démo : le décor billing-api et l'incident à rejouer.", spec:"03-demo.md", yaml:`apiVersion: takecare.agaetis.fr/v1alpha1
 kind: TakeCareDemo
 metadata:
@@ -886,7 +912,7 @@ status:
 ];
 const PLANNED = ROLES.filter(r=>r.next).map(r=>[r.k,"TakeCare"+r.k[0].toUpperCase()+r.k.slice(1)]);
 const hl = y => esc(y).split("\n").map(l=>{ const m=l.match(/^(\s*-?\s*)([A-Za-z][\w.\/-]*)(:)(.*)$/); let s = m ? `${m[1]}<span class="yk">${m[2]}</span>${m[3]}${m[4]}` : l; return s.replace(/(#.*)$/,'<span class="yc">$1</span>'); }).join("\n");
-const KBYCARD = Object.fromEntries(KINDS.map(x=>[x.card,x]));
+const KBYCARD = Object.fromEntries(KINDS.slice().reverse().map(x=>[x.card,x])); // the first kind of a card wins: the Intendant's sheet flips to TakeCareIntendant
 const flipCard = x => `<div class="flip" role="button" tabindex="0" aria-pressed="false" data-kind="${x.kind}" aria-label="Retourner la carte ${x.kind}">
   <span class="fin">
     <span class="face front"><img src="${img(x.card)}" alt="" loading="lazy">${st(x.card)}<span class="fh">↻ YAML</span></span>

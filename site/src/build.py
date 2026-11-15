@@ -73,6 +73,20 @@ def check_version(tpl, changelog):
                  f'{released.group(1) if released else "?"}: update the site in the release cut (docs/release.md step 2)')
 
 
+def check_kinds(tpl, crds):
+    """The Reference lists every kind of config/crd, and only those: a CRD
+    added without its card, or a card left after its CRD, fails the build.
+    The English page only translates the subs, so the source is enough."""
+    i = tpl.index('const KINDS = ['); j = tpl.index('\n];', i)
+    listed = set(re.findall(r'^ \{kind:"([A-Za-z]+)"', tpl[i:j], re.M))
+    missing, extra = sorted(set(crds) - listed), sorted(listed - set(crds))
+    if missing or extra:
+        sys.exit('template.html: the Reference (KINDS) and config/crd differ:'
+                 + (f' no entry for {", ".join(missing)};' if missing else '')
+                 + (f' no CRD for {", ".join(extra)};' if extra else '')
+                 + ' add or remove the entry (docs/release.md step 2)')
+
+
 def main():
     a = argparse.ArgumentParser(); a.add_argument('--out', default=str(SRC.parent / 'dist')); a.add_argument('--default', default='fr', choices=['fr', 'en'])
     a.add_argument('--site-url', default=SITE)
@@ -81,6 +95,7 @@ def main():
     ref = gen_ref.reference(root)
     tpl = (SRC / 'template.html').read_text()
     check_version(tpl, (SRC.parent.parent / 'CHANGELOG.md').read_text())
+    check_kinds(tpl, ref['kinds'])
     # the head of the template only serves the claude.ai previews: drop its font links
     shutil.rmtree(out, ignore_errors=True); (out / 'fr').mkdir(parents=True); (out / 'en').mkdir()
     (out / 'fr' / 'index.html').write_text(page('fr', tpl, (SRC / 'data.fr.js').read_text(), ref, site))

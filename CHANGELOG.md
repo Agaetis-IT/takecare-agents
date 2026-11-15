@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- The site's Reference now lists `TakeCareIntendant` and `TakeCareSurvey`, missing since 0.3.0, and the site's build fails when the Reference's kinds and the CRDs differ.
+
 ## [0.3.1] - 2026-11-14
 
 A patch release of 0.3.0: two fixes, kagent's retention, and a recommendation for kagent's database URL. On the benches of 2026-11-14 (`google/gemini-3.7-flash`), the Doc scores 5 out of 5 (`test/bench/report-2026-11-14T2034Z.json`) and the Intendant 5 runs ok out of 5 (`test/bench/intendant-report-2026-11-14T2050Z.json`).
