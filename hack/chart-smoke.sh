@@ -862,7 +862,9 @@ spec:
 EOF
   check "a route from another namespace is refused by the listener (NotAllowedByListeners) and its path is 404" \
     bash -c "for _ in \$(seq 30); do [[ \$(kubectl -n smoke-foreign get httproute smoke-foreign -o jsonpath='{.status.parents[0].conditions[?(@.type==\"Accepted\")].status} {.status.parents[0].conditions[?(@.type==\"Accepted\")].reason}') == 'False NotAllowedByListeners' ]] && break; sleep 2; done; [[ \$(kubectl -n smoke-foreign get httproute smoke-foreign -o jsonpath='{.status.parents[0].conditions[?(@.type==\"Accepted\")].reason}') == NotAllowedByListeners && \$(kubectl -n kagent exec smoke-a2a -- curl -s -o /dev/null -m 10 -w '%{http_code}' ${gw}/smoke-foreign) == 404 ]]"
-  kubectl delete namespace smoke-foreign --wait=false >/dev/null
+  # Wait until it is gone: the upgrade pass creates it again, and a
+  # namespace still Terminating would fail that create.
+  kubectl delete namespace smoke-foreign --wait=true --timeout=60s >/dev/null
   check "the argument rule lets a session's stream (GET) and close (DELETE) through" \
     mcp_stream_and_close kagent smoke-a2a "${iroute}/prometheus"
   check "get_alerts, off the Intendant's allow-list, is refused on its metrics route" \

@@ -159,11 +159,10 @@ alerting:
     labels: {}
 
 # -- The Gateway API Gateway served by agentgateway, in the release namespace.
-# Every model, MCP and A2A call goes through it (ADR 0004, 0008, 0009).
-# -- The Gateway the roles' routes attach to. Its listener lets routes
-# attach from the release namespace only (from: Same, spec 01). With
-# create false the Gateway is yours: its listener must let the release
-# namespace's routes attach, and should not use from: All.
+# Every model, MCP and A2A call goes through it (ADR 0004, 0008, 0009). Its
+# listener lets routes attach from the release namespace only (from: Same,
+# spec 01). With create false the Gateway is yours: its listener must let
+# the release namespace's routes attach, and should not use from: All.
 gateway:
   create: true
   name: agentgateway-proxy
