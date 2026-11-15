@@ -42,6 +42,7 @@ func TestAcceptance(t *testing.T) {
 		{"no status yet", nil, verdictWait},
 		{"both True", []any{both}, ""},
 		{"Accepted True, Attached missing", []any{ancestor([2]string{condAccepted, statusTrue})}, verdictWait},
+		{"Accepted True, Attached Unknown", []any{ancestor([2]string{condAccepted, statusTrue}, [2]string{condAttached, "Unknown"})}, verdictWait},
 		{"Attached False on one ancestor of two", []any{both, ancestor([2]string{condAccepted, statusTrue}, [2]string{condAttached, statusFalse})}, "Attached R m"},
 		{"Accepted False", []any{ancestor([2]string{condAccepted, statusFalse}, [2]string{condAttached, statusTrue})}, "Accepted R m"},
 		{"one ancestor complete, the other missing Attached", []any{both, ancestor([2]string{condAccepted, statusTrue})}, verdictWait},

@@ -249,9 +249,10 @@ func (r *Reconciler) gateway(ctx context.Context) (name, reason, message string,
 
 // acceptance reads the gateway's verdict on a policy: every ancestor must
 // report both Accepted and Attached True; either False on any ancestor
-// refuses it, with its reason; a condition missing leaves it pending (nil),
-// never read as enforced. The pair proves the plain failures only, not
-// enforcement: a field can be dropped while both stay True (spec 09 §4).
+// refuses it, with its reason; a condition missing or Unknown leaves it
+// pending (nil), never read as enforced. The pair proves the plain
+// failures only, not enforcement: a field can be dropped while both stay
+// True (spec 09 §4).
 func acceptance(obj *unstructured.Unstructured) (*bool, string) {
 	ancestors, _, _ := unstructured.NestedSlice(obj.Object, "status", "ancestors")
 	var messages []string
@@ -265,10 +266,14 @@ func acceptance(obj *unstructured.Unstructured) (*bool, string) {
 			if typ != "Accepted" && typ != "Attached" {
 				continue
 			}
-			seen[typ] = true
-			if cond["status"] != "True" {
+			switch cond["status"] {
+			case "True":
+				seen[typ] = true
+			case "False":
+				seen[typ] = true
 				messages = append(messages, strings.TrimSpace(fmt.Sprint(typ, " ", cond["reason"], " ", cond["message"])))
 			}
+			// Unknown, or anything else, leaves the condition unseen: pending.
 		}
 		complete = complete && seen["Accepted"] && seen["Attached"]
 	}

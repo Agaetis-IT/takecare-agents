@@ -604,7 +604,7 @@ EOF
   # (burst 30) and the model cap at 1000, quick calls on the Doc's model
   # route meet the gateway's entry. A changed limit starts a fresh bucket;
   # the restore waits on the data plane, and the EXIT trap restores too.
-  local droute=role-doc-smoke-doc-model-default glimited=() g429=0 code
+  local droute=role-doc-smoke-doc-model-default glimited=() g429=0 gcode
   RANGER_CAPS_SAVED="$(kubectl get takecareranger main -o jsonpath='{.spec.caps}')"
   kubectl patch takecareranger main --type=merge \
     -p '{"spec":{"caps":{"gateway":{"requestsPerMinute":30,"burst":30},"models":[{"name":"default","requestsPerMinute":1000,"burst":1000}]}}}' >/dev/null
@@ -615,19 +615,23 @@ EOF
   check "the Ranger lists gateway-request-limit on the Doc's capped route" \
     bash -c "kubectl get takecareranger main -o jsonpath='{range .status.markers[?(@.policy==\"ranger-cap-${droute}\")]}{.name} {end}' | grep -q gateway-request-limit"
   for _ in $(seq 80); do
-    code="$(kubectl -n kagent exec smoke-a2a -- curl -s -o /dev/null -m 10 -w '%{http_code}' -H 'Content-Type: application/json' \
+    gcode="$(kubectl -n kagent exec smoke-a2a -- curl -s -o /dev/null -m 10 -w '%{http_code}' -H 'Content-Type: application/json' \
       -d '{"model":"default","messages":[{"role":"user","content":"ping"}]}' "$chat")"
-    glimited+=("$code")
-    [[ "$code" == 429 ]] && g429=$((g429 + 1))
+    glimited+=("$gcode")
+    [[ "$gcode" == 429 ]] && g429=$((g429 + 1))
   done
   log "quick calls on the Doc's model route under the gateway's 30 a minute: ${g429} of ${#glimited[@]} answered 429"
   check "with a generous model cap, the gateway's request limit repeated on the route answers 429" \
     test "$g429" -gt 0
-  kubectl patch takecareranger main --type=merge -p "{\"spec\":{\"caps\":${RANGER_CAPS_SAVED}}}" >/dev/null
+  # Replace the field: a merge patch would keep the keys the saved value
+  # does not name (the burst set above).
+  kubectl patch takecareranger main --type=json -p "[{\"op\":\"replace\",\"path\":\"/spec/caps\",\"value\":${RANGER_CAPS_SAVED}}]" >/dev/null
+  check "the Ranger's caps are restored exactly as they were" \
+    test "$(kubectl get takecareranger main -o jsonpath='{.spec.caps}')" = "$RANGER_CAPS_SAVED"
   RANGER_CAPS_SAVED=""
   for _ in $(seq 30); do
-    code="$(kubectl -n kagent exec smoke-a2a -- curl -s -o /dev/null -m 10 -w '%{http_code}' -H 'Content-Type: application/json' -d '{}' "${gw}/mcp/${NS}/smoke-doc/kubernetes")"
-    [[ "$code" != 429 ]] && break
+    gcode="$(kubectl -n kagent exec smoke-a2a -- curl -s -o /dev/null -m 10 -w '%{http_code}' -H 'Content-Type: application/json' -d '{}' "${gw}/mcp/${NS}/smoke-doc/kubernetes")"
+    [[ "$gcode" != 429 ]] && break
     sleep 2
   done
 
@@ -1068,12 +1072,12 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=123 install ;;
-  upgrade) CHECKS_EXPECTED=123 upgrade ;;
+  install) CHECKS_EXPECTED=124 install ;;
+  upgrade) CHECKS_EXPECTED=124 upgrade ;;
   status) status ;;
   mask-test) mask_test ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=4 cluster_chart ;;
-  all) mask_test; up; CHECKS_EXPECTED=123 install; CHECKS_EXPECTED=123 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
+  all) mask_test; up; CHECKS_EXPECTED=124 install; CHECKS_EXPECTED=124 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|cluster|status|mask-test|down|all]"; exit 2 ;;
 esac
