@@ -4,6 +4,7 @@
 package ranger
 
 import (
+	"slices"
 	"testing"
 
 	"sigs.k8s.io/yaml"
@@ -27,10 +28,7 @@ func TestRenderPractitionerGolden(t *testing.T) {
 	rg.Spec.Caps.Models = []v1alpha1.ModelCap{{Name: modelDefault, TokensPerHour: &tokens}}
 	rg.Spec.Models = []v1alpha1.RoleModels{{Kind: v1alpha1.KindTakeCareDoc, Allowed: []string{modelDefault}}}
 	for _, p := range render(rg, "agentgateway-proxy", docRoutes) {
-		out, err := yaml.Marshal(map[string]any{"spec": p.spec, "markers": p.markers})
-		if err != nil {
-			t.Fatal(err)
-		}
+		out := policyYAML(t, p)
 		golden.Assert(t, p.name+".yaml", out)
 	}
 }
@@ -48,6 +46,59 @@ var docRoutes = []modelRoute{
 	{name: "role-doc-doc-model-default", kind: v1alpha1.KindTakeCareDoc, model: modelDefault},
 }
 
+// The Intendant's per-model policies the tests expect.
+const (
+	intendantCapBig     = "ranger-cap-role-intendant-intendant-model-big"
+	intendantCapDefault = "ranger-cap-role-intendant-intendant-model-default"
+	intendantDenyBig    = "ranger-deny-role-intendant-intendant-model-big"
+)
+
+// policyYAML is a policy's spec and Markers, as the golden files hold them.
+func policyYAML(t *testing.T, p policy) []byte {
+	t.Helper()
+	out, err := yaml.Marshal(map[string]any{"spec": p.spec, "markers": p.markers})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// intendantRoutes are one Intendant's routes to two models.
+var intendantRoutes = []modelRoute{
+	{name: "role-intendant-intendant-model-big", kind: v1alpha1.KindTakeCareIntendant, model: modelBig},
+	{name: "role-intendant-intendant-model-default", kind: v1alpha1.KindTakeCareIntendant, model: modelDefault},
+}
+
+// The per-model Markers cover every role kind's model routes: a cap on a
+// model caps the Intendant's route to it, a models entry for the Intendant
+// refuses it the others, and a kind not listed (the Doc here) may call all.
+func TestRenderIntendantRoutes(t *testing.T) {
+	no := false
+	tokens := int64(500000)
+	rg := &v1alpha1.TakeCareRanger{Spec: v1alpha1.TakeCareRangerSpec{
+		Level:     v1alpha1.LevelPractitioner,
+		Filtering: v1alpha1.Filtering{Shipped: &no},
+		Caps:      v1alpha1.Caps{Models: []v1alpha1.ModelCap{{Name: modelDefault, TokensPerHour: &tokens}}},
+		Models:    []v1alpha1.RoleModels{{Kind: v1alpha1.KindTakeCareIntendant, Allowed: []string{modelDefault}}},
+	}}
+	policies := render(rg, "gw", append(slices.Clone(docRoutes), intendantRoutes...))
+	got := make([]string, 0, len(policies))
+	for _, p := range policies {
+		got = append(got, p.name)
+		if p.name == intendantCapDefault || p.name == intendantDenyBig {
+			out := policyYAML(t, p)
+			golden.Assert(t, p.name+".yaml", out)
+		}
+	}
+	want := []string{policyJournal,
+		"ranger-cap-role-doc-doc-model-default",
+		intendantDenyBig,
+		intendantCapDefault}
+	if !slices.Equal(got, want) {
+		t.Errorf("policies %v, want %v", got, want)
+	}
+}
+
 // The Expert's extra Markers, its guards with the webhook entry, and the
 // webhook's backend, exactly as applied.
 func TestRenderExpertGolden(t *testing.T) {
@@ -63,10 +114,7 @@ func TestRenderExpertGolden(t *testing.T) {
 		if p.name != policyExtra && p.name != policyGuards {
 			continue
 		}
-		out, err := yaml.Marshal(map[string]any{"spec": p.spec, "markers": p.markers})
-		if err != nil {
-			t.Fatal(err)
-		}
+		out := policyYAML(t, p)
 		golden.Assert(t, "expert-"+p.name+".yaml", out)
 	}
 	spec, ok := webhook(rg)

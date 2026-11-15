@@ -183,14 +183,14 @@ Mirroring every image and installing without Internet access is tracked in issue
 | platform.observability.metrics.prometheusURL | string | `""` | A Prometheus that scrapes the gateway: usage and cost (spec 01). |
 | platform.observability.otlp.endpoint | string | `""` | OTLP endpoint for traces; empty: no export (a production gap). |
 | ranger | object | see the keys below | The Ranger (spec 09), cluster-scoped singleton named main: the same rules for every agent through the gateway, rendered as gateway policies by level. Apprentice watches and blocks nothing (the guards audit); from Practitioner the gateway masks, refuses secret shapes and applies the caps. |
-| ranger.caps | object | `{}` | Budgets and limits: `gateway: {tokensPerHour, requestsPerMinute, burst}`, `models: [{name, tokensPerHour, ...}]`. Empty: no cap until you set one. The budgets are soft: the gateway counts the tokens of the answer. A request limit on the gateway counts every request (MCP and A2A calls included). |
+| ranger.caps | object | `{}` | Budgets and limits: `gateway: {tokensPerHour, requestsPerMinute, burst}`, `models: [{name, tokensPerHour, ...}]`. Empty: no cap until you set one. A model's cap applies to every role's route to that model (the Doc's and the Intendant's), each route counted on its own. The budgets are soft: the gateway counts the tokens of the answer. A request limit on the gateway counts every request (MCP and A2A calls included). |
 | ranger.extra | object | `{}` | Expert only: the extra Markers (`webhook`, `sourceCIDRs`, `expressions`). The chart refuses them below Expert, as the API does. |
 | ranger.filtering.patterns | list | `[]` | Your own patterns, as `{name, regex}`. |
 | ranger.filtering.shipped | bool | `true` | The shipped secret shapes (private keys, cloud access keys, API tokens of common services): a match refuses the request. |
 | ranger.level | string | `"Apprentice"` | Apprentice (audit only), Practitioner (mask, filter, cap) or Expert (the Practitioner's Markers and the extra ones; the identity per agent waits for the Intendant's Bib). |
 | ranger.masking.builtins | list | `["CreditCard","Email","PhoneNumber","Ssn"]` | The gateway's built-in patterns replaced before a request reaches the model (CreditCard, Email, PhoneNumber, Ssn). |
 | ranger.masking.patterns | list | `[]` | Your own patterns, as `{name, regex}`. |
-| ranger.models | list | `[]` | The platform's models each role kind may call, as `[{kind, allowed}]`; a kind not listed may call all. |
+| ranger.models | list | `[]` | The platform's models each role kind (TakeCareDoc, TakeCareIntendant) may call, as `[{kind, allowed}]`; a kind not listed may call all. |
 | ranger.suspend | bool | `false` | Pause without deletion: no Marker is rendered. |
 
 Specs: [platform](../../docs/specs/01-platform.md), [connectors](../../docs/specs/05-connectors.md), [the Doc](../../docs/specs/02-doc.md). Decisions: [ADR 0002](../../docs/adr/0002-dependencies-installed-by-the-chart.md), [ADR 0004](../../docs/adr/0004-llm-through-the-gateway.md), [ADR 0007](../../docs/adr/0007-agent-engine-kagent.md), [ADR 0008](../../docs/adr/0008-everything-is-an-mcp-connector.md).

@@ -121,7 +121,7 @@ type Budget struct {
 
 // RoleModels are the models a role kind may call.
 type RoleModels struct {
-	// +kubebuilder:validation:Enum=TakeCareDoc
+	// +kubebuilder:validation:Enum=TakeCareDoc;TakeCareIntendant
 	Kind string `json:"kind"`
 	// The platform's model names.
 	// +kubebuilder:validation:MinItems=1

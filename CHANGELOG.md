@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- The Ranger's per-model Markers now cover the Intendant's model route: a cap on a model (`spec.caps.models`) caps the Intendant's route to it, and `spec.models` accepts `TakeCareIntendant`. Before this fix, the Intendant's model route had only the gateway-wide Markers: no per-model cap and no allowed-models refusal applied to it, even when set. A pass past its deadline, which kagent 0.10.3 cannot cancel, is bounded only by that cap: set one.
 - The site's Reference now lists `TakeCareIntendant` and `TakeCareSurvey`, missing since 0.3.0, and the site's build fails when the Reference's kinds and the CRDs differ.
 
 ## [0.3.1] - 2026-11-14
