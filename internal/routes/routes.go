@@ -117,6 +117,10 @@ func CallsExpression(rule string) string { return MCPRequest + " && (" + rule + 
 // CallsPolicyName names the route-level policy of a route's CallRule.
 func CallsPolicyName(r Role, connector string) string { return mcpName(r, connector) + "-calls" }
 
+// MCPPolicyName names the policy that holds the allow-list of a role's
+// route to a connector (its MCP authorization).
+func MCPPolicyName(r Role, connector string) string { return mcpName(r, connector) }
+
 // Names of the generated objects.
 func mcpName(r Role, connector string) string {
 	return fmt.Sprintf("role-%s-%s-mcp-%s", r.Kind, r.Name, connector)

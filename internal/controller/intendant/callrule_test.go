@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/util/retry"
@@ -26,6 +27,9 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/telemetry/semconv"
 )
+
+// gated is the Intendant of the argument rule's tests.
+const gated = "gated"
 
 const (
 	rulesFixtures = "../../discovery/testdata/mcp-prometheus-v0.11.11"
@@ -95,12 +99,13 @@ func condition(typ, status string) map[string]any {
 	return map[string]any{"type": typ, "status": status, "reason": typ, "message": "", "lastTransitionTime": condTime}
 }
 
-// surveyOnce runs one survey created by hand and returns its alerting layer.
-func (f *fixture) surveyOnce(t *testing.T, intendant, name string) discovery.Layer {
+// surveyOnce runs one survey of the gated Intendant, created by hand, and
+// returns its alerting layer.
+func (f *fixture) surveyOnce(t *testing.T, name string) discovery.Layer {
 	t.Helper()
 	ctx := context.Background()
 	s := &v1alpha1.TakeCareSurvey{Name: name, Namespace: ns}
-	s.Spec.IntendantRef = v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareIntendant, Name: intendant}
+	s.Spec.IntendantRef = v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareIntendant, Name: gated}
 	if err := f.c.Create(ctx, s); err != nil {
 		t.Fatal(err)
 	}
@@ -130,8 +135,8 @@ func TestArgumentRuleGate(t *testing.T) {
 	f.grounded(t)
 	f.connector(t, connMetrics, v1alpha1.ConnectorMetrics, []string{mcp.RulesTool})
 	var calls atomic.Int32
-	f.routes.Store("gated/"+connMetrics, rulesServer(t, &calls))
-	f.surveyed(t, "gated", mapServer(t, nil), func(in *v1alpha1.TakeCareIntendant) {
+	f.routes.Store(gated+"/"+connMetrics, rulesServer(t, &calls))
+	f.surveyed(t, gated, mapServer(t, nil), func(in *v1alpha1.TakeCareIntendant) {
 		in.Spec.Connectors.Metrics = []string{connMetrics}
 	})
 	blocked := []discovery.NotSeen{{Ref: connMetrics, Reason: notEnforced}}
@@ -143,16 +148,16 @@ func TestArgumentRuleGate(t *testing.T) {
 		{"rejected", "False", condTrue, "the gateway does not enforce the argument rule on prometheus's route: Accepted"},
 	} {
 		if step.accepted != "" {
-			f.verdict(t, "gated", step.accepted, step.attached)
+			f.verdict(t, gated, step.accepted, step.attached)
 		}
-		in := f.wait(t, "gated", func(in *v1alpha1.TakeCareIntendant) bool {
+		in := f.wait(t, gated, func(in *v1alpha1.TakeCareIntendant) bool {
 			c := cond(in, v1alpha1.ConditionConnectorsReady)
 			return c != nil && c.Reason == ReasonConnectorDegrade && strings.Contains(c.Message, step.message)
 		})
 		if !isStatus(in, v1alpha1.ConditionReady, metav1.ConditionTrue) {
 			t.Errorf("%s: Ready %+v: an optional connector's problem must not block", step.name, cond(in, v1alpha1.ConditionReady))
 		}
-		l := f.surveyOnce(t, "gated", "gated-"+string(rune('a'+i)))
+		l := f.surveyOnce(t, "gated-"+string(rune('a'+i)))
 		if len(l.NotSeen) != 1 || l.NotSeen[0] != blocked[0] || l.Seen != 0 {
 			t.Errorf("%s: alerting layer %+v", step.name, l)
 		}
@@ -163,20 +168,23 @@ func TestArgumentRuleGate(t *testing.T) {
 	if n := f.canary.sent.Load(); n != 0 {
 		t.Errorf("%d canaries sent while the status says the rule is not enforced", n)
 	}
-	f.verdict(t, "gated", condTrue, condTrue)
-	f.wait(t, "gated", func(in *v1alpha1.TakeCareIntendant) bool {
+	if f.admitsRules(t) {
+		t.Error("the status refuses the rule: the route must not admit get_rules")
+	}
+	f.verdict(t, gated, condTrue, condTrue)
+	f.wait(t, gated, func(in *v1alpha1.TakeCareIntendant) bool {
 		return isStatus(in, v1alpha1.ConditionConnectorsReady, metav1.ConditionTrue)
 	})
 	canarySteps(t, f, &calls)
 	f.canary.verdict.Store(mcp.CanaryRefused)
 	f.passClock.jump(time.Minute)
-	if l := f.surveyOnce(t, "gated", "gated-enforced"); len(l.NotSeen) != 0 || l.Seen == 0 || calls.Load() == 0 {
+	if l := f.surveyOnce(t, "gated-enforced"); len(l.NotSeen) != 0 || l.Seen == 0 || calls.Load() == 0 {
 		t.Errorf("once enforced: alerting layer %+v, %d get_rules calls", l, calls.Load())
 	}
-	f.wait(t, "gated", func(in *v1alpha1.TakeCareIntendant) bool {
+	f.wait(t, gated, func(in *v1alpha1.TakeCareIntendant) bool {
 		return isStatus(in, v1alpha1.ConditionConnectorsReady, metav1.ConditionTrue)
 	})
-	got, ok := f.policyAt(t, routes.CallsPolicyName(roleOf(&v1alpha1.TakeCareIntendant{Name: "gated", Namespace: ns}), connMetrics), "spec", "traffic", "authorization", "policy", "matchExpressions")
+	got, ok := f.policyAt(t, routes.CallsPolicyName(roleOf(&v1alpha1.TakeCareIntendant{Name: gated, Namespace: ns}), connMetrics), "spec", "traffic", "authorization", "policy", "matchExpressions")
 	if !ok || got != routes.CallsExpression(RulesCallCEL) {
 		t.Errorf("the argument rule: %q", got)
 	}
@@ -188,6 +196,9 @@ func TestArgumentRuleGate(t *testing.T) {
 // what the gateway did, with no arguments and no answer.
 func canarySteps(t *testing.T, f *fixture, calls *atomic.Int32) {
 	t.Helper()
+	if !f.admitsRules(t) {
+		t.Error("the status says enforced and no canary failed: the route must admit get_rules")
+	}
 	for _, step := range []struct {
 		name    string
 		verdict mcp.CanaryVerdict
@@ -195,24 +206,47 @@ func canarySteps(t *testing.T, f *fixture, calls *atomic.Int32) {
 	}{
 		{"stale status: the canary let through", mcp.CanaryLetThrough, letThrough},
 		{"the canary unproven", mcp.CanaryPending, notChecked},
+		{"the canary refused by the closed route's tool list", mcp.CanaryClosed, canaryClosed},
 	} {
 		f.canary.verdict.Store(step.verdict)
 		f.passClock.jump(time.Minute) // each survey completes after the last
 		survey := "gated-" + string(step.verdict)
-		l := f.surveyOnce(t, "gated", survey)
+		l := f.surveyOnce(t, survey)
 		if len(l.NotSeen) != 1 || l.NotSeen[0] != (discovery.NotSeen{Ref: connMetrics, Reason: step.reason}) || l.Seen != 0 {
 			t.Errorf("%s: alerting layer %+v", step.name, l)
 		}
 		if n := calls.Load(); n != 0 {
 			t.Fatalf("%s: %d get_rules calls", step.name, n)
 		}
-		in := f.wait(t, "gated", func(in *v1alpha1.TakeCareIntendant) bool {
+		in := f.wait(t, gated, func(in *v1alpha1.TakeCareIntendant) bool {
 			c := cond(in, v1alpha1.ConditionConnectorsReady)
 			return c != nil && c.Reason == ReasonConnectorDegrade && strings.Contains(c.Message, "survey "+survey+": "+step.reason)
 		})
 		if !isStatus(in, v1alpha1.ConditionReady, metav1.ConditionTrue) {
 			t.Errorf("%s: Ready %+v", step.name, cond(in, v1alpha1.ConditionReady))
 		}
+		if f.admitsRules(t) {
+			t.Errorf("%s: the route still admits get_rules", step.name)
+		}
+	}
+	if e := f.events(t, ReasonMetricsRouteClosed); len(e) != 1 || !strings.Contains(e[0], "survey gated-let-through: "+letThrough) {
+		t.Errorf("MetricsRouteClosed events %v, want one naming the first survey", e)
+	}
+	// Recovery: the rule refuses the canary on the closed route; that survey
+	// does not read, says so without a problem, and the route reopens.
+	f.canary.verdict.Store(mcp.CanaryRefused)
+	f.passClock.jump(time.Minute)
+	if l := f.surveyOnce(t, "gated-proven"); len(l.NotSeen) != 1 || l.NotSeen[0] != (discovery.NotSeen{Ref: connMetrics, Reason: proven}) || calls.Load() != 0 {
+		t.Errorf("the proving survey: alerting layer %+v, %d get_rules calls", l, calls.Load())
+	}
+	f.wait(t, gated, func(in *v1alpha1.TakeCareIntendant) bool {
+		return isStatus(in, v1alpha1.ConditionConnectorsReady, metav1.ConditionTrue)
+	})
+	if !f.admitsRules(t) {
+		t.Error("proven: the route must admit get_rules again")
+	}
+	if e := f.events(t, ReasonMetricsRouteReopened); len(e) != 1 {
+		t.Errorf("MetricsRouteReopened events %v, want one", e)
 	}
 	verdicts := map[string]bool{}
 	for _, sp := range f.spans.GetSpans() {
@@ -226,11 +260,14 @@ func canarySteps(t *testing.T, f *fixture, calls *atomic.Int32) {
 		verdict := attrs[semconv.CallRuleVerdict]
 		verdicts[verdict] = true
 		// The connector and the verdict, and the status only when one came
-		// back (the fake answers 200 let through, 403 refused, none pending).
+		// back (the fake answers 200 let through, 400 closed, 403 refused,
+		// none pending).
 		want := map[string]string{semconv.SurveyConnector: connMetrics, semconv.CallRuleVerdict: verdict}
 		switch mcp.CanaryVerdict(verdict) {
 		case mcp.CanaryLetThrough:
 			want[semconv.HTTPResponseStatusCode] = "200"
+		case mcp.CanaryClosed:
+			want[semconv.HTTPResponseStatusCode] = "400"
 		case mcp.CanaryRefused:
 			want[semconv.HTTPResponseStatusCode] = "403"
 		}
@@ -238,9 +275,42 @@ func canarySteps(t *testing.T, f *fixture, calls *atomic.Int32) {
 			t.Errorf("the canary's span carries %v, want %v", attrs, want)
 		}
 	}
-	if !verdicts[string(mcp.CanaryLetThrough)] || !verdicts[string(mcp.CanaryPending)] {
+	if !verdicts[string(mcp.CanaryLetThrough)] || !verdicts[string(mcp.CanaryPending)] || !verdicts[string(mcp.CanaryClosed)] {
 		t.Errorf("the canary's spans say %v", verdicts)
 	}
+}
+
+// admitsRules reads whether the gated Intendant's metrics route admits
+// get_rules.
+func (f *fixture) admitsRules(t *testing.T) bool {
+	t.Helper()
+	ok, found, err := admitsRules(context.Background(), f.c, roleOf(&v1alpha1.TakeCareIntendant{Name: gated, Namespace: ns}), connMetrics)
+	if err != nil || !found {
+		t.Fatalf("the metrics route's tool list: found %v, %v", found, err)
+	}
+	return ok
+}
+
+// events are the notes of the Intendants' events of a reason.
+func (f *fixture) events(t *testing.T, reason string) []string {
+	t.Helper()
+	var notes []string
+	for deadline := time.Now().Add(waitFor); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		var list eventsv1.EventList
+		if err := f.c.List(context.Background(), &list); err != nil {
+			t.Fatal(err)
+		}
+		notes = notes[:0]
+		for _, e := range list.Items {
+			if e.Reason == reason && e.Regarding.Kind == v1alpha1.KindTakeCareIntendant {
+				notes = append(notes, e.Note)
+			}
+		}
+		if len(notes) > 0 {
+			return notes
+		}
+	}
+	return notes
 }
 
 // policyAt reads the first expression at a path of a policy.

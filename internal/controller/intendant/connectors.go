@@ -37,6 +37,9 @@ type binding struct {
 	// agent are the connectors given to the agent (spec 10 §5), each with
 	// the agent's own tools: never the operator's get_rules.
 	agent []agentTools
+	// rules is, per metrics connector, whether its route admits get_rules
+	// and why not (rulesRouteState).
+	rules map[string]rulesRoute
 }
 
 // agentTools is a connector given to the agent and its tools.
@@ -68,7 +71,7 @@ func (b *binding) giveAgent(in *v1alpha1.TakeCareIntendant, conn *v1alpha1.TakeC
 // map connector is required; the cluster and metrics connectors are
 // optional, each one that cannot be read named in the condition.
 func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntendant, st *status) (binding, error) {
-	var b binding
+	b := binding{rules: map[string]rulesRoute{}}
 	c := in.Spec.Connectors
 	for _, name := range c.Map {
 		tools, problem, conn, err := usable(ctx, r.Client, in.Namespace, name, v1alpha1.ConnectorMap, mapTools, readTools)
@@ -129,24 +132,26 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 		}
 		// Two layers for get_rules' arguments (spec 10 §8): the route-level
 		// rule, which the gateway enforces once it has Accepted and Attached
-		// it and a survey has seen it refuse the canary, and the operator's
-		// client. Until then the connector is not usable: the survey does not
-		// call get_rules.
-		m := route(name, tools, nil)
-		m.CallRule = RulesCallCEL
-		b.routes = append(b.routes, m)
-		ok, problem, err := callRuleEnforced(ctx, r.Client, roleOf(in), name)
+		// it and the survey has seen it refuse the canary, and the operator's
+		// client. The route admits get_rules by name only in the state
+		// rulesRouteState decides: closed while the status refuses the rule,
+		// and from a survey whose canary was not refused until one whose
+		// canary is. The rule stays on the route either way, so the canary
+		// can prove it again.
+		state, err := rulesRouteOf(ctx, r.Client, in, name)
 		if err != nil {
 			return b, err
 		}
-		if ok {
-			problem, err = r.lastCanary(ctx, in, name)
-			if err != nil {
-				return b, err
-			}
+		admitted := tools
+		if !state.open {
+			admitted = nil
 		}
-		if problem != "" {
-			b.problems = append(b.problems, problem)
+		m := route(name, admitted, nil)
+		m.CallRule = RulesCallCEL
+		b.routes = append(b.routes, m)
+		b.rules[name] = state
+		if state.problem != "" {
+			b.problems = append(b.problems, state.problem)
 		}
 	}
 	switch {

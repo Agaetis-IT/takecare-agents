@@ -44,6 +44,23 @@ kubectl -n takecare-system get takecaresurvey intendant-q6w6z -o json |
   jq -r '.status.layers[] | "\(.name) seen=\(.seen) matched=\(.matched) proposed=\(.proposed)", (.notSeen // [] | .[] | "  not seen: \(.ref): \(.reason)")'
 ```
 
+When the `alerting` layer is not seen on the metrics connector because the gateway's argument rule was not enforced (`ConnectorsReady` is `False` with reason `ConnectorsDegraded`, and the Intendant has a `MetricsRouteClosed` event), the metrics route no longer admits `get_rules`. The rule comes back in two surveys: the first proves it and does not read the rules, the second reads them. To recover without waiting for the next trigger, fix the gateway policy that dropped the rule (for example a Gateway-level traffic policy with `strategy.inheritance: Override`), then create a survey by hand, and once it completes, wait for the Intendant's `MetricsRouteReopened` event before you create another: a survey started before the gateway has the reopened route meets a refusal on its own `get_rules`, and its alerting layer says "the call failed" on the metrics connector (spec 10 §8).
+
+```bash
+kubectl -n takecare-system get events --field-selector reason=MetricsRouteReopened,involvedObject.name=intendant
+```
+
+A survey by hand:
+
+```bash
+kubectl -n takecare-system create -f - <<'EOF'
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareSurvey
+metadata: { generateName: intendant-by-hand-, namespace: takecare-system }
+spec: { intendantRef: { kind: TakeCareIntendant, name: intendant } }
+EOF
+```
+
 The full set, beyond the first 20, is in the ConfigMap the status names (`status.proposalsConfigMap`), one key per proposal id, each value the proposal as YAML:
 
 ```bash

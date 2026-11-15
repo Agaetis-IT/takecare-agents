@@ -145,7 +145,8 @@ func TestSurveyTraceFailure(t *testing.T) {
 }
 
 // Retention: an ended survey older than seven days goes, unless it is its
-// Intendant's newest ended one; a survey that has not ended stays.
+// Intendant's newest ended one, or its newest Completed one (which decides
+// its metrics route); a survey that has not ended stays.
 func TestSweep(t *testing.T) {
 	now := testStart
 	old, recent := now.Add(-8*24*time.Hour), now.Add(-time.Hour)
@@ -167,6 +168,11 @@ func TestSweep(t *testing.T) {
 		survey("b-only", "b", v1alpha1.RunCompleted, old),
 		survey("b-dropped", "b", v1alpha1.RunDropped, old.Add(-time.Hour)),
 		survey("c-running", "c", v1alpha1.RunRunning, old),
+		// d's newest ended survey failed; the Completed one before it, which
+		// may have closed its metrics route, stays however old.
+		survey("d-failed", "d", v1alpha1.RunFailed, old.Add(time.Hour)),
+		survey("d-completed", "d", v1alpha1.RunCompleted, old),
+		survey("d-completed-before", "d", v1alpha1.RunCompleted, old.Add(-time.Hour)),
 	}
 	scheme := runtime.NewScheme()
 	if err := v1alpha1.AddToScheme(scheme); err != nil {
@@ -177,7 +183,7 @@ func TestSweep(t *testing.T) {
 	if err := sw.Sweep(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	gone := map[string]bool{"a-old": true, "a-older": true, "b-dropped": true}
+	gone := map[string]bool{"a-old": true, "a-older": true, "b-dropped": true, "d-completed-before": true}
 	for _, o := range objs {
 		err := c.Get(context.Background(), client.ObjectKeyFromObject(o), &v1alpha1.TakeCareSurvey{})
 		if gone[o.GetName()] != apierrors.IsNotFound(err) {

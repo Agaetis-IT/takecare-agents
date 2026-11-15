@@ -398,17 +398,29 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 		// Fail closed for that layer only: no get_rules while the gateway
 		// does not enforce its argument rule, as its status says first and
 		// its refusal of the canary proves.
-		switch ok, _, err := callRuleEnforced(ctx, w.Reader, role, m.name); {
+		// The route admits get_rules only in the state the Reconciler
+		// renders from the same inputs (rulesRouteState): a refused canary
+		// on a closed route proves the rule, and the next survey reads.
+		switch ok, problem, err := callRuleEnforced(ctx, w.Reader, role, m.name); {
 		case err != nil:
 			return out, none, fail(failImport, err)
 		case !ok:
 			blocked = m.name
 		default:
-			switch v := w.checkCallRule(ctx, &in, m); v {
-			case mcp.CanaryRefused:
+			last, err := lastCanary(ctx, w.Reader, &in, m.name)
+			if err != nil {
+				return out, none, fail(failImport, err)
+			}
+			state := rulesRouteState(ok, problem, last)
+			switch v := w.checkCallRule(ctx, &in, m); {
+			case v == mcp.CanaryRefused && state.open:
 				metrics = &discovery.Metrics{Connector: m.name, Endpoint: m.ep}
-			case mcp.CanaryLetThrough:
+			case v == mcp.CanaryRefused:
+				blocked, why = m.name, proven
+			case v == mcp.CanaryLetThrough:
 				blocked, why = m.name, letThrough
+			case v == mcp.CanaryClosed:
+				blocked, why = m.name, canaryClosed
 			default:
 				blocked, why = m.name, notChecked
 			}

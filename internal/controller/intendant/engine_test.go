@@ -95,9 +95,11 @@ func TestAgentRendered(t *testing.T) {
 		t.Errorf("the agent's tools (-want +got):\n%s", diff)
 	}
 	for conn, want := range map[string]string{
-		connMap:       `mcp.tool.name in ["entry", "map_at", "path"]`,
-		connCluster:   `mcp.tool.name in ["namespaces_list", "resources_get", "resources_list"]`,
-		connMetrics:   `mcp.tool.name in ["get_rules"]`,
+		connMap:     `mcp.tool.name in ["entry", "map_at", "path"]`,
+		connCluster: `mcp.tool.name in ["namespaces_list", "resources_get", "resources_list"]`,
+		// No gateway status of the argument rule here: the metrics route
+		// admits no tool until the gateway accepts it (spec 10 §8).
+		connMetrics:   "false",
 		connKnowledge: `mcp.tool.name in ["search_runbooks"]`,
 	} {
 		if got, ok := f.policy(t, "agent", conn); !ok || got != want {
