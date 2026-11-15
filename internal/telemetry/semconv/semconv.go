@@ -79,6 +79,12 @@ const (
 	SurveyProposed   = "takecare.survey.proposed"
 	SurveyNotSeen    = "takecare.survey.not_seen"
 	SurveyProposals  = "takecare.survey.proposals"
+
+	// The call rule's canary (spec 10 §8), on its span: what the gateway
+	// did (refused, let-through, pending) and the tools/call's HTTP status
+	// (0 when none came back), the OpenTelemetry HTTP attribute.
+	CallRuleVerdict        = "takecare.call_rule.verdict"
+	HTTPResponseStatusCode = "http.response.status_code"
 )
 
 // Span events of an investigation (spec 02).

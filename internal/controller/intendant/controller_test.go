@@ -95,6 +95,27 @@ type fixture struct {
 	// when set, bounds each from its lock.
 	poster         *fakePoster
 	publishTimeout time.Duration
+	// canary is the gateway's answer to the call rule's canary (refused
+	// unless a test says otherwise), canaries the canaries sent.
+	canary fakeCanary
+}
+
+// fakeCanary answers the call rule's canary with the verdict a test sets.
+type fakeCanary struct {
+	verdict atomic.Value
+	sent    atomic.Int32
+}
+
+func (c *fakeCanary) CallRuleCanary(context.Context, mcp.Endpoint) (mcp.CanaryVerdict, int) {
+	c.sent.Add(1)
+	v, _ := c.verdict.Load().(mcp.CanaryVerdict)
+	switch v {
+	case mcp.CanaryLetThrough:
+		return v, http.StatusOK
+	case mcp.CanaryPending:
+		return v, 0
+	}
+	return mcp.CanaryRefused, http.StatusForbidden
 }
 
 func start(t *testing.T) *fixture { return startWith(t, false) }
@@ -166,7 +187,7 @@ func (f *fixture) startManager(t *testing.T) {
 		}
 		if err := mgr.Add(&Runner{
 			Client: mgr.GetClient(), Reader: scopedReader{mgr.GetAPIReader()}, Queue: queue, GateRetry: 100 * time.Millisecond,
-			Caller: &mcp.Client{HTTP: &http.Client{Timeout: time.Minute}}, Now: f.passClock.Now, Metrics: f.metrics,
+			Caller: &mcp.Client{HTTP: &http.Client{Timeout: time.Minute}}, Canary: &f.canary, Now: f.passClock.Now, Metrics: f.metrics,
 			Runs: f.runs, EngineKind: kagent0103.Kind, EngineNamespace: engineNS, Usage: f.usage, PassTimeout: passTimeout, PassInterval: 50 * time.Millisecond, PassClock: f.passClock,
 			Tracer: sdktrace.NewTracerProvider(sdktrace.WithSyncer(f.spans)).Tracer("test"),
 			Poster: f.poster, Backoff: time.Millisecond, Recorder: mgr.GetEventRecorder("test"), PublishTimeout: f.publishTimeout,

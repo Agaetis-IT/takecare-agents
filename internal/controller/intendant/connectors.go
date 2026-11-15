@@ -129,8 +129,9 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 		}
 		// Two layers for get_rules' arguments (spec 10 §8): the route-level
 		// rule, which the gateway enforces once it has Accepted and Attached
-		// it, and the operator's client. Until then the connector is not
-		// usable: the survey does not call get_rules.
+		// it and a survey has seen it refuse the canary, and the operator's
+		// client. Until then the connector is not usable: the survey does not
+		// call get_rules.
 		m := route(name, tools, nil)
 		m.CallRule = RulesCallCEL
 		b.routes = append(b.routes, m)
@@ -138,7 +139,13 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 		if err != nil {
 			return b, err
 		}
-		if !ok {
+		if ok {
+			problem, err = r.lastCanary(ctx, in, name)
+			if err != nil {
+				return b, err
+			}
+		}
+		if problem != "" {
 			b.problems = append(b.problems, problem)
 		}
 	}

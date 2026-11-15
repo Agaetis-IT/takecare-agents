@@ -23,6 +23,7 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
 	"github.com/agaetis-it/takecare-agents/internal/mcp/mcptest"
 	"github.com/agaetis-it/takecare-agents/internal/routes"
+	"github.com/agaetis-it/takecare-agents/internal/telemetry/semconv"
 )
 
 const (
@@ -158,16 +159,76 @@ func TestArgumentRuleGate(t *testing.T) {
 			t.Fatalf("%s: %d get_rules calls while the rule is not enforced", step.name, n)
 		}
 	}
+	if n := f.canary.sent.Load(); n != 0 {
+		t.Errorf("%d canaries sent while the status says the rule is not enforced", n)
+	}
 	f.verdict(t, "gated", condTrue, condTrue)
 	f.wait(t, "gated", func(in *v1alpha1.TakeCareIntendant) bool {
 		return isStatus(in, v1alpha1.ConditionConnectorsReady, metav1.ConditionTrue)
 	})
+	canarySteps(t, f, &calls)
+	f.canary.verdict.Store(mcp.CanaryRefused)
+	f.passClock.jump(time.Minute)
 	if l := f.surveyOnce(t, "gated", "gated-enforced"); len(l.NotSeen) != 0 || l.Seen == 0 || calls.Load() == 0 {
 		t.Errorf("once enforced: alerting layer %+v, %d get_rules calls", l, calls.Load())
 	}
+	f.wait(t, "gated", func(in *v1alpha1.TakeCareIntendant) bool {
+		return isStatus(in, v1alpha1.ConditionConnectorsReady, metav1.ConditionTrue)
+	})
 	got, ok := f.policyAt(t, routes.CallsPolicyName(roleOf(&v1alpha1.TakeCareIntendant{Name: "gated", Namespace: ns}), connMetrics), "spec", "traffic", "authorization", "policy", "matchExpressions")
 	if !ok || got != routes.CallsExpression(RulesCallCEL) {
 		t.Errorf("the argument rule: %q", got)
+	}
+}
+
+// canarySteps: the status says enforced; the canary is what proves it, at
+// each survey (spec 10 §8): let through or unproven, the layer is not read,
+// the condition names the survey that found it, and the canary's span says
+// what the gateway did, with no arguments and no answer.
+func canarySteps(t *testing.T, f *fixture, calls *atomic.Int32) {
+	t.Helper()
+	for _, step := range []struct {
+		name    string
+		verdict mcp.CanaryVerdict
+		reason  string
+	}{
+		{"stale status: the canary let through", mcp.CanaryLetThrough, letThrough},
+		{"the canary unproven", mcp.CanaryPending, notChecked},
+	} {
+		f.canary.verdict.Store(step.verdict)
+		f.passClock.jump(time.Minute) // each survey completes after the last
+		survey := "gated-" + string(step.verdict)
+		l := f.surveyOnce(t, "gated", survey)
+		if len(l.NotSeen) != 1 || l.NotSeen[0] != (discovery.NotSeen{Ref: connMetrics, Reason: step.reason}) || l.Seen != 0 {
+			t.Errorf("%s: alerting layer %+v", step.name, l)
+		}
+		if n := calls.Load(); n != 0 {
+			t.Fatalf("%s: %d get_rules calls", step.name, n)
+		}
+		in := f.wait(t, "gated", func(in *v1alpha1.TakeCareIntendant) bool {
+			c := cond(in, v1alpha1.ConditionConnectorsReady)
+			return c != nil && c.Reason == ReasonConnectorDegrade && strings.Contains(c.Message, "survey "+survey+": "+step.reason)
+		})
+		if !isStatus(in, v1alpha1.ConditionReady, metav1.ConditionTrue) {
+			t.Errorf("%s: Ready %+v", step.name, cond(in, v1alpha1.ConditionReady))
+		}
+	}
+	verdicts := map[string]bool{}
+	for _, sp := range f.spans.GetSpans() {
+		if sp.Name != "check call rule" {
+			continue
+		}
+		for _, a := range sp.Attributes {
+			if string(a.Key) == semconv.CallRuleVerdict {
+				verdicts[a.Value.AsString()] = true
+			}
+		}
+		if len(sp.Attributes) != 3 {
+			t.Errorf("the canary's span carries %v: the connector, the verdict and the status only", sp.Attributes)
+		}
+	}
+	if !verdicts[string(mcp.CanaryLetThrough)] || !verdicts[string(mcp.CanaryPending)] {
+		t.Errorf("the canary's spans say %v", verdicts)
 	}
 }
 

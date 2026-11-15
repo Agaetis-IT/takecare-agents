@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The Ranger's per-model Markers now cover the Intendant's model route: a cap on a model (`spec.caps.models`) caps the Intendant's route to it, and `spec.models` accepts `TakeCareIntendant`. Before this fix, the Intendant's model route had only the gateway-wide Markers: no per-model cap and no allowed-models refusal applied to it, even when set. A pass past its deadline, which kagent 0.10.3 cannot cancel, is bounded by that cap, and by the runtime's 500 model calls a run without one: set one.
 - The site's Reference now lists `TakeCareIntendant` and `TakeCareSurvey`, missing since 0.3.0, and the site's build fails when the Reference's kinds and the CRDs differ.
+- The Intendant no longer trusts the gateway's status alone for the argument rule on `get_rules`: agentgateway can report a policy Accepted and Attached while a field of it is dropped (for example under a Gateway-level traffic policy with `strategy.inheritance: Override`) or while the proxy keeps an older configuration. Each survey now sends one call the rule must refuse before it reads the alerting rules; if the gateway lets it through, or cannot be checked, the survey does not read them, its alerting layer says why, and `ConnectorsReady` names the problem.
 
 ## [0.3.1] - 2026-11-14
 

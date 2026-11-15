@@ -59,7 +59,9 @@ checks=0 failed=0
 # DIAG collects what a failing check says about its cause (mcp_diagnose):
 # check prints it under its FAIL line, and empties it for the next check.
 DIAG="$(mktemp "${TMPDIR:-/tmp}/chart-smoke-diag.XXXXXX")"
-trap 'rm -f "$DIAG"' EXIT
+# The canary checks' Gateway-level Override policy opens every route below
+# it while it stands: removed right after them, and again on any exit.
+trap 'rm -f "$DIAG"; kubectl -n "$NS" delete agentgatewaypolicy smoke-override --ignore-not-found --request-timeout=5s >/dev/null 2>&1 || true' EXIT
 check() { # NAME COMMAND...: PASS when the command succeeds
   local name="$1"; shift
   checks=$((checks + 1))
@@ -243,6 +245,35 @@ mcp_forbidden() {
   grep -q '^HTTP 403$' <<<"$out" && ! grep -q '"result"' <<<"$out" && return 0
   mcp_diagnose "$3" "$out"
   return 1
+}
+
+# retry_forbidden NAMESPACE POD URL TOOL [ARGS]: mcp_forbidden, retried
+# while a policy change reaches the proxy.
+retry_forbidden() {
+  local _
+  for _ in $(seq 15); do
+    mcp_forbidden "$@" && return 0
+    sleep 2
+  done
+  return 1
+}
+
+# survey_alerting NAME: creates a survey of the smoke Intendant by hand and
+# prints its phase and its alerting layer's first not-seen reason once it is
+# Completed (or the phase it stopped at).
+survey_alerting() {
+  kubectl -n "$NS" apply -f - >/dev/null <<EOF
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareSurvey
+metadata: { name: $1, namespace: ${NS} }
+spec: { intendantRef: { kind: TakeCareIntendant, name: smoke-intendant } }
+EOF
+  local _
+  for _ in $(seq 150); do
+    [[ "$(kubectl -n "$NS" get takecaresurvey "$1" -o jsonpath='{.status.phase}')" == Completed ]] && break
+    sleep 2
+  done
+  kubectl -n "$NS" get takecaresurvey "$1" -o jsonpath='{.status.phase} {.status.layers[?(@.name=="alerting")].notSeen[0].reason}'
 }
 
 # mcp_forbidden_with METHOD NAMESPACE POD URL TOOL [ARGS]: mcp_forbidden,
@@ -670,6 +701,45 @@ EOF
   check "through the Intendant's A2A route, its agent's card answers (200)" \
     test "$("${code[@]}" "${gw}/api/a2a/kagent/${iagent}/.well-known/agent-card.json")" = "200"
   log "the Intendant's agent pod: $(kubectl -n kagent top pod --no-headers 2>/dev/null | awk -v a="$iagent" 'index($1, a) == 1 {print $1" "$2" "$3}' | head -1)"
+  # The call rule's canary (spec 10 §8): a Gateway-level traffic policy
+  # with strategy.inheritance Override drops the route's argument rule
+  # while its status stays Accepted and Attached (agentgateway 1.6,
+  # about/policies/target-merge). The survey's canary sees it, the survey
+  # does not read the rules, and ConnectorsReady says so; removed, the next
+  # survey's canary is refused again. The window is short: the policy also
+  # lifts the per-route rules below it.
+  log "the call rule's canary (spec 10 §8): a Gateway-level Override drops the argument rule"
+  local canary='{"type":"alert","exclude_alerts":true,"takecare_canary":true}'
+  local let_through="the gateway let through a call its argument rule on the metrics route refuses"
+  local calls=role-intendant-smoke-intendant-mcp-prometheus-calls
+  kubectl -n "$NS" apply -f - >/dev/null <<EOF
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata: { name: smoke-override, namespace: ${NS} }
+spec:
+  targetRefs: [{ group: gateway.networking.k8s.io, kind: Gateway, name: agentgateway-proxy }]
+  strategy: { inheritance: Override }
+  traffic: { authorization: { action: Require, policy: { matchExpressions: ["true"] } } }
+EOF
+  check "under a Gateway-level Override, the forged canary is let through" \
+    mcp_allowed kagent smoke-a2a "${iroute}/prometheus" get_rules "$canary"
+  check "under the Override, the argument rule still reports Accepted and Attached" \
+    test "$(kubectl -n "$NS" get agentgatewaypolicy "$calls" -o jsonpath='{.status.ancestors[*].conditions[?(@.type=="Accepted")].status} {.status.ancestors[*].conditions[?(@.type=="Attached")].status}')" = "True True"
+  local open_layer
+  open_layer="$(survey_alerting smoke-canary-open)"
+  log "the survey under the Override: ${open_layer}"
+  check "the survey under the Override does not read the rules: its alerting layer says the canary was let through" \
+    test "$open_layer" = "Completed ${let_through}"
+  check "ConnectorsReady names the survey that saw the canary let through" \
+    bash -c "for _ in \$(seq 30); do [[ \$(kubectl -n ${NS} get takecareintendant smoke-intendant -o jsonpath='{.status.conditions[?(@.type==\"ConnectorsReady\")].message}') == *'survey smoke-canary-open: ${let_through}'* ]] && exit 0; sleep 2; done; exit 1"
+  kubectl -n "$NS" delete agentgatewaypolicy smoke-override --ignore-not-found >/dev/null
+  check "the Override removed, the forged canary is refused again (403)" \
+    retry_forbidden kagent smoke-a2a "${iroute}/prometheus" get_rules "$canary"
+  local closed_layer
+  closed_layer="$(survey_alerting smoke-canary-closed)"
+  log "the survey after the Override: ${closed_layer}"
+  check "the next survey's canary is refused: it reads the rules, and ConnectorsReady no longer names a canary" \
+    bash -c "[[ '${closed_layer}' == Completed* && '${closed_layer}' != *'argument rule'* ]] && for _ in \$(seq 30); do [[ \$(kubectl -n ${NS} get takecareintendant smoke-intendant -o jsonpath='{.status.conditions[?(@.type==\"ConnectorsReady\")].message}') != *'survey smoke-canary'* ]] && exit 0; sleep 2; done; exit 1"
   kubectl -n "$NS" delete takecareintendant smoke-intendant --timeout=60s >/dev/null
   check "deleting the Intendant removed its agent and model configuration in kagent, and its routes" \
     bash -c "[[ -z \$(kubectl -n kagent get agents,modelconfigs,remotemcpservers -l takecare.agaetis.fr/owner=smoke-intendant -o name) && -z \$(kubectl -n ${NS} get httproutes,agentgatewaypolicies -l takecare.agaetis.fr/role-instance=intendant.smoke-intendant -o name) ]]"
@@ -918,12 +988,12 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=110 install ;;
-  upgrade) CHECKS_EXPECTED=110 upgrade ;;
+  install) CHECKS_EXPECTED=116 install ;;
+  upgrade) CHECKS_EXPECTED=116 upgrade ;;
   status) status ;;
   mask-test) mask_test ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=4 cluster_chart ;;
-  all) mask_test; up; CHECKS_EXPECTED=110 install; CHECKS_EXPECTED=110 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
+  all) mask_test; up; CHECKS_EXPECTED=116 install; CHECKS_EXPECTED=116 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|cluster|status|mask-test|down|all]"; exit 2 ;;
 esac
