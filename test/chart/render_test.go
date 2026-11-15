@@ -572,14 +572,14 @@ func TestAddonContentTools(t *testing.T) {
 		sets []string
 		want string
 	}{
-		"as shipped": {want: `[{"content":true,"name":"pods_log"},{"content":true,"name":"nodes_log"}]`},
+		"as shipped": {want: `[{"content":true,"name":"pods_log"}]`},
 		"merged with the user's overrides": {
 			sets: []string{
-				flagSet, "addons.kubernetes.tools[0].name=nodes_log", flagSet, "addons.kubernetes.tools[0].class=act",
+				flagSet, "addons.kubernetes.tools[0].name=events_list", flagSet, "addons.kubernetes.tools[0].class=act",
 				flagSet, "addons.kubernetes.tools[1].name=pods_log", flagSet, "addons.kubernetes.tools[1].content=false",
 				flagSet, "addons.kubernetes.tools[2].name=pods_list", flagSet, "addons.kubernetes.tools[2].class=read",
 			},
-			want: `[{"content":false,"name":"pods_log"},{"class":"act","content":true,"name":"nodes_log"},{"class":"read","name":"pods_list"}]`,
+			want: `[{"content":false,"name":"pods_log"},{"class":"act","name":"events_list"},{"class":"read","name":"pods_list"}]`,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

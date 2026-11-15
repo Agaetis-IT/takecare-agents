@@ -86,6 +86,9 @@ data:
     read_only = true
     disable_destructive = true
     toolsets = ["core"]
+    {{- include "takecare.kubernetes.hardening" . | nindent 4 }}
+
+    {{ include "takecare.kubernetes.deniedResources" . | nindent 4 | trim }}
     {{- if .Values.platform.observability.otlp.endpoint }}
 
     [telemetry]

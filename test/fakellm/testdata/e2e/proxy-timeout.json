@@ -1,7 +1,6 @@
 {
-  "source": "hand-written",
-  "date": "2026-10-31",
-  "description": "The Doc on proxy-timeout (spec 03), written by hand until a recorded set replaces it (make fakellm-record with a real model). Each exchange answers the conversation as it stands; kagent executes the tool calls through the gateway against the real MCP servers. Tools are offered under the hash of the 52 tools kagent offers the demo Doc (captured on the e2e cluster): the read tools of the kubernetes, prometheus, five corpus and map connectors, without the content tool nodes_log the Doc does not list (ADR 0014), and kagent's own ask_user. When a connector's tool set changes, the hash changes and replay fails: the fake model's \"unknown request\" log line prints the request's fingerprint (with the new hash) and the offered tool names, which is what a fixture needs, without a real key.",
+  "source": "recorded",
+  "date": "2026-11-15",
   "exchanges": [
     {
       "fingerprint": {
@@ -11,7 +10,7 @@
           "user"
         ],
         "called": [],
-        "offered": "0e713a052631681f"
+        "offered": "73e6d9532548372b"
       },
       "response": {
         "id": "e2e-1",
@@ -27,11 +26,43 @@
               "content": null,
               "tool_calls": [
                 {
-                  "id": "call_1",
+                  "id": "call_1_1",
+                  "type": "function",
+                  "function": {
+                    "name": "entry",
+                    "arguments": "{\"key\":\"service/billing-api\"}"
+                  }
+                },
+                {
+                  "id": "call_1_2",
+                  "type": "function",
+                  "function": {
+                    "name": "blast_radius",
+                    "arguments": "{\"key\":\"service/billing-api\"}"
+                  }
+                },
+                {
+                  "id": "call_1_3",
                   "type": "function",
                   "function": {
                     "name": "pods_list_in_namespace",
-                    "arguments": "{\"namespace\": \"demo-apps\"}"
+                    "arguments": "{\"namespace\":\"demo-apps\"}"
+                  }
+                },
+                {
+                  "id": "call_1_4",
+                  "type": "function",
+                  "function": {
+                    "name": "deployments_recent",
+                    "arguments": "{\"limit\":10}"
+                  }
+                },
+                {
+                  "id": "call_1_5",
+                  "type": "function",
+                  "function": {
+                    "name": "runbooks_search",
+                    "arguments": "{\"query\":\"billing-api\"}"
                   }
                 }
               ]
@@ -39,9 +70,9 @@
           }
         ],
         "usage": {
-          "prompt_tokens": 2400,
-          "completion_tokens": 30,
-          "total_tokens": 2430
+          "prompt_tokens": 6326,
+          "completion_tokens": 268,
+          "total_tokens": 6594
         }
       }
     },
@@ -52,12 +83,20 @@
           "system",
           "user",
           "assistant",
+          "tool",
+          "tool",
+          "tool",
+          "tool",
           "tool"
         ],
         "called": [
-          "pods_list_in_namespace"
+          "entry",
+          "blast_radius",
+          "pods_list_in_namespace",
+          "deployments_recent",
+          "runbooks_search"
         ],
-        "offered": "0e713a052631681f"
+        "offered": "73e6d9532548372b"
       },
       "response": {
         "id": "e2e-2",
@@ -73,11 +112,35 @@
               "content": null,
               "tool_calls": [
                 {
-                  "id": "call_2",
+                  "id": "call_2_1",
                   "type": "function",
                   "function": {
-                    "name": "execute_query",
-                    "arguments": "{\"query\": \"sum by (service) (rate(http_requests_total{namespace=\\\"demo-apps\\\",status=\\\"504\\\"}[5m])) / sum by (service) (rate(http_requests_total{namespace=\\\"demo-apps\\\"}[5m]))\"}"
+                    "name": "pods_log",
+                    "arguments": "{\"namespace\":\"demo-apps\",\"name\":\"billing-api-5bb7c966cf-x2fbp\",\"tail\":100}"
+                  }
+                },
+                {
+                  "id": "call_2_2",
+                  "type": "function",
+                  "function": {
+                    "name": "deployments_get",
+                    "arguments": "{\"id\":\"CI-2454\"}"
+                  }
+                },
+                {
+                  "id": "call_2_3",
+                  "type": "function",
+                  "function": {
+                    "name": "runbooks_get",
+                    "arguments": "{\"id\":\"RB-014\"}"
+                  }
+                },
+                {
+                  "id": "call_2_4",
+                  "type": "function",
+                  "function": {
+                    "name": "resources_get",
+                    "arguments": "{\"kind\":\"Deployment\",\"namespace\":\"demo-apps\",\"apiVersion\":\"apps/v1\",\"name\":\"billing-api\"}"
                   }
                 }
               ]
@@ -85,9 +148,9 @@
           }
         ],
         "usage": {
-          "prompt_tokens": 2700,
-          "completion_tokens": 60,
-          "total_tokens": 2760
+          "prompt_tokens": 7105,
+          "completion_tokens": 130,
+          "total_tokens": 7235
         }
       }
     },
@@ -99,14 +162,28 @@
           "user",
           "assistant",
           "tool",
+          "tool",
+          "tool",
+          "tool",
+          "tool",
           "assistant",
+          "tool",
+          "tool",
+          "tool",
           "tool"
         ],
         "called": [
+          "entry",
+          "blast_radius",
           "pods_list_in_namespace",
-          "execute_query"
+          "deployments_recent",
+          "runbooks_search",
+          "pods_log",
+          "deployments_get",
+          "runbooks_get",
+          "resources_get"
         ],
-        "offered": "0e713a052631681f"
+        "offered": "73e6d9532548372b"
       },
       "response": {
         "id": "e2e-3",
@@ -122,11 +199,19 @@
               "content": null,
               "tool_calls": [
                 {
-                  "id": "call_3",
+                  "id": "call_3_1",
                   "type": "function",
                   "function": {
-                    "name": "resources_get",
-                    "arguments": "{\"apiVersion\": \"apps/v1\", \"kind\": \"Deployment\", \"namespace\": \"demo-apps\", \"name\": \"billing-api\"}"
+                    "name": "entry",
+                    "arguments": "{\"key\":\"network/billing-db-proxy\"}"
+                  }
+                },
+                {
+                  "id": "call_3_2",
+                  "type": "function",
+                  "function": {
+                    "name": "resources_list",
+                    "arguments": "{\"namespace\":\"ack-system\",\"apiVersion\":\"rds.services.k8s.aws/v1alpha1\",\"kind\":\"DBProxy\"}"
                   }
                 }
               ]
@@ -134,9 +219,9 @@
           }
         ],
         "usage": {
-          "prompt_tokens": 3100,
-          "completion_tokens": 40,
-          "total_tokens": 3140
+          "prompt_tokens": 9429,
+          "completion_tokens": 64,
+          "total_tokens": 9493
         }
       }
     },
@@ -148,17 +233,33 @@
           "user",
           "assistant",
           "tool",
-          "assistant",
+          "tool",
+          "tool",
+          "tool",
           "tool",
           "assistant",
+          "tool",
+          "tool",
+          "tool",
+          "tool",
+          "assistant",
+          "tool",
           "tool"
         ],
         "called": [
+          "entry",
+          "blast_radius",
           "pods_list_in_namespace",
-          "execute_query",
-          "resources_get"
+          "deployments_recent",
+          "runbooks_search",
+          "pods_log",
+          "deployments_get",
+          "runbooks_get",
+          "resources_get",
+          "entry",
+          "resources_list"
         ],
-        "offered": "0e713a052631681f"
+        "offered": "73e6d9532548372b"
       },
       "response": {
         "id": "e2e-4",
@@ -174,11 +275,11 @@
               "content": null,
               "tool_calls": [
                 {
-                  "id": "call_4",
+                  "id": "call_4_1",
                   "type": "function",
                   "function": {
                     "name": "resources_get",
-                    "arguments": "{\"apiVersion\": \"rds.services.k8s.aws/v1alpha1\", \"kind\": \"DBProxy\", \"namespace\": \"ack-system\", \"name\": \"billing-db-proxy\"}"
+                    "arguments": "{\"apiVersion\":\"rds.services.k8s.aws/v1alpha1\",\"kind\":\"DBProxy\",\"name\":\"billing-db-proxy\",\"namespace\":\"ack-system\"}"
                   }
                 }
               ]
@@ -186,9 +287,9 @@
           }
         ],
         "usage": {
-          "prompt_tokens": 4300,
-          "completion_tokens": 45,
-          "total_tokens": 4345
+          "prompt_tokens": 9644,
+          "completion_tokens": 54,
+          "total_tokens": 9698
         }
       }
     },
@@ -200,20 +301,36 @@
           "user",
           "assistant",
           "tool",
-          "assistant",
+          "tool",
+          "tool",
+          "tool",
           "tool",
           "assistant",
+          "tool",
+          "tool",
+          "tool",
+          "tool",
+          "assistant",
+          "tool",
           "tool",
           "assistant",
           "tool"
         ],
         "called": [
+          "entry",
+          "blast_radius",
           "pods_list_in_namespace",
-          "execute_query",
+          "deployments_recent",
+          "runbooks_search",
+          "pods_log",
+          "deployments_get",
+          "runbooks_get",
           "resources_get",
+          "entry",
+          "resources_list",
           "resources_get"
         ],
-        "offered": "0e713a052631681f"
+        "offered": "73e6d9532548372b"
       },
       "response": {
         "id": "e2e-5",
@@ -223,136 +340,17 @@
         "choices": [
           {
             "index": 0,
-            "finish_reason": "tool_calls",
-            "message": {
-              "role": "assistant",
-              "content": null,
-              "tool_calls": [
-                {
-                  "id": "call_5",
-                  "type": "function",
-                  "function": {
-                    "name": "deployments_search",
-                    "arguments": "{\"query\": \"billing DBProxy idleClientTimeout\"}"
-                  }
-                }
-              ]
-            }
-          }
-        ],
-        "usage": {
-          "prompt_tokens": 4900,
-          "completion_tokens": 35,
-          "total_tokens": 4935
-        }
-      }
-    },
-    {
-      "fingerprint": {
-        "model": "e2e-doc",
-        "roles": [
-          "system",
-          "user",
-          "assistant",
-          "tool",
-          "assistant",
-          "tool",
-          "assistant",
-          "tool",
-          "assistant",
-          "tool",
-          "assistant",
-          "tool"
-        ],
-        "called": [
-          "pods_list_in_namespace",
-          "execute_query",
-          "resources_get",
-          "resources_get",
-          "deployments_search"
-        ],
-        "offered": "0e713a052631681f"
-      },
-      "response": {
-        "id": "e2e-6",
-        "object": "chat.completion",
-        "created": 1793433606,
-        "model": "e2e-doc",
-        "choices": [
-          {
-            "index": 0,
-            "finish_reason": "tool_calls",
-            "message": {
-              "role": "assistant",
-              "content": null,
-              "tool_calls": [
-                {
-                  "id": "call_6",
-                  "type": "function",
-                  "function": {
-                    "name": "runbooks_search",
-                    "arguments": "{\"query\": \"connection reset by peer idle timeout pool\"}"
-                  }
-                }
-              ]
-            }
-          }
-        ],
-        "usage": {
-          "prompt_tokens": 5600,
-          "completion_tokens": 35,
-          "total_tokens": 5635
-        }
-      }
-    },
-    {
-      "fingerprint": {
-        "model": "e2e-doc",
-        "roles": [
-          "system",
-          "user",
-          "assistant",
-          "tool",
-          "assistant",
-          "tool",
-          "assistant",
-          "tool",
-          "assistant",
-          "tool",
-          "assistant",
-          "tool",
-          "assistant",
-          "tool"
-        ],
-        "called": [
-          "pods_list_in_namespace",
-          "execute_query",
-          "resources_get",
-          "resources_get",
-          "deployments_search",
-          "runbooks_search"
-        ],
-        "offered": "0e713a052631681f"
-      },
-      "response": {
-        "id": "e2e-7",
-        "object": "chat.completion",
-        "created": 1793433607,
-        "model": "e2e-doc",
-        "choices": [
-          {
-            "index": 0,
             "finish_reason": "stop",
             "message": {
               "role": "assistant",
-              "content": "Observed: the billing-db-proxy DBProxy (ack-system) closes idle client connections after 600 s (spec.idleClientTimeout), while billing-api recycles idle pool connections after 900 s (DB_POOL_IDLE_TIMEOUT_SECONDS). 504s rose on billing-api with the pod Running and Ready, no restart. The deployment log records the change setting idleClientTimeout to 600 on the billing DBProxy about 12 h ago.\nRoot cause: the proxy's idle timeout (600 s) is shorter than the pool's recycling (900 s), so the pool reuses connections the proxy already closed (RB-014).\nAction: the platform team raises the DBProxy idleClientTimeout above 900 s, or the billing team lowers the pool's idle timeout below 600 s.\nRuled out: memory growth, a symptom of failing requests, not the cause (RB-007's warning); the load balancer idle timeout change, which concerns long exports only."
+              "content": "**Observations**\n- Pod `billing-api-5bb7c966cf-x2fbp` logs repeatedly report `WARN db connection reset by peer, retrying (pool acquire ...)`.\n- Deployment `billing-api` sets `DB_POOL_IDLE_TIMEOUT_SECONDS` to `900`, whereas DBProxy `billing-db-proxy` sets `spec.idleClientTimeout` to `600`.\n- Runbook `RB-014` dictates the application pool must recycle idle connections before the shortest intermediate network timeout.\n\n**Ruled-out leads**\n- Memory exhaustion was ruled out because heap usage is at 41% (212 MB / 512 MB) and connection wait times drive the pressure.\n- Pod crash or restarts were ruled out because the pod status is `Running` with zero restarts.\n\n**Root cause**\nThe database connection pool idle timeout (900s) exceeds RDS DBProxy's idle client timeout (600s), causing the proxy to close idle connections.\n\n**Recommended action**\nTeam Platform should update `DB_POOL_IDLE_TIMEOUT_SECONDS` in Deployment `billing-api` below 600s (e.g., 300s) or raise `spec.idleClientTimeout` on `billing-db-proxy`."
             }
           }
         ],
         "usage": {
-          "prompt_tokens": 6400,
-          "completion_tokens": 210,
-          "total_tokens": 6610
+          "prompt_tokens": 10038,
+          "completion_tokens": 289,
+          "total_tokens": 10327
         }
       }
     }

@@ -90,6 +90,10 @@ func TestClusterChart(t *testing.T) {
 		}
 	})
 
+	t.Run("the server carries its own locks", func(t *testing.T) {
+		checkHardening(t, objs, ofKind(objs, "ConfigMap")[0].GetName())
+	})
+
 	t.Run("the NetworkPolicy admits the front's mTLS port only", func(t *testing.T) {
 		ingress, _, _ := unstructured.NestedSlice(ofKind(objs, "NetworkPolicy")[0].Object, "spec", "ingress")
 		if len(ingress) != 1 {

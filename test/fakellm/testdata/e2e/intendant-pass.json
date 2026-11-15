@@ -1,6 +1,6 @@
 {
   "source": "recorded",
-  "date": "2026-11-12",
+  "date": "2026-11-15",
   "exchanges": [
     {
       "fingerprint": {
@@ -10,7 +10,7 @@
           "user"
         ],
         "called": [],
-        "offered": "f49df94cf4913a63"
+        "offered": "ac349dabd5038fec"
       },
       "response": {
         "id": "e2e-1",
@@ -37,20 +37,28 @@
                   "id": "call_1_2",
                   "type": "function",
                   "function": {
-                    "name": "resources_list",
-                    "arguments": "{\"namespace\":\"demo-apps\",\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\"}"
+                    "name": "neighbours",
+                    "arguments": "{\"key\":\"service/billing-api\"}"
                   }
                 },
                 {
                   "id": "call_1_3",
                   "type": "function",
                   "function": {
-                    "name": "pods_list_in_namespace",
-                    "arguments": "{\"namespace\":\"demo-apps\"}"
+                    "name": "resources_list",
+                    "arguments": "{\"namespace\":\"demo-apps\",\"kind\":\"Deployment\",\"apiVersion\":\"apps/v1\"}"
                   }
                 },
                 {
                   "id": "call_1_4",
+                  "type": "function",
+                  "function": {
+                    "name": "resources_list",
+                    "arguments": "{\"namespace\":\"demo-apps\",\"apiVersion\":\"v1\",\"kind\":\"Service\"}"
+                  }
+                },
+                {
+                  "id": "call_1_5",
                   "type": "function",
                   "function": {
                     "name": "runbooks_search",
@@ -62,9 +70,9 @@
           }
         ],
         "usage": {
-          "prompt_tokens": 3823,
-          "completion_tokens": 253,
-          "total_tokens": 4076
+          "prompt_tokens": 3545,
+          "completion_tokens": 263,
+          "total_tokens": 3808
         }
       }
     },
@@ -78,15 +86,17 @@
           "tool",
           "tool",
           "tool",
+          "tool",
           "tool"
         ],
         "called": [
           "entry",
+          "neighbours",
           "resources_list",
-          "pods_list_in_namespace",
+          "resources_list",
           "runbooks_search"
         ],
-        "offered": "f49df94cf4913a63"
+        "offered": "ac349dabd5038fec"
       },
       "response": {
         "id": "e2e-2",
@@ -105,32 +115,32 @@
                   "id": "call_2_1",
                   "type": "function",
                   "function": {
-                    "name": "resources_get",
-                    "arguments": "{\"kind\":\"Deployment\",\"apiVersion\":\"apps/v1\",\"namespace\":\"demo-apps\",\"name\":\"billing-api\"}"
+                    "name": "entry",
+                    "arguments": "{\"key\":\"runbook/proxy-timeout\"}"
                   }
                 },
                 {
                   "id": "call_2_2",
                   "type": "function",
                   "function": {
-                    "name": "runbooks_recent",
-                    "arguments": "{\"limit\":20}"
+                    "name": "resources_get",
+                    "arguments": "{\"namespace\":\"demo-apps\",\"kind\":\"Deployment\",\"apiVersion\":\"apps/v1\",\"name\":\"billing-api\"}"
                   }
                 },
                 {
                   "id": "call_2_3",
                   "type": "function",
                   "function": {
-                    "name": "entry",
-                    "arguments": "{\"key\":\"runbook/proxy-timeout\"}"
+                    "name": "runbooks_get",
+                    "arguments": "{\"id\":\"RB-014\"}"
                   }
                 },
                 {
                   "id": "call_2_4",
                   "type": "function",
                   "function": {
-                    "name": "map_at",
-                    "arguments": "{\"date\":\"2026-11-05\"}"
+                    "name": "runbooks_recent",
+                    "arguments": "{}"
                   }
                 }
               ]
@@ -138,9 +148,9 @@
           }
         ],
         "usage": {
-          "prompt_tokens": 4319,
-          "completion_tokens": 101,
-          "total_tokens": 4420
+          "prompt_tokens": 4112,
+          "completion_tokens": 92,
+          "total_tokens": 4204
         }
       }
     },
@@ -155,6 +165,7 @@
           "tool",
           "tool",
           "tool",
+          "tool",
           "assistant",
           "tool",
           "tool",
@@ -163,15 +174,16 @@
         ],
         "called": [
           "entry",
+          "neighbours",
           "resources_list",
-          "pods_list_in_namespace",
+          "resources_list",
           "runbooks_search",
-          "resources_get",
-          "runbooks_recent",
           "entry",
-          "map_at"
+          "resources_get",
+          "runbooks_get",
+          "runbooks_recent"
         ],
-        "offered": "f49df94cf4913a63"
+        "offered": "ac349dabd5038fec"
       },
       "response": {
         "id": "e2e-3",
@@ -190,16 +202,24 @@
                   "id": "call_3_1",
                   "type": "function",
                   "function": {
-                    "name": "runbooks_get",
-                    "arguments": "{\"id\":\"RB-014\"}"
+                    "name": "runbooks_search",
+                    "arguments": "{\"query\":\"proxy-timeout\"}"
                   }
                 },
                 {
                   "id": "call_3_2",
                   "type": "function",
                   "function": {
-                    "name": "map_at",
-                    "arguments": "{\"date\":\"2026-11-12T13:46:53Z\"}"
+                    "name": "runbooks_search",
+                    "arguments": "{\"query\":\"timeout\"}"
+                  }
+                },
+                {
+                  "id": "call_3_3",
+                  "type": "function",
+                  "function": {
+                    "name": "runbooks_search",
+                    "arguments": "{\"query\":\"billing\"}"
                   }
                 }
               ]
@@ -207,9 +227,9 @@
           }
         ],
         "usage": {
-          "prompt_tokens": 5782,
-          "completion_tokens": 56,
-          "total_tokens": 5838
+          "prompt_tokens": 6156,
+          "completion_tokens": 53,
+          "total_tokens": 6209
         }
       }
     },
@@ -224,28 +244,32 @@
           "tool",
           "tool",
           "tool",
-          "assistant",
-          "tool",
-          "tool",
-          "tool",
           "tool",
           "assistant",
+          "tool",
+          "tool",
+          "tool",
+          "tool",
+          "assistant",
+          "tool",
           "tool",
           "tool"
         ],
         "called": [
           "entry",
+          "neighbours",
           "resources_list",
-          "pods_list_in_namespace",
+          "resources_list",
           "runbooks_search",
-          "resources_get",
-          "runbooks_recent",
           "entry",
-          "map_at",
+          "resources_get",
           "runbooks_get",
-          "map_at"
+          "runbooks_recent",
+          "runbooks_search",
+          "runbooks_search",
+          "runbooks_search"
         ],
-        "offered": "f49df94cf4913a63"
+        "offered": "ac349dabd5038fec"
       },
       "response": {
         "id": "e2e-4",
@@ -264,8 +288,16 @@
                   "id": "call_4_1",
                   "type": "function",
                   "function": {
-                    "name": "map_at",
-                    "arguments": "{\"date\":\"2026-11-12T14:00:00Z\"}"
+                    "name": "runbooks_get",
+                    "arguments": "{\"id\":\"RB-019\"}"
+                  }
+                },
+                {
+                  "id": "call_4_2",
+                  "type": "function",
+                  "function": {
+                    "name": "runbooks_get",
+                    "arguments": "{\"id\":\"RB-017\"}"
                   }
                 }
               ]
@@ -273,9 +305,9 @@
           }
         ],
         "usage": {
-          "prompt_tokens": 6625,
-          "completion_tokens": 35,
-          "total_tokens": 6660
+          "prompt_tokens": 6299,
+          "completion_tokens": 42,
+          "total_tokens": 6341
         }
       }
     },
@@ -290,31 +322,37 @@
           "tool",
           "tool",
           "tool",
-          "assistant",
-          "tool",
-          "tool",
-          "tool",
           "tool",
           "assistant",
           "tool",
           "tool",
+          "tool",
+          "tool",
           "assistant",
+          "tool",
+          "tool",
+          "tool",
+          "assistant",
+          "tool",
           "tool"
         ],
         "called": [
           "entry",
+          "neighbours",
           "resources_list",
-          "pods_list_in_namespace",
+          "resources_list",
           "runbooks_search",
-          "resources_get",
-          "runbooks_recent",
           "entry",
-          "map_at",
+          "resources_get",
           "runbooks_get",
-          "map_at",
-          "map_at"
+          "runbooks_recent",
+          "runbooks_search",
+          "runbooks_search",
+          "runbooks_search",
+          "runbooks_get",
+          "runbooks_get"
         ],
-        "offered": "f49df94cf4913a63"
+        "offered": "ac349dabd5038fec"
       },
       "response": {
         "id": "e2e-5",
@@ -324,186 +362,17 @@
         "choices": [
           {
             "index": 0,
-            "finish_reason": "tool_calls",
-            "message": {
-              "role": "assistant",
-              "content": null,
-              "tool_calls": [
-                {
-                  "id": "call_5_1",
-                  "type": "function",
-                  "function": {
-                    "name": "runbooks_search",
-                    "arguments": "{\"query\":\"billing\"}"
-                  }
-                },
-                {
-                  "id": "call_5_2",
-                  "type": "function",
-                  "function": {
-                    "name": "runbooks_search",
-                    "arguments": "{\"query\":\"proxy\"}"
-                  }
-                }
-              ]
-            }
-          }
-        ],
-        "usage": {
-          "prompt_tokens": 6774,
-          "completion_tokens": 34,
-          "total_tokens": 6808
-        }
-      }
-    },
-    {
-      "fingerprint": {
-        "model": "e2e-doc",
-        "roles": [
-          "system",
-          "user",
-          "assistant",
-          "tool",
-          "tool",
-          "tool",
-          "tool",
-          "assistant",
-          "tool",
-          "tool",
-          "tool",
-          "tool",
-          "assistant",
-          "tool",
-          "tool",
-          "assistant",
-          "tool",
-          "assistant",
-          "tool",
-          "tool"
-        ],
-        "called": [
-          "entry",
-          "resources_list",
-          "pods_list_in_namespace",
-          "runbooks_search",
-          "resources_get",
-          "runbooks_recent",
-          "entry",
-          "map_at",
-          "runbooks_get",
-          "map_at",
-          "map_at",
-          "runbooks_search",
-          "runbooks_search"
-        ],
-        "offered": "f49df94cf4913a63"
-      },
-      "response": {
-        "id": "e2e-6",
-        "object": "chat.completion",
-        "created": 1793433606,
-        "model": "e2e-doc",
-        "choices": [
-          {
-            "index": 0,
-            "finish_reason": "tool_calls",
-            "message": {
-              "role": "assistant",
-              "content": null,
-              "tool_calls": [
-                {
-                  "id": "call_6_1",
-                  "type": "function",
-                  "function": {
-                    "name": "runbooks_search",
-                    "arguments": "{\"query\":\"demo-apps\"}"
-                  }
-                },
-                {
-                  "id": "call_6_2",
-                  "type": "function",
-                  "function": {
-                    "name": "resources_list",
-                    "arguments": "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"namespace\":\"demo-apps\"}"
-                  }
-                }
-              ]
-            }
-          }
-        ],
-        "usage": {
-          "prompt_tokens": 6848,
-          "completion_tokens": 50,
-          "total_tokens": 6898
-        }
-      }
-    },
-    {
-      "fingerprint": {
-        "model": "e2e-doc",
-        "roles": [
-          "system",
-          "user",
-          "assistant",
-          "tool",
-          "tool",
-          "tool",
-          "tool",
-          "assistant",
-          "tool",
-          "tool",
-          "tool",
-          "tool",
-          "assistant",
-          "tool",
-          "tool",
-          "assistant",
-          "tool",
-          "assistant",
-          "tool",
-          "tool",
-          "assistant",
-          "tool",
-          "tool"
-        ],
-        "called": [
-          "entry",
-          "resources_list",
-          "pods_list_in_namespace",
-          "runbooks_search",
-          "resources_get",
-          "runbooks_recent",
-          "entry",
-          "map_at",
-          "runbooks_get",
-          "map_at",
-          "map_at",
-          "runbooks_search",
-          "runbooks_search",
-          "runbooks_search",
-          "resources_list"
-        ],
-        "offered": "f49df94cf4913a63"
-      },
-      "response": {
-        "id": "e2e-7",
-        "object": "chat.completion",
-        "created": 1793433607,
-        "model": "e2e-doc",
-        "choices": [
-          {
-            "index": 0,
             "finish_reason": "stop",
             "message": {
               "role": "assistant",
-              "content": "```json\n{\"proposals\": [\n  {\"key\": \"runbook/proxy-timeout\",\n   \"sources\": [{\"knowledge\": \"runbooks/RB-014\"}],\n   \"evidence\": [\"runbooks_search\", \"runbooks_get\"]}\n]}\n```"
+              "content": "```json\n{\"proposals\": [\n  {\"key\": \"runbook/proxy-timeout\",\n   \"sources\": [{\"knowledge\": \"runbooks/RB-014\"}],\n   \"evidence\": [\"runbooks_get\", \"runbooks_search\"]}\n]}\n```"
             }
           }
         ],
         "usage": {
-          "prompt_tokens": 7003,
+          "prompt_tokens": 6716,
           "completion_tokens": 61,
-          "total_tokens": 7064
+          "total_tokens": 6777
         }
       }
     }

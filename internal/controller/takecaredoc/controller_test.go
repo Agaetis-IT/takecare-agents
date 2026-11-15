@@ -337,7 +337,7 @@ func TestContentTools(t *testing.T) {
 		tool.Content = true
 		return tool
 	}
-	f.connector(t, k8sConnector, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, append(read("pods_list"), content(podsLog), content("nodes_log")), true)
+	f.connector(t, k8sConnector, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, append(read("pods_list"), content(podsLog), content("containers_log")), true)
 	f.connector(t, "prometheus", []v1alpha1.ConnectorType{v1alpha1.ConnectorMetrics}, read("execute_query"), true)
 	f.connector(t, "report", []v1alpha1.ConnectorType{v1alpha1.ConnectorReport}, nil, true)
 	f.doc(t, "doc", func(d *v1alpha1.TakeCareDoc) { d.Spec.ContentTools = []string{podsLog, "audit_log"} })
@@ -351,7 +351,7 @@ func TestContentTools(t *testing.T) {
 	}
 	eventually(t, "the withheld and the unknown tools are named", func() (bool, string) {
 		w, u := f.events(t, ReasonContentToolsWithheld), f.events(t, ReasonContentToolUnknown)
-		return len(w) == 1 && len(u) == 1 && strings.Contains(w[0], "connector kubernetes: nodes_log (not in spec.contentTools)") && strings.Contains(u[0], "audit_log"), strings.Join(append(w, u...), " | ")
+		return len(w) == 1 && len(u) == 1 && strings.Contains(w[0], "connector kubernetes: containers_log (not in spec.contentTools)") && strings.Contains(u[0], "audit_log"), strings.Join(append(w, u...), " | ")
 	})
 
 	// Reconciles of the same generation say nothing again.
@@ -376,7 +376,7 @@ func TestContentTools(t *testing.T) {
 	})
 	eventually(t, "the new generation names both withheld tools", func() (bool, string) {
 		w := f.events(t, ReasonContentToolsWithheld)
-		return len(w) == 2 && slices.ContainsFunc(w, func(n string) bool { return strings.Contains(n, "nodes_log, pods_log") }), strings.Join(w, " | ")
+		return len(w) == 2 && slices.ContainsFunc(w, func(n string) bool { return strings.Contains(n, "containers_log, pods_log") }), strings.Join(w, " | ")
 	})
 }
 

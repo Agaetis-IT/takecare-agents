@@ -110,7 +110,7 @@ type fixture struct {
 	front    *Front
 	srv      *httptest.Server
 	upstream *httptest.Server
-	// auth is the path and the Authorization header the upstream received.
+	// auth is the path and the bearer headers the upstream received.
 	auth chan string
 }
 
@@ -122,7 +122,7 @@ func startWith(t *testing.T, guardz http.Handler) *fixture {
 	t.Helper()
 	f := &fixture{ca: newAuthority(t, "takecare test CA"), dir: t.TempDir(), auth: make(chan string, 4)}
 	f.upstream = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		f.auth <- r.URL.Path + " " + r.Header.Get("Authorization")
+		f.auth <- r.URL.Path + " " + r.Header.Get("Authorization") + r.Header.Get("kubernetes-authorization")
 		_, _ = io.WriteString(w, "from the MCP server")
 	}))
 	t.Cleanup(f.upstream.Close)
@@ -164,6 +164,7 @@ func (f *fixture) get(t *testing.T, path string, cert *tls.Certificate) (int, st
 	c := &http.Client{Transport: &http.Transport{TLSClientConfig: cfg}, Timeout: 5 * time.Second}
 	req, _ := http.NewRequest(http.MethodGet, f.srv.URL+path, nil)
 	req.Header.Set("Authorization", "Bearer from-the-client")
+	req.Header.Set("kubernetes-authorization", "Bearer from-the-client")
 	resp, err := c.Do(req)
 	if err != nil {
 		return 0, "", nil, err
@@ -202,13 +203,13 @@ func TestFront(t *testing.T) {
 		}
 		<-f.auth
 	})
-	t.Run("an accepted client reaches the MCP server, without its Authorization", func(t *testing.T) {
+	t.Run("an accepted client reaches the MCP server, without its bearer headers", func(t *testing.T) {
 		code, body, _, err := f.get(t, "/mcp", &good)
 		if err != nil || code != http.StatusOK || body != "from the MCP server" {
 			t.Fatalf("got %d %s %v", code, body, err)
 		}
 		if got := <-f.auth; got != "/mcp " {
-			t.Errorf("the upstream received path and Authorization %q, want /mcp and none", got)
+			t.Errorf("the upstream received path and bearer headers %q, want /mcp and none (Authorization, kubernetes-authorization)", got)
 		}
 	})
 	t.Run("anything else is 404", func(t *testing.T) {

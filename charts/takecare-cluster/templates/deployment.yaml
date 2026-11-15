@@ -18,6 +18,9 @@ data:
     read_only = true
     disable_destructive = true
     toolsets = ["core"]
+    {{- include "takecare.kubernetes.hardening" . | nindent 4 }}
+
+    {{ include "takecare.kubernetes.deniedResources" . | nindent 4 | trim }}
 ---
 # One pod, two containers: the front is the only listener on the pod's
 # network (8443 mTLS; the probe port, plain HTTP, for the kubelet only).

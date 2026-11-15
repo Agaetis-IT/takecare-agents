@@ -61,10 +61,11 @@ checks=0 failed=0
 DIAG="$(mktemp "${TMPDIR:-/tmp}/chart-smoke-diag.XXXXXX")"
 # The canary checks' Gateway-level Override policy opens every route below
 # it while it stands, and the gateway-cap check sets a low gateway limit
-# that would starve the checks after it: both are undone right after their
-# checks, and again on any exit.
+# that would starve the checks after it; the server-lock checks create an
+# account that may read Secrets: all are undone right after their checks,
+# and again on any exit.
 RANGER_CAPS_SAVED=""
-trap 'rm -f "$DIAG"; kubectl -n "$NS" delete agentgatewaypolicy smoke-override --ignore-not-found --request-timeout=5s >/dev/null 2>&1 || true; [[ -z "$RANGER_CAPS_SAVED" ]] || kubectl patch takecareranger main --type=json -p "[{\"op\":\"replace\",\"path\":\"/spec/caps\",\"value\":${RANGER_CAPS_SAVED}}]" --request-timeout=5s >/dev/null 2>&1 || true' EXIT
+trap 'c1_cleanup 2>/dev/null || true; rm -f "$DIAG"; kubectl -n "$NS" delete agentgatewaypolicy smoke-override --ignore-not-found --request-timeout=5s >/dev/null 2>&1 || true; [[ -z "$RANGER_CAPS_SAVED" ]] || kubectl patch takecareranger main --type=json -p "[{\"op\":\"replace\",\"path\":\"/spec/caps\",\"value\":${RANGER_CAPS_SAVED}}]" --request-timeout=5s >/dev/null 2>&1 || true' EXIT
 check() { # NAME COMMAND...: PASS when the command succeeds
   local name="$1"; shift
   checks=$((checks + 1))
@@ -293,6 +294,61 @@ EOF
   kubectl -n "$NS" get takecaresurvey "$1" -o jsonpath='{.status.phase} {.status.layers[?(@.name=="alerting")].notSeen[0].reason}'
 }
 
+# mcp_call_with HEADER NAMESPACE POD URL TOOL ARGS: one tools/call in its
+# own session, with HEADER (a "Name: value" line) on every request; prints
+# the answer's text and its HTTP status, like mcp_call.
+mcp_call_with() {
+  # shellcheck disable=SC2016 # the script expands in the pod, not here
+  kubectl -n "$2" exec "$3" -- sh -c '
+    url=$0 tool=$1 args=$2 hdr=$3 accept="Accept: application/json, text/event-stream" json="Content-Type: application/json"
+    sid=$(curl -s -m 10 -D - -o /dev/null -X POST -H "$json" -H "$accept" -H "$hdr" \
+      -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"smoke\",\"version\":\"0\"}}}" "$url" |
+      tr -d "\r" | sed -n "s/^[Mm]cp-[Ss]ession-[Ii]d: //p")
+    curl -s -m 10 -o /dev/null -X POST -H "$json" -H "$accept" -H "$hdr" -H "Mcp-Session-Id: $sid" \
+      -d "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}" "$url"
+    curl -s -m 20 -X POST -H "$json" -H "$accept" -H "$hdr" -H "Mcp-Session-Id: $sid" \
+      -d "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"$tool\",\"arguments\":$args}}" -w "\nHTTP %{http_code}" "$url"
+  ' "$4" "$5" "$6" "$1"
+}
+
+# c1_setup creates those smoke-only objects (c1_cleanup deletes them).
+c1_setup() {
+  kubectl -n demo-apps apply -f - >/dev/null <<EOF
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: smoke-c1-wide, namespace: demo-apps }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: { name: smoke-c1-secrets, namespace: demo-apps }
+rules: [{ apiGroups: [""], resources: [secrets], verbs: [get, list] }]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: { name: smoke-c1-wide, namespace: demo-apps }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: smoke-c1-secrets }
+subjects: [{ kind: ServiceAccount, name: smoke-c1-wide, namespace: demo-apps }]
+---
+apiVersion: v1
+kind: Secret
+metadata: { name: smoke-c1-probe, namespace: demo-apps }
+stringData: { probe: not-a-real-secret }
+EOF
+  kubectl -n demo-apps run smoke-c1-pod --image="$SMOKE_CURL_IMAGE" --restart=Never --command -- sleep 600 >/dev/null 2>&1 || true
+}
+
+# c1_cleanup deletes the smoke-only objects of the kubernetes server's lock
+# checks: an account that may read Secrets in demo-apps, its dummy Secret,
+# and the binding that lets the add-on's own account read them. Never in a
+# chart; called after the checks and from the EXIT trap.
+c1_cleanup() {
+  kubectl -n demo-apps delete rolebinding smoke-c1-wide smoke-c1-addon --ignore-not-found --request-timeout=10s >/dev/null 2>&1 || true
+  kubectl -n demo-apps delete role smoke-c1-secrets --ignore-not-found --request-timeout=10s >/dev/null 2>&1 || true
+  kubectl -n demo-apps delete serviceaccount smoke-c1-wide --ignore-not-found --request-timeout=10s >/dev/null 2>&1 || true
+  kubectl -n demo-apps delete secret smoke-c1-probe --ignore-not-found --request-timeout=10s >/dev/null 2>&1 || true
+  kubectl -n demo-apps delete pod smoke-c1-pod --ignore-not-found --now --request-timeout=10s >/dev/null 2>&1 || true
+}
+
 # mcp_forbidden_with METHOD NAMESPACE POD URL TOOL [ARGS]: mcp_forbidden,
 # the call sent with METHOD instead of POST.
 mcp_forbidden_with() {
@@ -443,7 +499,7 @@ verify() {
   # In read-only mode the server advertises read tools only: every tool is
   # classed read and no destructive tool is offered at all.
   check "kubernetes tools are all classified read, resources_delete is not even offered" \
-    bash -c "t=\$(kubectl -n ${NS} get takecareconnector kubernetes -o jsonpath='{range .status.tools[*]}{.name}={.class} {end}'); [[ \"\$t\" == *'pods_list=read'* && \"\$t\" != *'=act'* && \"\$t\" != *resources_delete* && \$(kubectl -n ${NS} get takecareconnector kubernetes -o jsonpath='{.status.toolCount}') -ge 10 ]]"
+    bash -c "t=\$(kubectl -n ${NS} get takecareconnector kubernetes -o jsonpath='{range .status.tools[*]}{.name}={.class} {end}'); [[ \"\$t\" == *'pods_list=read'* && \"\$t\" != *'=act'* && \"\$t\" != *resources_delete* && \$(kubectl -n ${NS} get takecareconnector kubernetes -o jsonpath='{.status.toolCount}') -ge 9 ]]"
   check "the kubernetes add-on sees the demo's extra resources (DBProxy, ConfigMaps)" \
     test "$(kubectl -n "$NS" get takecareconnector kubernetes -o jsonpath='{.status.conditions[?(@.type=="ResourcesListable")].status}')" = "True"
   check "the read-only guard finds nothing forbidden on the add-on's ServiceAccount" \
@@ -675,6 +731,42 @@ EOF
   check "a call to pods_list through the Doc's route is let through" \
     mcp_allowed kagent smoke-a2a "$route" pods_list
   kubectl -n "$NS" patch takecareconnector kubernetes --type=merge -p "{\"spec\":{\"tools\":${tools:-null}}}" >/dev/null
+  # The kubernetes server's own locks (spec 05): its own account whatever
+  # a caller sends, Secrets refused by the server itself, the tools our
+  # RBAC never serves not offered. A smoke-only account may read Secrets in
+  # demo-apps; its token, sent in either bearer header through the Doc's
+  # route, must not reach them. The probes look for the dummy Secret's
+  # name only, never a value.
+  log "the kubernetes server's own locks (spec 05)"
+  c1_setup
+  local wide secrets='{"apiVersion":"v1","kind":"Secret","namespace":"demo-apps"}' hdr out
+  wide="$(kubectl -n demo-apps create token smoke-c1-wide --duration=10m)"
+  # The own account, per header: smoke-c1-wide may list no Pods, the
+  # add-on's Role always may; a Pod list with the wide token in either
+  # header must come back, so the token was ignored (passthrough would
+  # answer forbidden). Secrets stay refused whatever the token.
+  local pods='{"apiVersion":"v1","kind":"Pod","namespace":"demo-apps"}'
+  for hdr in Authorization kubernetes-authorization; do
+    out="$(mcp_call_with "${hdr}: Bearer ${wide}" kagent smoke-a2a "$route" resources_list "$pods")"
+    check "a wider token in ${hdr} is ignored: the server lists Pods with its own account" \
+      bash -c "grep -q smoke-c1-pod <<<\"\$1\" && ! grep -q -i forbidden <<<\"\$1\"" _ "$out"
+    out="$(mcp_call_with "${hdr}: Bearer ${wide}" kagent smoke-a2a "$route" resources_list "$secrets")"
+    check "Secrets are refused whatever the token in ${hdr} (resource not allowed)" \
+      bash -c "! grep -q smoke-c1-probe <<<\"\$1\" && grep -q 'resource not allowed' <<<\"\$1\"" _ "$out"
+  done
+  kubectl -n demo-apps create rolebinding smoke-c1-addon --role=smoke-c1-secrets --serviceaccount="${NS}:takecare-addon-kubernetes" >/dev/null
+  out="$(mcp_call_with "X-Smoke: none" kagent smoke-a2a "$route" resources_get '{"apiVersion":"v1","kind":"Secret","namespace":"demo-apps","name":"smoke-c1-probe"}')"
+  check "with an RBAC grant on Secrets, the server still refuses them itself (resource not allowed)" \
+    bash -c "! grep -q not-a-real-secret <<<\"\$1\" && grep -q 'resource not allowed' <<<\"\$1\"" _ "$out"
+  c1_cleanup
+  check "the smoke-only grant is gone: the add-on's account may not list Secrets" \
+    test "$(kubectl auth can-i list secrets -n demo-apps --as="system:serviceaccount:${NS}:takecare-addon-kubernetes")" = no
+  check "the connector no longer lists the tools our RBAC never serves" \
+    bash -c "for _ in \$(seq 30); do t=\$(kubectl -n ${NS} get takecareconnector kubernetes -o jsonpath='{range .status.tools[*]}{.name} {end}'); [[ \$t == *pods_list* && \$t != *nodes_log* && \$t != *nodes_stats_summary* && \$t != *nodes_top* && \$t != *projects_list* ]] && exit 0; sleep 2; done; exit 1"
+  out="$(mcp_call_with "X-Smoke: none" kagent smoke-a2a "$route" pods_top '{"namespace":"demo-apps"}')"
+  log "pods_top through the Doc's route: $(head -c 120 <<<"$out" | tr '\n' ' ')"
+  check "pods_top stays: our Role grants metrics.k8s.io pods, and it answers without a refusal" \
+    bash -c "grep -q '^HTTP 200' <<<\"\$(tail -1 <<<\"\$1\")\" && ! grep -q -i forbidden <<<\"\$1\"" _ "$out"
   # The Intendant's routes (spec 10 §4, §8): the gateway lets get_rules
   # through with the survey's arguments only, by the route-level argument
   # rule (its own policy, which the operator's client check doubles), and
@@ -974,6 +1066,16 @@ cluster_chart() {
     via_front bash -c "\"\$@\" -f https://${host}:18443/mcp; rc=\$?; [[ \$rc -eq 35 || \$rc -eq 56 ]]" _ "${tls[@]}"
   check "a client certificate with another name is 403" \
     via_front bash -c "test \"\$(\"\$@\" -o /dev/null -w '%{http_code}' https://${host}:18443/mcp)\" = 403" _ "${tls[@]}" --cert "$dir/stranger.crt" --key "$dir/stranger.key"
+  # The front strips both bearer headers, and the server ignores them
+  # anyway (spec 05): a wider token in kubernetes-authorization, which the
+  # front let through before, does not read Secrets.
+  c1_setup
+  local wide
+  wide="$(kubectl -n demo-apps create token smoke-c1-wide --duration=10m)"
+  check "through the front, a wider token in kubernetes-authorization is ignored: Pods listed with the server's own account" \
+    via_front bash -c "out=\$(\"\$@\" -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -H \"kubernetes-authorization: Bearer ${wide}\" \
+      -d '{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"resources_list\",\"arguments\":{\"apiVersion\":\"v1\",\"kind\":\"Pod\",\"namespace\":\"demo-apps\"}}}' https://${host}:18443/mcp); grep -q smoke-c1-pod <<<\"\$out\" && ! grep -q -i forbidden <<<\"\$out\"" _ "${admin[@]}"
+  c1_cleanup
   check "tools/list through the front answers the read tools (pods_list)" \
     via_front bash -c "\"\$@\" -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
       -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}' https://${host}:18443/mcp | grep -q '\"pods_list\"'" _ "${admin[@]}"
@@ -1072,12 +1174,12 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=124 install ;;
-  upgrade) CHECKS_EXPECTED=124 upgrade ;;
+  install) CHECKS_EXPECTED=132 install ;;
+  upgrade) CHECKS_EXPECTED=132 upgrade ;;
   status) status ;;
   mask-test) mask_test ;;
   down) down ;;
-  cluster) CHECKS_EXPECTED=4 cluster_chart ;;
-  all) mask_test; up; CHECKS_EXPECTED=124 install; CHECKS_EXPECTED=124 upgrade; CHECKS_EXPECTED=4 cluster_chart ;;
+  cluster) CHECKS_EXPECTED=5 cluster_chart ;;
+  all) mask_test; up; CHECKS_EXPECTED=132 install; CHECKS_EXPECTED=132 upgrade; CHECKS_EXPECTED=5 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|cluster|status|mask-test|down|all]"; exit 2 ;;
 esac
