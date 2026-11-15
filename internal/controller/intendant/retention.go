@@ -69,7 +69,11 @@ func (sw *Sweeper) Sweep(ctx context.Context) error {
 	if err := sw.Client.List(ctx, &list, client.InNamespace(sw.Namespace)); err != nil {
 		return fmt.Errorf("list the surveys: %w", err)
 	}
+	// Each Intendant keeps its newest ended survey, and its newest Completed
+	// ones (all of that second), which decide its metrics route
+	// (lastCanary): deleting them would reopen a route a survey closed.
 	newest := map[string]*v1alpha1.TakeCareSurvey{}
+	completed := map[string]time.Time{}
 	var ended []*v1alpha1.TakeCareSurvey
 	for i := range list.Items {
 		s := &list.Items[i]
@@ -77,12 +81,18 @@ func (sw *Sweeper) Sweep(ctx context.Context) error {
 			continue
 		}
 		ended = append(ended, s)
-		if n := newest[s.Spec.IntendantRef.Name]; n == nil || endedAt(s).After(endedAt(n)) {
-			newest[s.Spec.IntendantRef.Name] = s
+		name := s.Spec.IntendantRef.Name
+		if n := newest[name]; n == nil || endedAt(s).After(endedAt(n)) {
+			newest[name] = s
+		}
+		if s.Status.Phase == v1alpha1.RunCompleted && s.Status.CompletedAt != nil && s.Status.CompletedAt.After(completed[name]) {
+			completed[name] = s.Status.CompletedAt.Time
 		}
 	}
 	for _, s := range ended {
-		if newest[s.Spec.IntendantRef.Name] == s || now.Sub(endedAt(s)) < SurveyRetention {
+		name := s.Spec.IntendantRef.Name
+		lastCompleted := s.Status.Phase == v1alpha1.RunCompleted && s.Status.CompletedAt != nil && s.Status.CompletedAt.Time.Equal(completed[name])
+		if newest[name] == s || lastCompleted || now.Sub(endedAt(s)) < SurveyRetention {
 			continue
 		}
 		if err := sw.Client.Delete(ctx, s, client.Preconditions{UID: &s.UID}); client.IgnoreNotFound(err) != nil && !apierrors.IsConflict(err) {

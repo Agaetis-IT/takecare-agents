@@ -156,8 +156,8 @@ type rulesRoute struct {
 // rulesRouteState decides the metrics route (spec 10 §8), in one place:
 // closed while the gateway's status refuses the rule, and from a survey
 // whose canary was not refused until a survey's canary is refused again;
-// open otherwise, a new Intendant's included (the product owner's choice,
-// 2026-11-15: its first survey proves the rule before it reads).
+// open otherwise, a new Intendant's included (spec 10 §8: its first survey
+// proves the rule before it reads).
 func rulesRouteState(statusOK bool, statusProblem string, last canaryRecord) rulesRoute {
 	switch {
 	case !statusOK:

@@ -166,7 +166,7 @@ Metrics are gauges, not counters: the same proposals come back at every survey u
 
 The `intendant` label has a few values per cluster.
 
-Retention: an ended survey (Completed, Failed or Dropped) older than seven days is deleted, every hour, by the leader; each Intendant keeps its newest ended survey however old it is, so that its last outcome stays readable.
+Retention: an ended survey (Completed, Failed or Dropped) older than seven days is deleted, every hour, by the leader; each Intendant keeps its newest ended survey however old it is, so that its last outcome stays readable, and its newest Completed one, which decides its metrics route (§8).
 
 ## 11. Acceptance criteria
 
