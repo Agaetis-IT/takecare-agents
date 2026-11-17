@@ -73,7 +73,7 @@ DIAG="$(mktemp "${TMPDIR:-/tmp}/chart-smoke-diag.XXXXXX")"
 # account that may read Secrets; the listener check creates a namespace:
 # all are undone right after their checks, and again on any exit.
 RANGER_CAPS_SAVED=""
-trap 'c1_cleanup 2>/dev/null || true; kubectl delete namespace smoke-foreign --ignore-not-found --wait=false --request-timeout=5s >/dev/null 2>&1 || true; rm -f "$DIAG"; kubectl -n "$NS" delete agentgatewaypolicy smoke-override --ignore-not-found --request-timeout=5s >/dev/null 2>&1 || true; [[ -z "$RANGER_CAPS_SAVED" ]] || kubectl patch takecareranger main --type=json -p "[{\"op\":\"replace\",\"path\":\"/spec/caps\",\"value\":${RANGER_CAPS_SAVED}}]" --request-timeout=5s >/dev/null 2>&1 || true' EXIT
+trap 'c1_cleanup 2>/dev/null || true; url_cleanup 2>/dev/null || true; kubectl delete namespace smoke-foreign --ignore-not-found --wait=false --request-timeout=5s >/dev/null 2>&1 || true; rm -f "$DIAG"; kubectl -n "$NS" delete agentgatewaypolicy smoke-override --ignore-not-found --request-timeout=5s >/dev/null 2>&1 || true; [[ -z "$RANGER_CAPS_SAVED" ]] || kubectl patch takecareranger main --type=json -p "[{\"op\":\"replace\",\"path\":\"/spec/caps\",\"value\":${RANGER_CAPS_SAVED}}]" --request-timeout=5s >/dev/null 2>&1 || true' EXIT
 check() { # NAME COMMAND...: PASS when the command succeeds
   local name="$1"; shift
   checks=$((checks + 1))
@@ -109,10 +109,9 @@ install() {
   kubectl -n "$NS" create secret generic takecare-model --from-literal=apiKey=smoke-placeholder \
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   empty_corpora
-  smoke_ca
   "$HELM" upgrade --install takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
-    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set global.caBundle.configMapName=smoke-ca --set ranger.caps.gateway.requestsPerMinute=600 --set-json 'ranger.caps.models=[{"name":"default","requestsPerMinute":2,"burst":1}]' --wait --timeout 10m
+    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set ranger.caps.gateway.requestsPerMinute=600 --set-json 'ranger.caps.models=[{"name":"default","requestsPerMinute":2,"burst":1}]' --wait --timeout 10m
   kubectl -n kagent rollout status deploy/kagent-controller --timeout=180s >/dev/null
   verify
 }
@@ -487,7 +486,10 @@ platform_ready() {
 
 upgrade() {
   checks=0 failed=0
-  log "upgrade with a changed value (server-side apply under Helm 4)"
+  log "upgrade with a changed value (server-side apply under Helm 4), and a CA bundle added"
+  # The install kept the chart's default (no bundle): the bundle added here
+  # must reach the operator and, in the url phase, the gateway's backend.
+  smoke_ca
   "$HELM" upgrade takecare-crds charts/takecare-crds -n "$NS" \
     --set image.tag="$IMAGE_TAG" --set demo.enabled=true --wait --timeout 5m
   "$HELM" upgrade takecare charts/takecare -n "$NS" \
@@ -1103,9 +1105,17 @@ customer_backend() {
     .tls == {"sni": $host, "caCertificateRefs": [{"kind": "ConfigMap", "name": "smoke-ca", "key": "ca.crt"}]}'
 }
 
-# customer_saw: the fake customer server logged a request over SCHEME
-# carrying the header value whose hash is HASH.
-customer_saw() { kubectl -n smoke-customer logs deploy/fake-customer | grep -q "scheme=$1 path=/mcp header=$2"; }
+# customer_saw: the fake customer server logged a call through the gateway
+# (curl's User-Agent, which the gateway passes on; the operator's discovery
+# is Go's) over SCHEME carrying the header value whose hash is HASH.
+customer_saw() { kubectl -n smoke-customer logs deploy/fake-customer | grep -q "scheme=$1 path=/mcp header=$2 ua=curl/"; }
+
+# url_cleanup removes what the url phase creates; on any exit too.
+url_cleanup() {
+  kubectl -n kagent delete pod smoke-customer-curl --ignore-not-found --wait=false --request-timeout=10s >/dev/null 2>&1 || true
+  kubectl -n "$NS" delete httproute/smoke-customer takecareconnector/customer secret/customer-key --ignore-not-found --request-timeout=10s >/dev/null 2>&1 || true
+  kubectl delete namespace smoke-customer --ignore-not-found --wait="${1:-false}" --request-timeout=120s >/dev/null 2>&1 || true
+}
 
 # url_connector: a customer's server by url (spec 05), over https with a
 # required header. The operator trusts the chart's CA bundle; the gateway's
@@ -1117,6 +1127,7 @@ url_connector() {
   local cns=smoke-customer first second
   first="first-$(openssl rand -hex 8)" second="second-$(openssl rand -hex 8)"
   log "a customer's server by url (spec 05): its credential and TLS through the gateway"
+  url_cleanup true # a previous run's leftovers, waited for
   smoke_ca
   kubectl create namespace "$cns" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   kubectl -n "$cns" create secret tls customer-tls --cert="${CA_DIR}/customer.crt" --key="${CA_DIR}/customer.key" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
@@ -1195,9 +1206,7 @@ EOF
   log "the gateway sent the rotated value after ${waited:-more than 180}s"
   check "the gateway follows a rotated Secret within 180 s, without a restart" \
     test -n "$waited" -a "$gw" = "$(kubectl -n "$NS" get pods -l app.kubernetes.io/name=agentgateway-proxy -o jsonpath='{.items[*].metadata.uid}')"
-  kubectl -n kagent delete pod smoke-customer-curl --wait=false >/dev/null
-  kubectl -n "$NS" delete httproute/smoke-customer takecareconnector/customer secret/customer-key >/dev/null
-  kubectl delete namespace "$cns" --wait=false >/dev/null
+  url_cleanup
   assert_checks "$CHECKS_EXPECTED"
 }
 

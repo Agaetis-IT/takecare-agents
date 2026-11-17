@@ -17,10 +17,11 @@ import (
 
 // Customer is the chart smoke's customer MCP server (spec 05): one read
 // tool, served only to a request that carries the expected header. Each
-// request is logged with its scheme and a short hash of the header it
-// carried, never the value, so that the smoke can tell which credential
-// arrived over which scheme. The expected value is read again on every
-// request, so a rotated Secret is followed.
+// request is logged with its scheme, a short hash of the header it carried
+// (never the value) and its User-Agent, so that the smoke can tell which
+// credential arrived over which scheme, and from which caller. The
+// expected value is read again on every request, so a rotated Secret is
+// followed.
 type Customer struct {
 	// Header is the required header's name.
 	Header string
@@ -52,7 +53,7 @@ func (c *Customer) Handler() http.Handler {
 			h := sha256.Sum256([]byte(got))
 			sum = hex.EncodeToString(h[:4])
 		}
-		c.Logger.Info("customer request", "scheme", scheme, "path", r.URL.Path, "header", sum)
+		c.Logger.Info("customer request", "scheme", scheme, "path", r.URL.Path, "header", sum, "ua", r.UserAgent())
 		want, err := os.ReadFile(c.KeyFile)
 		if err != nil || got == "" || got != strings.TrimSpace(string(want)) {
 			http.Error(w, "missing or wrong "+c.Header, http.StatusUnauthorized)

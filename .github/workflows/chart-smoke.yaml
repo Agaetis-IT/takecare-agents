@@ -16,6 +16,7 @@ on:
       - internal/front/**
       - internal/guard/**
       - cmd/**
+      - test/fakeslack/**
       - Dockerfile
       - .dockerignore
       - go.mod
@@ -29,6 +30,7 @@ on:
       - internal/front/**
       - internal/guard/**
       - cmd/**
+      - test/fakeslack/**
       - Dockerfile
       - .dockerignore
       - go.mod
