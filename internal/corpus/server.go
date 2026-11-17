@@ -124,7 +124,10 @@ func schema(props map[string]any, required ...string) map[string]any {
 // once the corpus was read.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return s.mcp }, &sdk.StreamableHTTPOptions{Stateless: true}))
+	// A browser's cross-origin request is refused (403), as the MCP
+	// specification requires of the Origin header; our callers are not
+	// browsers and send none.
+	mux.Handle("/mcp", http.NewCrossOriginProtection().Handler(sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return s.mcp }, &sdk.StreamableHTTPOptions{Stateless: true})))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
 		if err := s.load(); err != nil {
