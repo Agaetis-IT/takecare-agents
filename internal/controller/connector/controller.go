@@ -78,6 +78,7 @@ const (
 	ReasonCRDNotInstalled       = "CRDNotInstalled"
 	ReasonServerRestarted       = "ServerRestarted"
 	ReasonProbeFailed           = "ProbeFailed"
+	ReasonToolClassChanged      = "ToolClassChanged"
 )
 
 // Labels and names the chart and the controller agree on.
@@ -405,16 +406,24 @@ func (r *Reconciler) discover(ctx context.Context, c *v1alpha1.TakeCareConnector
 	}
 	var statuses []v1alpha1.ToolStatus
 	var changes []v1alpha1.ToolClassChange
+	// A customer's server by url is not one of ours: its annotations are
+	// not trusted (MCP specification, tools), its tools are act until
+	// spec.tools says otherwise. An add-on and a cluster connector's front
+	// are servers TakeCare ships.
+	trusted := c.Spec.MCP.Addon != "" || c.Spec.Cluster != nil
 	for _, t := range tools {
-		class := v1alpha1.ToolAct
-		if t.Annotated && t.ReadOnlyHint {
+		class, source := v1alpha1.ToolAct, sourceAnnotation
+		switch {
+		case !trusted:
+			source = sourceUntrusted
+		case t.Annotated && t.ReadOnlyHint:
 			class = v1alpha1.ToolRead
 		}
-		ts := v1alpha1.ToolStatus{Name: t.Name, Class: class, Source: "annotation"}
+		ts := v1alpha1.ToolStatus{Name: t.Name, Class: class, Source: source}
 		o := overrides[t.Name]
 		if o.Class != "" && o.Class != class {
 			changes = append(changes, v1alpha1.ToolClassChange{Name: t.Name, From: class, To: o.Class})
-			ts.Class, ts.Source = o.Class, "override"
+			ts.Class, ts.Source = o.Class, sourceOverride
 		}
 		if o.Content != nil {
 			ts.Content = *o.Content
@@ -429,8 +438,35 @@ func (r *Reconciler) discover(ctx context.Context, c *v1alpha1.TakeCareConnector
 			}
 		}
 	}
+	r.classChanges(c, statuses)
 	st.tools, st.overrides, st.discovered = statuses, changes, true
 	st.set(v1alpha1.ConditionToolsDiscovered, true, ReasonDiscovered, fmt.Sprintf("%d tool(s) classified", len(statuses)))
+}
+
+// Sources of a tool's class in status.tools.
+const (
+	sourceAnnotation = "annotation"
+	sourceUntrusted  = "untrusted"
+	sourceOverride   = "override"
+)
+
+// classChanges says, once, each tool whose class changed from what the
+// status last showed, other than by an override (ToolClassRelaxed says
+// those): a person sees why a tool left or entered the roles' allow-lists.
+func (r *Reconciler) classChanges(c *v1alpha1.TakeCareConnector, tools []v1alpha1.ToolStatus) {
+	for _, t := range tools {
+		i := slices.IndexFunc(c.Status.Tools, func(p v1alpha1.ToolStatus) bool { return p.Name == t.Name })
+		if i < 0 || c.Status.Tools[i].Class == t.Class || t.Source == sourceOverride {
+			continue
+		}
+		before := c.Status.Tools[i].Class
+		if t.Source == sourceUntrusted {
+			r.Recorder.Eventf(c, nil, corev1.EventTypeWarning, ReasonToolClassChanged, "Discover",
+				"tool %s is now %s (was %s): a customer server's annotations are not trusted; list it in spec.tools with class read to give it to roles below Expert", t.Name, t.Class, before)
+			continue
+		}
+		r.Recorder.Eventf(c, nil, corev1.EventTypeNormal, ReasonToolClassChanged, "Discover", "tool %s is now %s (was %s), from the server's annotations", t.Name, t.Class, before)
+	}
 }
 
 // readTools lists the tools discovery classed read, for the client's lock.

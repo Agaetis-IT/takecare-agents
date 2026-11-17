@@ -420,6 +420,34 @@ func TestConnectors(t *testing.T) {
 	}
 }
 
+// TestCustomerKnowledgeWithoutReadTool: a customer's knowledge server
+// whose tools are act (its annotations untrusted, spec 05) is named, with
+// what to do, and given nothing.
+func TestCustomerKnowledgeWithoutReadTool(t *testing.T) {
+	f := start(t)
+	f.platform(t)
+	f.connector(t, connMap, v1alpha1.ConnectorMap, []string{mcp.MapEntryTool, mcp.MapListTool})
+	f.connector(t, "tickets", v1alpha1.ConnectorKnowledge, nil)
+	c := &v1alpha1.TakeCareConnector{}
+	if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: "tickets"}, c); err != nil {
+		t.Fatal(err)
+	}
+	c.Status.Tools = []v1alpha1.ToolStatus{{Name: "search_tickets", Class: v1alpha1.ToolAct, Source: "untrusted"}}
+	if err := f.c.Status().Update(context.Background(), c); err != nil {
+		t.Fatal(err)
+	}
+	f.intendant(t, "customer", func(in *v1alpha1.TakeCareIntendant) {
+		in.Spec.Connectors = v1alpha1.IntendantConnectors{Map: []string{connMap}, Knowledge: []string{"tickets"}}
+	})
+	f.wait(t, "customer", func(in *v1alpha1.TakeCareIntendant) bool {
+		c := cond(in, v1alpha1.ConditionConnectorsReady)
+		return c != nil && strings.Contains(c.Message, "connector tickets has no read tool to give the agent (a customer's server: its tools are act until its spec.tools lists them as read)")
+	})
+	if _, ok := f.policy(t, "customer", "tickets"); ok {
+		t.Error("a knowledge connector without a read tool got a route")
+	}
+}
+
 // Expert works as Practitioner, and says so; an invalid schedule is
 // reported, with no next survey.
 func TestLevelAndSchedule(t *testing.T) {
