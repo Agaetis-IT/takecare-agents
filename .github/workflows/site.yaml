@@ -2,17 +2,18 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # The product site (site/), built on every release tag and published to
-# GitHub Pages on a final one (vX.Y.Z), so that its Reference matches the
-# released CRDs and charts; a prerelease tag (vX.Y.Z-rc.N) only builds it,
-# and the published site stays at the last final release
-# (hack/site-deploy.sh decides, hack/site-deploy-test.sh checks it). It can
-# be published by hand (workflow_dispatch), from the ref it is run on. On
-# pull requests touching the site, a build checks that the English
-# rendering still applies (site/src/i18n_en.py) and that the Reference
-# reads.
+# GitHub Pages only from a final release tag (vX.Y.Z) on main, or by hand
+# (workflow_dispatch) from main or from a final tag on main, so that its
+# Reference matches the released CRDs and charts. Anything else only builds
+# it, and the published site stays at the last final release
+# (hack/site-deploy.sh decides, hack/site-deploy-test.sh checks it). The
+# deploy job waits for an approval on the github-pages environment, and
+# runs one at a time across every ref (docs/release.md). On pull requests
+# touching the site, a build checks that the English rendering still
+# applies (site/src/i18n_en.py) and that the Reference reads.
 #
 # Pages must use the source "GitHub Actions" (repository settings); the
-# github-pages environment must allow the v* tags to deploy.
+# github-pages environment must allow main and the v* tags to deploy.
 name: site
 
 on:
@@ -34,29 +35,34 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: site-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   build:
     name: build the site
     runs-on: ubuntu-24.04
+    # A newer build of the same ref replaces an older one.
+    concurrency:
+      group: site-build-${{ github.ref }}
+      cancel-in-progress: true
     outputs:
       deploy: ${{ steps.decide.outputs.deploy }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 1
+          # Every commit, no file but the checked-out tree's: the "on main"
+          # check needs main's commits, not its files.
+          fetch-depth: 0
+          filter: blob:none
           persist-credentials: false
       - run: make site-deploy-test
       - id: decide
         env:
           EVENT: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          COMMIT: ${{ github.sha }}
         run: |
-          deploy="$(hack/site-deploy.sh "$EVENT" "$REF_NAME")"
-          echo "site deploy decided: ${deploy} (event ${EVENT}, ref ${REF_NAME})"
+          deploy="$(hack/site-deploy.sh "$EVENT" "$REF_NAME" "$REF_TYPE" "$COMMIT")"
+          echo "site deploy decided: ${deploy} (event ${EVENT}, ref ${REF_NAME}, ${REF_TYPE} ${COMMIT})"
           echo "deploy=${deploy}" >> "$GITHUB_OUTPUT"
       - run: make site
       - if: steps.decide.outputs.deploy == 'true'
@@ -69,6 +75,12 @@ jobs:
     if: needs.build.outputs.deploy == 'true'
     needs: build
     runs-on: ubuntu-24.04
+    # One deploy to Pages at a time, whatever the ref; a running deploy is
+    # never cancelled, and a newer pending one replaces an older pending one
+    # (GitHub's concurrency rule, the Pages starter workflow's choice).
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     permissions:
       pages: write
       id-token: write
