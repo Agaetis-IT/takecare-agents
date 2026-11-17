@@ -412,10 +412,10 @@ func (r *Reconciler) discover(ctx context.Context, c *v1alpha1.TakeCareConnector
 	// are servers TakeCare ships.
 	trusted := c.Spec.MCP.Addon != "" || c.Spec.Cluster != nil
 	for _, t := range tools {
-		class, source := v1alpha1.ToolAct, sourceAnnotation
+		class, source := v1alpha1.ToolAct, v1alpha1.ToolSourceAnnotation
 		switch {
 		case !trusted:
-			source = sourceUntrusted
+			source = v1alpha1.ToolSourceUntrusted
 		case t.Annotated && t.ReadOnlyHint:
 			class = v1alpha1.ToolRead
 		}
@@ -423,7 +423,7 @@ func (r *Reconciler) discover(ctx context.Context, c *v1alpha1.TakeCareConnector
 		o := overrides[t.Name]
 		if o.Class != "" && o.Class != class {
 			changes = append(changes, v1alpha1.ToolClassChange{Name: t.Name, From: class, To: o.Class})
-			ts.Class, ts.Source = o.Class, sourceOverride
+			ts.Class, ts.Source = o.Class, v1alpha1.ToolSourceOverride
 		}
 		if o.Content != nil {
 			ts.Content = *o.Content
@@ -443,24 +443,17 @@ func (r *Reconciler) discover(ctx context.Context, c *v1alpha1.TakeCareConnector
 	st.set(v1alpha1.ConditionToolsDiscovered, true, ReasonDiscovered, fmt.Sprintf("%d tool(s) classified", len(statuses)))
 }
 
-// Sources of a tool's class in status.tools.
-const (
-	sourceAnnotation = "annotation"
-	sourceUntrusted  = "untrusted"
-	sourceOverride   = "override"
-)
-
 // classChanges says, once, each tool whose class changed from what the
 // status last showed, other than by an override (ToolClassRelaxed says
 // those): a person sees why a tool left or entered the roles' allow-lists.
 func (r *Reconciler) classChanges(c *v1alpha1.TakeCareConnector, tools []v1alpha1.ToolStatus) {
 	for _, t := range tools {
 		i := slices.IndexFunc(c.Status.Tools, func(p v1alpha1.ToolStatus) bool { return p.Name == t.Name })
-		if i < 0 || c.Status.Tools[i].Class == t.Class || t.Source == sourceOverride {
+		if i < 0 || c.Status.Tools[i].Class == t.Class || t.Source == v1alpha1.ToolSourceOverride {
 			continue
 		}
 		before := c.Status.Tools[i].Class
-		if t.Source == sourceUntrusted {
+		if t.Source == v1alpha1.ToolSourceUntrusted {
 			r.Recorder.Eventf(c, nil, corev1.EventTypeWarning, ReasonToolClassChanged, "Discover",
 				"tool %s is now %s (was %s): a customer server's annotations are not trusted; list it in spec.tools with class read to give it to roles below Expert", t.Name, t.Class, before)
 			continue

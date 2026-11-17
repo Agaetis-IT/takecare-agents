@@ -110,7 +110,7 @@ func TestRemoteClusterConnector(t *testing.T) {
 	// A cluster connector's front is ours: its server's annotations are
 	// trusted, unlike a customer's server by url.
 	if tools := h.get(eastName).Status.Tools; !slices.ContainsFunc(tools, func(s v1alpha1.ToolStatus) bool {
-		return s.Name == toolPodsList && s.Class == v1alpha1.ToolRead && s.Source == sourceAnnotation
+		return s.Name == toolPodsList && s.Class == v1alpha1.ToolRead && s.Source == v1alpha1.ToolSourceAnnotation
 	}) {
 		t.Errorf("the cluster connector's tools = %+v, want %s read from its annotation", tools, toolPodsList)
 	}

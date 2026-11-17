@@ -687,7 +687,7 @@ func (r *Reconciler) inspect(ctx context.Context, d *v1alpha1.TakeCareDoc, t v1a
 		f.unavailable = append(f.unavailable, fmt.Sprintf("%s was never discovered: what it exposes is unknown, it is not given to the agent", name))
 	case len(read) == 0:
 		why := ""
-		if slices.ContainsFunc(c.Status.Tools, func(t v1alpha1.ToolStatus) bool { return t.Source == "untrusted" }) {
+		if slices.ContainsFunc(c.Status.Tools, func(t v1alpha1.ToolStatus) bool { return t.Source == v1alpha1.ToolSourceUntrusted }) {
 			why = " (a customer's server: its tools are act until its spec.tools lists them as read)"
 		}
 		f.unavailable = append(f.unavailable, fmt.Sprintf("%s has no read tool%s: it is not given to the agent", name, why))

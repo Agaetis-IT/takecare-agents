@@ -240,6 +240,17 @@ type ToolStatus struct {
 	Source string `json:"source"`
 }
 
+// Sources of a tool's class in status.tools.
+const (
+	// ToolSourceAnnotation: the annotations of a server TakeCare ships.
+	ToolSourceAnnotation = "annotation"
+	// ToolSourceUntrusted: a customer's server by url, act until
+	// spec.tools says otherwise.
+	ToolSourceUntrusted = "untrusted"
+	// ToolSourceOverride: spec.tools.
+	ToolSourceOverride = "override"
+)
+
 // ToolClassChange records an override.
 type ToolClassChange struct {
 	Name string    `json:"name"`

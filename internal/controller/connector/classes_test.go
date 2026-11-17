@@ -36,15 +36,15 @@ func TestCustomerToolsAreActUntilListed(t *testing.T) {
 			return c != nil && len(c.Status.Tools) == 1 && c.Status.Tools[0].Class == class && c.Status.Tools[0].Source == source
 		}
 	}
-	h.eventually("the claimed read tool is act, untrusted", toolIs(v1alpha1.ToolAct, sourceUntrusted))
+	h.eventually("the claimed read tool is act, untrusted", toolIs(v1alpha1.ToolAct, v1alpha1.ToolSourceUntrusted))
 
 	// The status an operator under the annotation rule left: read.
 	c := h.get("customer")
-	c.Status.Tools = []v1alpha1.ToolStatus{{Name: tool, Class: v1alpha1.ToolRead, Source: sourceAnnotation}}
+	c.Status.Tools = []v1alpha1.ToolStatus{{Name: tool, Class: v1alpha1.ToolRead, Source: v1alpha1.ToolSourceAnnotation}}
 	h.must(h.c.Status().Update(h.ctx, c))
 	for _, n := range []string{"1", "2"} {
 		h.must(h.c.Patch(h.ctx, h.get("customer"), client.RawPatch(types.MergePatchType, []byte(`{"metadata":{"annotations":{"takecare.agaetis.fr/discover":"`+n+`"}}}`))))
-		h.eventually("rediscovered after the upgrade", toolIs(v1alpha1.ToolAct, sourceUntrusted))
+		h.eventually("rediscovered after the upgrade", toolIs(v1alpha1.ToolAct, v1alpha1.ToolSourceUntrusted))
 	}
 	h.eventually("one ToolClassChanged Warning naming the way back", func() bool {
 		var events eventsv1.EventList
@@ -69,7 +69,7 @@ func TestCustomerToolsAreActUntilListed(t *testing.T) {
 	c = h.get("customer")
 	c.Spec.Tools = []v1alpha1.ToolOverride{{Name: tool, Class: v1alpha1.ToolRead}}
 	h.must(h.c.Update(h.ctx, c))
-	h.eventually("the listed tool is read, by override", toolIs(v1alpha1.ToolRead, sourceOverride))
+	h.eventually("the listed tool is read, by override", toolIs(v1alpha1.ToolRead, v1alpha1.ToolSourceOverride))
 	if o := h.get("customer").Status.Overrides; len(o) != 1 || o[0] != (v1alpha1.ToolClassChange{Name: tool, From: v1alpha1.ToolAct, To: v1alpha1.ToolRead}) {
 		t.Errorf("status.overrides = %+v", o)
 	}

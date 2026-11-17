@@ -111,7 +111,7 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 		}
 		if problem == "" && len(b.giveAgent(in, conn, v1alpha1.ConnectorKnowledge)) == 0 {
 			problem = fmt.Sprintf("connector %s has no read tool to give the agent", name)
-			if slices.ContainsFunc(conn.Status.Tools, func(t v1alpha1.ToolStatus) bool { return t.Source == "untrusted" }) {
+			if slices.ContainsFunc(conn.Status.Tools, func(t v1alpha1.ToolStatus) bool { return t.Source == v1alpha1.ToolSourceUntrusted }) {
 				problem += " (a customer's server: its tools are act until its spec.tools lists them as read)"
 			}
 		}
