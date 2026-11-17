@@ -88,7 +88,7 @@ type harness struct {
 	statusz *fakeStatusz
 }
 
-func start(t *testing.T, srv *mcptest.Server) *harness {
+func start(t *testing.T, srv *mcptest.Server, opts ...func(*Reconciler)) *harness {
 	t.Helper()
 	cfg := testenv.Start(t)
 	scheme := runtime.NewScheme()
@@ -111,6 +111,9 @@ func start(t *testing.T, srv *mcptest.Server) *harness {
 	h.lister = &fakeLister{client: &mcp.Client{HTTP: &http.Client{Timeout: 5 * time.Second}}, url: srv.URL, probeReply: "[]"}
 	h.statusz = startStatusz(t)
 	h.r = &Reconciler{Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("test"), OperatorNamespace: operatorNS, MCP: h.lister, HTTP: h.statusz.client, Now: func() time.Time { return h.now }}
+	for _, opt := range opts {
+		opt(h.r)
+	}
 	if err := h.r.SetupWithManager(mgr); err != nil {
 		t.Fatal(err)
 	}

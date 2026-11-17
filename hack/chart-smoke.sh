@@ -10,7 +10,7 @@
 # is reachable through the gateway only. Never touches the user's kube
 # context: the cluster's kubeconfig is written under ./bin.
 # Then installs the workload-cluster chart (ADR 0016) and reads its front.
-# Usage: hack/chart-smoke.sh [up|install|upgrade|cluster|status|down|all]
+# Usage: hack/chart-smoke.sh [up|install|upgrade|url|cluster|status|down|all]
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -31,6 +31,12 @@ CORPUS_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-corpus:${IMAGE_TAG}"
 MAP_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-map:${IMAGE_TAG}"
 DEMO_APP_IMAGE="${IMAGE_REGISTRY}/takecare-agents-demo-app:${IMAGE_TAG}"
 FRONT_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-front:${IMAGE_TAG}"
+# Test only: the fake Slack image, here as a customer's MCP server.
+FAKE_SLACK_IMAGE="${IMAGE_REGISTRY}/takecare-agents-fake-slack:${IMAGE_TAG}"
+# The smoke's CA, the chart's global.caBundle: made at run time, never kept
+# in the repository.
+CA_DIR="${PWD}/bin/${CLUSTER}-ca"
+CUSTOMER_HOST=fake-customer.smoke-customer.svc.cluster.local
 # The demo corpus sources (values.yaml addons.demoCorpus.sources).
 CORPUS_SOURCES=(incidents runbooks deployments vendor support)
 HELM="${HELM:-bin/helm-${HELM_VERSION}}"
@@ -49,7 +55,9 @@ up() {
   k3d kubeconfig write "$CLUSTER" --output "$KUBECONFIG" >/dev/null
   log "building and importing ${IMAGE}, ${REPORT_IMAGE}, ${CORPUS_IMAGE}, ${MAP_IMAGE}, ${DEMO_APP_IMAGE} and ${FRONT_IMAGE}"
   make docker-build OPERATOR_IMG="$IMAGE" REPORT_SLACK_IMG="$REPORT_IMAGE" MCP_CORPUS_IMG="$CORPUS_IMAGE" MCP_MAP_IMG="$MAP_IMAGE" DEMO_APP_IMG="$DEMO_APP_IMAGE" MCP_FRONT_IMG="$FRONT_IMAGE" >/dev/null
-  k3d image import "$IMAGE" "$REPORT_IMAGE" "$CORPUS_IMAGE" "$MAP_IMAGE" "$DEMO_APP_IMAGE" "$FRONT_IMAGE" -c "$CLUSTER" >/dev/null
+  docker build --build-arg GO_BUILD_IMAGE="$GO_BUILD_IMAGE" --build-arg RUNTIME_IMAGE="$RUNTIME_IMAGE" \
+    --build-arg GO_LICENSES_VERSION="$GO_LICENSES_VERSION" --build-arg COMPONENT=fake-slack -t "$FAKE_SLACK_IMAGE" . >/dev/null
+  k3d image import "$IMAGE" "$REPORT_IMAGE" "$CORPUS_IMAGE" "$MAP_IMAGE" "$DEMO_APP_IMAGE" "$FRONT_IMAGE" "$FAKE_SLACK_IMAGE" -c "$CLUSTER" >/dev/null
   make chart-deps >/dev/null
 }
 
@@ -101,9 +109,10 @@ install() {
   kubectl -n "$NS" create secret generic takecare-model --from-literal=apiKey=smoke-placeholder \
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   empty_corpora
+  smoke_ca
   "$HELM" upgrade --install takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
-    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set ranger.caps.gateway.requestsPerMinute=600 --set-json 'ranger.caps.models=[{"name":"default","requestsPerMinute":2,"burst":1}]' --wait --timeout 10m
+    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set global.caBundle.configMapName=smoke-ca --set ranger.caps.gateway.requestsPerMinute=600 --set-json 'ranger.caps.models=[{"name":"default","requestsPerMinute":2,"burst":1}]' --wait --timeout 10m
   kubectl -n kagent rollout status deploy/kagent-controller --timeout=180s >/dev/null
   verify
 }
@@ -128,6 +137,24 @@ empty_corpora() {
 corpus_ready() {
   connector_ready "$1" || return 1
   [[ "$(kubectl -n "$NS" get takecareconnector "$1" -o jsonpath='{range .status.tools[*]}{.name}={.class}{"\n"}{end}' | sort | tr '\n' ' ')" == "$1_get=read $1_recent=read $1_search=read " ]]
+}
+
+# smoke_ca makes, once per cluster, a CA and the customer server's leaf
+# signed by it (the gateway refuses a self-signed certificate used as the
+# server's own), and publishes the CA as the chart's bundle.
+smoke_ca() {
+  if [[ ! -s "${CA_DIR}/customer.crt" ]]; then
+    mkdir -p "$CA_DIR"
+    (
+      cd "$CA_DIR"
+      openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 2 -subj /CN=smoke-ca -keyout ca.key -out ca.crt
+      openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj "/CN=${CUSTOMER_HOST}" -keyout customer.key -out customer.csr
+      printf 'subjectAltName=DNS:%s\nextendedKeyUsage=serverAuth\n' "$CUSTOMER_HOST" >customer.ext
+      openssl x509 -req -in customer.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 2 -extfile customer.ext -out customer.crt
+    ) >/dev/null 2>&1
+  fi
+  kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  kubectl -n "$NS" create configmap smoke-ca --from-file=ca.crt="${CA_DIR}/ca.crt" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 }
 
 # map_current: MapCurrent is True and names the served revision.
@@ -465,7 +492,7 @@ upgrade() {
     --set image.tag="$IMAGE_TAG" --set demo.enabled=true --wait --timeout 5m
   "$HELM" upgrade takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
-    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set operator.extraArgs[0]=--zap-log-level=debug --set ranger.caps.gateway.requestsPerMinute=600 --set-json 'ranger.caps.models=[{"name":"default","requestsPerMinute":2,"burst":1}]' --wait --timeout 10m
+    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set operator.extraArgs[0]=--zap-log-level=debug --set global.caBundle.configMapName=smoke-ca --set ranger.caps.gateway.requestsPerMinute=600 --set-json 'ranger.caps.models=[{"name":"default","requestsPerMinute":2,"burst":1}]' --wait --timeout 10m
   check "helm upgrade of both charts succeeded without a field manager conflict" true
   check "operator rolled out with the new argument" \
     kubectl -n "$NS" rollout status deploy/takecare-operator --timeout=120s
@@ -1044,6 +1071,136 @@ EOF
   assert_checks "$CHECKS_EXPECTED"
 }
 
+# customer_hash is the fake customer server's log form of a header value:
+# the first four bytes of its SHA-256, never the value.
+customer_hash() { printf '%s' "$1" | shasum -a 256 | cut -c1-8; }
+
+# customer_call posts initialize through the gateway's temporary route to
+# the customer connector's backend, from the engine namespace (where agents
+# run), and prints the HTTP status.
+customer_call() {
+  kubectl -n kagent exec smoke-customer-curl -- curl -s -o /dev/null -m 10 -w '%{http_code}' -X POST \
+    "http://agentgateway-proxy.${NS}.svc.cluster.local/smoke-customer" -H 'Content-Type: application/json' \
+    -H 'Accept: application/json, text/event-stream' \
+    -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"smoke","version":"1"}}}'
+}
+
+# customer_answers: an agent's call gets 200 within a minute (the gateway
+# picks the new backend and route up asynchronously).
+customer_answers() {
+  for _ in $(seq 20); do
+    [[ "$(customer_call)" == 200 ]] && return 0
+    sleep 3
+  done
+  return 1
+}
+
+# customer_backend: the customer connector's backend carries the header's
+# Secret and the CA bundle as references, and TLS to the URL's host.
+customer_backend() {
+  kubectl -n "$NS" get agentgatewaybackend mcp-customer -o json | jq -e --arg host "$CUSTOMER_HOST" '.spec.mcp.targets[0].static.policies |
+    .auth.credentials == [{"secretRef": {"name": "customer-key", "key": "key"}, "location": {"header": {"name": "X-Api-Key"}}}] and
+    .tls == {"sni": $host, "caCertificateRefs": [{"kind": "ConfigMap", "name": "smoke-ca", "key": "ca.crt"}]}'
+}
+
+# customer_saw: the fake customer server logged a request over SCHEME
+# carrying the header value whose hash is HASH.
+customer_saw() { kubectl -n smoke-customer logs deploy/fake-customer | grep -q "scheme=$1 path=/mcp header=$2"; }
+
+# url_connector: a customer's server by url (spec 05), over https with a
+# required header. The operator trusts the chart's CA bundle; the gateway's
+# backend carries the header's Secret and the bundle by reference, and the
+# server sees the credential over TLS on an agent's call. Then the Secret is
+# rotated and the time until the gateway sends the new value is measured.
+url_connector() {
+  checks=0 failed=0
+  local cns=smoke-customer first second
+  first="first-$(openssl rand -hex 8)" second="second-$(openssl rand -hex 8)"
+  log "a customer's server by url (spec 05): its credential and TLS through the gateway"
+  smoke_ca
+  kubectl create namespace "$cns" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  kubectl -n "$cns" create secret tls customer-tls --cert="${CA_DIR}/customer.crt" --key="${CA_DIR}/customer.key" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  for n in "$cns" "$NS"; do
+    kubectl -n "$n" create secret generic customer-key --from-literal=key="$first" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  done
+  kubectl apply -f - >/dev/null <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: fake-customer, namespace: ${cns} }
+spec:
+  selector: { matchLabels: { app: fake-customer } }
+  template:
+    metadata: { labels: { app: fake-customer } }
+    spec:
+      containers:
+        - name: server
+          image: ${FAKE_SLACK_IMAGE}
+          args: [--customer-header=X-Api-Key, --listen=:8080, --customer-tls-listen=:8443]
+          volumeMounts: [{ name: key, mountPath: /key }, { name: tls, mountPath: /tls }]
+      volumes:
+        - { name: key, secret: { secretName: customer-key } }
+        - { name: tls, secret: { secretName: customer-tls } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: fake-customer, namespace: ${cns} }
+spec:
+  selector: { app: fake-customer }
+  ports: [{ name: https, port: 443, targetPort: 8443 }]
+---
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareConnector
+metadata: { name: customer, namespace: ${NS} }
+spec:
+  types: [knowledge]
+  mcp:
+    url: https://${CUSTOMER_HOST}/mcp
+    headersFrom: [{ name: X-Api-Key, secretKeyRef: { name: customer-key, key: key } }]
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: { name: smoke-customer, namespace: ${NS} }
+spec:
+  parentRefs: [{ name: agentgateway-proxy, sectionName: http }]
+  rules:
+    - matches: [{ path: { type: Exact, value: /smoke-customer } }]
+      backendRefs: [{ group: agentgateway.dev, kind: AgentgatewayBackend, name: mcp-customer }]
+EOF
+  kubectl -n "$cns" rollout status deploy/fake-customer --timeout=120s >/dev/null
+  check "the customer connector is Ready: the operator reached it over https, trusting the chart's CA bundle" \
+    connector_ready customer
+  check "its backend names the header's Secret and the CA bundle, by reference" customer_backend
+  check_not "the header's value is nowhere in the backend, the connector or its events" \
+    bash -c "{ kubectl -n $NS get agentgatewaybackend mcp-customer -o json; kubectl -n $NS get takecareconnector customer -o json; kubectl -n $NS get events -o json; } | grep -q '$first'"
+  kubectl -n kagent delete pod smoke-customer-curl --ignore-not-found >/dev/null
+  kubectl -n kagent run smoke-customer-curl --image="$SMOKE_CURL_IMAGE" --restart=Never --command -- sleep 600 >/dev/null
+  kubectl -n kagent wait pod/smoke-customer-curl --for=condition=Ready --timeout=120s >/dev/null
+  check "an agent's call through the gateway is answered by the customer's server (200)" \
+    customer_answers
+  check "the server saw that call over https, with the header's value from the Secret" \
+    customer_saw https "$(customer_hash "$first")"
+  # Rotation: agentgateway's documentation does not say whether a changed
+  # Secret is followed without a restart: measured here.
+  local gw t0 waited=""
+  gw="$(kubectl -n "$NS" get pods -l app.kubernetes.io/name=agentgateway-proxy -o jsonpath='{.items[*].metadata.uid}')"
+  for n in "$cns" "$NS"; do
+    kubectl -n "$n" create secret generic customer-key --from-literal=key="$second" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  done
+  t0="$(date +%s)"
+  for _ in $(seq 60); do
+    customer_call >/dev/null || true
+    if customer_saw https "$(customer_hash "$second")"; then waited=$(($(date +%s) - t0)); break; fi
+    sleep 3
+  done
+  log "the gateway sent the rotated value after ${waited:-more than 180}s"
+  check "the gateway follows a rotated Secret within 180 s, without a restart" \
+    test -n "$waited" -a "$gw" = "$(kubectl -n "$NS" get pods -l app.kubernetes.io/name=agentgateway-proxy -o jsonpath='{.items[*].metadata.uid}')"
+  kubectl -n kagent delete pod smoke-customer-curl --wait=false >/dev/null
+  kubectl -n "$NS" delete httproute/smoke-customer takecareconnector/customer secret/customer-key >/dev/null
+  kubectl delete namespace "$cns" --wait=false >/dev/null
+  assert_checks "$CHECKS_EXPECTED"
+}
+
 # cluster_chart installs the workload-cluster package (ADR 0016) beside
 # the demo, with a CA and two client certificates made here (in a temporary
 # directory, never kept), and reads its front through a port-forward: the
@@ -1217,6 +1374,7 @@ case "${1:-all}" in
   mask-test) mask_test ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=5 cluster_chart ;;
-  all) mask_test; up; CHECKS_EXPECTED=133 install; CHECKS_EXPECTED=133 upgrade; CHECKS_EXPECTED=5 cluster_chart ;;
-  *) echo "usage: $0 [up|install|upgrade|cluster|status|mask-test|down|all]"; exit 2 ;;
+  url) CHECKS_EXPECTED=6 url_connector ;;
+  all) mask_test; up; CHECKS_EXPECTED=133 install; CHECKS_EXPECTED=133 upgrade; CHECKS_EXPECTED=6 url_connector; CHECKS_EXPECTED=5 cluster_chart ;;
+  *) echo "usage: $0 [up|install|upgrade|url|cluster|status|mask-test|down|all]"; exit 2 ;;
 esac

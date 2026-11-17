@@ -170,13 +170,16 @@ spec:
                     minLength: 1
                     type: string
                   headersFrom:
-                    description: Headers taken from Secrets, for example an Authorization
-                      token.
+                    description: |-
+                      Headers taken from Secrets, for example an Authorization token. The
+                      gateway sends them too, at most eight (its limit).
                     items:
                       description: HeaderFrom sets an HTTP header from a Secret key.
                       properties:
                         name:
+                          description: An HTTP header name (the gateway's pattern).
                           minLength: 1
+                          pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
                           type: string
                         secretKeyRef:
                           description: SecretKeyRef points at a key of a Secret.
@@ -195,6 +198,7 @@ spec:
                       - name
                       - secretKeyRef
                       type: object
+                    maxItems: 8
                     type: array
                     x-kubernetes-list-map-keys:
                     - name

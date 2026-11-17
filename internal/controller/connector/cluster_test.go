@@ -120,6 +120,10 @@ func TestRemoteClusterConnector(t *testing.T) {
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("backend policies.tls (-want +got):\n%s", diff)
 	}
+	// Unchanged by the url connectors' policies: none on its target.
+	if targets, _, _ := unstructured.NestedSlice(backend.Object, "spec", "mcp", "targets"); len(targets) != 1 || targets[0].(map[string]any)["static"].(map[string]any)["policies"] != nil {
+		t.Errorf("the cluster connector's target got policies: %v", targets)
+	}
 
 	for _, tc := range []struct {
 		name, reason string
