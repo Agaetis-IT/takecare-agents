@@ -87,7 +87,7 @@ The source is two counters of the gateway (agentgateway v1.6, read on k3d): `age
 
 The operator reads both through the platform's Prometheus (`spec.observability.metrics.prometheusURL`) once a minute while the Markers enforce: the masked requests (`phase="Request"`, `action="Mask"`), the refused ones (`reason="Guardrail"`) and the limited ones (`reason="RateLimit"`), each series collapsed to its identity first so that a gateway scraped twice counts once. It keeps the last totals in memory: the first read after a start seeds them and says nothing, and a counter going down (the gateway restarted) seeds them again. Each kind that moved gives one event, `RequestsMasked`, `RequestsRejected` or `RequestsRateLimited`, with the count and the routes when the counter has them, and adds the count to `takecare_ranger_alerts_total{kind}` (`masked`, `rejected`, `rate-limited`). The condition `AlertsSource` says whether the counters are read: False with `PrometheusNotConfigured` or `PrometheusUnreachable` (no event, the Markers untouched), and False with `AuditOnly` or `Suspended` below Practitioner.
 
-`RequestsMasked` is a `Normal` event: since tool outputs are scanned, masking is the Ranger's normal work, and the call goes on (decided by the product owner, 2026-11-18). `RequestsRejected` and `RequestsRateLimited` are `Warning` events: a refusal or a limit stops a model call, which a person should see.
+`RequestsMasked` is a `Normal` event: since tool outputs are scanned, masking is the Ranger's normal work, and the call goes on. `RequestsRejected` and `RequestsRateLimited` are `Warning` events: a refusal or a limit stops a model call, which a person should see.
 
 ## 6. What the Ranger does not do
 
