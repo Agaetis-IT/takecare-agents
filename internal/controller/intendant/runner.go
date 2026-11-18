@@ -38,6 +38,7 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/usage"
 )
 
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaresurveys,verbs=patch,namespace=takecare-system
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaresurveys/status,verbs=patch,namespace=takecare-system
 
 // Bounds of a survey's status (spec 10 §7): the first proposals and the
@@ -260,6 +261,13 @@ func (w *Runner) admit(ctx context.Context, key types.NamespacedName) (types.Nam
 		return types.NamespacedName{}, false
 	}
 	owner := types.NamespacedName{Namespace: s.Namespace, Name: s.Spec.IntendantRef.Name}
+	switch w.adopt(ctx, &s, owner) {
+	case adoptRetry:
+		// Put back: an error reading or patching must not lose the survey.
+		return owner, true
+	case adoptFailed:
+		return types.NamespacedName{}, false
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.running[owner] {
@@ -272,6 +280,57 @@ func (w *Runner) admit(ctx context.Context, key types.NamespacedName) (types.Nam
 	})
 	return owner, false
 }
+
+// adopt checks a queued survey's Intendant before the survey starts: a
+// survey whose Intendant does not exist or is being deleted ends Failed,
+// naming it, never left Queued. A survey without a controller reference,
+// one made by hand, gets one to its Intendant, set once and never moved:
+// it is then deleted with its Intendant and kept as the operator's own
+// (spec 10 §4). A survey names an Intendant of its own namespace only:
+// the kind is namespaced and intendantRef carries no namespace.
+func (w *Runner) adopt(ctx context.Context, s *v1alpha1.TakeCareSurvey, owner types.NamespacedName) adoption {
+	logger := log.FromContext(ctx).WithValues("survey", s.Name, "intendant", owner.Name)
+	var in v1alpha1.TakeCareIntendant
+	reason := ""
+	switch err := w.Reader.Get(ctx, owner, &in); {
+	case apierrors.IsNotFound(err):
+		reason = fmt.Sprintf("the Intendant %s does not exist", owner.Name)
+	case err != nil:
+		logger.Error(err, "read the survey's Intendant")
+		return adoptRetry
+	case !in.DeletionTimestamp.IsZero():
+		reason = fmt.Sprintf("the Intendant %s is being deleted", owner.Name)
+	}
+	if reason != "" {
+		done := metav1.NewTime(w.now())
+		if err := w.patch(ctx, s, func(st *v1alpha1.TakeCareSurveyStatus) {
+			st.Phase, st.Reason, st.CompletedAt = v1alpha1.RunFailed, reason[:min(len(reason), maxReason)], &done
+		}); err != nil {
+			logger.Error(err, "fail the survey")
+			return adoptRetry
+		}
+		return adoptFailed
+	}
+	if metav1.GetControllerOf(s) != nil {
+		return adopted
+	}
+	before := s.DeepCopy()
+	s.OwnerReferences = append(s.OwnerReferences, *metav1.NewControllerRef(&in, v1alpha1.GroupVersion.WithKind(v1alpha1.KindTakeCareIntendant)))
+	if err := w.Client.Patch(ctx, s, client.MergeFrom(before)); err != nil {
+		logger.Error(err, "set the survey's owner")
+		return adoptRetry
+	}
+	return adopted
+}
+
+// adoption is what admit does with a queued survey after adopt.
+type adoption int
+
+const (
+	adopted adoption = iota
+	adoptFailed
+	adoptRetry
+)
 
 func (w *Runner) release(owner types.NamespacedName) {
 	w.mu.Lock()

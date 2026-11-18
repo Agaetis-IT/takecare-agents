@@ -8,6 +8,10 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/engine"
@@ -25,8 +29,9 @@ const Finalizer = "takecare.agaetis.fr/engine-objects"
 
 // Reasons of the agent's conditions.
 const (
-	ReasonResolved    = "Resolved"
-	ReasonAgentNoTool = "NoTool"
+	ReasonResolved      = "Resolved"
+	ReasonAgentNoTool   = "NoTool"
+	ReasonRenderPending = "RenderPending"
 )
 
 // renderAgent writes the Intendant's agent for its agent pass (spec 10 §5):
@@ -79,6 +84,13 @@ func (r *Reconciler) renderAgent(ctx context.Context, in *v1alpha1.TakeCareInten
 	if err != nil {
 		return nil, false, err
 	}
+	held, err := r.holdAgent(ctx, in, desired, st)
+	if err != nil {
+		return nil, false, err
+	}
+	if held {
+		return []string{model}, false, nil
+	}
 	if err := r.Agents.EnsureAgent(ctx, desired); err != nil {
 		return nil, false, err
 	}
@@ -102,4 +114,60 @@ func (r *Reconciler) removeEngine(ctx context.Context, in *v1alpha1.TakeCareInte
 		return err
 	}
 	return r.Models.DeleteModel(ctx, r.EngineNamespace, name)
+}
+
+// holdAgent says whether a new rendering of the agent must wait: the
+// engine holds another rendering and a survey of the Intendant is Running
+// before its deadline. kagent 0.10.3 rolls the agent's Deployment on any
+// change of its rendering (the pod template's config-hash), and the old
+// pod takes the pass's task with it (spec 10 §5). EngineReady stays True,
+// with RenderPending naming the survey and the deadline; the reconcile
+// looks again at the deadline, and the survey's end wakes it sooner.
+func (r *Reconciler) holdAgent(ctx context.Context, in *v1alpha1.TakeCareIntendant, desired engine.Agent, st *status) (bool, error) {
+	current, err := r.Agents.RenderedHash(ctx, desired.Namespace, desired.Name)
+	if err != nil {
+		return false, err
+	}
+	if current == "" || current == r.Agents.Hash(desired) {
+		return false, nil
+	}
+	running, until, err := r.runningUntil(ctx, in)
+	if err != nil {
+		return false, err
+	}
+	now := r.now()
+	if running == "" || !now.Before(until) {
+		return false, nil
+	}
+	st.pendingSince = st.prevPending
+	if st.pendingSince == nil {
+		t := metav1.NewTime(now)
+		st.pendingSince = &t
+	}
+	st.heldUntil = until
+	st.set(v1alpha1.ConditionEngineReady, true, ReasonRenderPending, fmt.Sprintf(
+		"a new rendering of the agent waits since %s for survey %s to end, at most until %s (its pass timeout); the gateway's policies already apply it",
+		st.pendingSince.UTC().Format(time.RFC3339), running, until.UTC().Format(time.RFC3339)))
+	return true, nil
+}
+
+// runningUntil returns the Intendant's Running survey and its deadline:
+// its start plus the pass timeout.
+func (r *Reconciler) runningUntil(ctx context.Context, in *v1alpha1.TakeCareIntendant) (string, time.Time, error) {
+	var list v1alpha1.TakeCareSurveyList
+	if err := r.reader().List(ctx, &list, client.InNamespace(in.Namespace)); err != nil {
+		return "", time.Time{}, fmt.Errorf("list surveys: %w", err)
+	}
+	for _, s := range list.Items {
+		if s.Spec.IntendantRef.Name != in.Name || s.Status.Phase != v1alpha1.RunRunning {
+			continue
+		}
+		start := s.CreationTimestamp.Time
+		if s.Status.StartedAt != nil {
+			start = s.Status.StartedAt.Time
+		}
+		// One survey runs at a time (spec 10 §4).
+		return s.Name, start.Add(r.passTimeout()), nil
+	}
+	return "", time.Time{}, nil
 }
