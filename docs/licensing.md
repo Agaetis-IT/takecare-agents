@@ -31,6 +31,7 @@ The challenge POC, reference material kept outside this repository, belongs to A
 - **Strong copyleft licenses are forbidden** as dependencies: GPL, AGPL, and anything `go-licenses` classifies as *forbidden* or *restricted* (LGPL included). They would take away the choice of how to license TakeCare. Weak copyleft (MPL-2.0, EPL: *reciprocal* for `go-licenses`, so not blocked by the tool) needs the product owner's agreement in the PR.
 - A dependency whose license cannot be identified (`go-licenses` *unknown*, which includes SSPL) is refused until it is.
 - `make licenses` enforces this for the Go modules (`go-licenses check`, CI job `licenses`) and regenerates `NOTICE` from `go.mod`. The CI fails if the committed `NOTICE` is out of date: never edit it by hand.
+- `NOTICE` lists each third-party Go module and its license, without versions: it changes only when a module enters or leaves, or a license changes, the cases a person must read. A version bump alone leaves it as it is. The versions a release carries are in each Go binary's build information (`go version -m <binary>` lists every module and its version); a release ships no SBOM.
 - Each image we build ships the full license texts and NOTICE files of the modules compiled into it, under `/licenses`.
 - Third-party images and charts that the `takecare` chart installs (agentgateway, MCP servers, the engine…) are not linked into our code, but their licenses are recorded in the PR that adds or bumps them.
 
