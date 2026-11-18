@@ -69,8 +69,9 @@ const (
 // not given to the agent, and the gateway's policy refuses it anyway.
 var ErrEmptyAllowList = errors.New("a tool server without an allow-list would expose every tool of the server")
 
-// +kubebuilder:rbac:groups=kagent.dev,resources=agents;remotemcpservers,verbs=get;list;watch;create;update;patch;delete,namespace=kagent
-// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete,namespace=kagent
+// +kubebuilder:rbac:groups=kagent.dev,resources=agents,verbs=get;list;watch;create;patch;delete,namespace=kagent
+// +kubebuilder:rbac:groups=kagent.dev,resources=remotemcpservers,verbs=list;watch;create;patch;delete,namespace=kagent
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=create;patch;delete,namespace=kagent
 
 // Agents provisions kagent Agents, their RemoteMCPServers and the ConfigMap
 // of their instructions.
@@ -89,8 +90,8 @@ type Engine struct {
 
 var _ engine.Engine = (*Engine)(nil)
 
-// AgentTypes implements engine.Agents. ConfigMaps are typed and watched by
-// the caller with the core kinds.
+// AgentTypes implements engine.Agents. The instructions' ConfigMaps are
+// written by server-side apply and deleted, never read or watched.
 func (*Agents) AgentTypes() []schema.GroupVersionKind {
 	return []schema.GroupVersionKind{agentGVK, remoteMCPServerGVK}
 }

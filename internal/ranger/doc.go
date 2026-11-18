@@ -8,4 +8,4 @@
 package ranger
 
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecarerangers,verbs=get;list;watch
-// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecarerangers/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecarerangers/status,verbs=patch

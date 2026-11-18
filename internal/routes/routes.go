@@ -48,8 +48,8 @@ const RoleLabel = "takecare.agaetis.fr/role-instance"
 // that the Ranger finds the routes its per-model Markers target (spec 09).
 const ModelLabel = "takecare.agaetis.fr/model"
 
-// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete,namespace=takecare-system
-// +kubebuilder:rbac:groups=agentgateway.dev,resources=agentgatewaypolicies;agentgatewaybackends,verbs=get;list;watch;create;update;patch;delete,namespace=takecare-system
+// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=list;watch;create;patch;delete,namespace=takecare-system
+// +kubebuilder:rbac:groups=agentgateway.dev,resources=agentgatewaypolicies;agentgatewaybackends,verbs=get;list;watch;create;patch;delete,namespace=takecare-system
 
 // Gateway is the Gateway the routes attach to, in the operator namespace,
 // on its listener "http" (the chart's, spec 01).

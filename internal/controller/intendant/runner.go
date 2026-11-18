@@ -38,7 +38,7 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/usage"
 )
 
-// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaresurveys/status,verbs=get;update;patch,namespace=takecare-system
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaresurveys/status,verbs=patch,namespace=takecare-system
 
 // Bounds of a survey's status (spec 10 §7): the first proposals and the
 // not-seen lines of a layer; the full set is in its proposals ConfigMap.

@@ -1070,6 +1070,21 @@ EOF
     bash -c "sleep 45; g=\$(kubectl get takecareplatform main -o jsonpath='{.status.productionGaps[*].id}'); [[ \"\$g\" != *gateway-metrics-not-scraped* ]]"
   kubectl -n "$NS" delete httproute/smoke-kagent agentgatewaybackend/smoke-kagent >/dev/null
   check "the operator's log has no forbidden line (its rights cover what it does)" operator_not_forbidden
+  # The operator's Roles hold only verbs a call uses: a few removed ones are
+  # refused, and two it needs are granted, so that an empty Role fails too.
+  local op="system:serviceaccount:${NS}:takecare-operator"
+  check_not "the operator cannot patch a TakeCareIntendant (it updates it, for the finalizer)" \
+    kubectl auth can-i patch takecareintendants.takecare.agaetis.fr -n "$NS" --as="$op"
+  check_not "the operator cannot update an Intendant's status (it patches it)" \
+    kubectl auth can-i update takecareintendants.takecare.agaetis.fr --subresource=status -n "$NS" --as="$op"
+  check_not "the operator cannot update a gateway backend (server-side apply only)" \
+    kubectl auth can-i update agentgatewaybackends.agentgateway.dev -n "$NS" --as="$op"
+  check_not "the operator cannot read ConfigMaps in the engine namespace (it writes and deletes its own)" \
+    kubectl auth can-i get configmaps -n kagent --as="$op"
+  check "the operator can create the surveys' proposal ConfigMaps" \
+    kubectl auth can-i create configmaps -n "$NS" --as="$op"
+  check "the operator can patch a survey's status" \
+    kubectl auth can-i patch takecaresurveys.takecare.agaetis.fr --subresource=status -n "$NS" --as="$op"
   assert_checks "$CHECKS_EXPECTED"
 }
 
@@ -1377,13 +1392,13 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=133 install ;;
-  upgrade) CHECKS_EXPECTED=133 upgrade ;;
+  install) CHECKS_EXPECTED=139 install ;;
+  upgrade) CHECKS_EXPECTED=139 upgrade ;;
   status) status ;;
   mask-test) mask_test ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=5 cluster_chart ;;
   url) CHECKS_EXPECTED=6 url_connector ;;
-  all) mask_test; up; CHECKS_EXPECTED=133 install; CHECKS_EXPECTED=133 upgrade; CHECKS_EXPECTED=6 url_connector; CHECKS_EXPECTED=5 cluster_chart ;;
+  all) mask_test; up; CHECKS_EXPECTED=139 install; CHECKS_EXPECTED=139 upgrade; CHECKS_EXPECTED=6 url_connector; CHECKS_EXPECTED=5 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|url|cluster|status|mask-test|down|all]"; exit 2 ;;
 esac

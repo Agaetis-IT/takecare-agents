@@ -9,7 +9,6 @@ rules:
   resources:
   - customresourcedefinitions
   verbs:
-  - get
   - list
   - watch
 - apiGroups:
@@ -38,11 +37,14 @@ rules:
   - takecare.agaetis.fr
   resources:
   - takecareplatforms/status
+  verbs:
+  - update
+- apiGroups:
+  - takecare.agaetis.fr
+  resources:
   - takecarerangers/status
   verbs:
-  - get
   - patch
-  - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -57,11 +59,7 @@ rules:
   verbs:
   - create
   - delete
-  - get
-  - list
   - patch
-  - update
-  - watch
 - apiGroups:
   - ""
   resourceNames:
@@ -75,21 +73,28 @@ rules:
   resources:
   - agents
   - modelconfigs
-  - remotemcpservers
   verbs:
   - create
   - delete
   - get
   - list
   - patch
-  - update
+  - watch
+- apiGroups:
+  - kagent.dev
+  resources:
+  - remotemcpservers
+  verbs:
+  - create
+  - delete
+  - list
+  - patch
   - watch
 - apiGroups:
   - networking.k8s.io
   resources:
   - networkpolicies
   verbs:
-  - get
   - list
   - watch
 ---
@@ -111,16 +116,21 @@ rules:
   - ""
   resources:
   - secrets
-  - services
   verbs:
   - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
   - list
   - watch
 - apiGroups:
   - agentgateway.dev
   resources:
   - agentgatewaybackends
-  - agentgatewaymodels
   - agentgatewaypolicies
   verbs:
   - create
@@ -128,8 +138,14 @@ rules:
   - get
   - list
   - patch
-  - update
   - watch
+- apiGroups:
+  - agentgateway.dev
+  resources:
+  - agentgatewaymodels
+  verbs:
+  - delete
+  - list
 - apiGroups:
   - apps
   resources:
@@ -152,7 +168,6 @@ rules:
   resources:
   - endpointslices
   verbs:
-  - get
   - list
   - watch
 - apiGroups:
@@ -170,10 +185,8 @@ rules:
   verbs:
   - create
   - delete
-  - get
   - list
   - patch
-  - update
   - watch
 - apiGroups:
   - takecare.agaetis.fr
@@ -187,14 +200,9 @@ rules:
   - takecare.agaetis.fr
   resources:
   - takecareconnectors/status
-  - takecaredemos/status
-  - takecaredocs/status
-  - takecareintendants/status
-  - takecareinvestigations/status
-  - takecaresurveys/status
+  - takecaredocs/finalizers
+  - takecareintendants/finalizers
   verbs:
-  - get
-  - patch
   - update
 - apiGroups:
   - takecare.agaetis.fr
@@ -205,17 +213,18 @@ rules:
   verbs:
   - get
   - list
-  - patch
   - update
   - watch
 - apiGroups:
   - takecare.agaetis.fr
   resources:
-  - takecaredemos/finalizers
-  - takecaredocs/finalizers
-  - takecareintendants/finalizers
+  - takecaredemos/status
+  - takecaredocs/status
+  - takecareintendants/status
+  - takecareinvestigations/status
+  - takecaresurveys/status
   verbs:
-  - update
+  - patch
 - apiGroups:
   - takecare.agaetis.fr
   resources:

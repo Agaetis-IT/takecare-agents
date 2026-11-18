@@ -28,7 +28,7 @@ import (
 // Rights in the operator namespace, where the Doc and its records live.
 //
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareinvestigations,verbs=get;list;watch;create,namespace=takecare-system
-// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareinvestigations/status,verbs=get;update;patch,namespace=takecare-system
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareinvestigations/status,verbs=patch,namespace=takecare-system
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaredocs,verbs=get;list;watch,namespace=takecare-system
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch,namespace=takecare-system
 

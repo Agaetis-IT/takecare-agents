@@ -39,7 +39,7 @@ var modelConfigGVK = schema.GroupVersionKind{Group: kagentGroup, Version: kagent
 // RBAC the engine's objects need, in the engine namespace only. The kagent
 // group is named here and nowhere else outside this package (ADR 0007).
 //
-// +kubebuilder:rbac:groups=kagent.dev,resources=modelconfigs,verbs=get;list;watch;create;update;patch;delete,namespace=kagent
+// +kubebuilder:rbac:groups=kagent.dev,resources=modelconfigs,verbs=get;list;watch;create;patch;delete,namespace=kagent
 
 // Models provisions kagent ModelConfigs.
 type Models struct {

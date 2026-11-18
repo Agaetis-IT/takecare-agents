@@ -136,15 +136,16 @@ func OperatorNamespaceKinds() []schema.GroupVersionKind {
 // controller-gen ignores RBAC markers attached to a type.
 //
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareplatforms,verbs=get;list;watch
-// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareplatforms/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareplatforms/status,verbs=update
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch,namespace=takecare-system
-// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch,namespace=takecare-system
+// +kubebuilder:rbac:groups="",resources=services,verbs=list;watch,namespace=takecare-system
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways,verbs=get;list;watch,namespace=takecare-system
-// +kubebuilder:rbac:groups=agentgateway.dev,resources=agentgatewaymodels;agentgatewaypolicies;agentgatewaybackends,verbs=get;list;watch;create;update;patch;delete,namespace=takecare-system
+// +kubebuilder:rbac:groups=agentgateway.dev,resources=agentgatewaypolicies;agentgatewaybackends,verbs=get;list;watch;create;patch;delete,namespace=takecare-system
+// +kubebuilder:rbac:groups=agentgateway.dev,resources=agentgatewaymodels,verbs=list;delete,namespace=takecare-system
 // +kubebuilder:rbac:groups="",resources=secrets,resourceNames=takecare-engine-dummy-key,verbs=get,namespace=kagent
 // +kubebuilder:rbac:groups=apps,resources=deployments,resourceNames=takecare-operator,verbs=get,namespace=takecare-system
-// +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch,namespace=kagent
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=list;watch,namespace=kagent
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareconnectors,verbs=get;list;watch,namespace=takecare-system
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaredocs,verbs=get;list;watch,namespace=takecare-system
 
