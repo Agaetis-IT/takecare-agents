@@ -188,7 +188,7 @@ func TestGuardScopes(t *testing.T) {
 	for _, level := range []v1alpha1.Level{v1alpha1.LevelApprentice, v1alpha1.LevelPractitioner, v1alpha1.LevelExpert} {
 		rg := &v1alpha1.TakeCareRanger{Spec: v1alpha1.TakeCareRangerSpec{
 			Level:     level,
-			Masking:   v1alpha1.Masking{Builtins: []v1alpha1.MaskingBuiltin{"Email"}},
+			Masking:   v1alpha1.Masking{Builtins: []v1alpha1.MaskingBuiltin{"Email", phoneNumber}},
 			Filtering: v1alpha1.Filtering{Patterns: []v1alpha1.NamedPattern{{Name: "theirs", Regex: "itk_[a-z]+"}}},
 		}}
 		var got []string
@@ -202,6 +202,11 @@ func TestGuardScopes(t *testing.T) {
 			scope, ok := entry[keyScope].([]any)
 			if !ok || len(scope) == 0 {
 				t.Fatalf("%s: a regex guard without a scope: %v", level, entry)
+			}
+			// PhoneNumber takes dates and ids for phone numbers: never on
+			// what tools return.
+			if builtins, _ := regex["builtins"].([]any); slices.Contains(scope, any("ToolOutput")) && slices.Contains(builtins, any(string(phoneNumber))) {
+				t.Errorf("%s: PhoneNumber masks tool outputs: %v", level, entry)
 			}
 			got = append(got, fmt.Sprintf("%s %v", regex[keyAction], scope))
 			if matches, _ := regex["matches"].([]any); slices.Contains(matches, any("itk_[a-z]+")) {
@@ -217,10 +222,28 @@ func TestGuardScopes(t *testing.T) {
 		if level == v1alpha1.LevelApprentice {
 			mask, reject = actionAudit, actionAudit
 		}
-		want := []string{mask + " [ToolOutput]", mask + " [SystemPrompt Messages ToolOutput]", reject + " [SystemPrompt Messages ToolOutput]"}
+		want := []string{mask + " [ToolOutput]", mask + " [SystemPrompt Messages]", mask + " [ToolOutput]", reject + " [SystemPrompt Messages ToolOutput]"}
 		if !slices.Equal(got, want) {
 			t.Errorf("%s: guards %v, want %v", level, got, want)
 		}
+	}
+}
+
+// PhoneNumber alone leaves nothing for tool outputs: no such entry.
+func TestPhoneNumberOnlyOnMessages(t *testing.T) {
+	no := false
+	rg := &v1alpha1.TakeCareRanger{Spec: v1alpha1.TakeCareRangerSpec{
+		Level:     v1alpha1.LevelPractitioner,
+		Masking:   v1alpha1.Masking{Builtins: []v1alpha1.MaskingBuiltin{phoneNumber}},
+		Filtering: v1alpha1.Filtering{Shipped: &no},
+	}}
+	got := make([]string, 0, 1)
+	for _, e := range guards(rg, true).request {
+		entry := e.(map[string]any)
+		got = append(got, fmt.Sprintf("%v %v", entry[keyRegex].(map[string]any)["builtins"], entry[keyScope]))
+	}
+	if want := []string{"[PhoneNumber] [SystemPrompt Messages]"}; !slices.Equal(got, want) {
+		t.Errorf("guards %v, want %v", got, want)
 	}
 }
 

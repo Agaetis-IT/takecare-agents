@@ -297,8 +297,12 @@ type guardEntries struct {
 // The parts of a request a regex guard inspects (agentgateway 1.6 prompt
 // guard scope). Every regex entry names its scope: 1.6 leaves tool outputs
 // out by default and 1.7 puts them in, so ours behave alike on both.
+// phoneNumber is the masking builtin left out of tool outputs.
+const phoneNumber v1alpha1.MaskingBuiltin = "PhoneNumber"
+
 var (
 	scopeToolOutput = []any{"ToolOutput"}
+	scopeMessages   = []any{"SystemPrompt", "Messages"}
 	scopeAll        = []any{"SystemPrompt", "Messages", "ToolOutput"}
 )
 
@@ -337,25 +341,41 @@ func guards(rg *v1alpha1.TakeCareRanger, enforcing bool) guardEntries {
 	}
 
 	m := rg.Spec.Masking
-	regex := map[string]any{}
-	if len(m.Builtins) > 0 {
-		builtins := make([]any, 0, len(m.Builtins))
+	patterns := make([]any, 0, len(m.Patterns))
+	for _, p := range m.Patterns {
+		patterns = append(patterns, p.Regex)
+	}
+	pii := func(skip v1alpha1.MaskingBuiltin) map[string]any {
+		regex := map[string]any{}
+		var builtins []any
 		for _, b := range m.Builtins {
-			builtins = append(builtins, string(b))
+			if b != skip {
+				builtins = append(builtins, string(b))
+			}
 		}
-		regex["builtins"] = builtins
-	}
-	if len(m.Patterns) > 0 {
-		patterns := make([]any, 0, len(m.Patterns))
-		for _, p := range m.Patterns {
-			patterns = append(patterns, p.Regex)
+		if len(builtins) > 0 {
+			regex["builtins"] = builtins
 		}
-		regex["matches"] = patterns
+		if len(patterns) > 0 {
+			regex["matches"] = patterns
+		}
+		return regex
 	}
-	if len(regex) > 0 {
+	// The PII mask is two entries: every builtin on the system prompt and
+	// the messages, and all but PhoneNumber on what tools return. On
+	// agentgateway 1.6.0 and 1.7.0 alike (measured 2026-11-18), PhoneNumber
+	// takes ISO dates, timestamps' dates and ids such as INC-2024-0312 for
+	// phone numbers: masked in tool outputs, they took from the Intendant
+	// and the Doc the dates and ids they compare and quote back. The
+	// customer's own masking patterns apply in both (spec 09 §2).
+	if regex := pii(""); len(regex) > 0 {
 		action := pick(enforcing, actionMask)
 		regex["action"] = action
-		g.request = append(g.request, map[string]any{keyRegex: regex, keyScope: scopeAll})
+		g.request = append(g.request, map[string]any{keyRegex: regex, keyScope: scopeMessages})
+		if tools := pii(phoneNumber); len(tools) > 0 {
+			tools["action"] = action
+			g.request = append(g.request, map[string]any{keyRegex: tools, keyScope: scopeToolOutput})
+		}
 		g.response = map[string]any{keyRegex: regex}
 		g.markers = append(g.markers, [2]string{"masking", action})
 	}

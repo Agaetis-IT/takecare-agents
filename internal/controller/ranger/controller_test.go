@@ -249,8 +249,8 @@ func TestApprenticeAudits(t *testing.T) {
 	}
 	guards, err := h.policy(policyGuards)
 	h.must(err)
-	if got := actions(t, guards); !slices.Equal(got, []string{actionAudit, actionAudit, actionAudit}) {
-		t.Errorf("guard actions %v, want Audit for the secret masking, the masking and the filtering", got)
+	if got := actions(t, guards); !slices.Equal(got, []string{actionAudit, actionAudit, actionAudit, actionAudit}) {
+		t.Errorf("guard actions %v, want Audit for the secret masking, the two masking entries and the filtering", got)
 	}
 	journal, err := h.policy(policyJournal)
 	h.must(err)
@@ -316,7 +316,7 @@ func TestLevelsRefusalAndSuspend(t *testing.T) {
 	}
 	guards, err := h.policy(policyGuards)
 	h.must(err)
-	if got := actions(t, guards); !slices.Equal(got, []string{actionMask, actionMask, actionReject}) {
+	if got := actions(t, guards); !slices.Equal(got, []string{actionMask, actionMask, actionMask, actionReject}) {
 		t.Errorf("guard actions %v", got)
 	}
 	for _, p := range []string{policyCaps, policyGuards, policyJournal} {
