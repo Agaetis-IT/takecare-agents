@@ -18,6 +18,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The operator's MCP client no longer follows redirects: the endpoint's headers, a Secret's included, were added on every request, so a followed redirect carried them to the redirect's target. A redirect now fails the call with its status.
 - Before this fix, a caller able to reach the `kubernetes` connector's route through the gateway, and holding a Kubernetes token, could have the kubernetes MCP server act with that token instead of the add-on's read-only account, by sending it in the `Authorization` or `kubernetes-authorization` header; through the cluster chart's mTLS front, the `kubernetes-authorization` header passed the same way. Both charts now set the server's `cluster_auth_mode = "kubeconfig"`, so it always uses its own account; the server also refuses Secrets itself (`denied_resources`), and the front strips both headers. On upgrade, the server no longer offers `nodes_log`, `nodes_stats_summary`, `nodes_top` and `projects_list`, which our read-only RBAC never let succeed: they leave the connector's `status.tools` at its next discovery, `nodes_log` leaves the add-on's default content tools, and a Doc whose `spec.contentTools` still lists `nodes_log` gets a `ContentToolUnknown` Warning.
 
+### Added
+
+- Two production gaps, decided by the product owner. They report in the platform's `ProductionReady` and block nothing (spec 01):
+  - `gateway-accepts-foreign-routes`: the platform's Gateway lets HTTPRoutes from every namespace attach to the listener the roles use (`allowedRoutes.namespaces.from: All`), so a route created in any namespace is served through it. The chart's own Gateway takes its namespace's routes only and never raises it, unless edited.
+  - `connector-credential-in-clear-text`: a connector to a customer's MCP server by `url` sends a `headersFrom` credential over plain `http`. The detail names the connectors, never a header.
+
 ### Changed
 
 - `NOTICE` lists each third-party Go module and its license without versions, so that a version bump alone no longer changes it; it still changes, and the CI still fails until it is regenerated, when a module enters or leaves or a license changes.

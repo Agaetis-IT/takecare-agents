@@ -51,8 +51,12 @@ const ModelLabel = "takecare.agaetis.fr/model"
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=list;watch;create;patch;delete,namespace=takecare-system
 // +kubebuilder:rbac:groups=agentgateway.dev,resources=agentgatewaypolicies;agentgatewaybackends,verbs=get;list;watch;create;patch;delete,namespace=takecare-system
 
+// ListenerName is the Gateway listener every route attaches to (the
+// chart's, spec 01).
+const ListenerName = "http"
+
 // Gateway is the Gateway the routes attach to, in the operator namespace,
-// on its listener "http" (the chart's, spec 01).
+// on its listener ListenerName.
 type Gateway struct {
 	Name string
 }
@@ -173,7 +177,7 @@ func (r Role) object(gvk schema.GroupVersionKind, name string) *unstructured.Uns
 }
 
 func (g Gateway) parentRefs() []any {
-	return []any{map[string]any{keyGroup: gatewayAPIGroup, keyKind: "Gateway", keyName: g.Name, "sectionName": "http"}}
+	return []any{map[string]any{keyGroup: gatewayAPIGroup, keyKind: "Gateway", keyName: g.Name, "sectionName": ListenerName}}
 }
 
 // EnsureMCP writes the route and its policy. The policy is written first:

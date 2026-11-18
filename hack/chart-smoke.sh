@@ -536,6 +536,9 @@ verify() {
   # scrape gap is transient there and NetworkPolicies are on.
   check "ProductionReady=False in the demo, listing content-capture-on and single-replica" \
     bash -c "g=\$(kubectl get takecareplatform main -o jsonpath='{.status.productionGaps[*].id}'); [[ \"\$(kubectl get takecareplatform main -o jsonpath='{.status.conditions[?(@.type==\"ProductionReady\")].status}')\" == False && \"\$g\" == *content-capture-on* && \"\$g\" == *single-replica* && \"\$g\" != *no-network-policies* ]]"
+  # The chart's own Gateway takes routes from its namespace only (spec 01).
+  check "the chart's Gateway raises no gateway-accepts-foreign-routes gap" \
+    bash -c "[[ \"\$(kubectl get takecareplatform main -o jsonpath='{.status.productionGaps[*].id}')\" != *gateway-accepts-foreign-routes* ]]"
 
   log "the connectors (spec 05)"
   check "connector kubernetes reaches Ready=True with its tools classified" \
@@ -1125,6 +1128,24 @@ customer_backend() {
 # is Go's) over SCHEME carrying the header value whose hash is HASH.
 customer_saw() { kubectl -n smoke-customer logs deploy/fake-customer | grep -q "scheme=$1 path=/mcp header=$2 ua=curl/"; }
 
+# platform_gap ID TEXT waits up to 60 s for the platform to list the gap ID
+# with TEXT in its detail; with an empty ID, for no
+# connector-credential-in-clear-text gap.
+platform_gap() {
+  local _ ids details
+  for _ in $(seq 30); do
+    ids="$(kubectl get takecareplatform main -o jsonpath='{.status.productionGaps[*].id}')"
+    details="$(kubectl get takecareplatform main -o jsonpath='{.status.productionGaps[*].detail}')"
+    if [[ -z "$1" ]]; then
+      [[ "$ids" != *connector-credential-in-clear-text* ]] && return 0
+    elif [[ "$ids" == *"$1"* && "$details" == *"$2"* ]]; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
 # url_cleanup removes what the url phase creates; on any exit too.
 url_cleanup() {
   kubectl -n kagent delete pod smoke-customer-curl --ignore-not-found --wait=false --request-timeout=10s >/dev/null 2>&1 || true
@@ -1221,6 +1242,14 @@ EOF
   log "the gateway sent the rotated value after ${waited:-more than 180}s"
   check "the gateway follows a rotated Secret within 180 s, without a restart" \
     test -n "$waited" -a "$gw" = "$(kubectl -n "$NS" get pods -l app.kubernetes.io/name=agentgateway-proxy -o jsonpath='{.items[*].metadata.uid}')"
+  # The same connector moved to plain http raises the gap naming it, and
+  # back to https clears it (spec 01): reported, never blocking.
+  kubectl -n "$NS" patch takecareconnector customer --type=merge -p "{\"spec\":{\"mcp\":{\"url\":\"http://${CUSTOMER_HOST}/mcp\"}}}" >/dev/null
+  check "a credential sent over plain http raises connector-credential-in-clear-text, naming the connector" \
+    platform_gap connector-credential-in-clear-text ': customer;'
+  kubectl -n "$NS" patch takecareconnector customer --type=merge -p "{\"spec\":{\"mcp\":{\"url\":\"https://${CUSTOMER_HOST}/mcp\"}}}" >/dev/null
+  check "back on https, the gap is gone" \
+    platform_gap '' ''
   url_cleanup
   assert_checks "$CHECKS_EXPECTED"
 }
@@ -1392,13 +1421,13 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=139 install ;;
-  upgrade) CHECKS_EXPECTED=139 upgrade ;;
+  install) CHECKS_EXPECTED=140 install ;;
+  upgrade) CHECKS_EXPECTED=140 upgrade ;;
   status) status ;;
   mask-test) mask_test ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=5 cluster_chart ;;
-  url) CHECKS_EXPECTED=6 url_connector ;;
-  all) mask_test; up; CHECKS_EXPECTED=139 install; CHECKS_EXPECTED=139 upgrade; CHECKS_EXPECTED=6 url_connector; CHECKS_EXPECTED=5 cluster_chart ;;
+  url) CHECKS_EXPECTED=8 url_connector ;;
+  all) mask_test; up; CHECKS_EXPECTED=140 install; CHECKS_EXPECTED=140 upgrade; CHECKS_EXPECTED=8 url_connector; CHECKS_EXPECTED=5 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|url|cluster|status|mask-test|down|all]"; exit 2 ;;
 esac

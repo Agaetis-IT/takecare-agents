@@ -59,8 +59,7 @@ const (
 )
 
 // Production gaps (spec 01): what is missing for a real production, reported
-// and never blocking. Two more join the list with the roles and the
-// connectors: role-without-report (PR 4) and connector-not-ready (PR 3b).
+// and never blocking.
 const (
 	GapNoTelemetryExport        = "no-telemetry-export"
 	GapContentCaptureOn         = "content-capture-on"
@@ -70,6 +69,8 @@ const (
 	GapConnectorNotReady        = "connector-not-ready"
 	GapRoleWithoutReport        = "role-without-report"
 	GapReportLogEnabled         = "report-log-enabled"
+	GapGatewayForeignRoutes     = "gateway-accepts-foreign-routes"
+	GapConnectorCredentialClear = "connector-credential-in-clear-text"
 
 	ReasonNoGaps    = "NoGaps"
 	ReasonGapsFound = "GapsFound"
@@ -278,6 +279,7 @@ func (r *Reconciler) reconcileGateway(ctx context.Context, _ *v1alpha1.TakeCareP
 		st.set(v1alpha1.ConditionGatewayReady, false, ReasonGatewayNotProgrammed, fmt.Sprintf("Gateway %s/%s: Accepted=%t, Programmed=%t", namespace, name, accepted, programmed))
 		return "", nil
 	}
+	st.gateway = gw
 	route, err := r.gatewayBaseURL(ctx, gw)
 	if err != nil {
 		return "", err
@@ -615,7 +617,8 @@ func samplingRatio(perMille *int32) float64 {
 }
 
 // resourceGaps adds the gaps the roles and connectors give (spec 01):
-// role-without-report, report-log-enabled and connector-not-ready.
+// role-without-report, report-log-enabled, connector-not-ready and
+// connector-credential-in-clear-text.
 func (r *Reconciler) resourceGaps(ctx context.Context, add func(id, detail string)) error {
 	// role-without-report (spec 01): a role at the Practitioner level, or at
 	// Expert which behaves as Practitioner, without a report connector.
@@ -650,8 +653,12 @@ func (r *Reconciler) resourceGaps(ctx context.Context, add func(id, detail strin
 	if err := r.List(ctx, &connectors, client.InNamespace(r.OperatorNamespace)); err != nil {
 		return fmt.Errorf("list TakeCareConnectors in %s: %w", r.OperatorNamespace, err)
 	}
-	var notReady, logReports []string
+	var notReady, logReports, clearText []string
 	for _, c := range connectors.Items {
+		// From the spec alone: no Secret is read, no header named.
+		if len(c.Spec.MCP.HeadersFrom) > 0 && strings.HasPrefix(c.Spec.MCP.URL, "http://") {
+			clearText = append(clearText, c.Name)
+		}
 		if !meta.IsStatusConditionTrue(c.Status.Conditions, v1alpha1.ConditionReady) {
 			notReady = append(notReady, c.Name)
 		}
@@ -665,6 +672,10 @@ func (r *Reconciler) resourceGaps(ctx context.Context, add func(id, detail strin
 	if len(notReady) > 0 {
 		slices.Sort(notReady)
 		add(GapConnectorNotReady, fmt.Sprintf("connector(s) not Ready: %s", strings.Join(notReady, ", ")))
+	}
+	if len(clearText) > 0 {
+		slices.Sort(clearText)
+		add(GapConnectorCredentialClear, fmt.Sprintf("connector(s) sending a credential from headersFrom over plain http between the gateway and the MCP server: %s; give mcp.url an https:// address (the gateway trusts global.caBundle for a private CA)", strings.Join(clearText, ", ")))
 	}
 
 	return nil
@@ -722,6 +733,10 @@ func (r *Reconciler) productionGaps(ctx context.Context, p *v1alpha1.TakeCarePla
 		add(GapNoNetworkPolicies, fmt.Sprintf("no NetworkPolicy of TakeCare's in the engine namespace %s (networkPolicies.enabled is false); whether the CNI enforces them is not checked", r.EngineNamespace))
 	}
 
+	if st.gateway != nil && listenerFromAll(st.gateway) {
+		add(GapGatewayForeignRoutes, fmt.Sprintf("the Gateway %s/%s lets HTTPRoutes from every namespace attach to its listener %s (allowedRoutes.namespaces.from: All), so an HTTPRoute created in any namespace is served through this gateway; set from: Same, or a Selector naming the namespaces you trust", gatewayNS, gatewayName, routes.ListenerName))
+	}
+
 	if err := r.resourceGaps(ctx, add); err != nil {
 		return err
 	}
@@ -737,6 +752,23 @@ func (r *Reconciler) productionGaps(ctx context.Context, p *v1alpha1.TakeCarePla
 	}
 	st.set(v1alpha1.ConditionProductionReady, false, ReasonGapsFound, fmt.Sprintf("%d gap(s): %s", len(gaps), strings.Join(details, "; ")))
 	return nil
+}
+
+// listenerFromAll says whether the Gateway's listener the roles' routes
+// attach to (routes.ListenerName) takes routes from every namespace. An
+// absent allowedRoutes means Same (Gateway API default); a Selector is the
+// customer's choice of namespaces and is not reported (spec 01).
+func listenerFromAll(gw *unstructured.Unstructured) bool {
+	listeners, _, _ := unstructured.NestedSlice(gw.Object, "spec", "listeners")
+	for _, l := range listeners {
+		listener, ok := l.(map[string]any)
+		if !ok || listener["name"] != routes.ListenerName {
+			continue
+		}
+		from, _, _ := unstructured.NestedString(listener, "allowedRoutes", "namespaces", "from")
+		return from == "All"
+	}
+	return false
 }
 
 // conditionTrue reads a metav1-shaped condition from unstructured content.
@@ -775,6 +807,9 @@ type status struct {
 	conditions []metav1.Condition
 	models     []v1alpha1.ModelStatus
 	gatewayURL string
+	// gateway is the platform's Gateway once read and Accepted and
+	// Programmed; nil otherwise.
+	gateway    *unstructured.Unstructured
 	gaps       []v1alpha1.ProductionGap
 	generation int64
 }
