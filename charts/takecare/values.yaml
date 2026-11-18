@@ -112,9 +112,12 @@ ranger:
     patterns: []
   filtering:
     # -- The shipped secret shapes (private keys, cloud access keys, API
-    # tokens of common services): a match refuses the request.
+    # tokens of common services): a match refuses the request; in what a
+    # tool returns, a shape is masked whole and the call goes on (spec 09
+    # §4).
     shipped: true
-    # -- Your own patterns, as `{name, regex}`.
+    # -- Your own patterns, as `{name, regex}`: a match refuses the request,
+    # in what a tool returns too; they are never used as masks.
     patterns: []
   # -- Budgets and limits: `gateway: {tokensPerHour, requestsPerMinute,
   # burst}`, `models: [{name, tokensPerHour, ...}]`. Empty: no cap until

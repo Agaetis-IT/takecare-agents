@@ -38,6 +38,7 @@ const (
 	keyRegex      = "regex"
 	keyName       = "name"
 	keyKind       = "kind"
+	keyScope      = "scope"
 	keyAction     = "action"
 	keyGroup      = "group"
 	keyMatch      = "matchExpressions"
@@ -293,52 +294,100 @@ type guardEntries struct {
 	markers  [][2]string
 }
 
-// guards builds the filtering entry, then the masking one, each in Audit
-// below Practitioner (spec 09 §3), then the Expert's webhook guard. The
-// masking entry also guards the model's answers when they are not streamed.
+// The parts of a request a regex guard inspects (agentgateway 1.6 prompt
+// guard scope). Every regex entry names its scope: 1.6 leaves tool outputs
+// out by default and 1.7 puts them in, so ours behave alike on both.
+// phoneNumber is the masking builtin left out of tool outputs.
+const phoneNumber v1alpha1.MaskingBuiltin = "PhoneNumber"
+
+var (
+	scopeToolOutput = []any{"ToolOutput"}
+	scopeMessages   = []any{"SystemPrompt", "Messages"}
+	scopeAll        = []any{"SystemPrompt", "Messages", "ToolOutput"}
+)
+
+// guards builds the request guards in an order that is the guarantee
+// (spec 09 §4): first the shipped secret shapes, masked whole in tool
+// outputs; then the PII mask; then the Reject, on messages and tool outputs
+// alike. A secret the first entry masked whole no longer matches the
+// Reject, so the run goes on; a shape it could not match whole (a key
+// without its END line) keeps its marker and is refused; the PII mask runs
+// after the shapes, which it would otherwise cut (a token's digits read as
+// a phone number). The customer's own filtering patterns are never masks:
+// they refuse. Below Practitioner every action is Audit (spec 09 §3). Then
+// the Expert's webhook guard, which cannot take a scope. The PII mask also
+// guards the model's answers when they are not streamed.
 func guards(rg *v1alpha1.TakeCareRanger, enforcing bool) guardEntries {
 	var g guardEntries
 	f := rg.Spec.Filtering
-	var matches []any
-	if f.Shipped == nil || *f.Shipped {
+	shipped := f.Shipped == nil || *f.Shipped
+	var matches, whole []any
+	if shipped {
 		for _, p := range shapes.ShippedPatterns {
 			matches = append(matches, p.Regex)
+			whole = append(whole, p.MaskRegex())
 		}
 	}
 	for _, p := range f.Patterns {
 		matches = append(matches, p.Regex)
 	}
+	if len(whole) > 0 {
+		action := pick(enforcing, actionMask)
+		g.request = append(g.request, map[string]any{
+			keyRegex: map[string]any{keyAction: action, "matches": whole},
+			keyScope: scopeToolOutput,
+		})
+		g.markers = append(g.markers, [2]string{"secret-masking", action})
+	}
+
+	m := rg.Spec.Masking
+	patterns := make([]any, 0, len(m.Patterns))
+	for _, p := range m.Patterns {
+		patterns = append(patterns, p.Regex)
+	}
+	pii := func(skip v1alpha1.MaskingBuiltin) map[string]any {
+		regex := map[string]any{}
+		var builtins []any
+		for _, b := range m.Builtins {
+			if b != skip {
+				builtins = append(builtins, string(b))
+			}
+		}
+		if len(builtins) > 0 {
+			regex["builtins"] = builtins
+		}
+		if len(patterns) > 0 {
+			regex["matches"] = patterns
+		}
+		return regex
+	}
+	// The PII mask is two entries: every builtin on the system prompt and
+	// the messages, and all but PhoneNumber on what tools return. On
+	// agentgateway 1.6.0 and 1.7.0 alike (measured 2026-11-18), PhoneNumber
+	// takes ISO dates, timestamps' dates and ids such as INC-2024-0312 for
+	// phone numbers: masked in tool outputs, they took from the Intendant
+	// and the Doc the dates and ids they compare and quote back. The
+	// customer's own masking patterns apply in both (spec 09 §2).
+	if regex := pii(""); len(regex) > 0 {
+		action := pick(enforcing, actionMask)
+		regex["action"] = action
+		g.request = append(g.request, map[string]any{keyRegex: regex, keyScope: scopeMessages})
+		if tools := pii(phoneNumber); len(tools) > 0 {
+			tools["action"] = action
+			g.request = append(g.request, map[string]any{keyRegex: tools, keyScope: scopeToolOutput})
+		}
+		g.response = map[string]any{keyRegex: regex}
+		g.markers = append(g.markers, [2]string{"masking", action})
+	}
+
 	if len(matches) > 0 {
 		action := pick(enforcing, actionReject)
 		g.request = append(g.request, map[string]any{
 			keyRegex:   map[string]any{keyAction: action, "matches": matches},
+			keyScope:   scopeAll,
 			"response": map[string]any{"message": RejectMessage},
 		})
 		g.markers = append(g.markers, [2]string{"filtering", action})
-	}
-
-	m := rg.Spec.Masking
-	regex := map[string]any{}
-	if len(m.Builtins) > 0 {
-		builtins := make([]any, 0, len(m.Builtins))
-		for _, b := range m.Builtins {
-			builtins = append(builtins, string(b))
-		}
-		regex["builtins"] = builtins
-	}
-	if len(m.Patterns) > 0 {
-		patterns := make([]any, 0, len(m.Patterns))
-		for _, p := range m.Patterns {
-			patterns = append(patterns, p.Regex)
-		}
-		regex["matches"] = patterns
-	}
-	if len(regex) > 0 {
-		action := pick(enforcing, actionMask)
-		regex["action"] = action
-		g.request = append(g.request, map[string]any{keyRegex: regex})
-		g.response = map[string]any{keyRegex: regex}
-		g.markers = append(g.markers, [2]string{"masking", action})
 	}
 	if _, ok := webhook(rg); ok {
 		g.request = append(g.request, map[string]any{"webhook": map[string]any{
