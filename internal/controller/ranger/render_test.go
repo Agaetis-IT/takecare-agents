@@ -13,6 +13,7 @@ import (
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/golden"
+	shapes "github.com/agaetis-it/takecare-agents/internal/ranger"
 )
 
 // The three policies at Practitioner, exactly as applied (spec 09 §4).
@@ -21,7 +22,7 @@ func TestRenderPractitionerGolden(t *testing.T) {
 	rg := &v1alpha1.TakeCareRanger{Spec: v1alpha1.TakeCareRangerSpec{
 		Level: v1alpha1.LevelPractitioner,
 		Masking: v1alpha1.Masking{
-			Builtins: []v1alpha1.MaskingBuiltin{"CreditCard", "Email"},
+			Builtins: []v1alpha1.MaskingBuiltin{"CreditCard", email, phoneNumber},
 			Patterns: []v1alpha1.NamedPattern{{Name: "iban", Regex: `[A-Z]{2}\d{2}[A-Z0-9]{11,30}`}},
 		},
 		Filtering: v1alpha1.Filtering{Patterns: []v1alpha1.NamedPattern{{Name: "internal-token", Regex: `itk_[A-Za-z0-9]{32}`}}},
@@ -188,7 +189,7 @@ func TestGuardScopes(t *testing.T) {
 	for _, level := range []v1alpha1.Level{v1alpha1.LevelApprentice, v1alpha1.LevelPractitioner, v1alpha1.LevelExpert} {
 		rg := &v1alpha1.TakeCareRanger{Spec: v1alpha1.TakeCareRangerSpec{
 			Level:     level,
-			Masking:   v1alpha1.Masking{Builtins: []v1alpha1.MaskingBuiltin{"Email", phoneNumber}},
+			Masking:   v1alpha1.Masking{Builtins: []v1alpha1.MaskingBuiltin{email, phoneNumber}},
 			Filtering: v1alpha1.Filtering{Patterns: []v1alpha1.NamedPattern{{Name: "theirs", Regex: "itk_[a-z]+"}}},
 		}}
 		var got []string
@@ -203,10 +204,10 @@ func TestGuardScopes(t *testing.T) {
 			if !ok || len(scope) == 0 {
 				t.Fatalf("%s: a regex guard without a scope: %v", level, entry)
 			}
-			// PhoneNumber takes dates and ids for phone numbers: never on
-			// what tools return.
-			if builtins, _ := regex["builtins"].([]any); slices.Contains(scope, any("ToolOutput")) && slices.Contains(builtins, any(string(phoneNumber))) {
-				t.Errorf("%s: PhoneNumber masks tool outputs: %v", level, entry)
+			// The gateway's PhoneNumber builtin takes dates and ids for phone
+			// numbers: it is never rendered, at any level.
+			if builtins, _ := regex["builtins"].([]any); slices.Contains(builtins, any(string(phoneNumber))) {
+				t.Errorf("%s: the gateway's PhoneNumber builtin is rendered: %v", level, entry)
 			}
 			got = append(got, fmt.Sprintf("%s %v", regex[keyAction], scope))
 			if matches, _ := regex["matches"].([]any); slices.Contains(matches, any("itk_[a-z]+")) {
@@ -222,28 +223,61 @@ func TestGuardScopes(t *testing.T) {
 		if level == v1alpha1.LevelApprentice {
 			mask, reject = actionAudit, actionAudit
 		}
-		want := []string{mask + " [ToolOutput]", mask + " [SystemPrompt Messages]", mask + " [ToolOutput]", reject + " [SystemPrompt Messages ToolOutput]"}
+		want := []string{mask + " [ToolOutput]", mask + " [SystemPrompt Messages ToolOutput]", reject + " [SystemPrompt Messages ToolOutput]"}
 		if !slices.Equal(got, want) {
 			t.Errorf("%s: guards %v, want %v", level, got, want)
 		}
 	}
 }
 
-// PhoneNumber alone leaves nothing for tool outputs: no such entry.
-func TestPhoneNumberOnlyOnMessages(t *testing.T) {
+// email is a gateway builtin the tests keep.
+const email v1alpha1.MaskingBuiltin = "Email"
+
+// PhoneNumber is rendered as our patterns, exactly where the PII mask is
+// (the request on every scope, and the answer), and never as the
+// gateway's builtin; without it, no phone pattern is rendered.
+func TestPhoneNumberAsOurPatterns(t *testing.T) {
 	no := false
-	rg := &v1alpha1.TakeCareRanger{Spec: v1alpha1.TakeCareRangerSpec{
-		Level:     v1alpha1.LevelPractitioner,
-		Masking:   v1alpha1.Masking{Builtins: []v1alpha1.MaskingBuiltin{phoneNumber}},
-		Filtering: v1alpha1.Filtering{Shipped: &no},
-	}}
-	got := make([]string, 0, 1)
-	for _, e := range guards(rg, true).request {
-		entry := e.(map[string]any)
-		got = append(got, fmt.Sprintf("%v %v", entry[keyRegex].(map[string]any)["builtins"], entry[keyScope]))
+	phones := func(regex map[string]any) bool {
+		matches, _ := regex["matches"].([]any)
+		for _, p := range shapes.PhonePatterns {
+			if !slices.Contains(matches, any(p)) {
+				return false
+			}
+		}
+		return true
 	}
-	if want := []string{"[PhoneNumber] [SystemPrompt Messages]"}; !slices.Equal(got, want) {
-		t.Errorf("guards %v, want %v", got, want)
+	for _, tc := range []struct {
+		name     string
+		builtins []v1alpha1.MaskingBuiltin
+		want     []string
+	}{
+		{"PhoneNumber alone", []v1alpha1.MaskingBuiltin{phoneNumber}, []string{"[] true [SystemPrompt Messages ToolOutput]"}},
+		{"PhoneNumber and Email", []v1alpha1.MaskingBuiltin{email, phoneNumber}, []string{"[Email] true [SystemPrompt Messages ToolOutput]"}},
+		{"Email alone", []v1alpha1.MaskingBuiltin{email}, []string{"[Email] false [SystemPrompt Messages ToolOutput]"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rg := &v1alpha1.TakeCareRanger{Spec: v1alpha1.TakeCareRangerSpec{
+				Level:     v1alpha1.LevelPractitioner,
+				Masking:   v1alpha1.Masking{Builtins: tc.builtins},
+				Filtering: v1alpha1.Filtering{Shipped: &no},
+			}}
+			g := guards(rg, true)
+			got := make([]string, 0, len(g.request))
+			for _, e := range g.request {
+				entry := e.(map[string]any)
+				regex := entry[keyRegex].(map[string]any)
+				builtins, _ := regex["builtins"].([]any)
+				got = append(got, fmt.Sprintf("%v %t %v", builtins, phones(regex), entry[keyScope]))
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("guards %v, want %v", got, tc.want)
+			}
+			response := g.response[keyRegex].(map[string]any)
+			if builtins, _ := response["builtins"].([]any); slices.Contains(builtins, any(string(phoneNumber))) || phones(response) != slices.Contains(tc.builtins, phoneNumber) {
+				t.Errorf("answer guard %v", response)
+			}
+		})
 	}
 }
 

@@ -105,8 +105,9 @@ ranger:
   # -- Pause without deletion: no Marker is rendered.
   suspend: false
   masking:
-    # -- The gateway's built-in patterns replaced before a request reaches the
-    # model (CreditCard, Email, PhoneNumber, Ssn).
+    # -- The built-in patterns replaced before a request reaches the model:
+    # CreditCard, Email and Ssn are the gateway's; PhoneNumber is TakeCare's
+    # own patterns (international, French and North American forms).
     builtins: [CreditCard, Email, PhoneNumber, Ssn]
     # -- Your own patterns, as `{name, regex}`.
     patterns: []

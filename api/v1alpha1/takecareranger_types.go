@@ -37,7 +37,9 @@ type TakeCareRangerSpec struct {
 	Extra *ExtraMarkers `json:"extra,omitempty"`
 }
 
-// MaskingBuiltin is a pattern the gateway ships.
+// MaskingBuiltin names a pattern masked before a request reaches the model:
+// CreditCard, Email and Ssn are the gateway's builtins, PhoneNumber is
+// TakeCare's own patterns (spec 09 §4).
 // +kubebuilder:validation:Enum=CreditCard;Email;PhoneNumber;Ssn
 type MaskingBuiltin string
 

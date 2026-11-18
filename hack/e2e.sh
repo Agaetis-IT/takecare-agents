@@ -34,7 +34,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=47
+CHECKS_EXPECTED=48
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s %s\n' "$(date +%H:%M:%S)" "$*"; }
@@ -339,11 +339,13 @@ tool_output_guards() {
       -d '{"model":"default","messages":[{"role":"system","content":"e2e"},'"$msgs"']}' "$url"
   }
   local code
-  # The dates and ids a tool returns must reach the provider as they are:
-  # agentgateway's PhoneNumber builtin takes them for phone numbers, so the
-  # PII mask leaves it out of tool outputs (spec 09 §4).
+  # The dates and ids a tool returns must reach the provider as they are,
+  # and its phone numbers masked: PhoneNumber is TakeCare's own patterns,
+  # not agentgateway's builtin, which takes dates and ids for phone numbers
+  # (spec 09 §4). The number is made up (a reserved French range).
   local kept='created 2026-11-05 at 2026-11-18T09:26:11Z event 2026-11-18 10:54:36.170424 incident INC-2024-0312'
-  code="$(call tool "log: ${key} token xoxb-1234567890-abcdefghijkl card ${MASKED_CARD} mail ${MASKED_EMAIL} ${kept}")"
+  local phone='+33 1 23 45 67 89'
+  code="$(call tool "log: ${key} token xoxb-1234567890-abcdefghijkl card ${MASKED_CARD} mail ${MASKED_EMAIL} ${kept} on-call ${phone} end")"
   fake_get fake-llm /last >bin/demo/fakellm-tool.json
   # The call passes the gateway: the fake model, with no fixture for it,
   # answers 500 (a 000 is a port-forward not up, a 403 the Ranger).
@@ -351,6 +353,8 @@ tool_output_guards() {
     bash -c "[[ $code == 500 ]] && t=\$(jq -r '.messages[-1].content' bin/demo/fakellm-tool.json) && [[ \$t == *'<masked>'* && \$t == *'<CREDIT_CARD>'* && \$t == *'<EMAIL_ADDRESS>'* && \$t != *PRIVATE* && \$t != *MIIEpA* && \$t != *1234567890* && \$t != *abcdefghijkl* && \$t != *'${MASKED_CARD}'* && \$t != *'${MASKED_EMAIL}'* ]]"
   check "a tool output's date, timestamp, event time and incident id reach the provider unchanged (spec 09 §4)" \
     bash -c "t=\$(jq -r '.messages[-1].content' bin/demo/fakellm-tool.json) && [[ \$t == *'${kept}'* && \$t != *'<PHONE_NUMBER>'* ]]"
+  check "a tool output's phone number reaches the provider masked whole, by TakeCare's own pattern (spec 09 §4)" \
+    bash -c "t=\$(jq -r '.messages[-1].content' bin/demo/fakellm-tool.json) && [[ \$t == *'on-call <masked> end'* && \$t != *'45 67 89'* ]]"
   code="$(call tool "log: ${cut}")"
   fake_get fake-llm /last >bin/demo/fakellm-cut.json
   check "a tool output's key cut before its END line is refused by the Ranger (403), the provider receiving nothing" \
