@@ -302,10 +302,9 @@ retry_forbidden() {
 
 # survey_alerting NAME: creates a survey of the smoke Intendant by hand and
 # prints its phase and its alerting layer's first not-seen reason once it is
-# Completed (or the phase it stopped at). A survey of that name left by an
-# earlier pass (surveys outlive their Intendant) is deleted first.
+# Completed (or the phase it stopped at). The operator makes it its
+# Intendant's when it admits it, so it goes with the Intendant (spec 10 §4).
 survey_alerting() {
-  kubectl -n "$NS" delete takecaresurvey "$1" --ignore-not-found --timeout=60s >/dev/null
   kubectl -n "$NS" create -f - >/dev/null <<EOF
 apiVersion: takecare.agaetis.fr/v1alpha1
 kind: TakeCareSurvey
@@ -985,7 +984,11 @@ EOF
   log "the survey after the proof: ${read_layer}"
   check "the survey after the proof reads the rules, and ConnectorsReady no longer names a canary" \
     bash -c "[[ '${read_layer}' == Completed* && '${read_layer}' != *'argument rule'* ]] && for _ in \$(seq 30); do [[ \$(kubectl -n ${NS} get takecareintendant smoke-intendant -o jsonpath='{.status.conditions[?(@.type==\"ConnectorsReady\")].message}') != *'argument rule on the metrics route'* ]] && exit 0; sleep 2; done; exit 1"
+  check "a survey made by hand is owned by its Intendant once admitted" \
+    test "$(kubectl -n "$NS" get takecaresurvey smoke-canary-read -o jsonpath='{.metadata.ownerReferences[?(@.controller==true)].name}')" = smoke-intendant
   kubectl -n "$NS" delete takecareintendant smoke-intendant --timeout=60s >/dev/null
+  check "deleting the Intendant removed its surveys, the ones made by hand included" \
+    bash -c "for _ in \$(seq 30); do [[ -z \$(kubectl -n ${NS} get takecaresurveys -o jsonpath='{range .items[?(@.spec.intendantRef.name==\"smoke-intendant\")]}{.metadata.name}{\" \"}{end}') ]] && exit 0; sleep 2; done; exit 1"
   check "deleting the Intendant removed its agent and model configuration in kagent, and its routes" \
     bash -c "[[ -z \$(kubectl -n kagent get agents,modelconfigs,remotemcpservers -l takecare.agaetis.fr/owner=smoke-intendant -o name) && -z \$(kubectl -n ${NS} get httproutes,agentgatewaypolicies -l takecare.agaetis.fr/role-instance=intendant.smoke-intendant -o name) ]]"
   kubectl -n kagent delete pod smoke-a2a --now >/dev/null
@@ -1088,6 +1091,8 @@ EOF
     kubectl auth can-i create configmaps -n "$NS" --as="$op"
   check "the operator can patch a survey's status" \
     kubectl auth can-i patch takecaresurveys.takecare.agaetis.fr --subresource=status -n "$NS" --as="$op"
+  check "the operator can patch a survey (it sets a hand-made survey's owner)" \
+    kubectl auth can-i patch takecaresurveys.takecare.agaetis.fr -n "$NS" --as="$op"
   assert_checks "$CHECKS_EXPECTED"
 }
 
@@ -1421,13 +1426,13 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=140 install ;;
-  upgrade) CHECKS_EXPECTED=140 upgrade ;;
+  install) CHECKS_EXPECTED=143 install ;;
+  upgrade) CHECKS_EXPECTED=143 upgrade ;;
   status) status ;;
   mask-test) mask_test ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=5 cluster_chart ;;
   url) CHECKS_EXPECTED=8 url_connector ;;
-  all) mask_test; up; CHECKS_EXPECTED=140 install; CHECKS_EXPECTED=140 upgrade; CHECKS_EXPECTED=8 url_connector; CHECKS_EXPECTED=5 cluster_chart ;;
+  all) mask_test; up; CHECKS_EXPECTED=143 install; CHECKS_EXPECTED=143 upgrade; CHECKS_EXPECTED=8 url_connector; CHECKS_EXPECTED=5 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|url|cluster|status|mask-test|down|all]"; exit 2 ;;
 esac

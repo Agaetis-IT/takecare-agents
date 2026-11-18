@@ -87,6 +87,12 @@ type TakeCareIntendantStatus struct {
 	// +optional
 	NextSurveyTime *metav1.Time `json:"nextSurveyTime,omitempty"`
 
+	// RenderPendingSince is set while a new rendering of the engine's agent
+	// waits for a running survey to end (a re-rendered agent restarts and
+	// loses the pass's task). The gateway's policies are never deferred.
+	// +optional
+	RenderPendingSince *metav1.Time `json:"renderPendingSince,omitempty"`
+
 	// A trigger that came while a survey was in flight: the next survey,
 	// one at most, started when the current one ends (spec 10 §3). Kept in
 	// status, so that a restart does not lose it.

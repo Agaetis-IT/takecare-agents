@@ -4,6 +4,8 @@
 package intendant
 
 import (
+	"time"
+
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -15,6 +17,11 @@ type status struct {
 	generation int64
 	level      v1alpha1.Level
 	conditions []metav1.Condition
+	// pendingSince is when a new rendering of the agent started waiting
+	// for a running survey; heldUntil is that survey's deadline.
+	// prevPending is the status's, read at the reconcile's start.
+	pendingSince, prevPending *metav1.Time
+	heldUntil                 time.Time
 }
 
 func (s *status) set(condType string, ok bool, reason, message string) {

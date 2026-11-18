@@ -381,6 +381,13 @@ spec:
                   change triggers a survey.
                 maxLength: 64
                 type: string
+              renderPendingSince:
+                description: |-
+                  RenderPendingSince is set while a new rendering of the engine's agent
+                  waits for a running survey to end (a re-rendered agent restarts and
+                  loses the pass's task). The gateway's policies are never deferred.
+                format: date-time
+                type: string
             type: object
         required:
         - spec

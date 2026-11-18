@@ -93,6 +93,9 @@ type Reconciler struct {
 	Models engine.Models
 	// Metrics are the survey gauges, whose series go with the Intendant.
 	Metrics *SurveyMetrics
+	// PassTimeout is the runner's: a new rendering of the agent waits at
+	// most that long after a survey's start (DefaultPassTimeout when zero).
+	PassTimeout time.Duration
 	// Now is time.Now when nil; tests inject a clock.
 	Now func() time.Time
 }
@@ -102,6 +105,13 @@ func (r *Reconciler) reader() client.Reader {
 		return r.Reader
 	}
 	return r.Client
+}
+
+func (r *Reconciler) passTimeout() time.Duration {
+	if r.PassTimeout > 0 {
+		return r.PassTimeout
+	}
+	return DefaultPassTimeout
 }
 
 func (r *Reconciler) now() time.Time {
@@ -132,7 +142,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	// One instant for the whole reconciliation: the schedule's next time
 	// and the trigger that is due are read from the same clock reading.
 	now := r.now()
-	st := &status{generation: in.Generation}
+	st := &status{generation: in.Generation, prevPending: in.Status.RenderPendingSince}
 	st.level = r.level(&in, st)
 	next := schedule(&in, st, now)
 	bound, err := r.connectors(ctx, &in, st)
@@ -150,6 +160,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 	if err := r.writeStatus(ctx, &in, st, next, t); err != nil {
 		return ctrl.Result{}, err
+	}
+	if !st.heldUntil.IsZero() {
+		// A held rendering is applied at the survey's deadline at the
+		// latest; the survey's end wakes the reconcile sooner.
+		return ctrl.Result{RequeueAfter: st.heldUntil.Sub(now) + time.Second}, nil
 	}
 	if requeue || !st.isTrue(v1alpha1.ConditionReady) {
 		return ctrl.Result{RequeueAfter: requeueNotReady}, nil
@@ -299,6 +314,7 @@ func (r *Reconciler) writeStatus(ctx context.Context, in *v1alpha1.TakeCareInten
 	in.Status.ObservedGeneration = in.Generation
 	in.Status.Level = st.level
 	in.Status.NextSurveyTime = next
+	in.Status.RenderPendingSince = st.pendingSince
 	in.Status.LastMapRevision, in.Status.Registrations, in.Status.PendingTrigger = t.mapRevision, t.registrations, t.pending
 	if t.created != "" {
 		in.Status.LastSurvey, in.Status.LastSurveyTime = t.created, t.createdAt

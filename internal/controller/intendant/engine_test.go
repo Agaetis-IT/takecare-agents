@@ -64,7 +64,7 @@ func TestAgentRendered(t *testing.T) {
 	f.connector(t, connMap, v1alpha1.ConnectorMap, []string{mcp.MapEntryTool, mcp.MapListTool, toolPath})
 	f.connector(t, connCluster, v1alpha1.ConnectorCluster, []string{toolNamespaces, toolResources, "resources_get", "pods_log"}, "pods_log")
 	f.connector(t, connMetrics, v1alpha1.ConnectorMetrics, []string{mcp.RulesTool, "execute_query"})
-	f.connector(t, connKnowledge, v1alpha1.ConnectorKnowledge, []string{"search_runbooks"})
+	f.connector(t, connKnowledge, v1alpha1.ConnectorKnowledge, []string{toolRunbooks})
 	f.intendant(t, "agent", func(in *v1alpha1.TakeCareIntendant) {
 		in.Spec.Connectors.Knowledge = []string{connKnowledge}
 	})

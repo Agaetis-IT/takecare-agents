@@ -1585,6 +1585,10 @@ func (in *TakeCareIntendantStatus) DeepCopyInto(out *TakeCareIntendantStatus) {
 		in, out := &in.NextSurveyTime, &out.NextSurveyTime
 		*out = (*in).DeepCopy()
 	}
+	if in.RenderPendingSince != nil {
+		in, out := &in.RenderPendingSince, &out.RenderPendingSince
+		*out = (*in).DeepCopy()
+	}
 	if in.LastDigest != nil {
 		in, out := &in.LastDigest, &out.LastDigest
 		*out = new(LastDigest)
