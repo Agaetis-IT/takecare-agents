@@ -411,11 +411,12 @@ kagent:
   ui:
     replicas: 0
   # -- The bundled PostgreSQL is documented by kagent as dev and evaluation only,
-  # so it is off here: production sets database.postgres.url (or urlFile) to
-  # the customer's database and the chart refuses to render without one; the
-  # demo profile turns the bundled one on. Prefer urlFile, a file mounted from
-  # a Secret: with an inline url, the credential is in the values file and is
-  # written to the engine's controller log at each start.
+  # so it is off here: production sets database.postgres.urlFile, a file
+  # mounted from a Secret holding the customer's database URL, and the chart
+  # refuses to render without it; the demo profile turns the bundled one on.
+  # An inline database.postgres.url is refused: kagent writes its
+  # configuration, the URL and its credential included, to its log at each
+  # start (with the bundled one, the demo's password appears there: demo only).
   database:
     postgres:
       bundled:

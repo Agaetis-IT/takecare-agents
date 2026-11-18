@@ -113,7 +113,8 @@ func profileArgs(profile string) []string {
 
 var profiles = []string{"prod", "demo"}
 
-const dbSet = "kagent.database.postgres.url=postgres://u:p@h/db"
+// dbSet gives kagent's database as a file: an inline URL is refused.
+const dbSet = "kagent.database.postgres.urlFile=/etc/kagent-db/url"
 
 // prodSets fills the REQUIRED values of the prod profile for a render.
 var prodSets = []string{
@@ -508,7 +509,7 @@ func checkConfigMapsAreExplicit(t *testing.T, objs []*unstructured.Unstructured)
 		}
 	}
 	defaults := render(t, releaseName, flagSet, "platform.models[0].baseURL=https://x/v1", flagSet, "platform.models[0].model=m",
-		flagSet, "kagent.database.postgres.url=postgres://u:p@h/db", flagSet, "addons.kubernetes.enabled=true", flagSet, "addons.kubernetes.namespaces={apps}")
+		flagSet, dbSet, flagSet, "addons.kubernetes.enabled=true", flagSet, "addons.kubernetes.namespaces={apps}")
 	for _, o := range ofKind(defaults, kindRole) {
 		if strings.HasPrefix(o.GetName(), "takecare-addon-kubernetes") {
 			raw, _, _ := unstructured.NestedSlice(o.Object, "rules")

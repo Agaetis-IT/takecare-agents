@@ -47,10 +47,12 @@ func TestKagentSessionRetention(t *testing.T) {
 	}
 }
 
-// The prod profile accepts kagent's database URL as a file (urlFile, the
-// recommended way) without an inline url, and refuses to render with
-// neither: the controller then reads the file, never an inline URL.
+// The prod profile takes kagent's database URL as a file (urlFile) and
+// refuses an inline url, alone or beside urlFile, with the steps to follow
+// and never the value: kagent 0.10.3 logs its configuration at each start.
+// The demo's bundled PostgreSQL sets no url and renders.
 func TestKagentDatabaseURLFile(t *testing.T) {
+	const inline = "postgres://takecare:not-a-real-password@db.example.invalid:5432/kagent" //nolint:gosec // a refused placeholder, never rendered
 	// prodSets pairs each value with its flag: keep every pair but the database.
 	args := profileArgs("prod")
 	for i := 0; i+1 < len(prodSets); i += 2 {
@@ -59,7 +61,7 @@ func TestKagentDatabaseURLFile(t *testing.T) {
 		}
 	}
 	t.Run("urlFile alone renders", func(t *testing.T) {
-		objs := render(t, releaseName, append(slices.Clone(args), flagSet, "kagent.database.postgres.urlFile=/etc/kagent-db/url")...)
+		objs := render(t, releaseName, append(slices.Clone(args), flagSet, dbSet)...)
 		var env []string
 		for _, d := range ofKind(objs, "Deployment") {
 			if d.GetName() != "kagent-controller" {
@@ -81,10 +83,35 @@ func TestKagentDatabaseURLFile(t *testing.T) {
 			t.Errorf("kagent-controller's database env: %v, want the file only", env)
 		}
 	})
-	t.Run("neither refuses to render", func(t *testing.T) {
-		out, err := helmTemplate(t, releaseName, releaseNamespace, args...).CombinedOutput()
-		if err == nil || !strings.Contains(string(out), "database.postgres.urlFile") {
-			t.Errorf("rendered without a database, or without naming urlFile: %v\n%s", err, out)
-		}
+	for _, tc := range []struct {
+		name string
+		sets []string
+		want []string
+	}{
+		{"an inline url is refused, with the steps", []string{flagSet, "kagent.database.postgres.url=" + inline},
+			[]string{"kagent.database.postgres.url is refused", "1. create a Secret in the namespace kagent with the key url", "2. mount it under kagent.controller.volumes and kagent.controller.volumeMounts", "3. set kagent.database.postgres.urlFile="}},
+		{"url beside urlFile is refused", []string{flagSet, dbSet, flagSet, "kagent.database.postgres.url=" + inline},
+			[]string{"kagent.database.postgres.url must be empty when kagent.database.postgres.urlFile is set"}},
+		{"neither is refused, as before", nil, []string{"database.postgres.urlFile"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := helmTemplate(t, releaseName, releaseNamespace, append(slices.Clone(args), tc.sets...)...).CombinedOutput()
+			if err == nil {
+				t.Fatalf("rendered: %s", out)
+			}
+			for _, w := range tc.want {
+				if !strings.Contains(string(out), w) {
+					t.Errorf("the error does not say %q:\n%s", w, out)
+				}
+			}
+			for _, part := range []string{inline, "not-a-real-password", "db.example.invalid"} {
+				if strings.Contains(string(out), part) {
+					t.Errorf("the error prints the URL or part of it (%q)", part)
+				}
+			}
+		})
+	}
+	t.Run("the demo's bundled PostgreSQL renders", func(t *testing.T) {
+		render(t, releaseName, profileArgs("demo")...)
 	})
 }
