@@ -233,9 +233,23 @@ type ToolStatus struct {
 	// them in spec.contentTools (ADR 0014 §5).
 	// +optional
 	Content bool `json:"content,omitempty"`
-	// +kubebuilder:validation:Enum=annotation;override
+	// Where the class comes from: the server's annotations (a server
+	// TakeCare ships), untrusted (a customer's server by url: act until
+	// spec.tools says otherwise), or an override in spec.tools.
+	// +kubebuilder:validation:Enum=annotation;untrusted;override
 	Source string `json:"source"`
 }
+
+// Sources of a tool's class in status.tools.
+const (
+	// ToolSourceAnnotation: the annotations of a server TakeCare ships.
+	ToolSourceAnnotation = "annotation"
+	// ToolSourceUntrusted: a customer's server by url, act until
+	// spec.tools says otherwise.
+	ToolSourceUntrusted = "untrusted"
+	// ToolSourceOverride: spec.tools.
+	ToolSourceOverride = "override"
+)
 
 // ToolClassChange records an override.
 type ToolClassChange struct {

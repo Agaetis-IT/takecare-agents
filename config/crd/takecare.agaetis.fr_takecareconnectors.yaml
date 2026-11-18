@@ -436,8 +436,13 @@ spec:
                     name:
                       type: string
                     source:
+                      description: |-
+                        Where the class comes from: the server's annotations (a server
+                        TakeCare ships), untrusted (a customer's server by url: act until
+                        spec.tools says otherwise), or an override in spec.tools.
                       enum:
                       - annotation
+                      - untrusted
                       - override
                       type: string
                   required:

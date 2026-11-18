@@ -380,6 +380,54 @@ func TestContentTools(t *testing.T) {
 	})
 }
 
+const executeQuery = "execute_query"
+
+// TestCustomerToolLeavesAndReturns: a customer server's tool the
+// connector reclassifies act (its annotations untrusted, spec 05) leaves the
+// agent and the gateway, with a reason a person can act on, and returns
+// once spec.tools lists it as read.
+func TestCustomerToolLeavesAndReturns(t *testing.T) {
+	f := start(t)
+	f.platform(t)
+	f.connector(t, k8sConnector, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, read("pods_list"), true)
+	f.connector(t, "prometheus", []v1alpha1.ConnectorType{v1alpha1.ConnectorMetrics}, read(executeQuery), true)
+	f.connector(t, "report", []v1alpha1.ConnectorType{v1alpha1.ConnectorReport}, nil, true)
+	f.doc(t, "doc", nil)
+	given := func(want string) func() (bool, string) {
+		return func() (bool, string) {
+			got := strings.Join(f.agentTools(t)[agent+"-prometheus"], ",") + " " + f.policyOf(t, "prometheus")
+			return got == want, got
+		}
+	}
+	eventually(t, "the read tool is given", given(executeQuery+` mcp.tool.name in ["`+executeQuery+`"]`))
+
+	f.setConnector(t, "prometheus", []v1alpha1.ToolStatus{{Name: executeQuery, Class: v1alpha1.ToolAct, Source: "untrusted"}}, true)
+	eventually(t, "the act tool left the agent and the gateway", given(" "))
+	eventually(t, "the Doc says why and what to do", func() (bool, string) {
+		d := describe(f.getDoc(t, "doc"))
+		return strings.Contains(d, "prometheus has no read tool (a customer's server: its tools are act until its spec.tools lists them as read)"), d
+	})
+
+	f.setConnector(t, "prometheus", []v1alpha1.ToolStatus{{Name: executeQuery, Class: v1alpha1.ToolRead, Source: "override"}}, true)
+	eventually(t, "listed as read, the tool returns", given(executeQuery+` mcp.tool.name in ["`+executeQuery+`"]`))
+}
+
+// policyOf is the tool rule of the Doc's route to a connector, "" when the
+// route has none.
+func (f *fixture) policyOf(t *testing.T, connector string) string {
+	t.Helper()
+	obj, err := f.get(routes.PolicyGVK, ns, "role-doc-doc-mcp-"+connector)
+	if err != nil {
+		return ""
+	}
+	list, _, _ := unstructured.NestedSlice(obj.Object, "spec", "backend", "mcp", "authorization", "policy", "matchExpressions")
+	if len(list) != 1 {
+		return ""
+	}
+	s, _ := list[0].(string)
+	return s
+}
+
 // agentReady writes the conditions kagent sets once the pod runs, on the
 // Doc's model configuration and on its agent.
 func (f *fixture) agentReady(t *testing.T) {
