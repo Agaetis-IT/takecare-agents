@@ -218,7 +218,7 @@ func (r *Reconciler) readAlerts(ctx context.Context, rg *v1alpha1.TakeCareRanger
 	}
 	st.set(ConditionAlertsSource, true, ReasonAlertsRead, "the gateway's counters are read from "+p.Spec.Observability.Metrics.PrometheusURL)
 	for _, a := range alerts {
-		r.Recorder.Eventf(rg, nil, corev1.EventTypeWarning, a.reason, "Reconcile", "%s", a.message)
+		r.Recorder.Eventf(rg, nil, a.eventType, a.reason, "Reconcile", "%s", a.message)
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -66,8 +67,9 @@ func (f *fakeProm) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func strconvF(v float64) string { b, _ := json.Marshal(v); return string(b) }
 
-// The alerts: none without a Prometheus, a silent seed, one Warning per
-// kind on a delta with its count and routes, the reason when Prometheus
+// The alerts: none without a Prometheus, a silent seed, one event per kind
+// on a delta with its count and routes (Normal for a mask, Warning for a
+// refusal or a limit), the reason when Prometheus
 // does not answer, and AuditOnly at Apprentice.
 func TestAlerts(t *testing.T) {
 	prom := &fakeProm{totals: map[string]map[string]float64{}}
@@ -105,12 +107,12 @@ func TestAlerts(t *testing.T) {
 	prom.set("Guardrail", "takecare-system/role-doc-a-model-default", 2)
 	prom.set("RateLimit", "takecare-system/role-doc-b-model-default", 4)
 	for reason, want := range map[string]string{
-		ReasonRequestsMasked:      "2 request(s) masked since the last read",
-		ReasonRequestsRejected:    "1 request(s) refused by the filtering Markers since the last read on takecare-system/role-doc-a-model-default",
-		ReasonRequestsRateLimited: "4 request(s) limited by the caps since the last read on takecare-system/role-doc-b-model-default",
+		ReasonRequestsMasked:      corev1.EventTypeNormal + ": 2 request(s) masked since the last read",
+		ReasonRequestsRejected:    corev1.EventTypeWarning + ": 1 request(s) refused by the filtering Markers since the last read on takecare-system/role-doc-a-model-default",
+		ReasonRequestsRateLimited: corev1.EventTypeWarning + ": 4 request(s) limited by the caps since the last read on takecare-system/role-doc-b-model-default",
 	} {
 		h.eventually("one "+reason+" event", func() (bool, string) {
-			e := h.events(reason)
+			e := h.typedEvents(reason)
 			return len(e) == 1 && e[0] == want, strings.Join(e, " | ")
 		})
 	}

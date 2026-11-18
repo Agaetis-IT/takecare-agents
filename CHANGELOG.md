@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- The Ranger's `RequestsMasked` event is now `Normal`, not `Warning`: since tool outputs are scanned, a masked request is the Ranger's normal work. Its count and the metric `takecare_ranger_alerts_total{kind="masked"}` are unchanged. If you alert on Warning events, masked requests no longer reach that alert; `RequestsRejected` and `RequestsRateLimited` stay Warnings. Decided by the product owner.
 - `NOTICE` lists each third-party Go module and its license without versions, so that a version bump alone no longer changes it; it still changes, and the CI still fails until it is regenerated, when a module enters or leaves or a license changes.
 - A role's MCP route on the gateway matches its exact path: a path below it, or a trailing slash, now gets the gateway's 404 instead of reaching the route. The A2A and model routes are unchanged.
 - The demo profile caps each role's route to the default model at 2,000,000 tokens an hour (`ranger.caps.models`), so that a Doc investigation or an Intendant pass that kagent 0.10.3 cannot cancel stays bounded. Sized from the benches of 2026-11-14, it leaves room for about 22 of the largest runs an hour on each route.
