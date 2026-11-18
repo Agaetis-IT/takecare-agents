@@ -114,6 +114,8 @@ The operator reads both through the platform's Prometheus (`spec.observability.m
 
 `RequestsMasked` is a `Normal` event: since tool outputs are scanned, masking is the Ranger's normal work, and the call goes on. `RequestsRejected` and `RequestsRateLimited` are `Warning` events: a refusal or a limit stops a model call, which a person should see.
 
+What the telemetry shows of a mask: the gateway's guardrail counter says how many requests were masked, by phase and action, and nothing says what. The traces hold what an agent sent, captured by the engine before the gateway (`gen_ai.prompt.*` on the engine's model call spans), never what the provider received; no agentgateway span carries content (measured on 1.6.0, 2026-11-18). To see what the masks take, replay the rendered patterns over that captured content.
+
 ## 6. What the Ranger does not do
 
 It does not read any request (the gateway does); it does not evaluate answers (the Psy); it does not hand identities (the Intendant); it does not publish to Slack (a later PR through a report connector); it does not protect what bypasses the gateway: an agent that keeps a provider key of its own escapes it, and only the customer's egress rules make the gateway the only way out (a documented requirement).
