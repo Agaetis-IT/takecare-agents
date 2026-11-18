@@ -23,6 +23,9 @@ var phoneMask = regexp.MustCompile(`(?:` + strings.Join(PhonePatterns, `)|(?:`) 
 // frenchSpaced is the made-up French number written with spaces.
 const frenchSpaced = "01 23 45 67 89"
 
+// nanp00 is the made-up North American number written with 00.
+const nanp00 = "001 415 555 0123"
+
 func TestPhonePatternsTake(t *testing.T) {
 	for _, tc := range []struct {
 		name, text string
@@ -38,7 +41,7 @@ func TestPhonePatternsTake(t *testing.T) {
 		{"E.164 with dots", "+33.1.23.45.67.89", []string{"+33.1.23.45.67.89"}},
 		{"00 French", "0033 1 23 45 67 89", []string{"0033 1 23 45 67 89"}},
 		{"00 UK", "0044 20 7946 0958", []string{"0044 20 7946 0958"}},
-		{"00 North American", "001 415 555 0123", []string{"001 415 555 0123"}},
+		{"00 North American", nanp00, []string{nanp00}},
 		{"French with spaces", "on-call: 01 23 45 67 89", []string{frenchSpaced}},
 		{"French with dots", "06.12.34.56.78", []string{"06.12.34.56.78"}},
 		{"French with dashes", "06-12-34-56-78", []string{"06-12-34-56-78"}},
@@ -48,12 +51,18 @@ func TestPhonePatternsTake(t *testing.T) {
 		{"North American with dashes", "415-555-0123", []string{"415-555-0123"}},
 		{"North American with dots", "415.555.0123", []string{"415.555.0123"}},
 		// Where numbers really sit.
-		{"inside a JSON string", `{"phone":"0123456789"}`, []string{"0123456789"}},
-		{"after tel:", "tel:0123456789", []string{"0123456789"}},
+		// The bare form takes the character before it (here the quote): see
+		// PhoneFrench.
+		{"inside a JSON string", `{"phone":"0123456789"}`, []string{`"0123456789`}},
+		{"after tel:", "tel:0123456789", []string{":0123456789"}},
+		{"bare after a space", "call 0612345678 now", []string{" 0612345678"}},
+		{"00 at the start of a line", "0033123456789", []string{"0033123456789"}},
 		{"after Tél. :", "Tél. : 01 23 45 67 89", []string{frenchSpaced}},
 		{"before a full stop", "Call 01 23 45 67 89.", []string{frenchSpaced}},
 		{"before a comma", "Call 01 23 45 67 89, then", []string{frenchSpaced}},
 		{"a YAML value", "oncall:\n  phone: +33 6 12 34 56 78\n", []string{"+33 6 12 34 56 78"}},
+		{"a date after the number stays out", "+33 1 23 45 67 89 2026-11-18", []string{"+33 1 23 45 67 89"}},
+		{"a date after a 00 number stays out", nanp00 + " 2026-11-18", []string{nanp00}},
 		{"two on one line", frenchSpaced + " or +44 20 7946 0958 (backup)", []string{frenchSpaced, "+44 20 7946 0958"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -101,6 +110,20 @@ func TestPhonePatternsSpare(t *testing.T) {
 		"account 001234567890",
 		"port 8443",
 		"@@ -12,7 +12,8 @@",
+		// A date after a sign.
+		"UTC+1 2026-11-18",
+		"+1 2026-11-18 10:54:36",
+		"replicas +3 2026-11-18",
+		"+2 2026-11-18T09:26:11Z",
+		"GMT+1 2026-11-18",
+		// Decimal fractions, as Prometheus and the cluster print them.
+		"0.0123456789",
+		"3.0471234567",
+		"0.0612345678",
+		"12.0123456789 0.5",
+		"1731923171.123 0.0123456789",
+		"0.00123456789012",
+		"0.0012 1731923171000",
 	} {
 		t.Run(text, func(t *testing.T) {
 			if got := phoneMask.FindAllString(text, -1); got != nil {
