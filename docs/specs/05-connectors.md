@@ -39,6 +39,16 @@ spec:
 
 The `map` type is the Map's connector (spec 08, ADR 0015): read tools only.
 
+**A customer's server by `url`.** The operator reaches it directly, for discovery, with the `headersFrom` values read from their Secrets and the chart's CA bundle (`global.caBundle`) as its trust, or the system's roots without one. The agents reach it through the gateway, and the backend the operator renders carries the same two things **by reference**, never a value:
+
+- each `headersFrom` entry becomes a credential of the backend's target (`policies.auth.credentials`: the Secret's name and key, the header's name). The gateway reads the Secret in the backend's namespace, which is the connector's, and sends the value as stored. The API takes at most eight headers, with names of the HTTP token form: those are the gateway's limits. A connector stored before these limits and beyond them gets no backend, and `BackendAccepted=False` with reason `HeadersUnsupported`, never a backend holding part of its credentials.
+- an `https` URL gets TLS to the URL's host (`policies.tls`: its SNI, and the chart's CA bundle as `caCertificateRefs`, or the system's roots without one). The certificate must be a leaf signed by a CA in that trust: the gateway refuses a self-signed certificate used as the server's own.
+- an `http` URL gets no TLS. Its headers then cross the cluster's network in clear text, between the gateway and the server: the customer's choice, made by the URL they declare.
+
+A rotated header Secret reaches the gateway without a restart. agentgateway 1.6's documentation does not say so; the chart smoke measures it: on 2026-11-17 the first call through the gateway after the Secret's update already carried the new value (under a second), the gateway's pod unchanged.
+
+The operator needs no right for this: the gateway's controller reads the Secrets it is pointed at. A `cluster` connector keeps its own backend TLS (ADR 0016) and no credential: its front strips them.
+
 A `report` connector also declares its **adapter** and **destinations**:
 
 ```yaml

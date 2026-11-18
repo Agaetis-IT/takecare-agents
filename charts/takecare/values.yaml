@@ -20,7 +20,9 @@ global:
     httpProxy: ""
     noProxy: ""
   # -- Internal CA to trust for TLS to the provider, MCP servers and Slack: a
-  # ConfigMap or a Secret in the release namespace holding a PEM bundle.
+  # ConfigMap or a Secret in the release namespace holding a PEM bundle. The
+  # gateway trusts it too for a customer's MCP server by `https` url, in
+  # place of the system's roots.
   caBundle:
     configMapName: ""
     secretName: ""

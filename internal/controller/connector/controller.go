@@ -119,6 +119,9 @@ type Reconciler struct {
 	MCP               Lister
 	// HTTP reads the map add-on's /statusz.
 	HTTP *http.Client
+	// CABundle is the chart's CA bundle, which a url connector's https
+	// backend trusts; empty: the system's roots.
+	CABundle CARef
 	// Now is replaceable in tests.
 	Now func() time.Time
 
@@ -334,7 +337,20 @@ func (r *Reconciler) applyBackend(ctx context.Context, c *v1alpha1.TakeCareConne
 	} else {
 		host, port, path, tls := splitURL(c.Spec.MCP.URL)
 		static := map[string]any{"host": host, "port": port, "path": path, "protocol": "StreamableHTTP"}
-		_ = tls // TLS to a customer's own server: its backend policy is a later step
+		// A cluster connector keeps its own backend TLS (ADR 0016): its
+		// front strips any credential.
+		if c.Spec.Cluster == nil {
+			if problem := headersUnsupported(c.Spec.MCP.HeadersFrom); problem != "" {
+				if err := r.Delete(ctx, obj); client.IgnoreNotFound(err) != nil {
+					return fmt.Errorf("delete backend of connector %s: %w", c.Name, err)
+				}
+				st.set(ConditionBackendAccepted, false, ReasonHeadersUnsupported, problem)
+				return nil
+			}
+			if policies := r.urlPolicies(c, host, tls); policies != nil {
+				static["policies"] = policies
+			}
+		}
 		target["static"] = static
 	}
 	obj.Object["spec"] = map[string]any{"mcp": map[string]any{"targets": []any{target}}}
@@ -517,7 +533,7 @@ func (r *Reconciler) resourcesListable(ctx context.Context, c *v1alpha1.TakeCare
 			return fmt.Errorf("resolve kind of %s: %w", resourceName(res), err)
 		}
 		ns := string(c.Spec.Kubernetes.Namespaces[0])
-		args := map[string]any{"apiVersion": gvk.GroupVersion().String(), "kind": gvk.Kind, "namespace": ns}
+		args := map[string]any{"apiVersion": gvk.GroupVersion().String(), keyKind: gvk.Kind, "namespace": ns}
 		result, err := r.MCP.Call(ctx, ep, mcp.ProbeTool, args)
 		if err != nil {
 			st.set(ConditionResourcesListable, false, ReasonProbeFailed, fmt.Sprintf("probe %s for %s: %v", mcp.ProbeTool, res.Resource, err))

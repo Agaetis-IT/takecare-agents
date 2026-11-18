@@ -82,16 +82,20 @@ type MCPSpec struct {
 	// +optional
 	URL string `json:"url,omitempty"`
 
-	// Headers taken from Secrets, for example an Authorization token.
+	// Headers taken from Secrets, for example an Authorization token. The
+	// gateway sends them too, at most eight (its limit).
 	// +listType=map
 	// +listMapKey=name
+	// +kubebuilder:validation:MaxItems=8
 	// +optional
 	HeadersFrom []HeaderFrom `json:"headersFrom,omitempty"`
 }
 
 // HeaderFrom sets an HTTP header from a Secret key.
 type HeaderFrom struct {
+	// An HTTP header name (the gateway's pattern).
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern="^[A-Za-z0-9!#$%&'*+\\-.^_\\x60|~]+$"
 	Name         string       `json:"name"`
 	SecretKeyRef SecretKeyRef `json:"secretKeyRef"`
 }

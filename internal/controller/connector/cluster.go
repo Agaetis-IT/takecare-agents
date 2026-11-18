@@ -32,6 +32,7 @@ const (
 	keyCert = "tls.crt"
 	keyKey  = "tls.key"
 	keyName = "name"
+	keyKind = "kind"
 )
 
 const clusterTimeout = 30 * time.Second
@@ -114,7 +115,7 @@ func backendTLS(c *v1alpha1.TakeCareConnector) map[string]any {
 	}
 	return map[string]any{
 		"mtlsCertificateRef":    []any{map[string]any{keyName: c.Spec.Cluster.TLS.ClientCertSecretRef.Name}},
-		"caCertificateRefs":     []any{map[string]any{"kind": "Secret", keyName: c.Spec.Cluster.TLS.CASecretRef.Name}},
+		"caCertificateRefs":     []any{map[string]any{keyKind: "Secret", keyName: c.Spec.Cluster.TLS.CASecretRef.Name}},
 		"sni":                   name,
 		"verifySubjectAltNames": []any{name},
 	}

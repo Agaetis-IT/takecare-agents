@@ -38,6 +38,13 @@ spec:
             - --alerts-token-secret={{ .Values.alerting.existingSecret | default "takecare-alerting" }}
             - --investigation-retention={{ .Values.investigations.retention }}
             - --usage-scrape-wait={{ .Values.operator.usageScrapeWait }}
+            {{- with .Values.global.caBundle }}
+            {{- if .secretName }}
+            - --ca-bundle=Secret/{{ .secretName }}/{{ .key }}
+            {{- else if .configMapName }}
+            - --ca-bundle=ConfigMap/{{ .configMapName }}/{{ .key }}
+            {{- end }}
+            {{- end }}
             {{- if .Values.demo.enabled }}
             - --demo
             - --demo-app-image={{ printf "%s/%s:%s" (.Values.global.imageRegistry | default .Values.demo.app.image.registry) .Values.demo.app.image.repository (.Values.demo.app.image.tag | default .Chart.AppVersion) }}

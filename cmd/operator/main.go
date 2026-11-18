@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -86,6 +87,9 @@ type config struct {
 	// billing-api's image: the chart sets both with demo.enabled.
 	demo         bool
 	demoAppImage string
+	// caBundle is the chart's CA bundle (Kind/name/key), which the gateway
+	// is told to trust for a url connector's https server.
+	caBundle string
 	// usageScrapeWait is how long after a run's end its last model calls
 	// are in Prometheus (one scrape interval, spec 02 §5).
 	usageScrapeWait time.Duration
@@ -132,6 +136,8 @@ func run(args []string) error {
 		"Run the TakeCareDemo controller (demo only: its rights come from the chart's demo Roles).")
 	fs.StringVar(&cfg.demoAppImage, "demo-app-image", "",
 		"Image of the demo application, billing-api (required with --demo).")
+	fs.StringVar(&cfg.caBundle, "ca-bundle", "",
+		"The chart's CA bundle as ConfigMap/<name>/<key> or Secret/<name>/<key> in the operator namespace; empty: the system's roots.")
 	zapOpts := zap.Options{}
 	zapOpts.BindFlags(fs)
 	if err := fs.Parse(args); err != nil {
@@ -352,12 +358,17 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	if err := mgr.Add(&intendant.Sweeper{Client: mgr.GetClient(), Namespace: cfg.operatorNamespace}); err != nil {
 		return nil, fmt.Errorf("add the survey sweeper: %w", err)
 	}
+	caBundle, err := parseCABundle(cfg.caBundle)
+	if err != nil {
+		return nil, err
+	}
 	connectorReconciler := &connector.Reconciler{
 		Client:            mgr.GetClient(),
 		Recorder:          mgr.GetEventRecorder("takecare-operator"),
 		OperatorNamespace: cfg.operatorNamespace,
 		MCP:               &mcp.Client{HTTP: mcpClient},
 		HTTP:              mcpClient,
+		CABundle:          caBundle,
 	}
 	if err := connectorReconciler.SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up the connector controller: %w", err)
@@ -519,4 +530,16 @@ func (s *alertServer) Start(ctx context.Context) error {
 		}
 		return fmt.Errorf("alert intake: %w", err)
 	}
+}
+
+// parseCABundle reads --ca-bundle: Kind/name/key, Kind ConfigMap or Secret.
+func parseCABundle(v string) (connector.CARef, error) {
+	if v == "" {
+		return connector.CARef{}, nil
+	}
+	parts := strings.Split(v, "/")
+	if len(parts) != 3 || (parts[0] != "ConfigMap" && parts[0] != "Secret") || parts[1] == "" || parts[2] == "" {
+		return connector.CARef{}, fmt.Errorf("--ca-bundle %q: want ConfigMap/<name>/<key> or Secret/<name>/<key>", v)
+	}
+	return connector.CARef{Kind: parts[0], Name: parts[1], Key: parts[2]}, nil
 }
