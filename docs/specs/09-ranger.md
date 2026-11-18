@@ -89,6 +89,8 @@ What the patterns cannot do, a trade the customer reads:
 | a number split by a line break | five 2-digit pairs after a `0` (`05 11 20 26 14`) |
 | a short service number (3 to 6 digits) | one or two digits right after a number, joined by its separator (`+33 1 23 45 67 89 0`: the `0` is masked with it) |
 | a number glued to letters (`tel0123456789`) | the character before a number written without separators (`tel:0123456789` becomes `tel<masked>`) |
+| | a signed run of 10 to 14 digits with a space after its first digits (`+15 123456789 bytes`) |
+| | a date written with spaces or dots after a sign, with its hour (`UTC+1 2026 11 18 10`, `UTC+1 2026.11.18.10`) |
 
 A customer who needs another national form adds it under `masking.patterns`.
 
