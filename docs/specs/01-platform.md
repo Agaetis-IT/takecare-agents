@@ -132,6 +132,9 @@ status:
 | `no-network-policies` | no NetworkPolicy of TakeCare's in the engine namespace. Presence, not enforcement: whether the CNI applies them is not checked |
 | `role-without-report` | a role at the `Practitioner` level has no `report` connector (spec 02; implemented with the Doc, PR 4) |
 | `connector-not-ready` | any bound connector is not `Ready` (spec 05; implemented with the connectors, PR 3b) |
+| `report-log-enabled` | a `report` connector uses the `log` adapter: diagnoses and digests go to the server's log, not to people (demo only) |
+| `gateway-accepts-foreign-routes` | the platform's Gateway, once `Accepted` and `Programmed`, has its listener `http` (the one every role's route attaches to) with `allowedRoutes.namespaces.from: All`, so an HTTPRoute created in any namespace is served through it. Read from the Gateway as it is, whoever created it: the chart's own Gateway (`from: Same`) never raises it, but raises it if edited to `All`. An absent `allowedRoutes` means `Same`. A `Selector` is the customer's choice of namespaces and is not reported. |
+| `connector-credential-in-clear-text` | a connector by `url` with `headersFrom` and an `http://` URL: its credential crosses the network in clear text between the gateway and the MCP server. Computed from the connector's spec alone, no Secret read; the detail lists the connectors by name, sorted, never a header's name or value. |
 
 In the demo, `ProductionReady` stays `False` with its list: useful in a meeting or at the start of a pilot to show the path to production.
 

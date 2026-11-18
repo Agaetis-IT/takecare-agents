@@ -29,6 +29,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/testenv"
 )
 
@@ -144,6 +145,32 @@ func (h *harness) gateway() {
 		Name: gatewayNm, Namespace: operatorNS, Labels: map[string]string{gatewayNameLabel: gatewayNm},
 		Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http", Port: 80}}},
 	}))
+}
+
+// listener renders a Gateway listener; from is allowedRoutes.namespaces.from,
+// empty for no allowedRoutes.
+func listener(name, from string) map[string]any {
+	l := map[string]any{fieldName: name, "protocol": "HTTP", "port": int64(80)}
+	if name != routes.ListenerName {
+		l["port"] = int64(8080)
+	}
+	switch from {
+	case "":
+	case "Selector":
+		l["allowedRoutes"] = map[string]any{"namespaces": map[string]any{"from": from, "selector": map[string]any{"matchLabels": map[string]any{"team": "sre"}}}}
+	default:
+		l["allowedRoutes"] = map[string]any{"namespaces": map[string]any{"from": from}}
+	}
+	return l
+}
+
+// setListeners replaces the Gateway's listeners, its status untouched.
+func (h *harness) setListeners(listeners []any) {
+	gw := &unstructured.Unstructured{}
+	gw.SetGroupVersionKind(schema.GroupVersionKind{Group: "gateway.networking.k8s.io", Version: "v1", Kind: "Gateway"})
+	h.must(h.c.Get(h.ctx, client.ObjectKey{Namespace: operatorNS, Name: gatewayNm}, gw))
+	h.must(unstructured.SetNestedSlice(gw.Object, listeners, "spec", "listeners"))
+	h.must(h.c.Update(h.ctx, gw))
 }
 
 func (h *harness) secret(ns, name, key, value string) {
@@ -616,6 +643,84 @@ func TestProductionGaps(t *testing.T) {
 		h.must(h.c.Update(h.ctx, in))
 		h.waitGaps()
 		h.must(h.c.Delete(h.ctx, in))
+	})
+
+	t.Run("a listener http taking routes from every namespace is a gap, whoever made the Gateway", func(t *testing.T) {
+		for _, tc := range []struct {
+			name      string
+			listeners []any
+			gap       bool
+		}{
+			{"the chart's own Gateway, from: Same", []any{listener(routes.ListenerName, "Same")}, false},
+			{"the chart's Gateway edited to from: All (drift)", []any{listener(routes.ListenerName, "All")}, true},
+			{"no allowedRoutes: Same by default", []any{listener(routes.ListenerName, "")}, false},
+			{"a Selector: the customer's choice of namespaces", []any{listener(routes.ListenerName, "Selector")}, false},
+			{"All on another listener only", []any{listener(routes.ListenerName, "Same"), listener("public", "All")}, false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				if !tc.gap {
+					// From the gap, so that its clearing proves the
+					// reconcile read these listeners.
+					h.setListeners([]any{listener(routes.ListenerName, "All")})
+					h.waitGaps(GapGatewayForeignRoutes)
+					h.setListeners(tc.listeners)
+					h.waitGaps()
+					return
+				}
+				h.setListeners(tc.listeners)
+				h.waitGaps(GapGatewayForeignRoutes)
+				var cur v1alpha1.TakeCarePlatform
+				h.must(h.c.Get(h.ctx, client.ObjectKey{Name: PlatformName}, &cur))
+				want := "the Gateway " + operatorNS + "/" + gatewayNm + " lets HTTPRoutes from every namespace attach to its listener http"
+				if d := cur.Status.ProductionGaps[0].Detail; !strings.HasPrefix(d, want) || !strings.HasSuffix(d, "set from: Same, or a Selector naming the namespaces you trust") {
+					t.Errorf("detail = %q", d)
+				}
+			})
+		}
+		h.setListeners([]any{listener(routes.ListenerName, "Same")})
+		h.waitGaps()
+	})
+
+	t.Run("a url connector sending a credential over plain http is a gap, named without its header", func(t *testing.T) {
+		creds := []v1alpha1.HeaderFrom{{Name: "Authorization", SecretKeyRef: v1alpha1.SecretKeyRef{Name: "crm-token", Key: "token"}}}
+		ready := func(name, url string, headers []v1alpha1.HeaderFrom) *v1alpha1.TakeCareConnector {
+			c := &v1alpha1.TakeCareConnector{
+				Name: name, Namespace: operatorNS,
+				Spec: v1alpha1.TakeCareConnectorSpec{Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorTickets}, MCP: v1alpha1.MCPSpec{URL: url, HeadersFrom: headers}},
+			}
+			h.must(h.c.Create(h.ctx, c))
+			meta.SetStatusCondition(&c.Status.Conditions, metav1.Condition{Type: v1alpha1.ConditionReady, Status: metav1.ConditionTrue, Reason: ReasonReady, Message: "ok"})
+			h.must(h.c.Status().Update(h.ctx, c))
+			return c
+		}
+		safe := []*v1alpha1.TakeCareConnector{
+			ready("vault-https", "https://vault.example.internal/mcp", creds),
+			ready("open-http", "http://open.example.internal/mcp", nil),
+		}
+		// The safe ones exist before the gap is computed: the detail's exact
+		// list proves they are left out.
+		crm := ready("crm", "http://crm.example.internal:8080/mcp", creds)
+		billing := ready("billing", "http://billing.example.internal/mcp", creds)
+		h.waitGaps(GapConnectorCredentialClear)
+		var cur v1alpha1.TakeCarePlatform
+		h.must(h.c.Get(h.ctx, client.ObjectKey{Name: PlatformName}, &cur))
+		d := cur.Status.ProductionGaps[0].Detail
+		if !strings.Contains(d, "over plain http between the gateway and the MCP server: billing, crm; give mcp.url an https:// address") {
+			t.Errorf("detail = %q, want both connectors, sorted, and the fix", d)
+		}
+		for _, leak := range []string{"Authorization", "crm-token", "vault-https", "open-http"} {
+			if strings.Contains(d, leak) {
+				t.Errorf("detail %q names %q", d, leak)
+			}
+		}
+		h.must(h.c.Get(h.ctx, client.ObjectKeyFromObject(crm), crm))
+		crm.Spec.MCP.URL = "https://crm.example.internal:8443/mcp"
+		h.must(h.c.Update(h.ctx, crm))
+		h.must(h.c.Delete(h.ctx, billing))
+		h.waitGaps()
+		for _, c := range append(safe, crm) {
+			h.must(h.c.Delete(h.ctx, c))
+		}
 	})
 
 	t.Run("a Prometheus that stops answering is a gap with the cause, never Ready=False", func(t *testing.T) {
