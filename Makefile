@@ -153,7 +153,7 @@ chart-template: chart-deps kubeconform ## Render both profiles and the workload-
 	$(HELM_RUN) template takecare charts/takecare -n takecare-system -f charts/takecare/values-prod.yaml \
 		--set platform.models[0].baseURL=https://vllm.example.internal/v1 --set platform.models[0].model=example \
 		--set platform.observability.metrics.prometheusURL=http://prometheus.monitoring.svc \
-		--set kagent.database.postgres.url=postgres://kagent:example@db.example.internal:5432/kagent \
+		--set kagent.database.postgres.urlFile=/etc/kagent-db/url \
 		--set 'addons.kubernetes.namespaces={apps}' --set addons.prometheus.url=http://prometheus.monitoring.svc \
 		--set addons.prometheus.egress.namespace=monitoring --set addons.prometheus.egress.podSelector.app=prometheus \
 		--set 'addons.reportSlack.destinations[0].name=on-call' --set 'addons.reportSlack.destinations[0].target=C0123456789' \

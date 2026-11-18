@@ -62,3 +62,14 @@ reverse path order, so this file, last by name, is evaluated first.
 {{- if and .Values.addons.reportSlack.enabled (not .Values.addons.reportSlack.destinations) }}
 {{- fail "addons.reportSlack.destinations is REQUIRED: the destinations the Doc publishes to (channel IDs)" }}
 {{- end }}
+{{- /*
+kagent v0.10.3 writes its configuration to its log at each start, the
+database URL with its credential included (go/core/pkg/app/app.go l.394):
+the URL is given as a file, never inline. The value is never printed here.
+*/ -}}
+{{- if and .Values.kagent.enabled .Values.kagent.database.postgres.url }}
+{{- if .Values.kagent.database.postgres.urlFile }}
+{{- fail "kagent.database.postgres.url must be empty when kagent.database.postgres.urlFile is set: kagent reads the file, and an inline URL would only stay in the release's values" }}
+{{- end }}
+{{- fail (printf "kagent.database.postgres.url is refused: kagent writes its configuration, this URL and its credential included, to its log at each start. Give the URL as a file: 1. create a Secret in the namespace %s with the key url holding the URL; 2. mount it under kagent.controller.volumes and kagent.controller.volumeMounts, e.g. at /etc/kagent-db; 3. set kagent.database.postgres.urlFile=/etc/kagent-db/url and empty kagent.database.postgres.url" .Values.kagent.namespaceOverride) }}
+{{- end }}
