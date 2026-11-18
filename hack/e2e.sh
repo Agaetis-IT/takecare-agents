@@ -494,8 +494,10 @@ run() {
   # through the demo's Prometheus, says it in a Warning event.
   check "the gateway's guardrail counter has the Mask action of a request (spec 09 §5)" \
     bash -c "kubectl -n $NS port-forward svc/prometheus-server 18991:80 >/dev/null 2>&1 & pf=\$!; sleep 2; r=1; for _ in \$(seq 24); do curl -s 'http://localhost:18991/api/v1/query?query=agentgateway_guardrail_checks_total%7Bphase%3D%22Request%22%2Caction%3D%22Mask%22%7D' | jq -e '[.data.result[] | select((.value[1] | tonumber) > 0)] | length > 0' >/dev/null && { r=0; break; }; sleep 5; done; kill \$pf; exit \$r"
-  check "the Ranger says the masked request in a RequestsMasked Warning event (spec 09 §5)" \
-    bash -c "for _ in \$(seq 36); do kubectl get events -A --field-selector reason=RequestsMasked,type=Warning -o jsonpath='{range .items[*]}{.involvedObject.kind}{\"\\n\"}{end}' | grep -q TakeCareRanger && exit 0; sleep 5; done; exit 1"
+  # A mask is the Ranger's normal work (spec 09 §5): a Normal event, and
+  # never a Warning, so that a regression to Warning fails here.
+  check "the Ranger says the masked request in a RequestsMasked Normal event, and in no Warning (spec 09 §5)" \
+    bash -c "ev() { kubectl get events -A --field-selector reason=RequestsMasked,type=\$1 -o jsonpath='{range .items[*]}{.involvedObject.kind}{\"\\n\"}{end}'; }; for _ in \$(seq 36); do if ev Normal | grep -q TakeCareRanger; then ! ev Warning | grep -q TakeCareRanger; exit; fi; sleep 5; done; exit 1"
   tool_output_guards
   intendant
   resumed

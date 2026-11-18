@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	corev1 "k8s.io/api/core/v1"
 )
 
 // The Ranger's alerts (spec 09 §5): what the gateway masked, refused and
@@ -35,11 +36,13 @@ const (
 )
 
 // alertKinds: the masked requests carry no route on agentgateway 1.6's
-// guardrail counter; the refused ones do.
-var alertKinds = []struct{ kind, reason, query, what string }{
-	{"masked", ReasonRequestsMasked, `sum(max by (instance, phase, action) (agentgateway_guardrail_checks_total{phase="Request",action="Mask"}))`, "masked"},
-	{"rejected", ReasonRequestsRejected, `sum by (route) (max by (` + requestIdentity + `) (agentgateway_requests_total{reason="Guardrail"}))`, "refused by the filtering Markers"},
-	{"rate-limited", ReasonRequestsRateLimited, `sum by (route) (max by (` + requestIdentity + `) (agentgateway_requests_total{reason="RateLimit"}))`, "limited by the caps"},
+// guardrail counter; the refused ones do. A masked request is the Ranger's
+// normal work now that tool outputs are scanned (spec 09 §5): its event is
+// Normal; a refusal or a limit stops a call, a Warning.
+var alertKinds = []struct{ kind, reason, query, what, eventType string }{
+	{"masked", ReasonRequestsMasked, `sum(max by (instance, phase, action) (agentgateway_guardrail_checks_total{phase="Request",action="Mask"}))`, "masked", corev1.EventTypeNormal},
+	{"rejected", ReasonRequestsRejected, `sum by (route) (max by (` + requestIdentity + `) (agentgateway_requests_total{reason="Guardrail"}))`, "refused by the filtering Markers", corev1.EventTypeWarning},
+	{"rate-limited", ReasonRequestsRateLimited, `sum by (route) (max by (` + requestIdentity + `) (agentgateway_requests_total{reason="RateLimit"}))`, "limited by the caps", corev1.EventTypeWarning},
 }
 
 // Querier reads an instant vector by the value of one label.
@@ -65,8 +68,8 @@ type Alerts struct {
 
 // alert is one kind's new count since the last read.
 type alert struct {
-	reason, message string
-	count           int
+	reason, eventType, message string
+	count                      int
 }
 
 // NewAlertsMetric creates and registers takecare_ranger_alerts_total.
@@ -127,7 +130,7 @@ func (a *Alerts) read(ctx context.Context, q Querier) ([]alert, error) {
 			slices.Sort(where)
 			msg += " on " + strings.Join(where, ", ")
 		}
-		out = append(out, alert{reason: k.reason, message: msg, count: count})
+		out = append(out, alert{reason: k.reason, eventType: k.eventType, message: msg, count: count})
 		if a.Total != nil {
 			a.Total.WithLabelValues(k.kind).Add(float64(count))
 		}

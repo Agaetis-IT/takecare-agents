@@ -199,13 +199,33 @@ func (h *harness) conditions(name string, statuses map[string]string, message st
 }
 
 func (h *harness) events(reason string) []string {
+	evs := h.rangerEvents(reason)
+	notes := make([]string, 0, len(evs))
+	for _, e := range evs {
+		notes = append(notes, e.Note)
+	}
+	return notes
+}
+
+// rangerEvents lists the Ranger's events of a reason.
+func (h *harness) rangerEvents(reason string) []eventsv1.Event {
 	var list eventsv1.EventList
 	h.must(h.c.List(h.ctx, &list))
-	var notes []string
+	var out []eventsv1.Event
 	for _, e := range list.Items {
 		if e.Reason == reason && e.Regarding.Kind == "TakeCareRanger" {
-			notes = append(notes, e.Note)
+			out = append(out, e)
 		}
+	}
+	return out
+}
+
+// typedEvents lists the Ranger's events of a reason as "Type: note".
+func (h *harness) typedEvents(reason string) []string {
+	evs := h.rangerEvents(reason)
+	notes := make([]string, 0, len(evs))
+	for _, e := range evs {
+		notes = append(notes, e.Type+": "+e.Note)
 	}
 	return notes
 }
