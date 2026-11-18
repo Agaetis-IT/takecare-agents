@@ -58,7 +58,7 @@ const (
 // Rights the worker adds to the controller's: the Doc's status, for its last
 // investigation, and its connectors, for a run's degradation.
 //
-// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaredocs/status,verbs=get;update;patch,namespace=takecare-system
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaredocs/status,verbs=patch,namespace=takecare-system
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareconnectors,verbs=get;list;watch,namespace=takecare-system
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareplatforms,verbs=get;list;watch
 

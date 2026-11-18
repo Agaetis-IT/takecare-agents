@@ -71,8 +71,8 @@ const (
 
 const requeueNotReady = 30 * time.Second
 
-// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareintendants,verbs=get;list;watch;update;patch,namespace=takecare-system
-// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareintendants/status,verbs=get;update;patch,namespace=takecare-system
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareintendants,verbs=get;list;watch;update,namespace=takecare-system
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareintendants/status,verbs=patch,namespace=takecare-system
 
 // Reconciler reconciles TakeCareIntendants.
 type Reconciler struct {

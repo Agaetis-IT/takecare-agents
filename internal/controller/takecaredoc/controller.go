@@ -104,8 +104,8 @@ const (
 // records and its routes live. The engine's objects are written by the
 // engine boundary, whose markers live with it.
 //
-// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaredocs,verbs=get;list;watch;update;patch,namespace=takecare-system
-// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaredocs/status,verbs=get;update;patch,namespace=takecare-system
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaredocs,verbs=get;list;watch;update,namespace=takecare-system
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaredocs/status,verbs=patch,namespace=takecare-system
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaredocs/finalizers,verbs=update,namespace=takecare-system
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareconnectors;takecareinvestigations,verbs=get;list;watch,namespace=takecare-system
 

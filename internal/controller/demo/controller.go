@@ -66,9 +66,8 @@ const (
 	requeueTransition = 5 * time.Second
 )
 
-// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaredemos,verbs=get;list;watch;update;patch,namespace=takecare-system
-// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaredemos/status,verbs=get;update;patch,namespace=takecare-system
-// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaredemos/finalizers,verbs=update,namespace=takecare-system
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaredemos,verbs=get;list;watch;update,namespace=takecare-system
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaredemos/status,verbs=patch,namespace=takecare-system
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareinvestigations,verbs=get;list;watch;delete,namespace=takecare-system
 
 // Reconciler deploys the scenery and handles the demo's actions.

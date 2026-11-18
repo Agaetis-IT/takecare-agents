@@ -106,11 +106,11 @@ type Lister interface {
 // ServiceAccount may act) and CRD metadata (definitions, not data).
 //
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareconnectors,verbs=get;list;watch,namespace=takecare-system
-// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareconnectors/status,verbs=get;update;patch,namespace=takecare-system
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareconnectors/status,verbs=update,namespace=takecare-system
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;patch,namespace=takecare-system
-// +kubebuilder:rbac:groups=discovery.k8s.io,resources=endpointslices,verbs=get;list;watch,namespace=takecare-system
+// +kubebuilder:rbac:groups=discovery.k8s.io,resources=endpointslices,verbs=list;watch,namespace=takecare-system
 // +kubebuilder:rbac:groups=authorization.k8s.io,resources=subjectaccessreviews,verbs=create
-// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=list;watch
 
 // Reconciler reconciles TakeCareConnectors.
 type Reconciler struct {

@@ -111,7 +111,7 @@ The status is bounded in size: it keeps the counts and the first 20 proposals (2
 - its data is bounded at 900 KiB; what does not fit is left out, and the layer of the first proposal left out says so first among its `notSeen` lines: "the full set exceeds the ConfigMap's size: N proposals left out";
 - a survey run again replaces it (deleted, then created); a ConfigMap of that name the survey does not own is never touched, and the survey fails with "the proposals could not be recorded".
 
-The operator's rights on ConfigMaps in its own namespace are create, get and delete: no list, no watch, no update. It reads them through the API reader, not the cache.
+The operator's rights on ConfigMaps in its own namespace are create, get and delete: no list, no watch, no update. It reads them through the API reader, not the cache. Kubernetes cannot narrow these rights to the surveys' ConfigMaps (a Role's `resourceNames` cannot scope `create`, and the names are per survey), so the right covers every ConfigMap of the release namespace: the operator may read, create and delete any of them. The code reads only a survey's own ConfigMap, and deletes one only when the survey owns it, with a precondition on its UID.
 
 ## 8. The inventory and the Intendant's routes
 
@@ -175,7 +175,7 @@ Retention: an ended survey (Completed, Failed or Dropped) older than seven days 
 3. `RB-014` in the corpus lands as a `knowledge` source on a runbook entry that documents `service/billing-api` (`documentedBy`), whatever key the agent gives that entry.
 4. A Deployment deleted from the scenery gives a removal proposal; its entry keeps `lastSeen`.
 5. A namespace no connector reads is a blind spot of the survey, with its reason, not an omission.
-6. The read-only guard test is unchanged and green; the add-ons' RBAC is unchanged; the operator gains only create, get, list, watch and delete on `takecaresurveys`, get, update and patch on its status, and create, get and delete on ConfigMaps in its own namespace (§7).
+6. The read-only guard test is unchanged and green; the add-ons' RBAC is unchanged; the operator gains only create, get, list, watch and delete on `takecaresurveys`, patch on its status, and create, get and delete on ConfigMaps in its own namespace (§7).
 7. The survey's inventory lists the cluster's agents and connectors with their tools; the agents in the Intendant's scope are listed when the kubernetes add-on may read them, and a not-seen line says so otherwise.
 8. A new Map revision triggers one survey; two triggers during a run give one more survey, not two (proven in envtest).
 9. A scored bench of the Intendant on a real model, its agent's proposals compared with a hand-written expected set (`make demo-bench-intendant`, `test/bench/README.md`). It surveys the demo against the demo Map without `service/billing-api`'s `documentedBy`. Its bar at a release is five runs ok out of five (`BENCH_MIN=5`, docs/release.md), set by the product owner after the first report, 5/5 on 2026-11-12.

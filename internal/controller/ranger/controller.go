@@ -65,7 +65,7 @@ const alertsPeriod = time.Minute
 
 var policyGVK = schema.GroupVersionKind{Group: "agentgateway.dev", Version: "v1alpha1", Kind: "AgentgatewayPolicy"}
 
-// +kubebuilder:rbac:groups=agentgateway.dev,resources=agentgatewaypolicies;agentgatewaybackends,verbs=get;list;watch;create;update;patch;delete,namespace=takecare-system
+// +kubebuilder:rbac:groups=agentgateway.dev,resources=agentgatewaypolicies;agentgatewaybackends,verbs=get;list;watch;create;patch;delete,namespace=takecare-system
 
 // Reconciler renders the Ranger's Markers.
 type Reconciler struct {
