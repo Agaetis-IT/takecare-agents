@@ -237,6 +237,7 @@ func corpusOutputs(t *testing.T, url string, provider *echo) {
 	if len(files) == 0 {
 		t.Fatal("no corpus output: the corpus did not bite")
 	}
+	t.Logf("%d real tool outputs", len(files))
 	for _, f := range files {
 		raw, err := os.ReadFile(f) //nolint:gosec // the corpus's own files, from a glob of testdata
 		if err != nil {
@@ -262,6 +263,7 @@ func corpusMessages(t *testing.T, url string, provider *echo) {
 	if len(files) == 0 {
 		t.Fatal("no corpus message: the corpus did not bite")
 	}
+	t.Logf("%d real messages", len(files))
 	for _, f := range files {
 		raw, err := os.ReadFile(f) //nolint:gosec // the corpus's own files, from a glob of testdata
 		if err != nil {
@@ -279,6 +281,7 @@ func corpusMessages(t *testing.T, url string, provider *echo) {
 }
 
 func corpusSamples(t *testing.T, url string, provider *echo) {
+	t.Logf("%d samples, each in a message and in a tool output", len(mustMask()))
 	for _, s := range mustMask() {
 		for _, where := range []string{cMessage, "tool output"} {
 			text := "before " + s.value + " after"
@@ -308,6 +311,7 @@ func corpusSamples(t *testing.T, url string, provider *echo) {
 }
 
 func corpusMustStay(t *testing.T, url string, provider *echo) {
+	t.Logf("%d machine values", len(mustStay()))
 	for _, text := range mustStay() {
 		if code, err := call(url, toolMessages("execute_query", "{}", text)); err != nil || code != http.StatusOK {
 			t.Errorf("%q: HTTP %d, %v", shape(text), code, err)
