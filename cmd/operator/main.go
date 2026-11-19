@@ -259,12 +259,6 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		return nil, err
 	}
 	queue := runs.NewQueue(runs.DefaultCapacity)
-	if err := (&investigation.Reconciler{
-		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("takecare-operator"),
-		Queue: queue, Phases: phases,
-	}).SetupWithManager(mgr); err != nil {
-		return nil, fmt.Errorf("set up the investigation controller: %w", err)
-	}
 	// The retention of ended investigations, on the leader (spec 02).
 	if err := mgr.Add(&investigation.Sweeper{
 		Client: mgr.GetClient(), Namespace: cfg.operatorNamespace, Retention: cfg.investigationRetention,
@@ -293,7 +287,7 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		}
 		return usage.Prometheus{HTTP: promClient, URL: p.Spec.Observability.Metrics.PrometheusURL}
 	}
-	if err := mgr.Add(&investigation.Worker{
+	worker := &investigation.Worker{
 		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("takecare-operator"), Queue: queue,
 		Executor:   &runs.Executor{Engine: &kagent0103.Runs{HTTP: a2aClient}, Role: "doc", Metrics: runMetrics},
 		Tracer:     traces.Tracer("github.com/agaetis-it/takecare-agents/internal/controller/investigation"),
@@ -302,8 +296,17 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 			Usage: usageSource, ScrapeWait: cfg.usageScrapeWait,
 			Poster: &mcp.Client{HTTP: mcpClient}, Duration: duration,
 		},
-	}); err != nil {
+	}
+	if err := mgr.Add(worker); err != nil {
 		return nil, fmt.Errorf("add the investigation worker: %w", err)
+	}
+	// The intake's admission, and the backstop that ends a Running record
+	// the worker does not hold past its bound.
+	if err := (&investigation.Reconciler{
+		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("takecare-operator"),
+		Queue: queue, Phases: phases, Runs: worker, ScrapeWait: cfg.usageScrapeWait,
+	}).SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("set up the investigation controller: %w", err)
 	}
 	// The Doc's rendering: its routes on the gateway, its agent in the
 	// engine, and its agent card probed through the gateway.

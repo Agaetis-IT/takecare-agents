@@ -38,6 +38,16 @@ const (
 	ConditionReachable       = "Reachable"
 	ConditionToolsDiscovered = "ToolsDiscovered"
 	ConditionSceneryReady    = "SceneryReady"
+	// ConditionUsageAttributed (a run's record) says whether its usage
+	// could be measured: False with ReasonNotMeasured and why, never a
+	// wrong number (spec 02 §5, spec 06).
+	ConditionUsageAttributed = "UsageAttributed"
+)
+
+// Usage condition reasons of a run's record (spec 02 §5).
+const (
+	ReasonMeasured    = "Measured"
+	ReasonNotMeasured = "NotMeasured"
 )
 
 // Condition reasons shared by the roles, set from step 2's foundations on.
@@ -225,7 +235,8 @@ type RunStatus struct {
 	// +optional
 	Phase RunPhase `json:"phase,omitempty"`
 
-	// Why the run is in its phase, for Failed and Dropped.
+	// Why the run is in its phase: for Failed, TimedOut and Dropped, why it
+	// ended; for Queued, why it waits (DocNotRunnable, WaitingForSlot).
 	// +optional
 	Reason string `json:"reason,omitempty"`
 

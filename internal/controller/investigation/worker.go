@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/attribute"
@@ -217,17 +218,83 @@ func (w *Worker) admit(ctx context.Context, key types.NamespacedName) (types.Nam
 		return none, true
 	}
 	if d == nil {
-		w.fail(ctx, &inv, nil, v1alpha1.PhaseFailed, ReasonDocMissing, "the Doc "+inv.Spec.RoleRef.Name+" no longer exists", "")
+		w.fail(ctx, &inv, nil, v1alpha1.PhaseFailed, ReasonDocMissing, "the Doc "+inv.Spec.RoleRef.Name+" no longer exists", "", usageUnknown(usageNeverReachedEngine))
 		return none, false
 	}
 	docKey := client.ObjectKeyFromObject(d)
-	if !runnable(d) || w.inFlight(docKey) >= maxConcurrent(d) {
+	if n := w.inFlight(docKey); !runnable(d) || n >= maxConcurrent(d) {
 		w.Queue.Add(key, inv.CreationTimestamp.Time)
 		w.docOf[key] = docKey
+		w.waiting(ctx, &inv, waitingReason(d, n))
 		return docKey, true
 	}
 	w.startRun(ctx, run{key: key, docKey: docKey})
 	return none, false
+}
+
+// maxReason bounds a record's reason, as the surveys' (a Doc's condition
+// message, quoted in a waiting reason, may be long).
+const maxReason = 256
+
+// Why a Queued record waits (spec 02 §2), in status.reason.
+const (
+	ReasonDocNotRunnable = "DocNotRunnable"
+	ReasonWaitingForSlot = "WaitingForSlot"
+)
+
+// waitingReason says why a record of d waits, its Doc's own words quoted,
+// never the alert's.
+func waitingReason(d *v1alpha1.TakeCareDoc, running int) string {
+	var why string
+	ready := meta.FindStatusCondition(d.Status.Conditions, v1alpha1.ConditionReady)
+	engineReady := meta.FindStatusCondition(d.Status.Conditions, v1alpha1.ConditionEngineReady)
+	switch {
+	case d.Spec.Suspend:
+		why = fmt.Sprintf("%s: the Doc %s is suspended", ReasonDocNotRunnable, d.Name)
+	case ready == nil || ready.Status != metav1.ConditionTrue:
+		why = fmt.Sprintf("%s: the Doc %s is not Ready (%s)", ReasonDocNotRunnable, d.Name, conditionWords(ready))
+	case engineReady == nil || engineReady.Status != metav1.ConditionTrue:
+		why = fmt.Sprintf("%s: the Doc %s's agent does not answer (EngineReady %s)", ReasonDocNotRunnable, d.Name, conditionWords(engineReady))
+	default:
+		why = fmt.Sprintf("%s: the Doc %s runs %d investigation(s), its maxConcurrent", ReasonWaitingForSlot, d.Name, running)
+	}
+	return cut(why, maxReason)
+}
+
+func conditionWords(c *metav1.Condition) string {
+	if c == nil {
+		return "no condition yet"
+	}
+	if c.Message == "" {
+		return c.Reason
+	}
+	return c.Reason + ": " + c.Message
+}
+
+// cut bounds s to n bytes without splitting a character.
+func cut(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
+}
+
+// waiting writes why a Queued record waits, only when it changed: the gate
+// retries every GateRetry. markRunning clears it, an end replaces it.
+func (w *Worker) waiting(ctx context.Context, inv *v1alpha1.TakeCareInvestigation, why string) {
+	if inv.Status.Reason == why {
+		return
+	}
+	if _, err := w.patch(ctx, client.ObjectKeyFromObject(inv), func(i *v1alpha1.TakeCareInvestigation) {
+		if i.Status.Phase == v1alpha1.PhaseQueued {
+			i.Status.Reason = why
+		}
+	}); err != nil {
+		log.FromContext(ctx).Error(err, "record why the investigation waits", "investigation", inv.Name)
+	}
 }
 
 // runnable: the Doc handles nothing while suspended, and runs nothing while
@@ -256,6 +323,15 @@ func (w *Worker) inFlight(docKey types.NamespacedName) int {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.running[docKey]
+}
+
+// Holds says whether this worker is running the record: the reconciler's
+// backstop ends only a Running record nobody holds.
+func (w *Worker) Holds(key types.NamespacedName) bool {
+	if w == nil {
+		return false
+	}
+	return w.recordInFlight(key)
 }
 
 func (w *Worker) recordInFlight(key types.NamespacedName) bool {
@@ -305,6 +381,13 @@ func (w *Worker) resume(ctx context.Context) error {
 		if inv.Spec.RoleRef.Kind != v1alpha1.KindTakeCareDoc {
 			continue
 		}
+		if endedUnaccounted(inv) {
+			// The previous leader stopped between the end and the usage:
+			// its start snapshot is gone, the usage is said unknown.
+			if _, err := w.patch(ctx, client.ObjectKeyFromObject(inv), usageUnknown(usageRestartedBeforeRead)); err != nil {
+				log.FromContext(ctx).Error(err, "record the unknown usage", "investigation", inv.Name)
+			}
+		}
 		if inv.Status.Phase == v1alpha1.PhaseCompleted && inv.Status.Published == nil {
 			w.wg.Go(func() { w.republish(ctx, inv) })
 			continue
@@ -319,6 +402,15 @@ func (w *Worker) resume(ctx context.Context) error {
 		})
 	}
 	return nil
+}
+
+// endedUnaccounted: a run's end without the usage condition.
+func endedUnaccounted(inv *v1alpha1.TakeCareInvestigation) bool {
+	switch inv.Status.Phase {
+	case v1alpha1.PhaseCompleted, v1alpha1.PhaseFailed, v1alpha1.PhaseTimedOut:
+		return meta.FindStatusCondition(inv.Status.Conditions, ConditionUsageAttributed) == nil
+	}
+	return false
 }
 
 // republish publishes a record a previous leader completed and did not
@@ -360,7 +452,7 @@ func (w *Worker) drive(ctx context.Context, r run) error {
 		return requeue(err)
 	}
 	if d == nil {
-		w.fail(ctx, &inv, nil, v1alpha1.PhaseFailed, ReasonDocMissing, "the Doc "+inv.Spec.RoleRef.Name+" no longer exists", "")
+		w.fail(ctx, &inv, nil, v1alpha1.PhaseFailed, ReasonDocMissing, "the Doc "+inv.Spec.RoleRef.Name+" no longer exists", "", usageUnknown(usageNeverReachedEngine))
 		return nil
 	}
 	gatewayURL, err := w.gatewayURL(ctx)
@@ -421,7 +513,7 @@ func (w *Worker) drive(ctx context.Context, r run) error {
 		if ctx.Err() != nil {
 			return nil // the next leader resumes the run
 		}
-		w.fail(ctx, &inv, span, v1alpha1.PhaseFailed, ReasonStartFailed, err.Error(), "")
+		w.fail(ctx, &inv, span, v1alpha1.PhaseFailed, ReasonStartFailed, err.Error(), "", usageUnknown(usageNeverReachedEngine))
 		return nil
 	}
 	ended := w.finish(ctx, &inv, d, span, out)
@@ -532,7 +624,8 @@ func (w *Worker) finish(ctx context.Context, inv *v1alpha1.TakeCareInvestigation
 // fail ends the record in phase, with a reason opened by its token, and a
 // warning event: a failed run publishes nothing (spec 02 §4). It returns
 // the record as written, nil when it could not be written.
-func (w *Worker) fail(ctx context.Context, inv *v1alpha1.TakeCareInvestigation, span trace.Span, phase v1alpha1.RunPhase, token, detail, text string) *v1alpha1.TakeCareInvestigation {
+// also changes the same patch: the ends that never measure the usage say so.
+func (w *Worker) fail(ctx context.Context, inv *v1alpha1.TakeCareInvestigation, span trace.Span, phase v1alpha1.RunPhase, token, detail, text string, also ...func(*v1alpha1.TakeCareInvestigation)) *v1alpha1.TakeCareInvestigation {
 	reason := detail
 	if !strings.HasPrefix(reason, token) {
 		reason = token + ": " + detail
@@ -544,6 +637,9 @@ func (w *Worker) fail(ctx context.Context, inv *v1alpha1.TakeCareInvestigation, 
 		i.Status.CompletedAt = &now
 		if text != "" {
 			i.Status.Diagnosis = text
+		}
+		for _, change := range also {
+			change(i)
 		}
 	})
 	if err != nil {

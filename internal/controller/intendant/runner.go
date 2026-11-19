@@ -497,8 +497,8 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 		}
 	}
 	provider, model := modelOf(p, &in)
-	var passUsage *v1alpha1.Usage
-	res, passUsage, err = w.pass(ctx, s, passRecord{
+	var pu passUsage
+	res, pu, err = w.pass(ctx, s, passRecord{
 		in: &in, gateway: p.Status.GatewayURL, provider: provider, model: model, platform: p,
 		entries: idx.entries, rev: idx.revision, started: s.Status.StartedAt.Time,
 	}, res)
@@ -534,7 +534,8 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 		ls.End(trace.WithTimestamp(end))
 	}
 	out = outcome(res, idx.revision, blind)
-	out.ProposalsConfigMap, out.Usage, out.Inventory = name, passUsage, inventory(items)
+	out.ProposalsConfigMap, out.Usage, out.Inventory = name, pu.usage, inventory(items)
+	pu.say(&out.Conditions, s.Generation)
 	return out, res, nil
 }
 
