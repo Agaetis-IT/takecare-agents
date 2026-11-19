@@ -284,6 +284,18 @@ func TestGuardCorpus(t *testing.T) {
 		}
 	})
 
+	t.Run("machine values stay unchanged, in a tool output", func(t *testing.T) {
+		for _, text := range mustStay() {
+			if code, err := call(url, toolMessages("execute_query", "{}", text)); err != nil || code != http.StatusOK {
+				t.Errorf("%q: HTTP %d, %v", shape(text), code, err)
+				continue
+			}
+			if got := provider.lastContent(t); got != text {
+				t.Errorf("changed %s", firstDiff(text, got))
+			}
+		}
+	})
+
 	t.Run("a key cut before its END line is refused", func(t *testing.T) {
 		code, err := call(url, toolMessages("pods_log", "{}", "log: "+keyBegin()+"\nMIIEpAIBAAKCAQEAcut"))
 		if err != nil || code != standaloneRejectStatus {
@@ -298,6 +310,32 @@ func TestGuardCorpus(t *testing.T) {
 type sample struct {
 	name, value, token, keep string
 	secret                   bool
+}
+
+// mustStay are machine values in the shapes tools print them, with
+// made-up digits, chosen to sit where a content pattern could take them: a
+// real capture holds whichever values the demo printed that day, so these
+// make the corpus catch a pattern that takes them every time (ADR 0020).
+func mustStay() []string {
+	return []string{
+		// An alert's activeAt with its nanosecond fraction (get_alerts).
+		`{"alerts":[{"ActiveAt":"2026-11-18 20:31:07.123456789 +0000 UTC","State":"firing"}]}`,
+		// Fifteen decimals of a metric value, alone, in a sample pair, with
+		// an exponent, after a time.
+		"0.185057512345642",
+		"rate 0.285127512345642",
+		"1731923171.123 0.185057512345642",
+		"1.285127512345642e+02",
+		"elapsed 10:54:36.185057512345642",
+		`{"metric":{"pod":"billing-api-7d9f8b6c5-x2k4q"},"value":[1731923171.123,"0.212345678901234"]}`,
+		// Nine-digit runs: a resourceVersion, a size, a counter.
+		`resourceVersion: "123456789"`,
+		"container_memory_working_set_bytes 268435456",
+		// Dates, ids and Unix times.
+		"created 2026-11-05 at 2026-11-18T09:26:11Z incident INC-2024-0312",
+		"ts 1731923171123 1731923171123456 1731923171123456789",
+		"2026-11-18 14:48:56 +0100",
+	}
 }
 
 // keyBegin assembles a private key's first line, so that no secret

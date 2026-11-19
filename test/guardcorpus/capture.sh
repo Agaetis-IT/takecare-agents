@@ -78,6 +78,10 @@ for _ in $(seq 60); do
 done
 capture prometheus execute_query '{"query":"sum by (pod) (rate(http_requests_total{namespace=\"demo-apps\"}[5m]))"}'
 capture prometheus execute_query '{"query":"up"}'
+# Long floats over several series (rates, ratios): fifteen decimals is
+# what Prometheus prints, and a pattern must leave them alone.
+capture prometheus execute_query '{"query":"rate(http_requests_total{namespace=\"demo-apps\"}[5m])"}'
+capture prometheus execute_query '{"query":"sum by (pod) (rate(container_cpu_usage_seconds_total[5m])) / on() group_left() sum(rate(container_cpu_usage_seconds_total[5m]))"}'
 capture kubernetes resources_list '{"apiVersion":"apps/v1","kind":"Deployment","namespace":"demo-apps"}'
 capture kubernetes resources_get '{"apiVersion":"apps/v1","kind":"Deployment","namespace":"demo-apps","name":"billing-api"}'
 capture kubernetes pods_list_in_namespace '{"namespace":"demo-apps"}'
