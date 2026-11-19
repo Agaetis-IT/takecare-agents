@@ -36,11 +36,17 @@ stop_forwards() {
   for p in ${pf_pids[@]+"${pf_pids[@]}"}; do kill "$p" 2>/dev/null || true; done
 }
 trap stop_forwards EXIT
-# forward SERVICE NAMESPACE LOCAL REMOTE
+# forward SERVICE NAMESPACE LOCAL REMOTE: a port-forward, waited for on
+# its port for at most 10 s; past that, the reads through it fail and are
+# written as unreachable.
 forward() {
+  local t
   kubectl -n "$2" port-forward "svc/$1" "$3:$4" >/dev/null 2>&1 &
   pf_pids+=($!)
-  sleep 2
+  for ((t = 0; t < 20; t++)); do
+    nc -z localhost "$3" 2>/dev/null && return 0
+    sleep 0.5
+  done
 }
 
 # The run status of a record and the fields that name it, nothing else: an
@@ -99,6 +105,8 @@ done
 
 # The engine's tasks, as kagent's controller reports them over A2A: the
 # state and its time, never the history, the status message or artifacts.
+# Asked of the controller directly, off the gateway: a person's diagnostic
+# of the demo cluster, not a path of the product.
 forward kagent-controller kagent 18995 8083
 echo '[]' >"$dir/tasks.json"
 while read -r agent task; do
