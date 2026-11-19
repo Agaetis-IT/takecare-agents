@@ -1,0 +1,8 @@
+{
+ "tool": "entry",
+ "args": {
+  "key": "runbook/proxy-timeout"
+ },
+ "output": "{\"created\":\"2026-11-05\",\"description\":\"RB-014, connections reset by the database proxy.\",\"inbound\":{\"documentedBy\":[\"service/billing-api\"]},\"key\":\"runbook/proxy-timeout\",\"provenance\":\"declared\",\"status\":\"validated\"}",
+ "source": "intendant run on the demo, 2026-11-18"
+}

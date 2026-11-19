@@ -1,0 +1,10 @@
+{
+ "tool": "resources_list",
+ "args": {
+  "apiVersion": "rds.services.k8s.aws/v1alpha1",
+  "kind": "DBProxy",
+  "namespace": "ack-system"
+ },
+ "output": "NAMESPACE    APIVERSION                      KIND      NAME               AGE    LABELS\nack-system   rds.services.k8s.aws/v1alpha1   DBProxy   billing-db-proxy   103m   app.kubernetes.io/part-of=takecare-demo,takecare.agaetis.fr/demo=demo\n",
+ "source": "doc run on the demo, 2026-11-18"
+}

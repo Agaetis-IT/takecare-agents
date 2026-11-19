@@ -1,0 +1,8 @@
+{
+ "tool": "deployments_recent",
+ "args": {
+  "limit": 10
+ },
+ "output": "[{\"date\":\"2026-11-18T09:26:11Z\",\"id\":\"CI-2459\",\"title\":\"web-front v5.1.0 rolled out\"},{\"date\":\"2026-11-18T08:51:11Z\",\"id\":\"CI-2458\",\"title\":\"orders-worker-config v1.4.0 rolled out\"},{\"date\":\"2026-11-18T07:52:47Z\",\"id\":\"CI-2457\",\"title\":\"payments-api v2.4.2 rolled out\"},{\"date\":\"2026-11-18T07:41:11Z\",\"id\":\"CI-2456\",\"title\":\"order-history-config v2.0.0 rolled out\"},{\"date\":\"2026-11-18T06:41:11Z\",\"id\":\"CI-2455\",\"title\":\"notifications-api v2.0.0 rolled out\"},{\"date\":\"2026-11-18T06:01:11Z\",\"id\":\"CI-2454\",\"title\":\"infra-aws: idle timeout raised on the billing-api load balancer\"},{\"date\":\"2026-11-18T05:43:38Z\",\"id\":\"CI-2453\",\"title\":\"Helm revision of search-api\"},{\"date\":\"2026-11-18T04:13:11Z\",\"id\":\"CI-2452\",\"title\":\"Helm revision of notifications-worker\"},{\"date\":\"2026-11-18T04:01:11Z\",\"id\":\"CI-2451\",\"title\":\"billing-api v3.2.1 rolled out\"},{\"date\":\"2026-11-18T01:42:46Z\",\"id\":\"CI-2450\",\"title\":\"notifications-worker v6.3.7 rolled out\"}]",
+ "source": "doc run on the demo, 2026-11-18"
+}

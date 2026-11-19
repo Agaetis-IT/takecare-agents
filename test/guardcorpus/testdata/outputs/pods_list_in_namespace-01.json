@@ -1,0 +1,8 @@
+{
+ "tool": "pods_list_in_namespace",
+ "args": {
+  "namespace": "demo-apps"
+ },
+ "output": "NAMESPACE   APIVERSION   KIND   NAME                          READY   STATUS    RESTARTS   AGE    IP           NODE                        NOMINATED NODE   READINESS GATES   LABELS\ndemo-apps   v1           Pod    billing-api-6c96958d7-rd745   1/1     Running   0          103m   10.42.2.21   k3d-takecare-demo-agent-0   <none>           <none>            app.kubernetes.io/part-of=takecare-demo,app=billing-api,pod-template-hash=6c96958d7\n",
+ "source": "doc run on the demo, 2026-11-18"
+}

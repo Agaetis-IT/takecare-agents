@@ -1,0 +1,6 @@
+{
+ "tool": "runbooks_recent",
+ "args": {},
+ "output": "[{\"id\":\"RB-001\",\"title\":\"Node in NotReady\"},{\"id\":\"RB-002\",\"title\":\"TLS certificate close to expiry\"},{\"id\":\"RB-003\",\"title\":\"Rotation of the mesh TLS certificates\"},{\"id\":\"RB-004\",\"title\":\"Message queue lagging\"},{\"id\":\"RB-005\",\"title\":\"Critical disk space on a node\"},{\"id\":\"RB-006\",\"title\":\"Database restore\"},{\"id\":\"RB-007\",\"title\":\"Memory growth of an application container\"},{\"id\":\"RB-008\",\"title\":\"Manual failover of a replicated database\"},{\"id\":\"RB-009\",\"title\":\"Abnormal traffic from an address range\"},{\"id\":\"RB-010\",\"title\":\"Rollout blocked mid-way\"}]",
+ "source": "intendant run on the demo, 2026-11-18"
+}

@@ -1,0 +1,6 @@
+{
+  "tool": "get_alerts",
+  "args": {},
+  "output": "Active Alerts:\n{Alerts:[{ActiveAt:2026-11-19 08:20:03.166266994 +0000 UTC Annotations:{description=\"P99 latency of billing-api has been 2.04s for 5 minutes.\", summary=\"P99 latency above 2s on billing-api\"} Labels:{alertname=\"HighLatencyP99\", app=\"billing-api\", app_kubernetes_io_part_of=\"takecare-demo\", instance=\"10.42.0.21:8080\", job=\"kubernetes-pods\", namespace=\"demo-apps\", node=\"k3d-takecare-demo-server-0\", pod=\"billing-api-5df7d8cdc-z9bwc\", pod_template_hash=\"5df7d8cdc\", quantile=\"0.99\", service=\"billing-api\", severity=\"warning\"} State:pending Value:2.0363e+00} {ActiveAt:2026-11-19 08:20:03.166266994 +0000 UTC Annotations:{description=\"2.275% of billing-api requests have answered 504 for 30 seconds.\", summary=\"High error rate on billing-api\"} Labels:{alertname=\"HighErrorRate\", namespace=\"demo-apps\", service=\"billing-api\", severity=\"critical\"} State:pending Value:2.275132275132275e-02}]}",
+  "source": "capture.sh on the e2e demo, 2026-11-19"
+}

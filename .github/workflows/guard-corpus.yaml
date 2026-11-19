@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 Agaetis
+# SPDX-License-Identifier: Apache-2.0
+
+# The guard corpus (ADR 0020): the Ranger's rendered guards, run by the
+# pinned agentgateway's own engine (the chart's image, by its registry and
+# tag from hack/versions.env), on the corpus of real tool outputs and
+# messages, which must come back unchanged, and on made-up samples, which
+# must come back masked whole. On pull requests that touch the patterns,
+# the Ranger's rendering, the corpus or the pins, and on every push to main.
+name: guard-corpus
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - internal/ranger/**
+      - internal/controller/ranger/**
+      - test/guardcorpus/**
+      - hack/versions.env
+      - .github/workflows/guard-corpus.yaml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: guard-corpus-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  corpus:
+    name: guard corpus (the patterns through the pinned gateway)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # The gateway's image, saved and restored when the pins are the same,
+      # as the other third-party downloads are (spec 04).
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: image
+        with:
+          path: /tmp/agentgateway.tar
+          key: agentgateway-image-${{ hashFiles('hack/versions.env') }}
+      - name: pull the pinned gateway image (retried)
+        run: |
+          set -euo pipefail
+          source hack/versions.env
+          image="cr.agentgateway.dev/agentgateway:${AGENTGATEWAY_VERSION}"
+          if [[ -f /tmp/agentgateway.tar ]]; then
+            docker load -i /tmp/agentgateway.tar
+          else
+            for i in 1 2 3; do docker pull "$image" && break; [[ $i == 3 ]] && exit 1; sleep $((i * 10)); done
+            docker save -o /tmp/agentgateway.tar "$image"
+          fi
+      - name: make guard-corpus
+        run: make guard-corpus

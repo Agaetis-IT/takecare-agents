@@ -1,0 +1,8 @@
+{
+ "tool": "runbooks_search",
+ "args": {
+  "query": "billing-api"
+ },
+ "output": "[{\"id\":\"RB-014\",\"title\":\"Connection pool exhaustion - idle timeout mismatch on the network path\"}]",
+ "source": "doc run on the demo, 2026-11-18"
+}
