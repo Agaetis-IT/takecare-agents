@@ -124,15 +124,23 @@ func gateway(t *testing.T, provider int) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The image runs as a user of its own (65532): on Linux it reads the
+	// mounted config only if the directory and the file are readable by
+	// all. The config holds no secret (the provider's key is "corpus").
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), raw, 0o600); err != nil {
+	if err := os.Chmod(dir, 0o755); err != nil { //nolint:gosec // read by the container's user, no secret
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), raw, 0o644); err != nil { //nolint:gosec // as above
 		t.Fatal(err)
 	}
 	port := freePort(t)
 	image := "cr.agentgateway.dev/agentgateway:" + gatewayVersion(t)
 	name := fmt.Sprintf("takecare-guard-corpus-%d", port)
 	// The test's own container: its pinned image and a temporary config.
-	run := exec.Command("docker", "run", "-d", "--rm", "--name", name, "--add-host", "host.docker.internal:host-gateway", //nolint:gosec // see above
+	// Not --rm: a gateway that exits keeps its log for the failure below;
+	// the cleanup removes it.
+	run := exec.Command("docker", "run", "-d", "--name", name, "--add-host", "host.docker.internal:host-gateway", //nolint:gosec // see above
 		"-p", fmt.Sprintf("127.0.0.1:%d:4000", port), "-v", dir+":/corpus:ro", image, "-f", "/corpus/config.yaml")
 	if out, err := run.CombinedOutput(); err != nil {
 		t.Fatalf("docker run %s: %v\n%s", image, err, out)
