@@ -190,7 +190,7 @@ func (f *fixture) startManager(t *testing.T) {
 	}
 	if f.runner {
 		queue := runs.NewQueue(16)
-		if err := (&SurveyQueuer{Client: mgr.GetClient(), Queue: queue}).SetupWithManager(mgr); err != nil {
+		if err := (&SurveyQueuer{Client: mgr.GetClient(), Reader: scopedReader{mgr.GetAPIReader()}, Queue: queue, Recorder: mgr.GetEventRecorder("test")}).SetupWithManager(mgr); err != nil {
 			t.Fatal(err)
 		}
 		if err := mgr.Add(&Runner{
