@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -22,6 +23,10 @@ import (
 // mapTools are the map connector's tools the survey reads the Map with:
 // map_at alone, the list and each entry at one revision.
 var mapTools = []string{mcp.MapListTool}
+
+// ReasonContentToolUnknown says that spec.contentTools lists a content tool
+// no bound connector offers (the Doc's reason, spec 02).
+const ReasonContentToolUnknown = "ContentToolUnknown"
 
 // binding is what the Intendant's connectors give: the routes to render,
 // and what is missing.
@@ -40,6 +45,11 @@ type binding struct {
 	// rules is, per metrics connector, whether its route admits get_rules
 	// and why not (rulesRouteState).
 	rules map[string]rulesRoute
+	// content are the content tools the connectors given to the agent
+	// expose; contentUnknown is set when a cluster or knowledge connector
+	// could not be read, so that its tools cannot be known.
+	content        map[string]bool
+	contentUnknown bool
 }
 
 // agentTools is a connector given to the agent and its tools.
@@ -61,6 +71,14 @@ func route(name string, operator, agent []string) routes.MCP {
 // and the content tools the Intendant lists.
 func (b *binding) giveAgent(in *v1alpha1.TakeCareIntendant, conn *v1alpha1.TakeCareConnector, typ v1alpha1.ConnectorType) []string {
 	read, _ := roleagent.Tools(conn, in.Spec.ContentTools)
+	for _, t := range conn.Status.Tools {
+		if t.Class == v1alpha1.ToolRead && t.Content {
+			if b.content == nil {
+				b.content = map[string]bool{}
+			}
+			b.content[t.Name] = true
+		}
+	}
 	if len(read) > 0 {
 		b.agent = append(b.agent, agentTools{name: conn.Name, typ: typ, tools: read})
 	}
@@ -98,6 +116,7 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 		}
 		if problem != "" {
 			b.problems = append(b.problems, problem)
+			b.contentUnknown = true
 			continue
 		}
 		b.routes = append(b.routes, route(name, tools, b.giveAgent(in, conn, v1alpha1.ConnectorCluster)))
@@ -117,6 +136,7 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 		}
 		if problem != "" {
 			b.problems = append(b.problems, problem)
+			b.contentUnknown = b.contentUnknown || conn == nil
 			continue
 		}
 		b.routes = append(b.routes, route(name, nil, b.agent[len(b.agent)-1].tools))
@@ -157,15 +177,42 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 			b.problems = append(b.problems, state.problem)
 		}
 	}
+	unknown := r.contentToolsUnknown(in, b)
 	switch {
 	case b.mapProblem != "":
-		st.set(v1alpha1.ConditionConnectorsReady, false, ReasonMapMissing, strings.Join(append([]string{b.mapProblem}, b.problems...), "; "))
+		st.set(v1alpha1.ConditionConnectorsReady, false, ReasonMapMissing, strings.Join(append(append([]string{b.mapProblem}, b.problems...), unknown...), "; "))
 	case len(b.problems) > 0:
-		st.set(v1alpha1.ConditionConnectorsReady, false, ReasonConnectorDegrade, strings.Join(b.problems, "; "))
+		st.set(v1alpha1.ConditionConnectorsReady, false, ReasonConnectorDegrade, strings.Join(append(b.problems, unknown...), "; "))
 	default:
-		st.set(v1alpha1.ConditionConnectorsReady, true, ReasonConnectorsReady, "the map, cluster, metrics and knowledge connectors given are ready")
+		st.set(v1alpha1.ConditionConnectorsReady, true, ReasonConnectorsReady, strings.Join(append([]string{"the map, cluster, metrics and knowledge connectors given are ready"}, unknown...), "; "))
 	}
 	return b, nil
+}
+
+// contentToolsUnknown names the content tools spec.contentTools lists that
+// no connector given to the agent exposes (the Doc's rule, spec 02), as a
+// phrase for ConnectorsReady, and says it in a warning when the phrase is
+// not in the condition already: once per change of the set, a restart
+// included, never at every reconcile. Nothing is said while a connector
+// that could expose one cannot be read.
+func (r *Reconciler) contentToolsUnknown(in *v1alpha1.TakeCareIntendant, b binding) []string {
+	if b.contentUnknown {
+		return nil
+	}
+	var names []string
+	for _, name := range in.Spec.ContentTools {
+		if !b.content[name] {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	phrase := "spec.contentTools lists " + strings.Join(names, ", ") + ", which no bound connector exposes as a content tool"
+	if prev := meta.FindStatusCondition(in.Status.Conditions, v1alpha1.ConditionConnectorsReady); r.Recorder != nil && (prev == nil || !strings.Contains(prev.Message, phrase)) {
+		r.Recorder.Eventf(in, nil, corev1.EventTypeWarning, ReasonContentToolUnknown, "Reconcile", "%s", phrase)
+	}
+	return []string{phrase}
 }
 
 // toolFilter says whether a discovered tool may be routed.
