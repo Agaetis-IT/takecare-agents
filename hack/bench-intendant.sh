@@ -17,7 +17,10 @@
 #
 # Writes intendant-report-<date>.json to BENCH_DIR (default test/bench;
 # keys, counts and metrics, never an entry or its evidence) and prints the
-# table. BENCH_MIN=<k> exits 1 below k runs scored ok.
+# table. BENCH_MIN=<k> exits 1 below k runs scored ok. A wait longer than
+# BENCH_SETTLE_SECONDS (default 900) stops the bench after hack/dump.sh
+# has saved the cluster's state; the dump's directory is printed and named
+# in the report.
 # Usage: hack/bench-intendant.sh [N]   (default 5)
 set -euo pipefail
 
@@ -33,13 +36,32 @@ MAP_FILE=map__service__billing-api.yaml
 MAP_LINE='  documentedBy: [runbook/proxy-timeout]'
 EXPECTED=test/bench/intendant/expected.yaml
 ENDED='^(Completed|Failed|Dropped)$'
+SETTLE="${BENCH_SETTLE_SECONDS:-900}"
+[[ "$SETTLE" =~ ^[0-9]+$ ]] || { echo "BENCH_SETTLE_SECONDS must be a number of seconds" >&2; exit 1; }
 export KUBECONFIG="${PWD}/bin/takecare-demo.kubeconfig"
 
 log() { printf '\033[1;34m==>\033[0m %s %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
-die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+# die stops the bench; once the cluster is in use, it first dumps its
+# state (hack/dump.sh), before the Map is restored.
+dump_armed=false
+report=""
+die() {
+  printf '\033[1;31merror:\033[0m %s\n' "$*" >&2
+  if $dump_armed; then
+    local d
+    if d="$(hack/dump.sh "bench-intendant: $*" | tail -1)"; then
+      log "dump: ${d}"
+      [[ -n "$report" && -f "$report" ]] && jq --arg d "$d" '.dump = $d' "$report" >"$report.tmp" && mv "$report.tmp" "$report"
+    else
+      log "the dump failed"
+    fi
+  fi
+  exit 1
+}
 
 [[ -f "$KUBECONFIG" ]] || die "no demo: make demo-up first"
 WORK="$(mktemp -d)"
+dump_armed=true
 map_set=false
 
 # restore puts the demo Map back as it was, on every exit.
@@ -58,8 +80,8 @@ trap 'exit 130' INT TERM
 
 # idle SECONDS: no survey of the Intendant is queued or running.
 idle() {
-  local busy
-  for _ in $(seq $(($1 / 5))); do
+  local busy t
+  for ((t = 0; t < $1; t += 5)); do
     busy="$(kubectl -n "$NS" get takecaresurveys -o jsonpath='{range .items[*]}{.status.phase}{"\n"}{end}' | grep -cE '^(Queued|Running)?$' || true)"
     [[ "$busy" == 0 ]] && return 0
     sleep 5
@@ -75,7 +97,7 @@ intendant_status() {
   die "the demo Intendant is not Ready: make demo-up first"
 go build -o "$WORK/score" ./test/bench/intendant
 log "waiting for the Intendant's surveys to end"
-idle 900 || die "a survey of the Intendant did not end in 15 minutes"
+idle "$SETTLE" || die "a survey of the Intendant did not end in ${SETTLE} s"
 
 # The bench's Map, from the demo Map as served.
 kubectl -n "$NS" get configmap "$MAP_CM" -o json |
@@ -99,7 +121,8 @@ done
 [[ "$(intendant_status '{.status.lastMapRevision}')" != "$revision" ]] || die "the Map's new revision did not reach the Intendant in 12 minutes"
 log "the revision's own survey, not scored"
 sleep 5
-idle 900 || die "the revision's survey did not end in 15 minutes"
+idle "$SETTLE" || die "the revision's survey did not end in ${SETTLE} s"
+guards_before="$(hack/guardrail-counts.sh)" || die "the gateway's guardrail counters cannot be read"
 
 stamp="$(date -u +%s)"
 : >"$WORK/runs.jsonl"
@@ -113,12 +136,12 @@ spec:
   intendantRef: {kind: TakeCareIntendant, name: ${INTENDANT}}
 EOF
   phase=""
-  for _ in $(seq 180); do
+  for ((t = 0; t < SETTLE; t += 5)); do
     phase="$(kubectl -n "$NS" get takecaresurvey "$name" -o jsonpath='{.status.phase}')"
     [[ "$phase" =~ $ENDED ]] && break
     sleep 5
   done
-  [[ "$phase" =~ $ENDED ]] || die "survey ${name} did not end in 15 minutes"
+  [[ "$phase" =~ $ENDED ]] || die "survey ${name} did not end in ${SETTLE} s"
   kubectl -n "$NS" get takecaresurvey "$name" -o json >"$WORK/survey.json"
   cm="$(jq -r '.status.proposalsConfigMap // ""' "$WORK/survey.json")"
   if [[ -n "$cm" ]]; then
@@ -133,10 +156,12 @@ done
 
 model="$(kubectl get takecareplatform -o json | jq -r --arg m "$(kubectl -n "$NS" get takecareintendant "$INTENDANT" -o jsonpath='{.spec.model.name}')" '
   .items[0].spec.models as $ms | ($ms | map(select(.name == $m)) | .[0]) // $ms[0] | .model')"
+guards_after="$(hack/guardrail-counts.sh)" || die "the gateway's guardrail counters cannot be read"
 mkdir -p "${BENCH_DIR:=test/bench}"
 report="${BENCH_DIR}/intendant-report-$(date -u +%Y-%m-%dT%H%MZ).json"
 jq -s --arg model "$model" --arg commit "$(git rev-parse HEAD)" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --arg scenario "$(sed -n 's/^scenario: *//p' "$EXPECTED")" '
+  --arg scenario "$(sed -n 's/^scenario: *//p' "$EXPECTED")" \
+  --argjson before "$guards_before" --argjson after "$guards_after" '
   def median: map(select(. != null)) | sort | if length == 0 then null
     elif length % 2 == 1 then .[length / 2 | floor] else (.[length / 2 - 1] + .[length / 2]) / 2 end;
   def cost: if . then (split(" ")[0] | tonumber) else null end;
@@ -147,6 +172,7 @@ jq -s --arg model "$model" --arg commit "$(git rev-parse HEAD)" --arg date "$(da
      inputTokens: map(.inputTokens) | median, outputTokens: map(.outputTokens) | median,
      cost: map(.cost | if . == "" then null else . end | cost) | median},
    dropped: (map(.dropped | to_entries[]) | group_by(.key) | map({key: .[0].key, value: map(.value) | add}) | from_entries),
+   guardrails: {before: $before, after: $after},
    runs: .}' "$WORK/runs.jsonl" >"$report"
 
 # The table, in Markdown.
@@ -156,7 +182,9 @@ jq -r '
   "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   (.runs[] | "| \(.run) | \(.phase) | \(.ok) | \(.recall) | \(.precision * 100 | round / 100) | \(.seen) / \([.dropped[]] | add // 0) | \(.matched | length) | \(.allowed | length) | \(.forbidden | join(", ")) | \(.other | join(", ")) | \(.durationSeconds // "-") | \(.modelCalls // "-") | \(.inputTokens // "-") / \(.outputTokens // "-") | \(if .cost == "" then "-" else .cost end) |"),
   "",
-  "OK: \(.ok)/\(.n) · median recall \(.median.recall) · median precision \(.median.precision) · dropped by the merge: \(.dropped | to_entries | map("\(.key) \(.value)") | join(", ") | if . == "" then "none" else . end) · median duration \(.median.durationSeconds // "-") s · median cost \(.median.cost // "-")"' "$report"
+  "OK: \(.ok)/\(.n) · median recall \(.median.recall) · median precision \(.median.precision) · dropped by the merge: \(.dropped | to_entries | map("\(.key) \(.value)") | join(", ") | if . == "" then "none" else . end) · median duration \(.median.durationSeconds // "-") s · median cost \(.median.cost // "-")",
+  "",
+  "Guardrail counters (phase/action: before → after): \([.guardrails.after[] as $a | "\($a.phase)/\($a.action) \((.guardrails.before[] | select(.phase == $a.phase and .action == $a.action) | .n) // 0) → \($a.n)"] | join(", "))"' "$report"
 log "report: ${report}"
 if [[ -n "${BENCH_MIN:-}" ]] && (( $(jq .ok "$report") < BENCH_MIN )); then
   die "$(jq .ok "$report")/${N} ok, under BENCH_MIN=${BENCH_MIN}"

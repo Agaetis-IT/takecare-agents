@@ -34,7 +34,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=48
+CHECKS_EXPECTED=49
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s %s\n' "$(date +%H:%M:%S)" "$*"; }
@@ -505,11 +505,49 @@ run() {
   tool_output_guards
   intendant
   resumed
+  # Last: the bench's cooldown patch and restore touch the demo Doc.
+  check "a bench run that does not settle stops after a dump with every file, and no content in any (spec 04)" bench_dump
   if [[ "$checks" -ne "$CHECKS_EXPECTED" || "$failed" -ne 0 ]]; then
     echo "checks: ${checks} run (expected ${CHECKS_EXPECTED}), ${failed} failed"
+    local d
+    if d="$(hack/dump.sh "e2e: ${failed} of ${checks} checks failed" | tail -1)"; then
+      echo "dump: ${d}"
+      for f in records.json roles.json tasks.json guards.json; do echo "--- ${f}"; cat "${d}/${f}"; done
+    fi
     exit 1
   fi
   echo "checks: ${checks} run, all passed"
+}
+
+# The words of the recorded Doc's answer, of its instructions and of a tool
+# output: a dump holds none of them.
+DUMP_MARKERS=("Ruled-out leads" "on-call diagnostician of a TakeCare staff" "connection reset by peer")
+
+# bench_dump: a bench whose wait runs out stops only after hack/dump.sh has
+# saved the cluster's state (spec 04): every file is there and not empty,
+# the agents' log says it is filtered, and no file holds the recorded
+# answer, a prompt, a tool output or the masked alert's card and email.
+bench_dump() {
+  local out d f m
+  if out="$(BENCH_SETTLE_SECONDS=0 BENCH_DIR="$(mktemp -d)" DUMP_DIR="$(mktemp -d)" hack/bench.sh 1 2>&1)"; then
+    echo "the bench did not stop: ${out}"
+    return 1
+  fi
+  d="$(sed -n 's/.*dump: //p' <<<"$out" | tail -1)"
+  [[ -n "$d" && -d "$d" ]] || { echo "no dump directory in: ${out}"; return 1; }
+  for f in README.txt records.json roles.json pods.txt events-takecare-system.txt events-kagent.txt \
+    events-demo-apps.txt operator.log agents.log tasks.json guards.json; do
+    [[ -s "${d}/${f}" ]] || { echo "dump ${f}: missing or empty"; return 1; }
+  done
+  head -1 "${d}/agents.log" | grep -q '^# filtered' || { echo "agents.log: no filtered header"; return 1; }
+  jq -e 'type == "array" and length > 0' "${d}/records.json" >/dev/null || { echo "records.json: no record"; return 1; }
+  jq -e 'type == "array" and length > 0' "${d}/guards.json" >/dev/null || { echo "guards.json: no counter"; return 1; }
+  for m in "${DUMP_MARKERS[@]}" "$MASKED_CARD" "$MASKED_EMAIL"; do
+    if grep -rlF -- "$m" "$d"; then
+      echo "the dump holds '${m}'"
+      return 1
+    fi
+  done
 }
 
 # record replaces the fixtures with a real model's conversation: the fake

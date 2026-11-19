@@ -77,7 +77,9 @@ Taken from the POC's `mesures.py`:
 - runs N investigations on the ongoing `proxy-timeout` incident by posting N synthetic `HighErrorRate` alerts to `/v1/alerts`, each with a distinct `bench_run=<i>` label (hence a distinct fingerprint, so the fingerprint deduplication does not apply; grouping by incident, spec 02 §1, would fold them into the ongoing incident's investigation, so the bench sets the Doc's `cooldown` to 1 s for its duration and restores it on exit, posting one alert at a time) and the label `takecare_silent="true"` (no Slack, spec 02);
 - a diagnosis is **correct** when it names the proxy (`proxy`) **and** the idle timeout (`idle`, `idleClientTimeout`, `600 s`), case-insensitive;
 - it also reports whether the memory lead is mentioned (measured, not scored), the length, the duration, the model calls, tokens and cost of each run;
-- output: a table and a JSON report (`test/bench/report-<date>.json`).
+- output: a table and a JSON report (`test/bench/report-<date>.json`), with the gateway's guardrail counters (spec 09 §5) by phase and action before and after the runs.
+
+A run that does not settle within `BENCH_SETTLE_SECONDS` (default 900) stops the bench, but first `hack/dump.sh` saves the cluster's state, before anything else runs. The same applies to the Intendant's bench, and the e2e dumps when a check fails. The dump holds the investigations' and surveys' run status, the roles' conditions, the pods and their restarts, and the events of `takecare-system`, `kagent` and `demo-apps`. It also holds the operator's log, the agents' logs through a filter, the engine's task states and the guardrail counters. Records go through an allow-list. It holds no Secret, no kubeconfig, no pod environment and no message content. It is written outside the repository (`DUMP_DIR`, or a new directory under `TMPDIR`), and its directory is printed and named in the report. The e2e forces a bench to stop and checks that the dump is complete and holds no content.
 
 Thresholds: at least 4 out of 5 correct to merge a change of prompt, engine, model default or corpus.
 
