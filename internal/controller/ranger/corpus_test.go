@@ -134,6 +134,10 @@ func gateway(t *testing.T, provider int) string {
 		t.Fatalf("docker run %s: %v\n%s", image, err, out)
 	}
 	t.Cleanup(func() { _ = exec.Command("docker", "rm", "-f", name).Run() }) //nolint:gosec // the container named above
+	// The pin is a version tag: the run's record names the image it judged
+	// the corpus with.
+	digest, _ := exec.Command("docker", "image", "inspect", "--format", "{{index .RepoDigests 0}}", image).Output() //nolint:gosec // the pinned image
+	t.Logf("the corpus runs through %s (%s)", image, strings.TrimSpace(string(digest)))
 	url := fmt.Sprintf("http://127.0.0.1:%d/v1/chat/completions", port)
 	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
