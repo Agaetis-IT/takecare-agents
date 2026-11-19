@@ -11,13 +11,13 @@
 
 The Ranger's guards run in agentgateway as prompt guards (spec 09 §4). They mask or refuse what a model call carries: the system prompt, the messages and, since 2026-11-18, what tools return. Two parts make a guard. The gateway's engine decides where it applies (`scope`), in which order, whether it masks or refuses, and what it counts. The content patterns decide what it takes: the gateway's builtins (`CreditCard`, `Email`, `PhoneNumber`, `Ssn`) and regular expressions.
 
-What was measured from 2026-11-15 to 2026-11-18, on agentgateway 1.6.0 and 1.7.0 alike:
+What was measured from 2026-11-15 to 2026-11-19, each fact with the gateway version it was seen on:
 
-- **`PhoneNumber`** took ISO dates (`2026-11-05`), the date of a timestamp, an event time and ids of the form `INC-YYYY-NNNN` for phone numbers. This happened in what tools return and in the Doc's grouped message (`fired 2026-10-16T03:00:12Z`). Masked in tool outputs, those dates and ids made the Intendant miss an existing runbook in 2 of 5 runs: its bench fell to 3/5 on 2026-11-18. The builtin also missed national numbers written without a country code.
-- **`Ssn`** took the nine-digit nanosecond fraction of an alert's `activeAt`, as the metrics connector's `get_alerts` prints it (`YYYY-MM-DD HH:MM:SS.<nanoseconds> +0000 UTC`). One recorded Doc bench run gave 12 masked requests out of 30; the incident's own run gave none.
-- **`CreditCard`** (a checksum) and **`Email`** (a strong shape) took nothing in the 31 real tool outputs of the Intendant's and the Doc's runs, replayed through the gateway.
+- **`PhoneNumber`**, on 1.6.0 and 1.7.0 alike, took ISO dates (`2026-11-05`), the date of a timestamp, an event time and ids of the form `INC-YYYY-NNNN` for phone numbers. This happened in what tools return and in the Doc's grouped message (`fired 2026-10-16T03:00:12Z`). Masked in tool outputs, those dates and ids made the Intendant miss an existing runbook in 2 of 5 runs: its bench fell to 3/5 on 2026-11-18. The builtin also missed national numbers written without a country code.
+- **`Ssn`** took the nine-digit nanosecond fraction of an alert's `activeAt`, as the metrics connector's `get_alerts` prints it (`YYYY-MM-DD HH:MM:SS.<nanoseconds> +0000 UTC`). One recorded Doc bench run on 1.6.0 gave 12 masked requests out of 30; the incident's own run gave none. A standalone probe of a line of that shape on 1.6.0 and 1.7.0 (2026-11-19) masked the fraction as `<SSN>` on both, in a tool output and in a message.
+- **`CreditCard`** (a checksum) and **`Email`** (a strong shape), on 1.6.0 and 1.7.0, took nothing in the 31 real tool outputs of the Intendant's and the Doc's runs, replayed through the gateway.
 - **The scope's default moved between versions:** 1.6 left tool outputs out of a guard without `scope`, and 1.7.0 puts them in.
-- **No telemetry shows what a mask took.** The gateway's guardrail counter says how many requests were masked, by phase and action. The traces hold what an agent sent, captured by the engine before the gateway, never what the provider received. Each finding above needed a replay of real content through a standalone gateway, or a recording behind it.
+- **No telemetry shows what a mask took** (1.6.0, with kagent 0.10.3). The gateway's guardrail counter says how many requests were masked, by phase and action. The traces hold what an agent sent, captured by the engine before the gateway, never what the provider received. Each finding above needed a replay of real content through a standalone gateway, or a recording behind it.
 
 ## Decision
 
