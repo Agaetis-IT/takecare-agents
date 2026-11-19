@@ -154,6 +154,10 @@ func TestTriggers(t *testing.T) {
 	if err := f.c.Update(context.Background(), &conn); err != nil {
 		t.Fatal(err)
 	}
+	conn.Status.ObservedGeneration = conn.Generation // settled
+	if err := f.c.Status().Update(context.Background(), &conn); err != nil {
+		t.Fatal(err)
+	}
 	if s := f.waitSurveys(t, "triggers", 3); !hasSurvey(s, v1alpha1.TriggerRegistration) {
 		t.Errorf("a connector changed: %+v", s)
 	}
@@ -214,7 +218,9 @@ func TestSuspended(t *testing.T) {
 	f.ready(t, "suspended", func(in *v1alpha1.TakeCareIntendant) { in.Spec.Suspend = true })
 	f.pending(t, "suspended", v1alpha1.TriggerMapRevision)
 	f.mapRevision(t, rev2)
-	f.wait(t, "suspended", func(in *v1alpha1.TakeCareIntendant) bool { return in.Status.LastMapRevision == rev2 })
+	f.wait(t, "suspended", func(in *v1alpha1.TakeCareIntendant) bool {
+		return in.Status.PendingTrigger == v1alpha1.TriggerMapRevision && in.Status.ObservedGeneration == in.Generation
+	})
 	f.countSurveys(t, "suspended", 0)
 
 	f.update(t, "suspended", func(in *v1alpha1.TakeCareIntendant) { in.Spec.Suspend = false })

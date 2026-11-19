@@ -335,6 +335,7 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		OperatorNamespace: cfg.operatorNamespace, EngineNamespace: cfg.engineNamespace,
 		AgentKinds: (&kagent0103.Agents{}).AgentTypes(),
 		Agents:     &kagent0103.Agents{Client: mgr.GetClient()}, Models: &kagent0103.Models{Client: mgr.GetClient()},
+		Quiet: intendant.DefaultQuiet, FirstPassWait: intendant.DefaultFirstPassWait,
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up the Intendant controller: %w", err)
 	}

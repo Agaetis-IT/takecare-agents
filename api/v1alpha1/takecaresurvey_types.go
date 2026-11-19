@@ -59,6 +59,17 @@ type TakeCareSurveySpec struct {
 	// +kubebuilder:validation:MaxLength=128
 	// +optional
 	MapRevision string `json:"mapRevision,omitempty"`
+
+	// The digest of the settled registrations the operator observed when
+	// it created the survey (spec 10 §3); empty on a survey made by hand.
+	// +kubebuilder:validation:MaxLength=64
+	// +optional
+	Registrations string `json:"registrations,omitempty"`
+
+	// Why the operator created the survey, in plain words.
+	// +kubebuilder:validation:MaxLength=256
+	// +optional
+	Reason string `json:"reason,omitempty"`
 }
 
 // SurveyLayer is what a survey found on one layer of the ground.
