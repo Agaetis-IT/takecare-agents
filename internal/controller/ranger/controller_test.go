@@ -370,9 +370,11 @@ func TestLevelsRefusalAndSuspend(t *testing.T) {
 		got := h.policies()
 		return len(got) == 0, strings.Join(got, ",")
 	})
-	if e := h.events(ReasonEnforcingChanged); len(e) != 1 {
-		t.Errorf("EnforcingChanged events %v, want one", e)
-	}
+	// Events reach the API through an asynchronous broadcaster: waited for.
+	h.eventually("one EnforcingChanged event", func() (bool, string) {
+		e := h.events(ReasonEnforcingChanged)
+		return len(e) == 1, strings.Join(e, " | ")
+	})
 }
 
 // modelRoute creates a role's route to a model, as the role controllers
@@ -447,9 +449,12 @@ func TestPerModelMarkers(t *testing.T) {
 		got := h.policies()
 		return slices.Equal(got, intendantMarkers), strings.Join(got, ",")
 	})
-	if e := h.events(ReasonModelNotAllowed); len(e) != 2 {
-		t.Errorf("ModelNotAllowed events %v, want one per refused route", e)
-	}
+	// One per refused route; the second is emitted after the reconcile's
+	// status patch, through an asynchronous broadcaster: waited for.
+	h.eventually("one ModelNotAllowed event per refused route", func() (bool, string) {
+		e := h.events(ReasonModelNotAllowed)
+		return len(e) == 2, strings.Join(e, " | ")
+	})
 
 	// A gateway budget is repeated in each capped route's cap: a route-level
 	// limit replaces the gateway's on that route (spec 09 §4).

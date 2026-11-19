@@ -5,7 +5,6 @@ package takecaredoc
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -34,14 +33,15 @@ func TestCoverage(t *testing.T) {
 		d.Spec.Connectors.Cluster = []string{k8sConnector, billingConnector}
 		d.Spec.Connectors.Metrics = nil
 	})
-	d := f.waitCondition(t, "doc", ConditionDegraded, metav1.ConditionTrue, v1alpha1.ReasonBlindSpots)
-	got := make([]string, 0, len(d.Status.BlindSpots))
-	for _, s := range d.Status.BlindSpots {
-		got = append(got, fmt.Sprintf("%s=%s", s.Entity, s.Reason))
-	}
-	if strings.Join(got, " ") != "environment/billing=ConnectorNotReady environment/payments=NoAccess" {
-		t.Errorf("blind spots = %v", got)
-	}
+	f.waitCondition(t, "doc", ConditionDegraded, metav1.ConditionTrue, v1alpha1.ReasonBlindSpots)
+	// The exact list, not Degraded alone: a first reconcile can see a
+	// connector before its status, and the connector's watch completes it.
+	var d *v1alpha1.TakeCareDoc
+	eventually(t, "the two blind spots", func() (bool, string) {
+		d = f.getDoc(t, "doc")
+		got := blindSpots(d)
+		return got == "environment/billing=ConnectorNotReady environment/payments=NoAccess", got
+	})
 	degraded := meta.FindStatusCondition(d.Status.Conditions, ConditionDegraded)
 	if !strings.Contains(degraded.Message, "no metrics connector (recommended)") || !strings.Contains(degraded.Message, "`payments` (environment/payments): no connector reads it") {
 		t.Errorf("Degraded = %s", degraded.Message)
@@ -132,10 +132,14 @@ func TestCoverageOnNamedClusters(t *testing.T) {
 		d.Spec.Connectors.Cluster = []string{"east", "west"}
 		d.Spec.Connectors.Metrics = nil
 	})
-	d := f.waitCondition(t, "doc", ConditionDegraded, metav1.ConditionTrue, v1alpha1.ReasonBlindSpots)
-	if got := blindSpots(d); got != "environment/west.shop=NoAccess" {
-		t.Errorf("blind spots = %s", got)
-	}
+	f.waitCondition(t, "doc", ConditionDegraded, metav1.ConditionTrue, v1alpha1.ReasonBlindSpots)
+	// The exact list, not Degraded alone: east may be seen before its status.
+	var d *v1alpha1.TakeCareDoc
+	eventually(t, "west's blind spot only", func() (bool, string) {
+		d = f.getDoc(t, "doc")
+		got := blindSpots(d)
+		return got == "environment/west.shop=NoAccess", got
+	})
 	if s := d.Status.BlindSpots[0].Message; s != "The namespace `west/shop` (environment/west.shop): no connector reads it." {
 		t.Errorf("message %q", s)
 	}
