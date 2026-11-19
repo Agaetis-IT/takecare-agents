@@ -73,11 +73,16 @@ type fakeRuns struct {
 	cancels int
 	// beforeDone runs once, before the first answer that ends a task.
 	beforeDone func()
+	// startErr fails every start.
+	startErr error
 }
 
 func (f *fakeRuns) Start(ctx context.Context, _ engine.Run) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.startErr != nil {
+		return "", f.startErr
+	}
 	f.starts++
 	id := fmt.Sprintf("task-%d", f.starts)
 	f.traces[id] = trace.SpanContextFromContext(ctx).TraceID().String()
@@ -130,6 +135,10 @@ type workerFixture struct {
 	start  func()
 	// accounting is given to the worker; set it before start.
 	accounting Accounting
+	// wrap, when set, wraps the worker's client (a failing write); grace is
+	// the backstop's; both before start.
+	wrap  func(client.Client) client.Client
+	grace time.Duration
 }
 
 // startWorker runs the admission controller and the worker on envtest, with
@@ -182,17 +191,24 @@ func startWorker(t *testing.T, scripts map[string][]poll) *workerFixture {
 			t.Fatal(err)
 		}
 		queue := runs.NewQueue(0)
-		if err := (&Reconciler{Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("test"), Queue: queue, Phases: f.phases}).SetupWithManager(mgr); err != nil {
-			t.Fatal(err)
+		wc := mgr.GetClient()
+		if f.wrap != nil {
+			wc = f.wrap(wc)
 		}
 		w := &Worker{
-			Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("test"), Queue: queue,
+			Client: wc, Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("test"), Queue: queue,
 			Executor:   &runs.Executor{Engine: f.engine, Role: docName, Metrics: f.runs, Interval: 5 * time.Millisecond},
 			Tracer:     tp.Tracer("test"),
 			EngineKind: engineKind, EngineNamespace: engineKind, Phases: f.phases, GateRetry: 50 * time.Millisecond,
 			Accounting: f.accounting,
 		}
 		if err := mgr.Add(w); err != nil {
+			t.Fatal(err)
+		}
+		if err := (&Reconciler{
+			Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("test"), Queue: queue, Phases: f.phases,
+			Runs: w, ScrapeWait: f.accounting.ScrapeWait, Grace: f.grace,
+		}).SetupWithManager(mgr); err != nil {
 			t.Fatal(err)
 		}
 		mctx, cancel := context.WithCancel(context.Background())

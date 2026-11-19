@@ -293,7 +293,9 @@ spec:
                 - ok
                 type: object
               reason:
-                description: Why the run is in its phase, for Failed and Dropped.
+                description: |-
+                  Why the run is in its phase: for Failed, TimedOut and Dropped, why it
+                  ended; for Queued, why it waits (DocNotRunnable, WaitingForSlot).
                 type: string
               resolvedAt:
                 format: date-time

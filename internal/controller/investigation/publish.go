@@ -30,7 +30,28 @@ import (
 // ConditionUsageAttributed says whether the record's usage could be
 // measured (spec 02 §5): False with the reason when it could not, and the
 // usage is then absent, never a wrong number.
-const ConditionUsageAttributed = "UsageAttributed"
+const ConditionUsageAttributed = v1alpha1.ConditionUsageAttributed
+
+// Why a record's usage is unknown on the ends that never measure it: every
+// ended record says it (spec 02 §5), so that a reader waiting for the usage
+// never waits for nothing.
+const (
+	usageNeverReachedEngine  = "the run never reached the engine"
+	usageRestartedBeforeRead = "the operator restarted before the usage was read"
+	usageEndNotRecorded      = "the run's end was not recorded"
+)
+
+// usageUnknown sets UsageAttributed=False/NotMeasured with why, in the
+// patch of an end that does not measure the usage.
+func usageUnknown(why string) func(*v1alpha1.TakeCareInvestigation) {
+	return func(i *v1alpha1.TakeCareInvestigation) {
+		i.Status.Usage = nil
+		meta.SetStatusCondition(&i.Status.Conditions, metav1.Condition{
+			Type: ConditionUsageAttributed, Status: metav1.ConditionFalse, Reason: v1alpha1.ReasonNotMeasured,
+			Message: why, ObservedGeneration: i.Generation,
+		})
+	}
+}
 
 // Poster calls the report connector's tool: internal/mcp in production.
 type Poster = report.Poster
@@ -138,9 +159,9 @@ func (w *Worker) account(ctx context.Context, inv *v1alpha1.TakeCareInvestigatio
 	}
 	updated, err := w.patch(ctx, client.ObjectKeyFromObject(inv), func(i *v1alpha1.TakeCareInvestigation) {
 		i.Status.Usage = rec
-		c := metav1.Condition{Type: ConditionUsageAttributed, Status: metav1.ConditionTrue, Reason: "Measured", Message: "usage from the gateway's metrics", ObservedGeneration: i.Generation}
+		c := metav1.Condition{Type: ConditionUsageAttributed, Status: metav1.ConditionTrue, Reason: v1alpha1.ReasonMeasured, Message: "usage from the gateway's metrics", ObservedGeneration: i.Generation}
 		if rec == nil {
-			c.Status, c.Reason, c.Message = metav1.ConditionFalse, "NotMeasured", reason
+			c.Status, c.Reason, c.Message = metav1.ConditionFalse, v1alpha1.ReasonNotMeasured, reason
 		} else if rec.Approximate {
 			c.Message += "; approximate: the Doc may run investigations at the same time"
 		}

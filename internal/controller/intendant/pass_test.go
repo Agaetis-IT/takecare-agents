@@ -16,6 +16,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -326,6 +327,7 @@ func TestPassResumedKeepsDeadline(t *testing.T) {
 	if got.Status.Usage != nil {
 		t.Errorf("a resumed pass recorded a usage measured from its restart: %+v", got.Status.Usage)
 	}
+	wantUsageCondition(t, got, metav1.ConditionFalse, "the operator restarted during the pass: its start was not measured")
 	if starts, cancels := f.runs.counts(); starts != 0 || len(cancels) != 1 || cancels[0] != "t-old" {
 		t.Errorf("starts %d, cancels %v: the recorded task was not the one followed", starts, cancels)
 	}
@@ -421,6 +423,28 @@ func TestPassUsage(t *testing.T) {
 	u := s.Status.Usage
 	if u == nil || u.ModelCalls != 3 || u.InputTokens != 1000 || u.OutputTokens != 50 || u.Approximate {
 		t.Fatalf("usage %+v", u)
+	}
+	wantUsageCondition(t, s, metav1.ConditionTrue, "usage from the gateway's metrics")
+}
+
+// A pass whose usage cannot be measured says why in status, not only in
+// the operator's log (spec 10 §5).
+func TestPassUsageUnknownIsSaid(t *testing.T) {
+	f := startRunner(t)
+	f.passReady(t, "unmetered")
+	f.runs.set("complete", goodAnswer, false)
+	s := f.byHand(t, "unmetered-pass", "unmetered")
+	if s.Status.Usage != nil {
+		t.Fatalf("usage %+v without a source", s.Status.Usage)
+	}
+	wantUsageCondition(t, s, metav1.ConditionFalse, "the platform declares no Prometheus (observability.metrics.prometheusURL)")
+}
+
+func wantUsageCondition(t *testing.T, s *v1alpha1.TakeCareSurvey, status metav1.ConditionStatus, message string) {
+	t.Helper()
+	c := meta.FindStatusCondition(s.Status.Conditions, v1alpha1.ConditionUsageAttributed)
+	if c == nil || c.Status != status || c.Message != message {
+		t.Errorf("UsageAttributed = %+v, want %s %q", c, status, message)
 	}
 }
 

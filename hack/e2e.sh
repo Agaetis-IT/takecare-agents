@@ -34,7 +34,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=50
+CHECKS_EXPECTED=51
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s %s\n' "$(date +%H:%M:%S)" "$*"; }
@@ -462,6 +462,10 @@ run() {
   local east_get="kubectl -n $NS get takecareinvestigations -l takecare.agaetis.fr/alert-cluster=east -o jsonpath"
   check "an alert posted with east's token routes to the Doc east, cluster east, Queued; the demo's investigation still Completed (ADR 0016 §5)" \
     bash -c "[[ \$($east_get='{range .items[*]}{.spec.alert.cluster} {.spec.roleRef.name} {.status.phase}{end}') == 'east east Queued' && \$($get='{.status.phase}') == Completed ]]"
+  # east's agent never answers in the e2e (no workload cluster model):
+  # its record waits, and says why in its own Doc's words (spec 02 §2).
+  check "east's Queued record says why it waits: DocNotRunnable, its Doc's words (spec 02 §2)" \
+    bash -c "for _ in \$(seq 24); do [[ \$($east_get='{.items[0].status.reason}') == 'DocNotRunnable: the Doc east'* ]] && exit 0; sleep 5; done; exit 1"
   check "east's alert is its own incident, not the demo's (one workload on two clusters)" \
     bash -c "[[ -n \$($east_get='{.items[0].metadata.labels.takecare\\.agaetis\\.fr/incident}') && \$($east_get='{.items[0].metadata.labels.takecare\\.agaetis\\.fr/incident}') != \$($get='{.metadata.labels.takecare\\.agaetis\\.fr/incident}') ]]"
   check "the alert resolved to its Map entry at intake: spec.alert.entity and its label (ADR 0015 §4)" \

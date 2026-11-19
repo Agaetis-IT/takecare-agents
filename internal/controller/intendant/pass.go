@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -71,23 +72,49 @@ var errStopped = errors.New("the operator stopped during the agent pass")
 // import's proposals and a line on the agent's layer saying why. Neither
 // the status, the log nor the span ever holds the model's text. Only the
 // operator stopping (errStopped) leaves the survey as it is.
-func (w *Runner) pass(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec passRecord, res discovery.Result) (discovery.Result, *v1alpha1.Usage, error) {
+// passUsage is a pass's usage, or why it is unknown (spec 10 §5): both
+// empty when no pass ran.
+type passUsage struct {
+	usage   *v1alpha1.Usage
+	unknown string
+}
+
+// say writes the pass's usage, or why it is unknown, in the survey's
+// conditions (spec 10 §5); nothing when no pass ran.
+func (u passUsage) say(conds *[]metav1.Condition, generation int64) {
+	c := metav1.Condition{Type: v1alpha1.ConditionUsageAttributed, ObservedGeneration: generation}
+	switch {
+	case u.usage != nil:
+		c.Status, c.Reason, c.Message = metav1.ConditionTrue, v1alpha1.ReasonMeasured, "usage from the gateway's metrics"
+	case u.unknown != "":
+		c.Status, c.Reason, c.Message = metav1.ConditionFalse, v1alpha1.ReasonNotMeasured, u.unknown
+	default:
+		return
+	}
+	meta.SetStatusCondition(conds, c)
+}
+
+func (w *Runner) pass(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec passRecord, res discovery.Result) (discovery.Result, passUsage, error) {
 	if w.Runs == nil || !meta.IsStatusConditionTrue(rec.in.Status.Conditions, v1alpha1.ConditionEngineReady) {
-		return surveyagent.NotRead(res, passNotReady), nil, nil
+		return surveyagent.NotRead(res, passNotReady), passUsage{}, nil
 	}
 	var m *passMeter
+	var u passUsage
 	if e := s.Status.Engine; e != nil && e.TaskID != "" {
 		// As the Doc's meter: a resumed pass lost its start snapshot with
 		// the previous leader; its usage would be the part after the restart.
-		log.FromContext(ctx).Info("the agent pass's usage is not measured", "survey", s.Name, "reason", "the operator restarted during the pass: its start was not measured")
+		u.unknown = "the operator restarted during the pass: its start was not measured"
 	} else {
-		m = w.meter(ctx, s, rec)
+		m, u.unknown = w.meter(ctx, s, rec)
 	}
 	out, err := w.passRun(ctx, s, rec, res)
 	if errors.Is(err, errStopped) {
-		return res, nil, err
+		return res, passUsage{}, err
 	}
-	return out, m.end(ctx, w.ScrapeWait), nil
+	if m != nil {
+		u.usage, u.unknown = m.end(ctx, w.ScrapeWait)
+	}
+	return out, u, nil
 }
 
 // passMeter measures a pass on the Intendant's own model route (spec 10
@@ -103,14 +130,22 @@ type passMeter struct {
 	survey      string
 }
 
-func (w *Runner) meter(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec passRecord) *passMeter {
-	if w.Usage == nil || rec.platform == nil {
-		return nil
+// meter takes the pass's start snapshot, or says why the usage will be
+// unknown.
+func (w *Runner) meter(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec passRecord) (*passMeter, string) {
+	if w.Usage == nil {
+		return nil, "the operator measures no usage"
+	}
+	if rec.platform == nil {
+		return nil, "the platform is not readable"
 	}
 	name, _, _ := roleagent.Model(rec.platform, rec.in.Spec.Model)
 	src := w.Usage(rec.platform)
-	if src == nil || name == "" {
-		return nil
+	if src == nil {
+		return nil, "the platform declares no Prometheus (observability.metrics.prometheusURL)"
+	}
+	if name == "" {
+		return nil, "the Intendant's model is not resolved"
 	}
 	m := &passMeter{source: usage.ForRoute(src, routes.ModelRoute(roleOf(rec.in), name)), survey: s.Name, approximate: w.previousUnfinished(ctx, s)}
 	for _, spec := range rec.platform.Spec.Models {
@@ -120,10 +155,9 @@ func (w *Runner) meter(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec pass
 	}
 	var err error
 	if m.start, err = m.source.Snapshot(ctx); err != nil {
-		log.FromContext(ctx).Info("the agent pass's usage is not measured", "survey", s.Name, "reason", err.Error())
-		return nil
+		return nil, "the start snapshot: " + err.Error()
 	}
-	return m
+	return m, ""
 }
 
 // previousUnfinished says whether the Intendant's last ended survey before
@@ -158,32 +192,27 @@ func (w *Runner) previousUnfinished(ctx context.Context, s *v1alpha1.TakeCareSur
 
 // end reads the counters one scrape interval after the pass, and records
 // the difference; nil when it cannot be measured.
-func (m *passMeter) end(ctx context.Context, wait time.Duration) *v1alpha1.Usage {
-	if m == nil {
-		return nil
-	}
+// end reads the counters one scrape interval after the pass, and returns
+// the usage or why it is unknown.
+func (m *passMeter) end(ctx context.Context, wait time.Duration) (*v1alpha1.Usage, string) {
 	select {
 	case <-ctx.Done():
-		return nil
+		return nil, "the operator stopped before the usage was read"
 	case <-time.After(wait):
 	}
-	logger := log.FromContext(ctx).WithValues("survey", m.survey)
 	end, err := m.source.Snapshot(ctx)
 	if err != nil {
-		logger.Info("the agent pass's usage is not measured", "reason", "the end snapshot: "+err.Error())
-		return nil
+		return nil, "the end snapshot: " + err.Error()
 	}
 	d, err := usage.Delta(m.start, end)
 	if err != nil {
-		logger.Info("the agent pass's usage is not measured", "reason", err.Error())
-		return nil
+		return nil, err.Error()
 	}
 	u, err := usage.Record(d, m.pricing, m.approximate)
 	if err != nil {
-		logger.Info("the agent pass's usage is not priced", "reason", err.Error())
-		return nil
+		return nil, "not priced: " + err.Error()
 	}
-	return &u
+	return &u, ""
 }
 
 // passRun runs the pass and joins its proposals to the import's.
