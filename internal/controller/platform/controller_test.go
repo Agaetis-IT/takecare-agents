@@ -512,6 +512,28 @@ func (h *harness) waitGaps(want ...string) {
 	})
 }
 
+// waitGapDetail waits for the one gap and for its detail to say what ok
+// accepts, and returns the detail: a gap can appear at a first reconcile
+// before a second one completes its detail (two connectors seen one after
+// the other).
+func (h *harness) waitGapDetail(gap string, ok func(string) bool) string {
+	h.t.Helper()
+	var detail string
+	h.eventually(fmt.Sprintf("production gap %s with its full detail", gap), func() bool {
+		var cur v1alpha1.TakeCarePlatform
+		if err := h.c.Get(h.ctx, client.ObjectKey{Name: PlatformName}, &cur); err != nil {
+			return false
+		}
+		g := cur.Status.ProductionGaps
+		if len(g) != 1 || g[0].ID != gap {
+			return false
+		}
+		detail = g[0].Detail
+		return ok(detail)
+	})
+	return detail
+}
+
 // ProductionReady (spec 01, AC 6 and 7): the demo-like platform lists its
 // stable gaps; fixing each one, in the cluster or in the spec, clears it
 // until the condition turns True; it never touches Ready.
@@ -701,13 +723,8 @@ func TestProductionGaps(t *testing.T) {
 		// list proves they are left out.
 		crm := ready("crm", "http://crm.example.internal:8080/mcp", creds)
 		billing := ready("billing", "http://billing.example.internal/mcp", creds)
-		h.waitGaps(GapConnectorCredentialClear)
-		var cur v1alpha1.TakeCarePlatform
-		h.must(h.c.Get(h.ctx, client.ObjectKey{Name: PlatformName}, &cur))
-		d := cur.Status.ProductionGaps[0].Detail
-		if !strings.Contains(d, "over plain http between the gateway and the MCP server: billing, crm; give mcp.url an https:// address") {
-			t.Errorf("detail = %q, want both connectors, sorted, and the fix", d)
-		}
+		want := "over plain http between the gateway and the MCP server: billing, crm; give mcp.url an https:// address"
+		d := h.waitGapDetail(GapConnectorCredentialClear, func(d string) bool { return strings.Contains(d, want) })
 		for _, leak := range []string{"Authorization", "crm-token", "vault-https", "open-http"} {
 			if strings.Contains(d, leak) {
 				t.Errorf("detail %q names %q", d, leak)
