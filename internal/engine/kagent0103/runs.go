@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
@@ -15,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 
 	"github.com/agaetis-it/takecare-agents/internal/engine"
+	"github.com/agaetis-it/takecare-agents/internal/ranger"
 )
 
 // conversationHeader carries the run's conversation ID to the engine and
@@ -137,14 +139,12 @@ func (g *Runs) Poll(ctx context.Context, r engine.Run, taskID string) (engine.Re
 // diagnosis (spike 001), which is a bug of the engine, not of the run.
 func outcome(t *a2a.Task) engine.Result {
 	answer := artifactsText(t)
-	status := ""
-	if t.Status.Message != nil {
-		status = partsText(t.Status.Message.Parts)
-	}
 	switch t.Status.State {
 	case a2a.TaskStateCompleted:
-		if answer == "" {
-			answer = status
+		// kagent puts the answer in the artifacts; a completed status
+		// carries no message (kagent-adk 0.10.3, _agent_executor.py).
+		if strings.TrimSpace(answer) == "" && t.Status.Message != nil {
+			answer = partsText(t.Status.Message.Parts)
 		}
 		if strings.TrimSpace(answer) == "" {
 			return engine.Result{Outcome: engine.OutcomeFailed, Reason: "the task completed without an answer"}
@@ -152,12 +152,65 @@ func outcome(t *a2a.Task) engine.Result {
 		return engine.Result{Outcome: engine.OutcomeCompleted, Text: answer}
 	case a2a.TaskStateFailed:
 		if strings.TrimSpace(answer) != "" {
-			return engine.Result{Outcome: engine.OutcomeFailedAfterAnswer, Text: answer, Reason: "the engine failed the task after the agent answered: " + firstLine(status)}
+			return engine.Result{Outcome: engine.OutcomeFailedAfterAnswer, Text: answer, Reason: "the engine failed the task after the agent answered" + errorDetail(t.Status.Message)}
 		}
-		return engine.Result{Outcome: engine.OutcomeFailed, Reason: "the task failed: " + firstLine(status)}
+		return engine.Result{Outcome: engine.OutcomeFailed, Reason: "the task failed" + errorDetail(t.Status.Message)}
+	case a2a.TaskStateInputRequired:
+		// The status message is the agent's question and its tool call's
+		// arguments: its text, never written in a record (ADR 0006).
+		return engine.Result{Outcome: engine.OutcomeFailed, Reason: "the agent asked a question (input-required); the question is not kept"}
+	case a2a.TaskStateAuthRequired:
+		return engine.Result{Outcome: engine.OutcomeFailed, Reason: "the agent asked for an authorization (auth-required); the request is not kept"}
 	default:
-		return engine.Result{Outcome: engine.OutcomeFailed, Text: answer, Reason: fmt.Sprintf("the task stopped in state %s: %s", t.Status.State, firstLine(status))}
+		return engine.Result{Outcome: engine.OutcomeFailed, Text: answer, Reason: fmt.Sprintf("the task stopped in state %s", t.Status.State)}
 	}
+}
+
+// A failed task's status message is kagent's str(exception) or an ADK
+// error message: a model provider's error carries its whole response body
+// ("Error code: 401 - {…}"), which can quote the conversation, and a tool
+// server's error its own text (kagent-adk 0.10.3, _agent_executor.py,
+// converters/event_converter.py). None of it is kept: only kagent's error
+// code, when it is one (kagent_error_code: API_ERROR, SAFETY, MAX_TOKENS…),
+// and the HTTP status a provider error opens with.
+var (
+	errorCodeShape = regexp.MustCompile(`^[A-Z][A-Z_]{0,39}$`)
+	httpStatusOpen = regexp.MustCompile(`^Error code: ([1-5][0-9]{2})\b`)
+)
+
+// A failed task's message is never passed through. The Ranger's refusal
+// is recognized by its exact sentence; a 429 is reported as a status,
+// whoever sent it (the gateway's cap or the provider's own limit: the
+// Ranger's RequestsRateLimited event and counter say when it was ours).
+const (
+	refusedByRanger = "the gateway refused the model call: rejected by the Ranger"
+	rateLimited     = "the model call was rate limited (HTTP 429)"
+)
+
+// errorDetail is the part of a failed task's reason taken from its status
+// message: ": rejected by the Ranger…", " (API_ERROR, HTTP 401)", or nothing.
+func errorDetail(m *a2a.Message) string {
+	if m == nil {
+		return ""
+	}
+	text := strings.TrimSpace(partsText(m.Parts))
+	if strings.Contains(text, ranger.RejectMessage) {
+		return ": " + refusedByRanger
+	}
+	var parts []string
+	if code, ok := m.Metadata["kagent_error_code"].(string); ok && errorCodeShape.MatchString(code) {
+		parts = append(parts, code)
+	}
+	if s := httpStatusOpen.FindStringSubmatch(text); s != nil {
+		if s[1] == "429" {
+			return ": " + rateLimited
+		}
+		parts = append(parts, "HTTP "+s[1])
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " (" + strings.Join(parts, ", ") + ")"
 }
 
 func artifactsText(t *a2a.Task) string {
@@ -178,18 +231,6 @@ func partsText(parts []*a2a.Part) string {
 		}
 	}
 	return b.String()
-}
-
-// firstLine bounds an engine's message kept in a reason.
-func firstLine(s string) string {
-	s, _, _ = strings.Cut(strings.TrimSpace(s), "\n")
-	if len(s) > 300 {
-		s = s[:300] + "…"
-	}
-	if s == "" {
-		return "no message"
-	}
-	return s
 }
 
 // Cancel implements engine.Runs.

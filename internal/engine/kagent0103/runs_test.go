@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/agaetis-it/takecare-agents/internal/engine"
+	"github.com/agaetis-it/takecare-agents/internal/ranger"
 )
 
 // fakeA2A is an A2A JSON-RPC server answering as kagent 0.10.3 does, with
@@ -118,9 +119,27 @@ func (f *fakeA2A) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case "completed-empty":
 			reply(task("TASK_STATE_COMPLETED", nil, ""))
 		case "failed-after-answer":
-			reply(task("TASK_STATE_FAILED", []string{"Root cause: the proxy's idle timeout."}, "Error code: 500"))
+			reply(task("TASK_STATE_FAILED", []string{"Root cause: the proxy's idle timeout."}, "Error code: 500 - "+questionMarker))
 		case "failed":
-			reply(task("TASK_STATE_FAILED", nil, "Error code: 401 - {'error': {'message': 'Missing Authentication header', 'code': 401}}"))
+			reply(task("TASK_STATE_FAILED", nil, "Error code: 401 - {'error': {'message': 'Missing Authentication header "+questionMarker+"', 'code': 401}}"))
+		case "failed-ranger":
+			reply(task("TASK_STATE_FAILED", nil, "Error code: 403 - {'error': {'message': '"+ranger.RejectMessage+"', 'echo': '"+questionMarker+"'}}"))
+		case "failed-limited":
+			reply(task("TASK_STATE_FAILED", nil, "Error code: 429 - {'error': '"+questionMarker+" rate limited'}"))
+		case "failed-code":
+			t := task("TASK_STATE_FAILED", nil, questionMarker+" the model stopped")
+			t["status"].(map[string]any)["message"].(map[string]any)["metadata"] = map[string]any{"kagent_error_code": "MAX_TOKENS"}
+			reply(t)
+		case "failed-code-text":
+			t := task("TASK_STATE_FAILED", nil, "boom")
+			t["status"].(map[string]any)["message"].(map[string]any)["metadata"] = map[string]any{"kagent_error_code": questionMarker}
+			reply(t)
+		case "canceled":
+			reply(task("TASK_STATE_CANCELED", nil, questionMarker+" canceled"))
+		case "input-required":
+			reply(task("TASK_STATE_INPUT_REQUIRED", nil, questionMarker+" which namespace holds the billing database?"))
+		case "auth-required":
+			reply(task("TASK_STATE_AUTH_REQUIRED", nil, questionMarker+" may I read the secret db-credentials?"))
 		case endingLost:
 			fail(-32001, "task not found")
 		case endingNever:
@@ -213,6 +232,10 @@ func TestStartSendsThroughTheRouteWithoutTheCard(t *testing.T) {
 }
 
 // The ends of a task seen on kagent 0.10.3.
+// questionMarker opens the questions the fake agent asks: no result may
+// carry it.
+const questionMarker = "QUESTION-MARKER-7f3a"
+
 func TestPollEndings(t *testing.T) {
 	for _, tc := range []struct {
 		ending  string
@@ -223,9 +246,19 @@ func TestPollEndings(t *testing.T) {
 	}{
 		{ending: endingCompleted, want: engine.OutcomeCompleted, text: "Root cause: the proxy's idle timeout is shorter than the pool's."},
 		{ending: "completed-empty", want: engine.OutcomeFailed, reason: "completed without an answer"},
-		{ending: "failed-after-answer", want: engine.OutcomeFailedAfterAnswer, text: "Root cause: the proxy's idle timeout.", reason: "after the agent answered"},
-		{ending: "failed", want: engine.OutcomeFailed, reason: "Missing Authentication header"},
+		{ending: "failed-after-answer", want: engine.OutcomeFailedAfterAnswer, text: "Root cause: the proxy's idle timeout.", reason: "the engine failed the task after the agent answered (HTTP 500)"},
+		// A failed task's message is a provider's body or a tool's error
+		// text: its state, kagent's error code and the HTTP status only.
+		{ending: "failed", want: engine.OutcomeFailed, reason: "the task failed (HTTP 401)"},
+		{ending: "failed-ranger", want: engine.OutcomeFailed, reason: "the task failed: the gateway refused the model call: rejected by the Ranger"},
+		{ending: "failed-limited", want: engine.OutcomeFailed, reason: "the task failed: the model call was rate limited (HTTP 429)"},
+		{ending: "failed-code", want: engine.OutcomeFailed, reason: "the task failed (MAX_TOKENS)"},
+		{ending: "failed-code-text", want: engine.OutcomeFailed, reason: "the task failed"},
+		{ending: "canceled", want: engine.OutcomeFailed, reason: "the task stopped in state TASK_STATE_CANCELED"},
 		{ending: endingLost, want: engine.OutcomeLost, unknown: true},
+		// A question the agent asked is the agent's text: the state only.
+		{ending: "input-required", want: engine.OutcomeFailed, reason: "the agent asked a question (input-required); the question is not kept"},
+		{ending: "auth-required", want: engine.OutcomeFailed, reason: "the agent asked for an authorization (auth-required); the request is not kept"},
 	} {
 		t.Run(tc.ending, func(t *testing.T) {
 			srv, g := startFake(t, &fakeA2A{ending: tc.ending})
@@ -235,6 +268,9 @@ func TestPollEndings(t *testing.T) {
 			}
 			if res.Outcome != tc.want || res.Text != tc.text || !strings.Contains(res.Reason, tc.reason) {
 				t.Errorf("result = %+v", res)
+			}
+			if strings.Contains(res.Reason, questionMarker) || strings.Contains(res.Text, questionMarker) {
+				t.Errorf("the agent's question reached the result: %+v", res)
 			}
 		})
 	}

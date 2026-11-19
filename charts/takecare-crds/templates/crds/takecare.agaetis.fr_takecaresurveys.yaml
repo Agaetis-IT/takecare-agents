@@ -91,6 +91,16 @@ spec:
                   connector serves when the survey starts.
                 maxLength: 128
                 type: string
+              reason:
+                description: Why the operator created the survey, in plain words.
+                maxLength: 256
+                type: string
+              registrations:
+                description: |-
+                  The digest of the settled registrations the operator observed when
+                  it created the survey (spec 10 §3); empty on a survey made by hand.
+                maxLength: 64
+                type: string
               trigger:
                 default: OnDemand
                 description: SurveyTrigger says what started a survey (spec 10 §3).

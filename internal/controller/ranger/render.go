@@ -31,8 +31,8 @@ const (
 	backendWebhook = "ranger-webhook"
 
 	// RejectMessage is what a caller reads when the filtering Marker refuses
-	// its request.
-	RejectMessage = "rejected by the Ranger: a secret shape in the request"
+	// its request; the engine recognizes the same constant.
+	RejectMessage = shapes.RejectMessage
 
 	keyTargetRefs = "targetRefs"
 	keyRegex      = "regex"

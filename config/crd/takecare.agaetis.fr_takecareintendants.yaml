@@ -338,8 +338,8 @@ spec:
                 type: object
               lastMapRevision:
                 description: |-
-                  The map connector's revision the last survey was triggered for: a
-                  new one triggers a survey.
+                  The map connector's revision the newest survey the operator created
+                  observed (its spec.mapRevision): shown here, read from that survey.
                 maxLength: 128
                 type: string
               lastSurvey:
@@ -376,10 +376,14 @@ spec:
                 type: string
               registrations:
                 description: |-
-                  A digest of the registrations the last survey saw (the bound
-                  connectors and the engine's agents, by name and generation): a
-                  change triggers a survey.
+                  The digest of the settled registrations seen now (the bound
+                  connectors and the engine's agents, by name and generation), and
+                  since when it has not changed: a Registration survey is due once it
+                  differs from the newest survey's and has held for the quiet period.
                 maxLength: 64
+                type: string
+              registrationsSince:
+                format: date-time
                 type: string
               renderPendingSince:
                 description: |-

@@ -52,6 +52,7 @@ func (r *Reconciler) renderAgent(ctx context.Context, in *v1alpha1.TakeCareInten
 		st.set(v1alpha1.ConditionEngineReady, false, ReasonAgentNoTool, "no connector gives the agent a tool: the survey runs its import only")
 		return nil, false, r.removeEngine(ctx, in)
 	}
+	st.agentExpected = true
 	role := roleOf(in)
 	name := surveyagent.AgentName(in)
 	if err := routes.EnsureA2A(ctx, r.Client, gw, role, r.Agents.Endpoint(r.EngineNamespace, name)); err != nil {
