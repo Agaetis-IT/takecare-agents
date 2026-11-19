@@ -1,0 +1,8 @@
+{
+ "tool": "runbooks_search",
+ "args": {
+  "query": "timeout"
+ },
+ "output": "[{\"id\":\"RB-014\",\"title\":\"Connection pool exhaustion - idle timeout mismatch on the network path\"},{\"id\":\"RB-019\",\"title\":\"Intermittent 502/504 behind the load balancer\"},{\"id\":\"RB-023\",\"title\":\"Readiness probe flapping under load\"},{\"id\":\"RB-017\",\"title\":\"502 errors behind the gateway\"}]",
+ "source": "intendant run on the demo, 2026-11-18"
+}

@@ -1,0 +1,8 @@
+{
+ "tool": "entry",
+ "args": {
+  "key": "service/billing-api"
+ },
+ "output": "{\"created\":\"2026-11-05\",\"description\":\"The billing API, as its users see it.\",\"inbound\":{},\"key\":\"service/billing-api\",\"labels\":{\"tier\":\"critical\"},\"lastValidated\":\"2026-11-05\",\"owner\":\"team/platform\",\"provenance\":\"declared\",\"relations\":{\"alertedBy\":[\"HighErrorRate\"],\"belongsTo\":[\"team/platform\"],\"dependsOn\":[\"datastore/billing-db\",\"network/billing-db-proxy\"],\"documentedBy\":[\"runbook/proxy-timeout\"],\"observedBy\":[\"observability/prometheus\"],\"runsAs\":[\"compute/billing-api\"]},\"sources\":[{\"kubernetes\":\"demo-apps/Deployment/billing-api\"}],\"status\":\"validated\"}",
+ "source": "intendant run on the demo, 2026-11-18"
+}

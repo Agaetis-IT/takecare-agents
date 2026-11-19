@@ -1,0 +1,10 @@
+{
+ "tool": "pods_log",
+ "args": {
+  "name": "billing-api-6c96958d7-rd745",
+  "namespace": "demo-apps",
+  "tail": 100
+ },
+ "output": "billing-api: mode=healthy ramp=4min db_host=- port=8080\nINFO  billing-api serving, p99=0.35s\nINFO  billing-api serving, p99=0.35s\nINFO  billing-api serving, p99=0.35s\nINFO  billing-api serving, p99=0.35s\nINFO  billing-api serving, p99=0.35s\nINFO  billing-api serving, p99=0.35s\nINFO  billing-api serving, p99=0.35s\nINFO  billing-api serving, p99=0.35s\nINFO  billing-api serving, p99=0.35s\nINFO  billing-api serving, p99=0.35s\nINFO  billing-api serving, p99=0.35s\nINFO  billing-api serving, p99=0.35s\nINFO  billing-api serving, p99=0.35s\nINFO  billing-api serving, p99=0.35s\nINFO  billing-api serving, p99=0.35s\nINFO  billing-api serving, p99=0.35s\nINFO  billing-api serving, p99=0.35s\n",
+ "source": "doc run on the demo, 2026-11-18"
+}

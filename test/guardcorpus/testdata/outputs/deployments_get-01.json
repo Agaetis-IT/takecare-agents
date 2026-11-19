@@ -1,0 +1,8 @@
+{
+ "tool": "deployments_get",
+ "args": {
+  "id": "CI-2454"
+ },
+ "output": "{\"author\":\"CI pipeline (infrastructure team)\",\"date\":\"2026-11-18T06:01:11Z\",\"diff\":\"ALB billing-api-alb: idle timeout 60 -\\u003e 120; billing-api: HTTP keep-alive idle timeout 65 -\\u003e 125\",\"id\":\"CI-2454\",\"review\":\"One approval from the infrastructure team, one from the billing team.\",\"service\":\"billing-api\",\"status\":\"success\",\"summary\":\"Idle timeout of the billing-api load balancer raised from 60 s to 120 s so that long invoice exports are no longer cut. The billing-api HTTP keep-alive idle timeout was raised in the same change to stay above the load balancer idle timeout, as required.\",\"tags\":\"infrastructure aws alb load balancer idle timeout keep-alive billing-api export\",\"title\":\"infra-aws: idle timeout raised on the billing-api load balancer\",\"type\":\"infrastructure\"}",
+ "source": "doc run on the demo, 2026-11-18"
+}

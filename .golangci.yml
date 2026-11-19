@@ -6,8 +6,9 @@
 version: "2"
 run:
   allow-parallel-runners: true
-  # test/e2e is built with this tag only; lint it like the rest.
-  build-tags: [e2e]
+  # test/e2e and the guard corpus are built with their tags only; lint
+  # them like the rest.
+  build-tags: [e2e, guardcorpus]
 linters:
   default: none
   enable:

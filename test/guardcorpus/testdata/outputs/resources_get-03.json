@@ -1,0 +1,11 @@
+{
+ "tool": "resources_get",
+ "args": {
+  "apiVersion": "rds.services.k8s.aws/v1alpha1",
+  "kind": "DBProxy",
+  "name": "billing-db-proxy",
+  "namespace": "ack-system"
+ },
+ "output": "apiVersion: rds.services.k8s.aws/v1alpha1\nkind: DBProxy\nmetadata:\n  creationTimestamp: \"2026-11-18T11:01:11Z\"\n  generation: 1\n  labels:\n    app.kubernetes.io/part-of: takecare-demo\n    takecare.agaetis.fr/demo: demo\n  name: billing-db-proxy\n  namespace: ack-system\n  resourceVersion: \"3579\"\n  uid: 43eb49d4-bc63-461f-b214-08b188a5273e\nspec:\n  auth:\n  - authScheme: SECRETS\n    description: Application account of billing-api\n    iamAuth: REQUIRED\n    secretARN: arn:aws:secretsmanager:eu-west-3:123456789012:secret:rds/billing-app\n    userName: billing_app\n  engineFamily: POSTGRESQL\n  name: billing-db-proxy\n  requireTLS: true\n  roleARN: arn:aws:iam::123456789012:role/rds-proxy-billing\n  vpcSubnetIDs:\n  - subnet-0f1c9a2b3d4e5f601\n  - subnet-0f1c9a2b3d4e5f602\n",
+ "source": "doc run on the demo, 2026-11-18"
+}

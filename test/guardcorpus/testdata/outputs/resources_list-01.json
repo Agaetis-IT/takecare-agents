@@ -1,0 +1,10 @@
+{
+ "tool": "resources_list",
+ "args": {
+  "apiVersion": "apps/v1",
+  "kind": "Deployment",
+  "namespace": "demo-apps"
+ },
+ "output": "NAMESPACE   APIVERSION   KIND         NAME          READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES                                                           SELECTOR          LABELS\ndemo-apps   apps/v1      Deployment   billing-api   1/1     1            1           17m   app          ghcr.io/agaetis-it/takecare-agents-demo-app:local-6ae1ea06accf   app=billing-api   app.kubernetes.io/part-of=takecare-demo,takecare.agaetis.fr/demo=demo\n",
+ "source": "intendant run on the demo, 2026-11-18"
+}

@@ -1,0 +1,8 @@
+{
+ "tool": "runbooks_get",
+ "args": {
+  "id": "RB-017"
+ },
+ "output": "{\"domain\":\"network\",\"id\":\"RB-017\",\"procedure\":\"1. Check the Service endpoints.\\n2. Compare gateway and application timeouts.\\n3. Check recent restarts.\",\"revision\":\"2025-09-25\",\"services\":\"all\",\"symptoms\":\"502 rate rising without application error.\",\"tags\":\"502 gateway endpoints timeout\",\"title\":\"502 errors behind the gateway\",\"verification\":\"The symptom disappears and does not come back within 30 minutes.\"}",
+ "source": "intendant run on the demo, 2026-11-18"
+}

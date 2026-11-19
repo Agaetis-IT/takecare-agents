@@ -1,0 +1,8 @@
+{
+  "tool": "execute_query",
+  "args": {
+    "query": "rate(http_requests_total{namespace=\"demo-apps\"}[5m])"
+  },
+  "output": "Query executed successfully.\nResult Type: vector\nResult: {app=\"billing-api\", app_kubernetes_io_part_of=\"takecare-demo\", instance=\"10.42.1.16:8080\", job=\"kubernetes-pods\", namespace=\"demo-apps\", node=\"k3d-takecare-demo-server-0\", pod=\"billing-api-644f94fc77-f5dzs\", pod_template_hash=\"644f94fc77\", service=\"billing-api\", status=\"200\"} => 20.981481481481477 @[1795079681.88]\n{app=\"billing-api\", app_kubernetes_io_part_of=\"takecare-demo\", instance=\"10.42.1.16:8080\", job=\"kubernetes-pods\", namespace=\"demo-apps\", node=\"k3d-takecare-demo-server-0\", pod=\"billing-api-644f94fc77-f5dzs\", pod_template_hash=\"644f94fc77\", service=\"billing-api\", status=\"504\"} => 0.02222222222222222 @[1795079681.88]\n{app=\"billing-api\", app_kubernetes_io_part_of=\"takecare-demo\", instance=\"10.42.1.22:8080\", job=\"kubernetes-pods\", namespace=\"demo-apps\", node=\"k3d-takecare-demo-server-0\", pod=\"billing-api-f8f869bf9-dx8gh\", pod_template_hash=\"f8f869bf9\", service=\"billing-api\", status=\"200\"} => 17.64980067331089 @[1795079681.88]\n{app=\"billing-api\", app_kubernetes_io_part_of=\"takecare-demo\", instance=\"10.42.1.22:8080\", job=\"kubernetes-pods\", namespace=\"demo-apps\", node=\"k3d-takecare-demo-server-0\", pod=\"billing-api-f8f869bf9-dx8gh\", pod_template_hash=\"f8f869bf9\", service=\"billing-api\", status=\"504\"} => 0.32271457618079397 @[1795079681.88]",
+  "source": "capture.sh on the e2e demo, 2026-11-19"
+}
