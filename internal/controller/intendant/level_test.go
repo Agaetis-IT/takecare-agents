@@ -154,6 +154,12 @@ func TestOwedPassOnce(t *testing.T) {
 	f := start(t)
 	f.ready(t, "owed", nil)
 	f.waitSurveys(t, "owed", 1)
+	// The agent goes not ready first, whatever the order in which the
+	// operator saw it at the start: the owed pass needs EngineReady's
+	// transition to True to come after the survey (a CI run saw the agent
+	// ready from the start, and no transition followed).
+	f.agentReady(t, "owed", false)
+	f.engineReady(t, "owed", metav1.ConditionFalse)
 	// The clock moves before the survey ends: every reconcile its end
 	// wakes reads the new time, so the agent is ready after the survey.
 	f.clock.Set(testStart.Add(time.Minute))
