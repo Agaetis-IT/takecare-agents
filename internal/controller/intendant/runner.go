@@ -15,10 +15,12 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -72,11 +74,35 @@ func (f failed) Unwrap() error { return f.err }
 
 func fail(class string, err error) error { return failed{class: class, err: err} }
 
+// Why a survey waits: status.reason while it is Queued (spec 10 §2).
+const (
+	ReasonIntendantBusy = "IntendantBusy"
+	ReasonQueueFull     = "QueueFull"
+)
+
+const (
+	// queuedResync: a Queued survey is looked at again this often.
+	queuedResync = time.Minute
+	// fullRetry: a survey the full queue refused is tried again this often.
+	fullRetry = 30 * time.Second
+)
+
 // SurveyQueuer feeds the runner: a survey with no phase is Queued at once,
-// a Queued one goes into the queue.
+// a Queued one goes into the queue and is looked at again every minute,
+// so that one that left the queue without running is put back.
 type SurveyQueuer struct {
 	client.Client
-	Queue *runs.Queue
+	// Reader reads a survey before it is written, outside the cache;
+	// Client when nil.
+	Reader   client.Reader
+	Queue    *runs.Queue
+	Recorder recorder.EventRecorder
+
+	mu sync.Mutex
+	// full holds the Intendants told that the queue is full, so that the
+	// event is said once, until a survey of theirs fits again. It is the
+	// leader's memory: after a restart the event may be said once more.
+	full map[types.NamespacedName]bool
 }
 
 // Reconcile queues one survey.
@@ -87,16 +113,115 @@ func (q *SurveyQueuer) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Re
 	}
 	switch s.Status.Phase {
 	case "":
-		before := s.DeepCopy()
-		s.Status.Phase = v1alpha1.RunQueued
-		if err := q.Status().Patch(ctx, &s, client.MergeFrom(before)); err != nil {
+		if _, err := patchStatus(ctx, q.Client, q.reader(), req.NamespacedName, setQueued); err != nil {
 			return ctrl.Result{}, fmt.Errorf("queue survey %s: %w", s.Name, err)
 		}
-		q.Queue.Add(req.NamespacedName, s.CreationTimestamp.Time)
+		return q.enqueue(ctx, &s)
 	case v1alpha1.RunQueued:
-		q.Queue.Add(req.NamespacedName, s.CreationTimestamp.Time)
+		return q.enqueue(ctx, &s)
 	}
 	return ctrl.Result{}, nil
+}
+
+// enqueue puts a Queued survey in the queue. A full queue never loses it:
+// the survey says why it waits, its Intendant is told once, and it is
+// tried again.
+func (q *SurveyQueuer) enqueue(ctx context.Context, s *v1alpha1.TakeCareSurvey) (ctrl.Result, error) {
+	owner := types.NamespacedName{Namespace: s.Namespace, Name: s.Spec.IntendantRef.Name}
+	if q.Queue.Add(client.ObjectKeyFromObject(s), s.CreationTimestamp.Time) {
+		q.mu.Lock()
+		delete(q.full, owner)
+		q.mu.Unlock()
+		return ctrl.Result{RequeueAfter: queuedResync}, nil
+	}
+	if err := waiting(ctx, q.Client, q.reader(), client.ObjectKeyFromObject(s),
+		fmt.Sprintf("%s: the survey queue holds %d surveys", ReasonQueueFull, q.Queue.Cap())); err != nil {
+		return ctrl.Result{}, err
+	}
+	q.mu.Lock()
+	told := q.full[owner]
+	if q.full == nil {
+		q.full = map[types.NamespacedName]bool{}
+	}
+	q.full[owner] = true
+	q.mu.Unlock()
+	if !told && q.Recorder != nil {
+		var in v1alpha1.TakeCareIntendant
+		if err := q.Get(ctx, owner, &in); err == nil {
+			q.Recorder.Eventf(&in, nil, corev1.EventTypeWarning, ReasonQueueFull, "Queue",
+				"the survey queue holds %d surveys: survey %s waits until one ends", q.Queue.Cap(), s.Name)
+		}
+	}
+	return ctrl.Result{RequeueAfter: fullRetry}, nil
+}
+
+func (q *SurveyQueuer) reader() client.Reader {
+	if q.Reader != nil {
+		return q.Reader
+	}
+	return q.Client
+}
+
+// waiting writes why a Queued survey waits, in status.reason, only when it
+// changes and only while the survey is Queued: a waiting reason, never a
+// failure; marking it Running clears it (spec 10 §2).
+func waiting(ctx context.Context, c client.Client, r client.Reader, key types.NamespacedName, reason string) error {
+	_, err := patchStatus(ctx, c, r, key, waitingFor(reason))
+	return err
+}
+
+// The writers of a survey's status (spec 10 §2), each for one phase.
+
+// setQueued: a new survey is Queued (the queuer).
+func setQueued(st *v1alpha1.TakeCareSurveyStatus) bool {
+	if st.Phase != "" {
+		return false
+	}
+	st.Phase = v1alpha1.RunQueued
+	return true
+}
+
+// waitingFor: why a Queued survey waits (the queuer, the runner's admit).
+func waitingFor(reason string) func(*v1alpha1.TakeCareSurveyStatus) bool {
+	reason = reason[:min(len(reason), maxReason)]
+	return func(st *v1alpha1.TakeCareSurveyStatus) bool {
+		if st.Phase != v1alpha1.RunQueued || st.Reason == reason {
+			return false
+		}
+		st.Reason = reason
+		return true
+	}
+}
+
+// markRunning: the runner starts a Queued survey, its waiting reason
+// cleared. A survey resumed with its agent pass's task keeps its start:
+// the pass's deadline counts from it (spec 10 §5).
+func markRunning(now metav1.Time, traceID string) func(*v1alpha1.TakeCareSurveyStatus) bool {
+	return func(st *v1alpha1.TakeCareSurveyStatus) bool {
+		if st.Phase != v1alpha1.RunQueued {
+			return false // ended or taken meanwhile: not run twice
+		}
+		if st.StartedAt == nil || st.Engine == nil || st.Engine.TaskID == "" {
+			st.StartedAt = &now
+		}
+		st.Phase, st.Attempts, st.TraceID, st.Reason = v1alpha1.RunRunning, st.Attempts+1, traceID, ""
+		return true
+	}
+}
+
+// requeueResumed: at a leader's start, a survey left Running is Queued
+// again from the start, no half status kept, but its agent pass's task and
+// start are, so that the pass follows that task again (spec 10 §5).
+func requeueResumed(st *v1alpha1.TakeCareSurveyStatus) bool {
+	if st.Phase != v1alpha1.RunRunning {
+		return false
+	}
+	next := v1alpha1.TakeCareSurveyStatus{Phase: v1alpha1.RunQueued, Attempts: st.Attempts}
+	if e := st.Engine; e != nil && e.TaskID != "" {
+		next.StartedAt, next.Engine = st.StartedAt, e
+	}
+	*st = next
+	return true
 }
 
 // SetupWithManager watches the surveys.
@@ -160,7 +285,7 @@ type Runner struct {
 	AgentKinds []schema.GroupVersionKind
 
 	mu      sync.Mutex
-	running map[types.NamespacedName]bool // by Intendant
+	running map[types.NamespacedName]types.NamespacedName // by Intendant: its running survey
 	// digestLocks hold one lock per Intendant (a chan struct{} of one):
 	// its digests are compared, posted and recorded one at a time.
 	digestLocks sync.Map
@@ -182,7 +307,7 @@ func (w *Runner) now() time.Time {
 // Start resumes what a stopped operator left Running, then runs surveys
 // until ctx ends.
 func (w *Runner) Start(ctx context.Context) error {
-	w.running, w.freed = map[types.NamespacedName]bool{}, make(chan struct{}, 1)
+	w.running, w.freed = map[types.NamespacedName]types.NamespacedName{}, make(chan struct{}, 1)
 	if w.GateRetry <= 0 {
 		w.GateRetry = 5 * time.Second
 	}
@@ -202,6 +327,9 @@ func (w *Runner) Start(ctx context.Context) error {
 		if ok {
 			if owner, busy := w.admit(ctx, key); busy {
 				ownerOf[key], blocked[owner] = owner, true
+				// It was just taken out, so it fits back; if the queuer
+				// filled the place meanwhile, the survey stays Queued and
+				// the queuer's resync puts it back within a minute.
 				w.Queue.Add(key, time.Time{})
 				continue
 			}
@@ -237,15 +365,7 @@ func (w *Runner) resume(ctx context.Context) error {
 		if s.Status.Phase != v1alpha1.RunRunning {
 			continue
 		}
-		before := s.DeepCopy()
-		s.Status = v1alpha1.TakeCareSurveyStatus{Phase: v1alpha1.RunQueued, Attempts: before.Status.Attempts}
-		// No half status is kept, but an agent pass's recorded task and the
-		// start its deadline counts from are: the pass follows that task
-		// again rather than start another (spec 10 §5).
-		if e := before.Status.Engine; e != nil && e.TaskID != "" {
-			s.Status.StartedAt, s.Status.Engine = before.Status.StartedAt, e
-		}
-		if err := w.Client.Status().Patch(ctx, s, client.MergeFrom(before)); err != nil {
+		if _, err := w.patch(ctx, s, requeueResumed); err != nil {
 			return fmt.Errorf("put survey %s back in the queue: %w", s.Name, err)
 		}
 		w.Queue.Add(client.ObjectKeyFromObject(s), s.CreationTimestamp.Time)
@@ -257,7 +377,14 @@ func (w *Runner) resume(ctx context.Context) error {
 // returns that Intendant and true when the survey must wait.
 func (w *Runner) admit(ctx context.Context, key types.NamespacedName) (types.NamespacedName, bool) {
 	var s v1alpha1.TakeCareSurvey
-	if err := w.Reader.Get(ctx, key, &s); err != nil || s.Status.Phase != v1alpha1.RunQueued {
+	switch err := w.Reader.Get(ctx, key, &s); {
+	case apierrors.IsNotFound(err):
+		return types.NamespacedName{}, false
+	case err != nil:
+		// Put back, the runner waits: a failed read must not lose it.
+		log.FromContext(ctx).Error(err, "read a queued survey", "survey", key.Name)
+		return types.NamespacedName{}, true
+	case s.Status.Phase != v1alpha1.RunQueued:
 		return types.NamespacedName{}, false
 	}
 	owner := types.NamespacedName{Namespace: s.Namespace, Name: s.Spec.IntendantRef.Name}
@@ -269,16 +396,21 @@ func (w *Runner) admit(ctx context.Context, key types.NamespacedName) (types.Nam
 		return types.NamespacedName{}, false
 	}
 	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.running[owner] {
-		return owner, true
+	busy, held := w.running[owner]
+	if !held {
+		w.running[owner] = key
+		w.wg.Go(func() {
+			defer w.release(owner)
+			w.run(ctx, &s)
+		})
 	}
-	w.running[owner] = true
-	w.wg.Go(func() {
-		defer w.release(owner)
-		w.run(ctx, &s)
-	})
-	return owner, false
+	w.mu.Unlock()
+	if held {
+		if err := waiting(ctx, w.Client, w.Reader, key, fmt.Sprintf("%s: the Intendant %s runs survey %s", ReasonIntendantBusy, owner.Name, busy.Name)); err != nil {
+			log.FromContext(ctx).Error(err, "say why the survey waits", "survey", key.Name)
+		}
+	}
+	return owner, held
 }
 
 // adopt checks a queued survey's Intendant before the survey starts: a
@@ -303,8 +435,12 @@ func (w *Runner) adopt(ctx context.Context, s *v1alpha1.TakeCareSurvey, owner ty
 	}
 	if reason != "" {
 		done := metav1.NewTime(w.now())
-		if err := w.patch(ctx, s, func(st *v1alpha1.TakeCareSurveyStatus) {
+		if _, err := w.patch(ctx, s, func(st *v1alpha1.TakeCareSurveyStatus) bool {
+			if st.Phase != v1alpha1.RunQueued {
+				return false
+			}
 			st.Phase, st.Reason, st.CompletedAt = v1alpha1.RunFailed, reason[:min(len(reason), maxReason)], &done
+			return true
 		}); err != nil {
 			logger.Error(err, "fail the survey")
 			return adoptRetry
@@ -363,15 +499,11 @@ func (w *Runner) run(ctx context.Context, s *v1alpha1.TakeCareSurvey) {
 	traceID := span.SpanContext().TraceID().String()
 	logger := log.FromContext(ctx).WithValues("survey", s.Name, "traceID", traceID)
 	now := metav1.NewTime(w.now())
-	if err := w.patch(ctx, s, func(st *v1alpha1.TakeCareSurveyStatus) {
-		// A survey resumed with its agent pass's task keeps its start: the
-		// pass's deadline counts from it (spec 10 §5).
-		if st.StartedAt == nil || st.Engine == nil || st.Engine.TaskID == "" {
-			st.StartedAt = &now
+	marked, err := w.patch(ctx, s, markRunning(now, traceID))
+	if err != nil || !marked {
+		if err != nil {
+			logger.Error(err, "mark the survey running")
 		}
-		st.Phase, st.Attempts, st.TraceID = v1alpha1.RunRunning, st.Attempts+1, traceID
-	}); err != nil {
-		logger.Error(err, "mark the survey running")
 		return
 	}
 	if err := w.Reader.Get(ctx, client.ObjectKeyFromObject(s), s); err != nil {
@@ -398,11 +530,18 @@ func (w *Runner) run(ctx context.Context, s *v1alpha1.TakeCareSurvey) {
 		span.SetAttributes(attribute.Int(semconv.SurveyProposals, len(res.Proposals)))
 		w.Metrics.Record(s.Spec.IntendantRef.Name, res)
 	}
-	if err := w.patch(ctx, s, func(st *v1alpha1.TakeCareSurveyStatus) {
+	recorded, err := w.patch(ctx, s, func(st *v1alpha1.TakeCareSurveyStatus) bool {
+		if st.Phase != v1alpha1.RunRunning {
+			return false // ended meanwhile (the backstop): that end stands
+		}
 		out.StartedAt, out.Attempts, out.CompletedAt, out.TraceID, out.Engine = st.StartedAt, st.Attempts, &done, traceID, st.Engine
 		*st = out
-	}); err != nil {
-		logger.Error(err, "record the survey's outcome")
+		return true
+	})
+	if err != nil || !recorded {
+		if err != nil {
+			logger.Error(err, "record the survey's outcome")
+		}
 		return
 	}
 	if out.Phase == v1alpha1.RunCompleted {
@@ -708,17 +847,33 @@ func outcome(res discovery.Result, revision string, blind []v1alpha1.BlindSpot) 
 	return out
 }
 
-// patch changes a survey's status on a fresh read.
-func (w *Runner) patch(ctx context.Context, s *v1alpha1.TakeCareSurvey, change func(*v1alpha1.TakeCareSurveyStatus)) error {
-	var cur v1alpha1.TakeCareSurvey
-	if err := w.Reader.Get(ctx, client.ObjectKeyFromObject(s), &cur); err != nil {
-		return fmt.Errorf("read survey %s: %w", s.Name, err)
+// patch changes a survey's status on a fresh read; see patchStatus.
+func (w *Runner) patch(ctx context.Context, s *v1alpha1.TakeCareSurvey, change func(*v1alpha1.TakeCareSurveyStatus) bool) (bool, error) {
+	return patchStatus(ctx, w.Client, w.Reader, client.ObjectKeyFromObject(s), change)
+}
+
+// patchStatus is every write of a survey's status (spec 10 §2): on a fresh
+// read, under an optimistic lock, again on a conflict. change looks at the
+// status it finds and returns false when the survey has moved past the
+// state it is for (an outcome never over an end, a waiting reason never on
+// a running survey): then nothing is written. Several writers meet on a
+// survey (the queuer, the runner, the pass, the publication, the backstop).
+func patchStatus(ctx context.Context, c client.Client, r client.Reader, key types.NamespacedName, change func(*v1alpha1.TakeCareSurveyStatus) bool) (bool, error) {
+	applied := false
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var cur v1alpha1.TakeCareSurvey
+		if err := r.Get(ctx, key, &cur); err != nil {
+			return err
+		}
+		before := cur.DeepCopy()
+		if applied = change(&cur.Status); !applied {
+			return nil
+		}
+		cur.Status.ObservedGeneration = cur.Generation
+		return c.Status().Patch(ctx, &cur, client.MergeFromWithOptions(before, client.MergeFromWithOptimisticLock{}))
+	})
+	if err != nil {
+		return false, fmt.Errorf("update survey %s: %w", key.Name, err)
 	}
-	before := cur.DeepCopy()
-	change(&cur.Status)
-	cur.Status.ObservedGeneration = cur.Generation
-	if err := w.Client.Status().Patch(ctx, &cur, client.MergeFrom(before)); err != nil {
-		return fmt.Errorf("update survey %s: %w", s.Name, err)
-	}
-	return nil
+	return applied, nil
 }
