@@ -135,7 +135,7 @@ func (q *SurveyQueuer) enqueue(ctx context.Context, s *v1alpha1.TakeCareSurvey) 
 		return ctrl.Result{RequeueAfter: queuedResync}, nil
 	}
 	if err := waiting(ctx, q.Client, q.reader(), client.ObjectKeyFromObject(s),
-		fmt.Sprintf("%s: the survey queue holds %d surveys", ReasonQueueFull, q.Queue.Cap())); err != nil {
+		fmt.Sprintf("%s: the survey queue is full (%d)", ReasonQueueFull, q.Queue.Cap())); err != nil {
 		return ctrl.Result{}, err
 	}
 	q.mu.Lock()
@@ -149,7 +149,7 @@ func (q *SurveyQueuer) enqueue(ctx context.Context, s *v1alpha1.TakeCareSurvey) 
 		var in v1alpha1.TakeCareIntendant
 		if err := q.Get(ctx, owner, &in); err == nil {
 			q.Recorder.Eventf(&in, nil, corev1.EventTypeWarning, ReasonQueueFull, "Queue",
-				"the survey queue holds %d surveys: survey %s waits until one ends", q.Queue.Cap(), s.Name)
+				"the survey queue is full (%d): survey %s waits until one ends", q.Queue.Cap(), s.Name)
 		}
 	}
 	return ctrl.Result{RequeueAfter: fullRetry}, nil

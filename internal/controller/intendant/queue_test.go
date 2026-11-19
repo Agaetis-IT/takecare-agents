@@ -63,7 +63,7 @@ func TestAFullQueueLosesNoSurvey(t *testing.T) {
 			t.Fatalf("full queue: %+v, %v; want a retry in %s", res, err, fullRetry)
 		}
 	}
-	if st := survey(t, c, key); st.Phase != v1alpha1.RunQueued || st.Reason != "QueueFull: the survey queue holds 1 surveys" {
+	if st := survey(t, c, key); st.Phase != v1alpha1.RunQueued || st.Reason != "QueueFull: the survey queue is full (1)" {
 		t.Errorf("waiting survey: %s %q", st.Phase, st.Reason)
 	}
 	if n := len(rec.Events); n != 1 {
