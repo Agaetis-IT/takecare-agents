@@ -14,7 +14,7 @@ The Ranger applies the same rules to every agent that goes through the gateway: 
 
 `TakeCareRanger`, cluster-scoped, one, named `main` like the platform (a CEL rule refuses any other name), `GuardrailCommonSpec` (level, suspend; no scope, no model, no connectors). Its spec holds what the Markers are made of, each with defaults the chart ships:
 
-- `masking`: the built-in patterns applied (default: credit card, email, phone number, social security number) and the customer's own named patterns; what matches is replaced before it reaches the provider, on the system prompt, the messages and what tools return. Credit card, email and social security number are the gateway's builtins, each replaced by its own token (`<CREDIT_CARD>`, `<EMAIL_ADDRESS>`, `<SSN>`). The phone number is TakeCare's own patterns (§4), replaced by `<masked>`: at agentgateway 1.6.0 a pattern cannot name its replacement. The customer's own masking patterns are replaced by `<masked>` too.
+- `masking`: the built-in patterns applied (default: credit card, email, phone number, social security number) and the customer's own named patterns; what matches is replaced before it reaches the provider, on the system prompt, the messages and what tools return. Credit card and email are the gateway's builtins, each replaced by its own token (`<CREDIT_CARD>`, `<EMAIL_ADDRESS>`). The phone number and the social security number are TakeCare's own patterns (§4, ADR 0020), replaced by `<masked>`: at agentgateway 1.6.0 a pattern cannot name its replacement. The customer's own masking patterns are replaced by `<masked>` too.
 - `filtering`: the patterns whose match rejects the request (default: a shipped list of secret shapes: private keys, cloud access keys, API tokens of common services) and the customer's own. Both are scanned in the system prompt, the messages and what tools return (§4). In a tool's output a shipped shape is masked whole and the call goes on; the customer's own patterns are never masks: a match refuses the call, in a tool's output too.
 - `caps`: a token budget and a request limit for the gateway, and per model; per agent at Expert (§3). Units per minute or per hour. The gateway's budget is not a ceiling on its total traffic: it is shared by the routes without a model cap, and repeated on each route with one, under the Marker lines `gateway-budget` and `gateway-request-limit` (§4).
 - `models`: which of the platform's models each role kind may call (default: all). The kinds accepted: `TakeCareDoc`, `TakeCareIntendant`.
@@ -93,6 +93,21 @@ What the patterns cannot do, a trade the customer reads:
 | | a date written with spaces or dots after a sign, with its hour (`UTC+1 2026 11 18 10`, `UTC+1 2026.11.18.10`) |
 
 A customer who needs another national form adds it under `masking.patterns`.
+
+The social security number is masked by patterns of TakeCare's own (`internal/ranger/ssn.go`), never by agentgateway's `Ssn` builtin, which takes any nine-digit run. Measured on 1.6.0 and 1.7.0, it took the nanosecond fraction of an alert's `activeAt` as the metrics connector's `get_alerts` prints it (`{ActiveAt:9999-99-99 99:99:99.<SSN> +9999 aaa ...` in shape), about a dozen masked requests in each Doc run of the bench.
+
+| Number | Taken, for example | Not taken |
+|---|---|---|
+| US Social Security number | `123-45-6789`, written with its dashes, without the numbers never assigned (area 000, 666 and 900 to 999; group 00; serial 0000) | a bare nine-digit run: a timestamp's nanosecond fraction, a resourceVersion, a size, a counter |
+| French NIR (INSEE, *Courrier des statistiques* n°8, 2022, encadré 1; the DSN documentation for the special values) | `2 91 07 75 112 345 18` as on the card, `291077511234518` without spaces, Corsica's `2A` and `2B`, months 20 to 42 and 50 to 99 of an incomplete civil status | a first digit other than 1 or 2, a month 00, 13 to 19 or 43 to 49, a key 00 or 98 and 99, a run of 14 or 16 characters |
+
+What the patterns cannot do:
+
+| Missed: reaches the provider | Taken by mistake: masked as `<masked>`, never refused |
+|---|---|
+| a US number without its dashes (`123456789`): nine-digit runs are too common in what tools return | a fifteen-digit run starting with 1 or 2 whose month and key fall in range: in our tools' outputs, a device identifier, a byte count in the hundreds of terabytes, an order or transaction id |
+| a temporary French number (first digit 7 or 8): no official source cited for its form | a NIR-shaped number whose key is wrong: the key (97 minus the number modulo 97) cannot be checked by a regular expression |
+| a NIR grouped otherwise than as on the card, or split by a line break | |
 
 Not scanned: a tool call's arguments (`ToolInput`: the gateway warns that a mask there can turn them into invalid JSON, so what a model writes into a call is not checked; the MCP routes' tool allow-lists and argument rules still apply, spec 05 and spec 10 §8); anything the Expert's webhook guard would see in tool inputs or outputs (the gateway gives webhook guards no scope, at 1.6 and 1.7); streamed answers (masking applies to buffered answers only; the engines' calls are not streamed, measured: kagent 0.10.3 sends `"stream": false`). The counter and the `RequestsMasked` event cannot tell a tool output from a message.
 
