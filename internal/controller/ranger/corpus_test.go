@@ -213,99 +213,109 @@ func TestGuardCorpus(t *testing.T) {
 	t.Cleanup(func() { _ = srv.Close() })
 	url := gateway(t, l.Addr().(*net.TCPAddr).Port)
 
-	t.Run("real outputs come back unchanged", func(t *testing.T) {
-		files, _ := filepath.Glob(filepath.Join(corpusDir, "outputs", "*.json"))
-		if len(files) == 0 {
-			t.Fatal("no corpus output: the corpus did not bite")
+	t.Run("real outputs come back unchanged", func(t *testing.T) { corpusOutputs(t, url, provider) })
+
+	t.Run("real messages come back unchanged", func(t *testing.T) { corpusMessages(t, url, provider) })
+
+	t.Run("samples are masked whole; a secret shape in a message is refused", func(t *testing.T) { corpusSamples(t, url, provider) })
+
+	t.Run("machine values stay unchanged, in a tool output", func(t *testing.T) { corpusMustStay(t, url, provider) })
+
+	t.Run("a key cut before its END line is refused", func(t *testing.T) { corpusCutKey(t, url) })
+}
+
+func corpusOutputs(t *testing.T, url string, provider *echo) {
+	files, _ := filepath.Glob(filepath.Join(corpusDir, "outputs", "*.json"))
+	if len(files) == 0 {
+		t.Fatal("no corpus output: the corpus did not bite")
+	}
+	for _, f := range files {
+		raw, err := os.ReadFile(f) //nolint:gosec // the corpus's own files, from a glob of testdata
+		if err != nil {
+			t.Fatal(err)
 		}
-		for _, f := range files {
-			raw, err := os.ReadFile(f) //nolint:gosec // the corpus's own files, from a glob of testdata
-			if err != nil {
-				t.Fatal(err)
+		var o corpusOutput
+		if err := json.Unmarshal(raw, &o); err != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+		args, _ := json.Marshal(o.Args)
+		if code, err := call(url, toolMessages(o.Tool, string(args), o.Output)); err != nil || code != http.StatusOK {
+			t.Errorf("%s: HTTP %d, %v", filepath.Base(f), code, err)
+			continue
+		}
+		if got := provider.lastContent(t); got != o.Output {
+			t.Errorf("%s (%s): changed %s", filepath.Base(f), o.Tool, firstDiff(o.Output, got))
+		}
+	}
+}
+
+func corpusMessages(t *testing.T, url string, provider *echo) {
+	files, _ := filepath.Glob(filepath.Join(corpusDir, "messages", "*.txt"))
+	if len(files) == 0 {
+		t.Fatal("no corpus message: the corpus did not bite")
+	}
+	for _, f := range files {
+		raw, err := os.ReadFile(f) //nolint:gosec // the corpus's own files, from a glob of testdata
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(raw)
+		if code, err := call(url, []any{map[string]any{cRole: cUser, cContent: text}}); err != nil || code != http.StatusOK {
+			t.Errorf("%s: HTTP %d, %v", filepath.Base(f), code, err)
+			continue
+		}
+		if got := provider.lastContent(t); got != text {
+			t.Errorf("%s: changed %s", filepath.Base(f), firstDiff(text, got))
+		}
+	}
+}
+
+func corpusSamples(t *testing.T, url string, provider *echo) {
+	for _, s := range mustMask() {
+		for _, where := range []string{cMessage, "tool output"} {
+			text := "before " + s.value + " after"
+			msgs := []any{map[string]any{cRole: cUser, cContent: text}}
+			if where == "tool output" {
+				msgs = toolMessages("pods_log", "{}", text)
 			}
-			var o corpusOutput
-			if err := json.Unmarshal(raw, &o); err != nil {
-				t.Fatalf("%s: %v", f, err)
+			want := http.StatusOK
+			if s.secret && where == cMessage {
+				// Spec 09 §4: masked whole in a tool output, refused in a
+				// message.
+				want = standaloneRejectStatus
 			}
-			args, _ := json.Marshal(o.Args)
-			if code, err := call(url, toolMessages(o.Tool, string(args), o.Output)); err != nil || code != http.StatusOK {
-				t.Errorf("%s: HTTP %d, %v", filepath.Base(f), code, err)
+			if code, err := call(url, msgs); err != nil || code != want {
+				t.Errorf("%s in a %s: HTTP %d, %v; want %d", s.name, where, code, err, want)
 				continue
 			}
-			if got := provider.lastContent(t); got != o.Output {
-				t.Errorf("%s (%s): changed %s", filepath.Base(f), o.Tool, firstDiff(o.Output, got))
-			}
-		}
-	})
-
-	t.Run("real messages come back unchanged", func(t *testing.T) {
-		files, _ := filepath.Glob(filepath.Join(corpusDir, "messages", "*.txt"))
-		if len(files) == 0 {
-			t.Fatal("no corpus message: the corpus did not bite")
-		}
-		for _, f := range files {
-			raw, err := os.ReadFile(f) //nolint:gosec // the corpus's own files, from a glob of testdata
-			if err != nil {
-				t.Fatal(err)
-			}
-			text := string(raw)
-			if code, err := call(url, []any{map[string]any{cRole: cUser, cContent: text}}); err != nil || code != http.StatusOK {
-				t.Errorf("%s: HTTP %d, %v", filepath.Base(f), code, err)
+			if want != http.StatusOK {
 				continue
 			}
-			if got := provider.lastContent(t); got != text {
-				t.Errorf("%s: changed %s", filepath.Base(f), firstDiff(text, got))
+			got := provider.lastContent(t)
+			if !strings.HasPrefix(got, "before ") || !strings.HasSuffix(got, " after") || !strings.Contains(got, s.token) || strings.Contains(got, s.keep) {
+				t.Errorf("%s in a %s: received %q", s.name, where, shape(got))
 			}
 		}
-	})
+	}
+}
 
-	t.Run("samples are masked whole; a secret shape in a message is refused", func(t *testing.T) {
-		for _, s := range mustMask() {
-			for _, where := range []string{cMessage, "tool output"} {
-				text := "before " + s.value + " after"
-				msgs := []any{map[string]any{cRole: cUser, cContent: text}}
-				if where == "tool output" {
-					msgs = toolMessages("pods_log", "{}", text)
-				}
-				want := http.StatusOK
-				if s.secret && where == cMessage {
-					// Spec 09 §4: masked whole in a tool output, refused in a
-					// message.
-					want = standaloneRejectStatus
-				}
-				if code, err := call(url, msgs); err != nil || code != want {
-					t.Errorf("%s in a %s: HTTP %d, %v; want %d", s.name, where, code, err, want)
-					continue
-				}
-				if want != http.StatusOK {
-					continue
-				}
-				got := provider.lastContent(t)
-				if !strings.HasPrefix(got, "before ") || !strings.HasSuffix(got, " after") || !strings.Contains(got, s.token) || strings.Contains(got, s.keep) {
-					t.Errorf("%s in a %s: received %q", s.name, where, shape(got))
-				}
-			}
+func corpusMustStay(t *testing.T, url string, provider *echo) {
+	for _, text := range mustStay() {
+		if code, err := call(url, toolMessages("execute_query", "{}", text)); err != nil || code != http.StatusOK {
+			t.Errorf("%q: HTTP %d, %v", shape(text), code, err)
+			continue
 		}
-	})
+		if got := provider.lastContent(t); got != text {
+			t.Errorf("changed %s", firstDiff(text, got))
+		}
+	}
+}
 
-	t.Run("machine values stay unchanged, in a tool output", func(t *testing.T) {
-		for _, text := range mustStay() {
-			if code, err := call(url, toolMessages("execute_query", "{}", text)); err != nil || code != http.StatusOK {
-				t.Errorf("%q: HTTP %d, %v", shape(text), code, err)
-				continue
-			}
-			if got := provider.lastContent(t); got != text {
-				t.Errorf("changed %s", firstDiff(text, got))
-			}
-		}
-	})
-
-	t.Run("a key cut before its END line is refused", func(t *testing.T) {
-		code, err := call(url, toolMessages("pods_log", "{}", "log: "+keyBegin()+"\nMIIEpAIBAAKCAQEAcut"))
-		if err != nil || code != standaloneRejectStatus {
-			t.Errorf("HTTP %d, %v; want %d", code, err, standaloneRejectStatus)
-		}
-	})
+func corpusCutKey(t *testing.T, url string) {
+	code, err := call(url, toolMessages("pods_log", "{}", "log: "+keyBegin()+"\nMIIEpAIBAAKCAQEAcut"))
+	if err != nil || code != standaloneRejectStatus {
+		t.Errorf("HTTP %d, %v; want %d", code, err, standaloneRejectStatus)
+	}
 }
 
 // sample is a made-up value that must reach the provider masked: token is
