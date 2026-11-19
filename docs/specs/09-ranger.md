@@ -99,15 +99,17 @@ The social security number is masked by patterns of TakeCare's own (`internal/ra
 | Number | Taken, for example | Not taken |
 |---|---|---|
 | US Social Security number | `123-45-6789`, written with its dashes, without the numbers never assigned (area 000, 666 and 900 to 999; group 00; serial 0000) | a bare nine-digit run: a timestamp's nanosecond fraction, a resourceVersion, a size, a counter |
-| French NIR (INSEE, *Courrier des statistiques* n°8, 2022, encadré 1; the DSN documentation for the special values) | `2 91 07 75 112 345 18` as on the card, `291077511234518` without spaces, Corsica's `2A` and `2B`, months 20 to 42 and 50 to 99 of an incomplete civil status | a first digit other than 1 or 2, a month 00, 13 to 19 or 43 to 49, a key 00 or 98 and 99, a run of 14 or 16 characters |
+| French NIR (INSEE, *Courrier des statistiques* n°8, 2022, encadré 1; the DSN documentation for the special values) | `2 91 07 75 112 345 18` as on the card, `291077511234518` without spaces (at a line's start or after a character that is neither a letter, a digit, an underscore nor a point, that character masked with it: `NIR 291077511234518` becomes `NIR<masked>`), Corsica's `2A` and `2B`, months 20 to 42 and 50 to 99 of an incomplete civil status | a first digit other than 1 or 2, a month 00, 13 to 19 or 43 to 49, a key 00 or 98 and 99, a run of 14 or 16 characters, fifteen decimals after a point (a metric value such as `0.185057512345642`, `1731923171.123 0.185057512345642`, `1.285127512345642e+02`) |
 
 What the patterns cannot do:
 
 | Missed: reaches the provider | Taken by mistake: masked as `<masked>`, never refused |
 |---|---|
-| a US number without its dashes (`123456789`): nine-digit runs are too common in what tools return | a fifteen-digit run starting with 1 or 2 whose month and key fall in range: in our tools' outputs, a device identifier, a byte count in the hundreds of terabytes, an order or transaction id |
+| a US number without its dashes (`123456789`): nine-digit runs are too common in what tools return | a fifteen-digit run starting with 1 or 2 whose month and key fall in range: in our tools' outputs, a device identifier, a byte count in the hundreds of terabytes, a duration or a latency in nanoseconds (`latency_ns 185057512345642`), an order or transaction id |
 | a temporary French number (first digit 7 or 8): no official source cited for its form | a NIR-shaped number whose key is wrong: the key (97 minus the number modulo 97) cannot be checked by a regular expression |
-| a NIR grouped otherwise than as on the card, or split by a line break | |
+| a NIR grouped otherwise than as on the card, or split by a line break | any 3-2-4 run written with dashes that is not a social security number: a port mapping (`443-80-8080`), a range (`100-20-3000`), a ticket number, a build suffix (`123-45-6789-rc1`) |
+| | the character before a NIR written without spaces |
+| | a NIR-shaped run written with spaces right after a decimal point (`0.1 85 05 78 006 084 36`: the spaced form keeps a word boundary; unlikely in machine output) |
 
 Not scanned: a tool call's arguments (`ToolInput`: the gateway warns that a mask there can turn them into invalid JSON, so what a model writes into a call is not checked; the MCP routes' tool allow-lists and argument rules still apply, spec 05 and spec 10 §8); anything the Expert's webhook guard would see in tool inputs or outputs (the gateway gives webhook guards no scope, at 1.6 and 1.7); streamed answers (masking applies to buffered answers only; the engines' calls are not streamed, measured: kagent 0.10.3 sends `"stream": false`). The counter and the `RequestsMasked` event cannot tell a tool output from a message.
 

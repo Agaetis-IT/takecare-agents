@@ -31,11 +31,14 @@ func TestSsnPatternsTake(t *testing.T) {
 	}{
 		{"US, dashed", "ssn " + usSample + " on file", []string{usSample}},
 		{"NIR as on the card", "NIR " + nirCard, []string{nirCard}},
-		{"NIR without spaces", "NIR " + nirBare, []string{nirBare}},
+		// The form without spaces takes the character before it (here the
+		// space): see SsnNIR.
+		{"NIR without spaces", "NIR " + nirBare, []string{" " + nirBare}},
+		{"NIR without spaces at a line's start", nirBare + " on file", []string{nirBare}},
 		{"NIR born in Corsica", "NIR " + nirCorsea, []string{nirCorsea}},
-		{"NIR without spaces, born in Corsica", "nir=172032A00412852", []string{"172032A00412852"}},
+		{"NIR without spaces, born in Corsica", "nir=172032A00412852", []string{"=172032A00412852"}},
 		{"NIR, month of an incomplete civil status", "1 85 31 78 006 084 36", []string{"1 85 31 78 006 084 36"}},
-		{"inside a JSON string", `{"ssn":"` + usSample + `","nir":"` + nirBare + `"}`, []string{usSample, nirBare}},
+		{"inside a JSON string", `{"ssn":"` + usSample + `","nir":"` + nirBare + `"}`, []string{usSample, `"` + nirBare}},
 		{"a YAML value", "employee:\n  nir: " + nirCard + "\n", []string{nirCard}},
 		{"before a full stop", "Number " + usSample + ".", []string{usSample}},
 		{"two on one line", usSample + " and " + nirCard + " (spouse)", []string{usSample, nirCard}},
@@ -93,6 +96,12 @@ func TestSsnPatternsSpare(t *testing.T) {
 		"7 85 05 78 006 084 36",
 		// A US number without its dashes: a miss, so that nine-digit runs stay.
 		"123456789",
+		// Fifteen decimals of a metric value, after the point.
+		"0.185057512345642",
+		"rate 0.285127512345642",
+		"1731923171.123 0.185057512345642",
+		"1.285127512345642e+02",
+		"elapsed 10:54:36.185057512345642",
 	} {
 		t.Run(text, func(t *testing.T) {
 			if got := ssnMask.FindAllString(text, -1); got != nil {
@@ -110,6 +119,16 @@ func TestSsnPatternsAcceptedFalseHits(t *testing.T) {
 		"device 100112345678901",
 		"bytes 212345678901234",
 		"order 199112345678955",
+		"latency_ns 185057512345642",
+		"bytes_total 285127512345642",
+		// The spaced form keeps a word boundary: after a decimal point, a
+		// spaced NIR-shaped run is still taken (unlikely in machine output).
+		"0.1 85 05 78 006 084 36",
+		// Any 3-2-4 dashed run that is not an SSN.
+		"port map 443-80-8080",
+		"range 100-20-3000",
+		"ticket 555-12-3456",
+		"build 123-45-6789-rc1",
 	} {
 		if ssnMask.FindString(text) == "" {
 			t.Errorf("%q: not taken; the false-hits table in spec 09 says it is", text)

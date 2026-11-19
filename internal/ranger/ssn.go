@@ -27,8 +27,13 @@ const (
 	// 084 36, or without spaces. INSEE, Courrier des statistiques n°8
 	// (2022), encadré 1, for the fields; the DSN documentation for the
 	// month's special values, Corsica and the key. The key (97 minus the
-	// number modulo 97) cannot be checked in a regex.
-	SsnNIR = `\b[12] [0-9]{2} ` + nirMonth + ` ` + nirDept + ` [0-9]{3} [0-9]{3} ` + nirKey + `\b|\b[12][0-9]{2}` + nirMonth + nirDept + `[0-9]{6}` + nirKey + `\b`
+	// number modulo 97) cannot be checked in a regex. The form without
+	// spaces starts at a line's start or after a character that is neither
+	// a letter, a digit, an underscore nor a point, and that character is
+	// masked with the number: without lookbehind, this keeps the fifteen
+	// decimals of a metric value out (0.185057512345642), as PhoneFrench
+	// does.
+	SsnNIR = `\b[12] [0-9]{2} ` + nirMonth + ` ` + nirDept + ` [0-9]{3} [0-9]{3} ` + nirKey + `\b|(?:(?m:^)|[^0-9A-Za-z_.])[12][0-9]{2}` + nirMonth + nirDept + `[0-9]{6}` + nirKey + `\b`
 
 	nirMonth = `(?:0[1-9]|1[0-2]|[23][0-9]|4[0-2]|[5-9][0-9])`
 	nirDept  = `(?:0[1-9]|[1-9][0-9]|2[AB])`
