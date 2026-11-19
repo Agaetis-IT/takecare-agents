@@ -81,6 +81,8 @@ jobs:
         env:
           N: ${{ inputs.n }}
           BENCH_DIR: bin/bench
+          # A run that does not settle is dumped here before the bench stops.
+          DUMP_DIR: ${{ runner.temp }}/takecare-dump
         run: |
           set -euo pipefail
           export BENCH_MIN=$(( (4 * N + 4) / 5 ))
@@ -95,6 +97,7 @@ jobs:
           path: |
             bin/bench/report-*.json
             bin/bench-table.md
+            ${{ runner.temp }}/takecare-dump
           if-no-files-found: warn
       - name: cluster state on failure
         if: failure()

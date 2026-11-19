@@ -12,7 +12,9 @@
 # gateway's deltas, exact only without overlap.
 # Writes report-<date>.json to BENCH_DIR (default test/bench; scores and
 # metrics, never the diagnosis) and prints the table. BENCH_MIN=<k> exits 1
-# below k correct.
+# below k correct. A run that does not settle in BENCH_SETTLE_SECONDS
+# (default 900) stops the bench after hack/dump.sh has saved the cluster's
+# state; the dump's directory is printed and named in the report.
 # Usage: hack/bench.sh [N]   (default 5)
 set -euo pipefail
 
@@ -30,12 +32,31 @@ CORRECT_PROXY='proxy'
 CORRECT_IDLE='idle|idleClientTimeout|600 s'
 MEMORY_LEAD='memory|OOM|leak'
 ENDED='^(Completed|Failed|TimedOut|Dropped)$'
+SETTLE="${BENCH_SETTLE_SECONDS:-900}"
+[[ "$SETTLE" =~ ^[0-9]+$ ]] || { echo "BENCH_SETTLE_SECONDS must be a number of seconds" >&2; exit 1; }
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*" >&2; }
-die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+# die stops the bench; once the cluster is in use, it first dumps its
+# state (hack/dump.sh), before anything else runs.
+dump_armed=false
+report=""
+die() {
+  printf '\033[1;31merror:\033[0m %s\n' "$*" >&2
+  if $dump_armed; then
+    local d
+    if d="$(hack/dump.sh "bench: $*" | tail -1)"; then
+      log "dump: ${d}"
+      [[ -n "$report" && -f "$report" ]] && jq --arg d "$d" '.dump = $d' "$report" >"$report.tmp" && mv "$report.tmp" "$report"
+    else
+      log "the dump failed"
+    fi
+  fi
+  exit 1
+}
 
 [[ -f "$KUBECONFIG" ]] || die "no demo: make demo-up first"
 WORK="$(mktemp -d)"
+dump_armed=true
 pf_pids=()
 
 # restore puts the Doc's cooldown back as it was, on every exit.
@@ -77,7 +98,8 @@ settled() {
 # wait_settled SECONDS: every investigation of the demo has settled.
 wait_settled() {
   local name pending
-  for _ in $(seq $(($1 / 5))); do
+  local t
+  for ((t = 0; t < $1; t += 5)); do
     pending=0
     for name in $(kubectl -n "$NS" get takecareinvestigations -l "takecare.agaetis.fr/alert-namespace=${APP_NS}" -o name); do
       settled "${name#*/}" || pending=1
@@ -96,7 +118,8 @@ for _ in $(seq 120); do
 done
 [[ -n "$(kubectl -n "$NS" get takecareinvestigations -l "takecare.agaetis.fr/alert-namespace=${APP_NS}" -o name)" ]] ||
   die "no investigation of ${APP_NS}: start the incident (make demo-incident) and wait for the alert"
-wait_settled 900 || die "the incident's investigation did not settle in 15 minutes"
+wait_settled "$SETTLE" || die "the incident's investigation did not settle in ${SETTLE} s"
+guards_before="$(hack/guardrail-counts.sh)" || die "the gateway's guardrail counters cannot be read"
 
 # The firing alert, copied for every run.
 forward alertmanager 18993 9093
@@ -128,8 +151,8 @@ for i in $(seq "$N"); do
     sleep 2
   done
   [[ -n "$inv" ]] || die "bench alert ${i} opened no investigation (grouped or ignored: see the operator's alert metrics)"
-  for _ in $(seq 180); do settled "$inv" && break; sleep 5; done
-  settled "$inv" || die "investigation ${inv} did not settle in 15 minutes"
+  for ((t = 0; t < SETTLE; t += 5)); do settled "$inv" && break; sleep 5; done
+  settled "$inv" || die "investigation ${inv} did not settle in ${SETTLE} s"
   kubectl -n "$NS" get takecareinvestigation "$inv" -o json |
     jq -c --arg i "$i" --arg proxy "$CORRECT_PROXY" --arg idle "$CORRECT_IDLE" --arg mem "$MEMORY_LEAD" '
       (.status.diagnosis // "") as $d |
@@ -145,15 +168,18 @@ done
 
 model="$(kubectl get takecareplatform -o json | jq -r --arg m "$(kubectl -n "$NS" get takecaredoc "$DOC" -o jsonpath='{.spec.model.name}')" '
   .items[0].spec.models as $ms | ($ms | map(select(.name == $m)) | .[0]) // $ms[0] | .model')"
+guards_after="$(hack/guardrail-counts.sh)" || die "the gateway's guardrail counters cannot be read"
 mkdir -p "${BENCH_DIR:=test/bench}"
 report="${BENCH_DIR}/report-$(date -u +%Y-%m-%dT%H%MZ).json"
-jq -s --arg model "$model" --arg commit "$(git rev-parse HEAD)" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
+jq -s --arg model "$model" --arg commit "$(git rev-parse HEAD)" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --argjson before "$guards_before" --argjson after "$guards_after" '
   def median: map(select(. != null)) | sort | if length == 0 then null
     elif length % 2 == 1 then .[length / 2 | floor] else (.[length / 2 - 1] + .[length / 2]) / 2 end;
   {scenario: "proxy-timeout", date: $date, commit: $commit, model: $model, n: length,
    correct: map(select(.correct)) | length, memoryLead: map(select(.memoryLead)) | length,
    median: {durationSeconds: map(.durationSeconds) | median, modelCalls: map(.modelCalls) | median,
      inputTokens: map(.inputTokens) | median, outputTokens: map(.outputTokens) | median, cost: map(.cost) | median},
+   guardrails: {before: $before, after: $after},
    runs: .}' "$WORK/runs.jsonl" >"$report"
 
 # The table, in Markdown (a workflow's step summary takes it as is).
@@ -163,7 +189,9 @@ jq -r '
   "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   (.runs[] | "| \(.run) | \(.phase) | \(.correct) | \(.memoryLead) | \(.length) | \(.durationSeconds // "-") | \(.modelCalls // "-") | \(.inputTokens // "-") / \(.outputTokens // "-") | \(.cost // "-") |"),
   "",
-  "Correct: \(.correct)/\(.n) · memory lead: \(.memoryLead)/\(.n) · median duration \(.median.durationSeconds // "-") s · median model calls \(.median.modelCalls // "-") · median cost \(.median.cost // "-")"' "$report"
+  "Correct: \(.correct)/\(.n) · memory lead: \(.memoryLead)/\(.n) · median duration \(.median.durationSeconds // "-") s · median model calls \(.median.modelCalls // "-") · median cost \(.median.cost // "-")",
+  "",
+  "Guardrail counters (phase/action: before → after): \([.guardrails.after[] as $a | "\($a.phase)/\($a.action) \((.guardrails.before[] | select(.phase == $a.phase and .action == $a.action) | .n) // 0) → \($a.n)"] | join(", "))"' "$report"
 log "report: ${report}"
 if [[ -n "${BENCH_MIN:-}" ]] && (( $(jq .correct "$report") < BENCH_MIN )); then
   die "$(jq .correct "$report")/${N} correct, under BENCH_MIN=${BENCH_MIN}"

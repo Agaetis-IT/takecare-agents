@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- The benches (`make demo-bench`, `make demo-bench-intendant`) report the gateway's guardrail counters before and after their runs. A run that does not settle in `BENCH_SETTLE_SECONDS` (default 900) now stops the bench after `hack/dump.sh` has saved the cluster's state outside the repository: run status, conditions, events, the operator's log, the agents' filtered logs, the engine's task states and the counters, never a Secret or message content. A failed e2e dumps the same way.
 - Two production gaps, decided by the product owner. They report in the platform's `ProductionReady` and block nothing (spec 01):
   - `gateway-accepts-foreign-routes`: the platform's Gateway lets HTTPRoutes from every namespace attach to the listener the roles use (`allowedRoutes.namespaces.from: All`), so a route created in any namespace is served through it. The chart's own Gateway takes its namespace's routes only and never raises it, unless edited.
   - `connector-credential-in-clear-text`: a connector to a customer's MCP server by `url` sends a `headersFrom` credential over plain `http`. The detail names the connectors, never a header.

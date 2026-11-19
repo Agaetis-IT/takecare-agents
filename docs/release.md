@@ -17,6 +17,7 @@ The workflow refuses a tag that is not `v<major>.<minor>.<patch>` with an option
 1. **Bench.** Run both benches on a real model, as spec 04 and spec 10 ask before each release:
    - the Doc's accuracy bench (`make demo-bench N=5`, or the `bench` workflow): below 4 out of 5 correct, do not release;
    - the Intendant's bench (`make demo-bench-intendant N=5 BENCH_MIN=5`): the bar, set by the product owner, is five runs ok out of five; below it, do not release. On macOS, run both under `caffeinate -i`.
+   - a run that does not settle stops the bench after a dump of the cluster's state (`hack/dump.sh`, spec 04). The bench prints the dump's directory, outside the repository, and names it in the report. Keep the dump and the cluster until the cause is known: do not rerun first.
 2. **Cut the CHANGELOG, the charts and the site**, in one docs PR:
    - rename `## [Unreleased]` to `## [x.y.z] - YYYY-MM-DD`, and open a new empty `## [Unreleased]` above it;
    - at a final release (no prerelease suffix), fold the entries of its release candidates' sections into the new section, grouped under Added, Changed, Fixed and Removed, so that it reads as the difference with the previous final release, and remove the release candidates' sections from `CHANGELOG.md`; their tags' release pages keep the notes they were published with. Entries that only fix a release candidate (a defect no final release had) are dropped or merged into the entry they fix. This applies from 0.3.0; earlier sections stay as published;
