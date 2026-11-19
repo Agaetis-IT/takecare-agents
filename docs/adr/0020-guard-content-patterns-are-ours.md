@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Proposed |
+| Status | Accepted |
 | Date | 2026-11-19 |
 | Amends | spec 09 §2 and §4 |
 | Relates to | ADR 0004, ADR 0008, spec 09 |
