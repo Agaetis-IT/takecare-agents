@@ -86,8 +86,10 @@ type fixture struct {
 	metrics *SurveyMetrics
 	// runs is the engine's run half the runner's agent pass calls, and
 	// passClock the runner's clock: it starts at testStart and moves.
-	runs      *fakeRuns
-	passClock *offsetClock
+	runs *fakeRuns
+	// quiet and firstPassWait are the reconciler's waits; zero, none.
+	quiet, firstPassWait time.Duration
+	passClock            *offsetClock
 	// usageURL, when set, is the Prometheus the runner measures its
 	// passes with.
 	usageURL atomic.Value
@@ -125,7 +127,7 @@ func start(t *testing.T) *fixture { return startWith(t, false) }
 // startRunner starts the reconciler with the survey runner.
 func startRunner(t *testing.T) *fixture { return startWith(t, true) }
 
-func startWith(t *testing.T, runner bool) *fixture {
+func startWith(t *testing.T, runner bool, opts ...func(*fixture)) *fixture {
 	t.Helper()
 	cfg := testenv.Start(t)
 	scheme := runtime.NewScheme()
@@ -151,6 +153,9 @@ func startWith(t *testing.T, runner bool) *fixture {
 		c: c, clock: &clock{now: testStart}, cfg: cfg, scheme: scheme, runner: runner,
 		spans: tracetest.NewInMemoryExporter(), metrics: metrics,
 		runs: &fakeRuns{}, passClock: &offsetClock{base: testStart, t0: time.Now()}, poster: &fakePoster{},
+	}
+	for _, o := range opts {
+		o(f)
 	}
 	f.startManager(t)
 	return f
@@ -178,13 +183,14 @@ func (f *fixture) startManager(t *testing.T) {
 		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("test"), OperatorNamespace: ns,
 		EngineNamespace: engineNS, AgentKinds: (&kagent0103.Agents{}).AgentTypes(), Now: f.clock.Now, Metrics: f.metrics, PassTimeout: passTimeout,
 		Agents: &kagent0103.Agents{Client: mgr.GetClient()}, Models: &kagent0103.Models{Client: mgr.GetClient()},
+		Quiet: f.quiet, FirstPassWait: f.firstPassWait,
 	}
 	if err := r.SetupWithManager(mgr); err != nil {
 		t.Fatal(err)
 	}
 	if f.runner {
 		queue := runs.NewQueue(16)
-		if err := (&SurveyQueuer{Client: mgr.GetClient(), Queue: queue}).SetupWithManager(mgr); err != nil {
+		if err := (&SurveyQueuer{Client: mgr.GetClient(), Reader: scopedReader{mgr.GetAPIReader()}, Queue: queue, Recorder: mgr.GetEventRecorder("test")}).SetupWithManager(mgr); err != nil {
 			t.Fatal(err)
 		}
 		if err := mgr.Add(&Runner{
@@ -266,6 +272,7 @@ func (f *fixture) connector(t *testing.T, name string, typ v1alpha1.ConnectorTyp
 		c.Status.Tools = append(c.Status.Tools, v1alpha1.ToolStatus{Name: tool, Class: v1alpha1.ToolRead, Content: isContent, Source: "annotation"})
 	}
 	meta.SetStatusCondition(&c.Status.Conditions, metav1.Condition{Type: v1alpha1.ConditionReady, Status: metav1.ConditionTrue, Reason: "Test"})
+	c.Status.ObservedGeneration = c.Generation // settled, as the connector controller leaves it
 	if err := f.c.Status().Update(ctx, c); err != nil {
 		t.Fatal(err)
 	}

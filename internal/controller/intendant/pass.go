@@ -120,6 +120,18 @@ func (w *Runner) pass(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec passR
 	return out, u, nil
 }
 
+// recordTask records the pass's task, only on a running survey: never a
+// task after its outcome.
+func recordTask(kind, agent, taskID string) func(*v1alpha1.TakeCareSurveyStatus) bool {
+	return func(st *v1alpha1.TakeCareSurveyStatus) bool {
+		if st.Phase != v1alpha1.RunRunning {
+			return false
+		}
+		st.Engine = &v1alpha1.EngineRun{Kind: kind, Agent: agent, TaskID: taskID}
+		return true
+	}
+}
+
 // passMeter measures a pass on the Intendant's own model route (spec 10
 // §5): its usage counts no other role's calls. One survey runs at a time per
 // Intendant, so it is exact, except after a pass that did not finish: kagent
@@ -237,9 +249,8 @@ func (w *Runner) passRun(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec pa
 	ex := &runs.Executor{Engine: w.Runs, Role: Kind, Metrics: w.RunMetrics, Interval: w.PassInterval, Clock: w.PassClock}
 	deadline := runs.EngineDeadline(rec.started, w.passTimeout())
 	record := func(ctx context.Context, taskID string) error {
-		return w.patch(ctx, s, func(st *v1alpha1.TakeCareSurveyStatus) {
-			st.Engine = &v1alpha1.EngineRun{Kind: w.EngineKind, Agent: run.Agent, TaskID: taskID}
-		})
+		_, err := w.patch(ctx, s, recordTask(w.EngineKind, run.Agent, taskID))
+		return err
 	}
 	var out runs.Outcome
 	var err error

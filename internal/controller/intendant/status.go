@@ -22,10 +22,15 @@ type status struct {
 	// prevPending is the status's, read at the reconcile's start.
 	pendingSince, prevPending *metav1.Time
 	heldUntil                 time.Time
+	// agentExpected: the Intendant has a model and a tool, so an agent.
+	agentExpected bool
+	// now is the reconcile's clock reading: a condition that changes
+	// transitions at it, the time the triggers compare with.
+	now time.Time
 }
 
 func (s *status) set(condType string, ok bool, reason, message string) {
-	c := metav1.Condition{Type: condType, Status: metav1.ConditionFalse, Reason: reason, Message: message, ObservedGeneration: s.generation}
+	c := metav1.Condition{Type: condType, Status: metav1.ConditionFalse, Reason: reason, Message: message, ObservedGeneration: s.generation, LastTransitionTime: metav1.NewTime(s.now)}
 	if ok {
 		c.Status = metav1.ConditionTrue
 	}

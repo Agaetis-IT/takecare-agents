@@ -35,6 +35,8 @@ const (
 	rulesFixtures = "../../discovery/testdata/mcp-prometheus-v0.11.11"
 	condTime      = "2026-11-11T00:00:00Z"
 	condTrue      = "True"
+	condFalse     = "False"
+	keyConditions = "conditions"
 )
 
 // rulesServer serves mcp-prometheus's recorded get_rules answer for the
@@ -86,7 +88,7 @@ func (f *fixture) verdict(t *testing.T, intendant, accepted, attached string) {
 		obj.Object["status"] = map[string]any{"ancestors": []any{map[string]any{
 			"ancestorRef":    map[string]any{"group": "gateway.networking.k8s.io", "kind": "HTTPRoute", "name": routes.CallsPolicyName(role, connMetrics)},
 			"controllerName": "agentgateway.dev/agentgateway",
-			"conditions":     []any{condition("Accepted", accepted), condition("Attached", attached)},
+			keyConditions:    []any{condition("Accepted", accepted), condition("Attached", attached)},
 		}}}
 		return f.c.Status().Update(ctx, obj)
 	}); err != nil {
@@ -144,8 +146,8 @@ func TestArgumentRuleGate(t *testing.T) {
 		name, accepted, attached, message string
 	}{
 		{"pending", "", "", "the argument rule on prometheus's route is not enforced yet"},
-		{"accepted, not attached", condTrue, "False", "the gateway does not enforce the argument rule on prometheus's route: Attached"},
-		{"rejected", "False", condTrue, "the gateway does not enforce the argument rule on prometheus's route: Accepted"},
+		{"accepted, not attached", condTrue, condFalse, "the gateway does not enforce the argument rule on prometheus's route: Attached"},
+		{"rejected", condFalse, condTrue, "the gateway does not enforce the argument rule on prometheus's route: Accepted"},
 	} {
 		if step.accepted != "" {
 			f.verdict(t, gated, step.accepted, step.attached)

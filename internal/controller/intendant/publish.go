@@ -106,7 +106,13 @@ func (w *Runner) publish(parent context.Context, key types.NamespacedName) {
 			logger.Error(err, "record the Intendant's last digest")
 		}
 	}
-	if err := w.patch(parent, &s, func(st *v1alpha1.TakeCareSurveyStatus) { st.Published = &result }); err != nil {
+	if _, err := w.patch(parent, &s, func(st *v1alpha1.TakeCareSurveyStatus) bool {
+		if st.Phase != v1alpha1.RunCompleted {
+			return false // ended otherwise meanwhile (the backstop): nothing to record
+		}
+		st.Published = &result
+		return true
+	}); err != nil {
 		logger.Error(err, "record the publication")
 	}
 	if !result.OK && w.Recorder != nil {

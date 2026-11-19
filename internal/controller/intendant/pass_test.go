@@ -119,7 +119,7 @@ func (f *fixture) passReady(t *testing.T, name string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		u.Object["status"] = map[string]any{"conditions": []any{condition("Accepted", condTrue), condition("Ready", condTrue)}}
+		u.Object["status"] = map[string]any{keyConditions: []any{condition("Accepted", condTrue), condition("Ready", condTrue)}}
 		if err := f.c.Status().Update(context.Background(), u); err != nil {
 			t.Fatal(err)
 		}

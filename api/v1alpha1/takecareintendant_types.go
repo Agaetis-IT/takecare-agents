@@ -99,18 +99,21 @@ type TakeCareIntendantStatus struct {
 	// +optional
 	PendingTrigger SurveyTrigger `json:"pendingTrigger,omitempty"`
 
-	// The map connector's revision the last survey was triggered for: a
-	// new one triggers a survey.
+	// The map connector's revision the newest survey the operator created
+	// observed (its spec.mapRevision): shown here, read from that survey.
 	// +kubebuilder:validation:MaxLength=128
 	// +optional
 	LastMapRevision string `json:"lastMapRevision,omitempty"`
 
-	// A digest of the registrations the last survey saw (the bound
-	// connectors and the engine's agents, by name and generation): a
-	// change triggers a survey.
+	// The digest of the settled registrations seen now (the bound
+	// connectors and the engine's agents, by name and generation), and
+	// since when it has not changed: a Registration survey is due once it
+	// differs from the newest survey's and has held for the quiet period.
 	// +kubebuilder:validation:MaxLength=64
 	// +optional
 	Registrations string `json:"registrations,omitempty"`
+	// +optional
+	RegistrationsSince *metav1.Time `json:"registrationsSince,omitempty"`
 
 	// The last digest actually posted (spec 10 §6): a survey whose
 	// proposals have the same fingerprint, to the same connector and

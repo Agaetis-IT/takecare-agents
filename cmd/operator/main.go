@@ -335,13 +335,15 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		OperatorNamespace: cfg.operatorNamespace, EngineNamespace: cfg.engineNamespace,
 		AgentKinds: (&kagent0103.Agents{}).AgentTypes(),
 		Agents:     &kagent0103.Agents{Client: mgr.GetClient()}, Models: &kagent0103.Models{Client: mgr.GetClient()},
+		Quiet: intendant.DefaultQuiet, FirstPassWait: intendant.DefaultFirstPassWait,
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up the Intendant controller: %w", err)
 	}
 	// Its surveys (spec 10 §4): queued as they come, run one per Intendant
 	// at a time through its routes on the gateway.
 	surveys := runs.NewQueue(16)
-	if err := (&intendant.SurveyQueuer{Client: mgr.GetClient(), Queue: surveys}).SetupWithManager(mgr); err != nil {
+	if err := (&intendant.SurveyQueuer{Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: surveys,
+		Recorder: mgr.GetEventRecorder("takecare-operator")}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up the survey queue: %w", err)
 	}
 	if err := mgr.Add(&intendant.Runner{
