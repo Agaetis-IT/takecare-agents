@@ -297,8 +297,19 @@ type guardEntries struct {
 // The parts of a request a regex guard inspects (agentgateway 1.6 prompt
 // guard scope). Every regex entry names its scope: 1.6 leaves tool outputs
 // out by default and 1.7 puts them in, so ours behave alike on both.
-// phoneNumber is the masking builtin rendered as our own patterns.
-const phoneNumber v1alpha1.MaskingBuiltin = "PhoneNumber"
+// phoneNumber and ssn are the masking builtins rendered as our own
+// patterns (ADR 0020).
+const (
+	phoneNumber v1alpha1.MaskingBuiltin = "PhoneNumber"
+	ssn         v1alpha1.MaskingBuiltin = "Ssn"
+)
+
+// ourPatterns are the patterns rendered in place of those builtins: the
+// gateway's take dates, ids and timestamp fractions (spec 09 §4).
+var ourPatterns = map[v1alpha1.MaskingBuiltin][]string{
+	phoneNumber: shapes.PhonePatterns,
+	ssn:         shapes.SsnPatterns,
+}
 
 var (
 	scopeToolOutput = []any{"ToolOutput"}
@@ -340,17 +351,17 @@ func guards(rg *v1alpha1.TakeCareRanger, enforcing bool) guardEntries {
 	}
 
 	// The PII mask, on the system prompt, the messages and what tools
-	// return. PhoneNumber is rendered as our own patterns, not the
-	// gateway's builtin: on 1.6.0 and 1.7.0 alike (measured 2026-11-18)
-	// the builtin takes ISO dates, timestamps' dates and ids such as
-	// INC-2024-0312 for phone numbers, which took from the Intendant and
-	// the Doc the dates and ids they compare and quote back. The
-	// customer's own masking patterns follow (spec 09 §2).
+	// return. PhoneNumber and Ssn are rendered as our own patterns, not the
+	// gateway's builtins (ADR 0020): on 1.6.0 and 1.7.0 alike, the phone
+	// builtin takes ISO dates, timestamps' dates and ids such as
+	// INC-2024-0312, and the Ssn builtin any nine-digit run, an alert's
+	// nanosecond fraction among them. The customer's own masking patterns
+	// follow (spec 09 §2).
 	m := rg.Spec.Masking
 	var builtins, patterns []any
 	for _, b := range m.Builtins {
-		if b == phoneNumber {
-			for _, p := range shapes.PhonePatterns {
+		if ours, ok := ourPatterns[b]; ok {
+			for _, p := range ours {
 				patterns = append(patterns, p)
 			}
 			continue

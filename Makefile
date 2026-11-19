@@ -82,10 +82,16 @@ fmt: ## Run go fmt.
 vet: ## Run go vet.
 	go vet ./...
 
+# Each package's test binary gets TEST_TIMEOUT. Go's default of 10 minutes
+# is too close: on CI (2026-11-19), internal/controller/intendant ran in
+# 502 s. A package that dies on the timeout hides the other packages'
+# results, a stale golden included.
+TEST_TIMEOUT ?= 20m
+
 .PHONY: test
 test: setup-envtest chart-deps ## Run unit, golden, envtest and chart tests.
 	KUBEBUILDER_ASSETS="$$("$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
-	HELM="$(HELM)" $(HELM_ENV) go test ./... -coverprofile cover.out
+	HELM="$(HELM)" $(HELM_ENV) go test ./... -coverprofile cover.out -timeout $(TEST_TIMEOUT)
 
 ##@ Charts
 
@@ -297,6 +303,10 @@ docker-buildx: ## Build every image for IMAGE_PLATFORMS (amd64 and arm64; pushed
 
 
 ##@ End-to-end (spec 04; never changes your kube context)
+
+.PHONY: guard-corpus
+guard-corpus: ## The guard corpus through the pinned gateway (ADR 0020; needs Docker): real outputs unchanged, samples masked whole.
+	go test -count=1 -v -tags guardcorpus -run 'TestGuardCorpus' ./internal/controller/ranger/
 
 .PHONY: e2e e2e-down fakellm-record
 e2e: ## The demo on k3d with the fake model and fake Slack, and the complete Doc path checked.

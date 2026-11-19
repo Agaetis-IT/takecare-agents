@@ -1,0 +1,8 @@
+{
+ "tool": "runbooks_get",
+ "args": {
+  "id": "RB-019"
+ },
+ "output": "{\"domain\":\"network\",\"id\":\"RB-019\",\"procedure\":\"1. Compare the load balancer idle timeout with the application HTTP keep-alive idle timeout.\\n2. If the application closes idle keep-alive connections before the load balancer does, the load balancer reuses a connection the application already closed: 'connection reset by peer', then 502 or 504.\\n3. Set the application keep-alive idle timeout above the load balancer idle timeout.\\n4. Long requests (exports) hitting 504 point at the load balancer idle timeout itself: raise it for that route.\\n5. Count the connection resets per upstream connection: when every reset hits a connection that sat idle, one side of the connection has a shorter idle timeout than the other. Reused idle connections are the only ones reset.\",\"revision\":\"2025-02-14\",\"services\":\"all\",\"symptoms\":\"Intermittent 502 and 504 at the load balancer, more frequent at low traffic. 'connection reset by peer' in the load balancer and application logs. Pods Ready, no restart.\",\"tags\":\"502 504 load balancer alb idle timeout keep-alive connection reset by peer upstream intermittent\",\"title\":\"Intermittent 502/504 behind the load balancer\",\"verification\":\"No 502/504 and no 'connection reset by peer' for 30 minutes of low traffic.\"}",
+ "source": "intendant run on the demo, 2026-11-18"
+}

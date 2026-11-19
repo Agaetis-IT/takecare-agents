@@ -1,0 +1,8 @@
+{
+ "tool": "neighbours",
+ "args": {
+  "key": "service/billing-api"
+ },
+ "output": "[{\"key\":\"compute/billing-api\",\"type\":\"compute\",\"status\":\"validated\",\"relation\":\"runsAs\",\"direction\":\"out\"},{\"key\":\"datastore/billing-db\",\"type\":\"datastore\",\"status\":\"validated\",\"relation\":\"dependsOn\",\"direction\":\"out\"},{\"key\":\"network/billing-db-proxy\",\"type\":\"network\",\"status\":\"validated\",\"relation\":\"dependsOn\",\"direction\":\"out\"},{\"key\":\"observability/prometheus\",\"type\":\"observability\",\"status\":\"validated\",\"relation\":\"observedBy\",\"direction\":\"out\"},{\"key\":\"runbook/proxy-timeout\",\"type\":\"runbook\",\"status\":\"validated\",\"relation\":\"documentedBy\",\"direction\":\"out\"},{\"key\":\"team/platform\",\"type\":\"team\",\"status\":\"validated\",\"relation\":\"belongsTo\",\"direction\":\"out\"}]",
+ "source": "intendant run on the demo, 2026-11-18"
+}

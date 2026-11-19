@@ -1,0 +1,8 @@
+{
+ "tool": "entry",
+ "args": {
+  "key": "network/billing-db-proxy"
+ },
+ "output": "{\"created\":\"2026-11-05\",\"inbound\":{\"dependsOn\":[\"compute/billing-api\",\"service/billing-api\"]},\"key\":\"network/billing-db-proxy\",\"lastValidated\":\"2026-11-05\",\"owner\":\"team/platform\",\"provenance\":\"declared\",\"relations\":{\"dependsOn\":[\"datastore/billing-db\"],\"deployedIn\":[\"environment/ack-system\"]},\"sources\":[{\"kubernetes\":\"ack-system/DBProxy/billing-db-proxy\"}],\"status\":\"validated\"}",
+ "source": "doc run on the demo, 2026-11-18"
+}

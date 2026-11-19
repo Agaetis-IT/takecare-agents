@@ -1,0 +1,8 @@
+{
+  "tool": "execute_query",
+  "args": {
+    "query": "sum by (pod) (rate(http_requests_total{namespace=\"demo-apps\"}[5m]))"
+  },
+  "output": "Query executed successfully.\nResult Type: vector\nResult: {pod=\"billing-api-644f94fc77-f5dzs\"} => 21.0037037037037 @[1795079681.662]\n{pod=\"billing-api-f8f869bf9-dx8gh\"} => 17.941996266791108 @[1795079681.662]",
+  "source": "capture.sh on the e2e demo, 2026-11-19"
+}

@@ -189,7 +189,7 @@ Mirroring every image and installing without Internet access is tracked in issue
 | ranger.filtering.patterns | list | `[]` | Your own patterns, as `{name, regex}`: a match refuses the request, in what a tool returns too; they are never used as masks. |
 | ranger.filtering.shipped | bool | `true` | The shipped secret shapes (private keys, cloud access keys, API tokens of common services): a match refuses the request; in what a tool returns, a shape is masked whole and the call goes on (spec 09 §4). |
 | ranger.level | string | `"Apprentice"` | Apprentice (audit only), Practitioner (mask, filter, cap) or Expert (the Practitioner's Markers and the extra ones; the identity per agent waits for the Intendant's Bib). |
-| ranger.masking.builtins | list | `["CreditCard","Email","PhoneNumber","Ssn"]` | The built-in patterns replaced before a request reaches the model: CreditCard, Email and Ssn are the gateway's; PhoneNumber is TakeCare's own patterns (international, French and North American forms). |
+| ranger.masking.builtins | list | `["CreditCard","Email","PhoneNumber","Ssn"]` | The built-in patterns replaced before a request reaches the model: CreditCard and Email are the gateway's; PhoneNumber (international, French and North American forms) and Ssn (the US number with its dashes, the French NIR) are TakeCare's own patterns. |
 | ranger.masking.patterns | list | `[]` | Your own patterns, as `{name, regex}`. |
 | ranger.models | list | `[]` | The platform's models each role kind (TakeCareDoc, TakeCareIntendant) may call, as `[{kind, allowed}]`; a kind not listed may call all. |
 | ranger.suspend | bool | `false` | Pause without deletion: no Marker is rendered. |

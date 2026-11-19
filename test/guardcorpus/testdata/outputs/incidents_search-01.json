@@ -1,0 +1,8 @@
+{
+ "tool": "incidents_search",
+ "args": {
+  "query": "504"
+ },
+ "output": "[{\"date\":\"2024-03-12\",\"id\":\"INC-2024-0312\",\"title\":\"Intermittent 504s and growing memory on billing-api, off-peak hours\"},{\"date\":\"2025-06-11\",\"id\":\"INC-2025-0611\",\"title\":\"504s on billing-api during invoice exports\"},{\"date\":\"2025-09-18\",\"id\":\"INC-2025-0918\",\"title\":\"billing-api memory leak in the PDF renderer\"}]",
+ "source": "doc-incident run on the demo, 2026-11-18"
+}

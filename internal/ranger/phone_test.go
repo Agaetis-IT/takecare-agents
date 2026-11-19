@@ -23,6 +23,9 @@ var phoneMask = regexp.MustCompile(`(?:` + strings.Join(PhonePatterns, `)|(?:`) 
 // frenchSpaced is the made-up French number written with spaces.
 const frenchSpaced = "01 23 45 67 89"
 
+// nanpDashed is the made-up North American number written with dashes.
+const nanpDashed = "415-555-0123"
+
 // nanp00 is the made-up North American number written with 00.
 const nanp00 = "001 415 555 0123"
 
@@ -48,7 +51,7 @@ func TestPhonePatternsTake(t *testing.T) {
 		{"French without separators", "0612345678", []string{"0612345678"}},
 		{"North American with parentheses", "(415) 555-0123", []string{"(415) 555-0123"}},
 		{"North American with a space", "415 555-0123", []string{"415 555-0123"}},
-		{"North American with dashes", "415-555-0123", []string{"415-555-0123"}},
+		{"North American with dashes", nanpDashed, []string{nanpDashed}},
 		{"North American with dots", "415.555.0123", []string{"415.555.0123"}},
 		// Where numbers really sit.
 		// The bare form takes the character before it (here the quote): see

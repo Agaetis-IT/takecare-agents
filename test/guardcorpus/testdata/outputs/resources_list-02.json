@@ -1,0 +1,10 @@
+{
+ "tool": "resources_list",
+ "args": {
+  "apiVersion": "v1",
+  "kind": "Service",
+  "namespace": "demo-apps"
+ },
+ "output": "NAMESPACE   APIVERSION   KIND      NAME          TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)    AGE   SELECTOR          LABELS\ndemo-apps   v1           Service   billing-api   ClusterIP   10.43.210.86   <none>        8080/TCP   17m   app=billing-api   app.kubernetes.io/part-of=takecare-demo,takecare.agaetis.fr/demo=demo\n",
+ "source": "intendant run on the demo, 2026-11-18"
+}
