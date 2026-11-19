@@ -148,8 +148,17 @@ func gateway(t *testing.T, provider int) string {
 	t.Cleanup(func() { _ = exec.Command("docker", "rm", "-f", name).Run() }) //nolint:gosec // the container named above
 	// The pin is a version tag: the run's record names the image it judged
 	// the corpus with.
-	digest, _ := exec.Command("docker", "image", "inspect", "--format", "{{index .RepoDigests 0}}", image).Output() //nolint:gosec // the pinned image
-	t.Logf("the corpus runs through %s (%s)", image, strings.TrimSpace(string(digest)))
+	// A loaded image has no registry digest: on CI the workflow passes the
+	// one it recorded at the pull, beside the saved image.
+	out, _ := exec.Command("docker", "image", "inspect", "--format", "{{range .RepoDigests}}{{.}} {{end}}", image).Output() //nolint:gosec // the pinned image
+	digest := strings.TrimSpace(string(out))
+	if digest == "" && os.Getenv("CORPUS_IMAGE_DIGEST") != "" {
+		digest = os.Getenv("CORPUS_IMAGE_DIGEST") + ", recorded at pull"
+	}
+	if digest == "" && os.Getenv("GITHUB_ACTIONS") == "true" {
+		t.Fatalf("no digest for %s: the corpus's record must name the image that judged it", image)
+	}
+	t.Logf("the corpus runs through %s (%s)", image, digest)
 	url := fmt.Sprintf("http://127.0.0.1:%d/v1/chat/completions", port)
 	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
