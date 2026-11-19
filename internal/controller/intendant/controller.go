@@ -378,7 +378,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// A generation (a registration), and the status that settles it or
 		// says the agent is Ready: EngineReady follows the Intendant's own
 		// agent at its change, not at the next poll.
-		b = b.Watches(u, all, builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, engineStatusChanged{})))
+		b = b.Watches(u, all, builder.WithPredicates(engineWatch))
 	}
 	for _, gvk := range routes.Kinds() {
 		u := &unstructured.Unstructured{}
@@ -410,6 +410,15 @@ func (surveyPhaseChanged) Update(e event.UpdateEvent) bool {
 	b, okB := e.ObjectNew.(*v1alpha1.TakeCareSurvey)
 	return okA && okB && a.Status.Phase != b.Status.Phase
 }
+
+// engineWatch passes the engine objects' changes the Intendant reacts to:
+// a new generation (a registration), and a status that observed it or a
+// Ready condition that flipped (the settled digest, and EngineReady,
+// which a generation-only predicate missed: kagent flips Ready without a
+// new generation). Every Intendant is enqueued: an engine object's change
+// may settle any Intendant's registrations, and its own agent's Ready is
+// one of them.
+var engineWatch = predicate.Or(predicate.GenerationChangedPredicate{}, engineStatusChanged{})
 
 // engineStatusChanged passes an engine object's update whose observed
 // generation or Ready condition changed.

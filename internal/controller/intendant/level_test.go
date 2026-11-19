@@ -237,7 +237,11 @@ func TestFirstSurveyWaitsForTheAgent(t *testing.T) {
 }
 
 // N3: the agent's readiness reaches EngineReady at its change, without a
-// poke or the 30 s requeue.
+// poke or the 30 s requeue. This test passes on the former generation-only
+// predicate too: in envtest another event wakes the Intendant's reconcile
+// near the agent's flip, so it does not isolate the fault. The predicate
+// itself is proven by TestEngineWatchPassesReadyFlips; this one keeps the
+// end-to-end behaviour.
 func TestEngineReadyFollowsTheAgent(t *testing.T) {
 	f := start(t)
 	f.ready(t, "follow", nil)

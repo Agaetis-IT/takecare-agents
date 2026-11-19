@@ -90,14 +90,14 @@ func (r *Reconciler) survey(ctx context.Context, in *v1alpha1.TakeCareIntendant,
 	}
 	if digest != last.Registrations {
 		if quiet := out.since.Add(r.Quiet); now.Before(quiet) {
-			out.requeue = quiet
+			out.requeue = earliest(out.requeue, quiet)
 		} else {
 			fired, why[v1alpha1.TriggerRegistration] = append(fired, v1alpha1.TriggerRegistration), "the registrations changed"
 		}
 	}
 	if since, owed := passOwed(in, newest, st, now); owed {
 		if ready := since.Add(r.Quiet); now.Before(ready) {
-			out.requeue = ready
+			out.requeue = earliest(out.requeue, ready)
 		} else if why[v1alpha1.TriggerRegistration] == "" {
 			fired, why[v1alpha1.TriggerRegistration] = append(fired, v1alpha1.TriggerRegistration), "the agent pass was owed: the last survey's pass did not run, the agent is ready since "+since.UTC().Format(time.RFC3339)
 		}
@@ -114,7 +114,7 @@ func (r *Reconciler) survey(ctx context.Context, in *v1alpha1.TakeCareIntendant,
 		return out, nil
 	}
 	if wait := r.firstPassWait(in, newest, st, now); !wait.IsZero() {
-		out.pending, out.requeue = trigger, wait
+		out.pending, out.requeue = trigger, earliest(out.requeue, wait)
 		return out, nil
 	}
 	if !busy {
@@ -280,4 +280,17 @@ func settled(o *unstructured.Unstructured) bool {
 		}
 	}
 	return !told
+}
+
+// earliest is the earlier of two wake-up times, a zero time meaning none:
+// when several triggers wait, the reconcile comes back at the first.
+func earliest(a, b time.Time) time.Time {
+	switch {
+	case a.IsZero():
+		return b
+	case b.IsZero() || a.Before(b):
+		return a
+	default:
+		return b
+	}
 }
