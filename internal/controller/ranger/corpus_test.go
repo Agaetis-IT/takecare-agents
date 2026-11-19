@@ -317,5 +317,7 @@ func mustMask() []sample {
 		{"phone, E.164", "+33 1 23 45 67 89", cMasked, "45 67 89", false},
 		{"phone, French", "01 23 45 67 89", cMasked, "45 67 89", false},
 		{"phone, North American", "(415) 555-0123", cMasked, "555-0123", false},
+		{"social security number, US", "123-45-6789", cMasked, "45-6789", false},
+		{"social security number, French", "2 91 07 75 112 345 18", cMasked, "345 18", false},
 	}
 }
