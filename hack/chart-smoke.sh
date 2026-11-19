@@ -54,9 +54,11 @@ up() {
   fi
   k3d kubeconfig write "$CLUSTER" --output "$KUBECONFIG" >/dev/null
   log "building and importing ${IMAGE}, ${REPORT_IMAGE}, ${CORPUS_IMAGE}, ${MAP_IMAGE}, ${DEMO_APP_IMAGE} and ${FRONT_IMAGE}"
-  make docker-build OPERATOR_IMG="$IMAGE" REPORT_SLACK_IMG="$REPORT_IMAGE" MCP_CORPUS_IMG="$CORPUS_IMAGE" MCP_MAP_IMG="$MAP_IMAGE" DEMO_APP_IMG="$DEMO_APP_IMAGE" MCP_FRONT_IMG="$FRONT_IMAGE" >/dev/null
+  make docker-build OPERATOR_IMG="$IMAGE" REPORT_SLACK_IMG="$REPORT_IMAGE" MCP_CORPUS_IMG="$CORPUS_IMAGE" MCP_MAP_IMG="$MAP_IMAGE" DEMO_APP_IMG="$DEMO_APP_IMAGE" MCP_FRONT_IMG="$FRONT_IMAGE" \
+    LOCAL_LABELS="--label org.agaetis.takecare.local=true --label org.agaetis.takecare.hash=${IMAGE_TAG}" >/dev/null
   docker build --build-arg GO_BUILD_IMAGE="$GO_BUILD_IMAGE" --build-arg RUNTIME_IMAGE="$RUNTIME_IMAGE" \
-    --build-arg GO_LICENSES_VERSION="$GO_LICENSES_VERSION" --build-arg COMPONENT=fake-slack -t "$FAKE_SLACK_IMAGE" . >/dev/null
+    --build-arg GO_LICENSES_VERSION="$GO_LICENSES_VERSION" --build-arg COMPONENT=fake-slack \
+    --label org.agaetis.takecare.local=true --label org.agaetis.takecare.hash="${IMAGE_TAG}" -t "$FAKE_SLACK_IMAGE" . >/dev/null
   k3d image import "$IMAGE" "$REPORT_IMAGE" "$CORPUS_IMAGE" "$MAP_IMAGE" "$DEMO_APP_IMAGE" "$FRONT_IMAGE" "$FAKE_SLACK_IMAGE" -c "$CLUSTER" >/dev/null
   make chart-deps >/dev/null
 }

@@ -82,7 +82,7 @@ images() {
   tag="local-$(find cmd api internal go.mod go.sum Dockerfile .dockerignore -type f | sort | xargs shasum | shasum | cut -c1-12)"
   if [[ "$(cat "${STATE}/images" 2>/dev/null)" != "$tag" ]]; then
     log "building and importing the images (${tag})" >&2
-    make docker-build VERSION="$tag" >/dev/null
+    make docker-build VERSION="$tag" LOCAL_LABELS="--label org.agaetis.takecare.local=true --label org.agaetis.takecare.hash=${tag#local-}" >/dev/null
     k3d image import -c "$CLUSTER" "${IMAGE_REGISTRY}"/takecare-agents-{operator,mcp-report-slack,mcp-corpus,mcp-map,mcp-front,demo-app}:"$tag" >/dev/null
     echo "$tag" >"${STATE}/images"
   fi

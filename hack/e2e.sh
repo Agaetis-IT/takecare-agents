@@ -228,7 +228,7 @@ fakes() {
   local tag
   tag="local-$(find cmd test/fakellm test/fakeslack go.mod go.sum Dockerfile .dockerignore -type f | sort | xargs shasum | shasum | cut -c1-12)"
   log "building and importing the fakes (${tag})"
-  make docker-build-e2e VERSION="$tag" >/dev/null
+  make docker-build-e2e VERSION="$tag" LOCAL_LABELS="--label org.agaetis.takecare.local=true --label org.agaetis.takecare.hash=${tag#local-}" >/dev/null
   k3d image import -c takecare-demo "${IMAGE_REGISTRY}/takecare-agents-fake-llm:${tag}" "${IMAGE_REGISTRY}/takecare-agents-fake-slack:${tag}" >/dev/null
   kubectl get namespace "$E2E_NS" >/dev/null 2>&1 || kubectl create namespace "$E2E_NS" >/dev/null
   printf '%s' "$TAKECARE_SLACK_BOT_TOKEN" | kubectl -n "$E2E_NS" create secret generic fake-slack-token \
