@@ -16,9 +16,11 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 LABEL=org.agaetis.takecare.local=true
 
-hash_of() { find "$@" -type f | sort | xargs shasum | shasum | cut -c1-12; }
-keep=("$(hash_of cmd api internal go.mod go.sum Dockerfile .dockerignore)"
-  "$(hash_of cmd test/fakellm test/fakeslack go.mod go.sum Dockerfile .dockerignore)")
+# The tags demo.sh and e2e.sh would build now, computed by the same code.
+# shellcheck source=hack/local-tags.sh
+source hack/local-tags.sh
+demo="$(demo_tag)" fakes="$(fakes_tag)"
+keep=("${demo#local-}" "${fakes#local-}")
 clusters="$(k3d cluster list -o json 2>/dev/null | jq -r '.[].name' || true)"
 if grep -qx takecare-demo <<<"$clusters" && [[ -f bin/demo/images ]]; then
   keep+=("$(sed 's/^local-//' bin/demo/images)")

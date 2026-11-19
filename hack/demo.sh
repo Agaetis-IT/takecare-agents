@@ -15,6 +15,8 @@ cd "$(git rev-parse --show-toplevel)"
 set -a
 # shellcheck disable=SC1091
 source hack/versions.env
+# shellcheck source=hack/local-tags.sh
+source hack/local-tags.sh
 set +a
 
 CLUSTER=takecare-demo
@@ -79,7 +81,7 @@ images() {
   fi
   local tag
   # What the images are built from, untracked files included.
-  tag="local-$(find cmd api internal go.mod go.sum Dockerfile .dockerignore -type f | sort | xargs shasum | shasum | cut -c1-12)"
+  tag="$(demo_tag)"
   if [[ "$(cat "${STATE}/images" 2>/dev/null)" != "$tag" ]]; then
     log "building and importing the images (${tag})" >&2
     make docker-build VERSION="$tag" LOCAL_LABELS="--label org.agaetis.takecare.local=true --label org.agaetis.takecare.hash=${tag#local-}" >/dev/null
