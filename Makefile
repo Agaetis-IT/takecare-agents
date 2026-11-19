@@ -82,10 +82,16 @@ fmt: ## Run go fmt.
 vet: ## Run go vet.
 	go vet ./...
 
+# Each package's test binary gets TEST_TIMEOUT. Go's default of 10 minutes
+# is too close: on CI (2026-11-19), internal/controller/intendant ran in
+# 502 s. A package that dies on the timeout hides the other packages'
+# results, a stale golden included.
+TEST_TIMEOUT ?= 20m
+
 .PHONY: test
 test: setup-envtest chart-deps ## Run unit, golden, envtest and chart tests.
 	KUBEBUILDER_ASSETS="$$("$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
-	HELM="$(HELM)" $(HELM_ENV) go test ./... -coverprofile cover.out
+	HELM="$(HELM)" $(HELM_ENV) go test ./... -coverprofile cover.out -timeout $(TEST_TIMEOUT)
 
 ##@ Charts
 
