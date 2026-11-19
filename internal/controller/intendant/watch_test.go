@@ -12,10 +12,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
+// keyStatus is an object's status field.
+const keyStatus = "status"
+
 // agentObj is a kagent Agent as the watch sees it: its generation, its
 // status' observed generation and its conditions.
 func agentObj(gen, observed int64, conditions ...map[string]any) *unstructured.Unstructured {
-	u := &unstructured.Unstructured{Object: map[string]any{"status": map[string]any{"observedGeneration": observed}}}
+	u := &unstructured.Unstructured{Object: map[string]any{keyStatus: map[string]any{"observedGeneration": observed}}}
 	u.SetAPIVersion("kagent.dev/v1alpha2")
 	u.SetKind("Agent")
 	u.SetName("takecare-intendant-intendant")
@@ -24,12 +27,12 @@ func agentObj(gen, observed int64, conditions ...map[string]any) *unstructured.U
 	for _, c := range conditions {
 		cs = append(cs, c)
 	}
-	_ = unstructured.SetNestedSlice(u.Object, cs, "status", "conditions")
+	_ = unstructured.SetNestedSlice(u.Object, cs, keyStatus, keyConditions)
 	return u
 }
 
 func readyCond(typ, status string) map[string]any {
-	return map[string]any{"type": typ, "status": status}
+	return map[string]any{"type": typ, keyStatus: status}
 }
 
 // N3: the Intendant's EngineReady follows its agent. kagent flips the

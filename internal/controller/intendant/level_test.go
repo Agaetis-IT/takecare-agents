@@ -241,7 +241,7 @@ func TestFirstSurveyWaitsForTheAgent(t *testing.T) {
 // predicate too: in envtest another event wakes the Intendant's reconcile
 // near the agent's flip, so it does not isolate the fault. The predicate
 // itself is proven by TestEngineWatchPassesReadyFlips; this one keeps the
-// end-to-end behaviour.
+// end-to-end behavior.
 func TestEngineReadyFollowsTheAgent(t *testing.T) {
 	f := start(t)
 	f.ready(t, "follow", nil)
