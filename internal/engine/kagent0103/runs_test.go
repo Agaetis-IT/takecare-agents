@@ -251,7 +251,7 @@ func TestPollEndings(t *testing.T) {
 		// text: its state, kagent's error code and the HTTP status only.
 		{ending: "failed", want: engine.OutcomeFailed, reason: "the task failed (HTTP 401)"},
 		{ending: "failed-ranger", want: engine.OutcomeFailed, reason: "the task failed: the gateway refused the model call: rejected by the Ranger"},
-		{ending: "failed-limited", want: engine.OutcomeFailed, reason: "the task failed: the gateway limited the model call (429)"},
+		{ending: "failed-limited", want: engine.OutcomeFailed, reason: "the task failed: the model call was rate limited (HTTP 429)"},
 		{ending: "failed-code", want: engine.OutcomeFailed, reason: "the task failed (MAX_TOKENS)"},
 		{ending: "failed-code-text", want: engine.OutcomeFailed, reason: "the task failed"},
 		{ending: "canceled", want: engine.OutcomeFailed, reason: "the task stopped in state TASK_STATE_CANCELED"},

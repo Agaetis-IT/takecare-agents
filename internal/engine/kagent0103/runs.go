@@ -178,11 +178,13 @@ var (
 	httpStatusOpen = regexp.MustCompile(`^Error code: ([1-5][0-9]{2})\b`)
 )
 
-// Our own answers a failed task's message may carry, recognized as exact
-// constants, never passed through: each gives a fixed sentence of ours.
+// A failed task's message is never passed through. The Ranger's refusal
+// is recognized by its exact sentence; a 429 is reported as a status,
+// whoever sent it (the gateway's cap or the provider's own limit: the
+// Ranger's RequestsRateLimited event and counter say when it was ours).
 const (
 	refusedByRanger = "the gateway refused the model call: rejected by the Ranger"
-	limitedCall     = "the gateway limited the model call (429)"
+	rateLimited     = "the model call was rate limited (HTTP 429)"
 )
 
 // errorDetail is the part of a failed task's reason taken from its status
@@ -201,7 +203,7 @@ func errorDetail(m *a2a.Message) string {
 	}
 	if s := httpStatusOpen.FindStringSubmatch(text); s != nil {
 		if s[1] == "429" {
-			return ": " + limitedCall
+			return ": " + rateLimited
 		}
 		parts = append(parts, "HTTP "+s[1])
 	}
