@@ -90,6 +90,8 @@ TEST_TIMEOUT ?= 20m
 
 .PHONY: test
 test: setup-envtest chart-deps ## Run unit, golden, envtest and chart tests.
+	@# setup-envtest installs its binaries read-only: writable, a worktree's bin/ can be removed.
+	"$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" >/dev/null && chmod -R u+w "$(LOCALBIN)/k8s"
 	KUBEBUILDER_ASSETS="$$("$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	HELM="$(HELM)" $(HELM_ENV) go test ./... -coverprofile cover.out -timeout $(TEST_TIMEOUT)
 
@@ -266,20 +268,28 @@ run: ## Run the operator against the current kube context.
 
 DOCKER_BUILD_ARGS := --build-arg GO_BUILD_IMAGE=$(GO_BUILD_IMAGE) --build-arg RUNTIME_IMAGE=$(RUNTIME_IMAGE) \
 	--build-arg GO_LICENSES_VERSION=$(GO_LICENSES_VERSION)
+# LOCAL_LABELS marks the images the demo, the e2e and the smoke build on a
+# machine (hack/demo.sh, hack/e2e.sh, hack/chart-smoke.sh), so that
+# make clean-local finds them and nothing else; empty for a release build.
+LOCAL_LABELS ?=
 
 .PHONY: docker-build
 docker-build: ## Build every image (operator, report server, demo app, corpus server, Map server, front) for the local platform.
-	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=operator -t $(OPERATOR_IMG) .
-	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-report-slack -t $(REPORT_SLACK_IMG) .
-	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=demo-app -t $(DEMO_APP_IMG) .
-	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-corpus -t $(MCP_CORPUS_IMG) .
-	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-map -t $(MCP_MAP_IMG) .
-	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-front -t $(MCP_FRONT_IMG) .
+	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=operator -t $(OPERATOR_IMG) .
+	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-report-slack -t $(REPORT_SLACK_IMG) .
+	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=demo-app -t $(DEMO_APP_IMG) .
+	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-corpus -t $(MCP_CORPUS_IMG) .
+	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-map -t $(MCP_MAP_IMG) .
+	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-front -t $(MCP_FRONT_IMG) .
+
+.PHONY: clean-local
+clean-local: ## List the images the demo, the e2e and the smoke built here; CLEAN_LOCAL=remove removes them (never the current tree's).
+	hack/clean-local.sh
 
 .PHONY: docker-build-e2e
 docker-build-e2e: ## Build the end-to-end tests' fakes (model provider, Slack) for the local platform.
-	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=fake-llm -t $(FAKE_LLM_IMG) .
-	docker build $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=fake-slack -t $(FAKE_SLACK_IMG) .
+	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=fake-llm -t $(FAKE_LLM_IMG) .
+	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=fake-slack -t $(FAKE_SLACK_IMG) .
 
 # In GitHub Actions, once the runtime token is exposed (the ci workflow does
 # it), the layers go to the Actions cache, one scope per image.
