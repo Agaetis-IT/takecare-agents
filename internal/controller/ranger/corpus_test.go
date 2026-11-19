@@ -31,7 +31,11 @@ import (
 // guards, must come back byte for byte; samples that must be masked come
 // back masked whole; a key cut before its END line is refused. It runs
 // with `make guard-corpus` (Docker), at every gateway bump and whenever a
-// pattern or the Ranger's rendering changes.
+// pattern or the Ranger's rendering changes. It keeps both kinds of
+// content: real captures, for what nobody has thought of, and must-stay
+// machine values with made-up digits, for what is known to sit where a
+// pattern could take it (a real capture holds whichever values the demo
+// printed that day).
 
 const (
 	corpusDir = "../../../test/guardcorpus/testdata"
