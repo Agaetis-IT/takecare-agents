@@ -71,6 +71,12 @@ const (
 
 const requeueNotReady = 30 * time.Second
 
+// The operator's waits before a survey is due (spec 10 §3).
+const (
+	DefaultQuiet         = time.Minute
+	DefaultFirstPassWait = 5 * time.Minute
+)
+
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareintendants,verbs=get;list;watch;update,namespace=takecare-system
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareintendants/status,verbs=patch,namespace=takecare-system
 
@@ -96,6 +102,11 @@ type Reconciler struct {
 	// PassTimeout is the runner's: a new rendering of the agent waits at
 	// most that long after a survey's start (DefaultPassTimeout when zero).
 	PassTimeout time.Duration
+	// Quiet is how long the settled registrations, or the agent's
+	// readiness after a skipped pass, must hold before a survey is due
+	// (spec 10 §3); FirstPassWait how long the first survey waits for an
+	// expected agent. Zero turns each wait off; the operator sets both.
+	Quiet, FirstPassWait time.Duration
 	// Now is time.Now when nil; tests inject a clock.
 	Now func() time.Time
 }
@@ -142,7 +153,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	// One instant for the whole reconciliation: the schedule's next time
 	// and the trigger that is due are read from the same clock reading.
 	now := r.now()
-	st := &status{generation: in.Generation, prevPending: in.Status.RenderPendingSince}
+	st := &status{generation: in.Generation, prevPending: in.Status.RenderPendingSince, now: now}
 	st.level = r.level(&in, st)
 	next := schedule(&in, st, now)
 	bound, err := r.connectors(ctx, &in, st)
@@ -168,6 +179,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 	if requeue || !st.isTrue(v1alpha1.ConditionReady) {
 		return ctrl.Result{RequeueAfter: requeueNotReady}, nil
+	}
+	if !t.requeue.IsZero() && (next == nil || t.requeue.Before(next.Time)) {
+		// A survey waits for the quiet period or the agent: due then.
+		return ctrl.Result{RequeueAfter: max(t.requeue.Sub(now), time.Second)}, nil
 	}
 	if next != nil {
 		// Wake up for the schedule; a trigger in between wakes up sooner.
@@ -316,6 +331,7 @@ func (r *Reconciler) writeStatus(ctx context.Context, in *v1alpha1.TakeCareInten
 	in.Status.NextSurveyTime = next
 	in.Status.RenderPendingSince = st.pendingSince
 	in.Status.LastMapRevision, in.Status.Registrations, in.Status.PendingTrigger = t.mapRevision, t.registrations, t.pending
+	in.Status.RegistrationsSince = t.since
 	if t.created != "" {
 		in.Status.LastSurvey, in.Status.LastSurveyTime = t.created, t.createdAt
 	}
@@ -359,7 +375,10 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	for _, gvk := range r.AgentKinds {
 		u := &unstructured.Unstructured{}
 		u.SetGroupVersionKind(gvk)
-		b = b.Watches(u, all, builder.WithPredicates(predicate.GenerationChangedPredicate{}))
+		// A generation (a registration), and the status that settles it or
+		// says the agent is Ready: EngineReady follows the Intendant's own
+		// agent at its change, not at the next poll.
+		b = b.Watches(u, all, builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, engineStatusChanged{})))
 	}
 	for _, gvk := range routes.Kinds() {
 		u := &unstructured.Unstructured{}
@@ -390,6 +409,30 @@ func (surveyPhaseChanged) Update(e event.UpdateEvent) bool {
 	a, okA := e.ObjectOld.(*v1alpha1.TakeCareSurvey)
 	b, okB := e.ObjectNew.(*v1alpha1.TakeCareSurvey)
 	return okA && okB && a.Status.Phase != b.Status.Phase
+}
+
+// engineStatusChanged passes an engine object's update whose observed
+// generation or Ready condition changed.
+type engineStatusChanged struct{ predicate.Funcs }
+
+func (engineStatusChanged) Update(e event.UpdateEvent) bool {
+	return engineStatus(e.ObjectOld) != engineStatus(e.ObjectNew)
+}
+
+func engineStatus(o client.Object) string {
+	u, ok := o.(*unstructured.Unstructured)
+	if !ok {
+		return ""
+	}
+	g, _, _ := unstructured.NestedInt64(u.Object, "status", "observedGeneration")
+	conditions, _, _ := unstructured.NestedSlice(u.Object, "status", "conditions")
+	ready := ""
+	for _, c := range conditions {
+		if m, _ := c.(map[string]any); m["type"] == "Ready" {
+			ready, _ = m["status"].(string)
+		}
+	}
+	return fmt.Sprintf("%d %s", g, ready)
 }
 
 // statusChanged passes updates whose status changed (a connector's tools
