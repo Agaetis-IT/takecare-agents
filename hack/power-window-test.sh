@@ -2,14 +2,14 @@
 # SPDX-FileCopyrightText: 2026 Agaetis
 # SPDX-License-Identifier: Apache-2.0
 #
-# Checks hack/power-window.sh against hack/testdata/pmset.log: a real
+# Checks hack/power-window.sh against hack/testdata/pmset-events.txt: a real
 # power log moved to a fictitious date (2026-01-15) and trimmed to its
 # event lines. A clamshell sleep at 11:33 with maintenance (dark) wakes
 # until a full wake at 13:51, then an idle sleep from 14:22 to 14:30.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
-fixture=hack/testdata/pmset.log
+fixture=hack/testdata/pmset-events.txt
 failed=0
 # check NAME WANT-EXIT WANT-LINE START END
 check() {
