@@ -40,6 +40,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- A timed-out run's reason no longer ends with the raw text of its last failed read. Before this fix, when the engine's share of the timeout ended a Doc's run or an Intendant's pass, the reason could end with that text, which could quote a response body. Now it holds what the follow saw: the last reads' failures by HTTP status or class ("the last 12 reads failed (HTTP 404)"), the last read that found the task working, or a pause of the follow. A failed cancellation is named by its status or class the same way. A counter, `takecare_run_reads_total`, counts the reads by result.
+
 - `make demo-up` imports the images a recreated cluster lacks. Before, it skipped the import when the image tag it last built was unchanged, even in a cluster deleted with `k3d cluster delete` and created again: the chart's hook Job then waited for an image no node held, and the install failed with "Job … not ready". It now asks the cluster's nodes for each image and imports the missing ones. The tag it last built remains a build cache only.
 
 - The Intendant says when `spec.contentTools` lists a tool that no connector given to its agent exposes, as the Doc does: in `ConnectorsReady`'s message and in one `ContentToolUnknown` warning, instead of dropping it silently. Its import checks every entry it proposes against the Map's schema, as the agent's proposals already were: an entry the Map would not load is not proposed, and the survey's layer names it. The Intendant's and the Doc's instructions now forbid asking a question (kagent gives every agent `ask_user`, and no one answers), and a survey whose agent pass asked one anyway says so, never the question.

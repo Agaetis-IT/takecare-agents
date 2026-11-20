@@ -296,8 +296,13 @@ func (w *Runner) passRun(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec pa
 		}
 	}
 	line := passNotFinished
-	if out.Reason == engine.ReasonQuestionAsked {
+	switch {
+	case out.Reason == engine.ReasonQuestionAsked:
 		line = passQuestionAsked
+	case out.TimedOut:
+		// What the follow saw (the reads' results, a pause), never a text of
+		// the engine's: the reason of a run its deadline ended.
+		line = passNotFinished + ": " + out.Reason
 	}
 	logger.Info(line, "task", out.TaskID, "outcome", out.Label())
 	span.SetStatus(codes.Error, line)

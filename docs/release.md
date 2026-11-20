@@ -44,6 +44,10 @@ The workflow refuses a tag that is not `v<major>.<minor>.<patch>` with an option
 
 **The first release of a milestone goes through a prerelease** (`v0.1.0-rc.1`, with its own `## [0.1.0-rc.1]` section): it rehearses the whole chain (registry login, six images on two architectures, three charts, the release page), which cannot be proven otherwise. The GitHub release is then marked as a prerelease. The final cut folds that section into the final one (step 2); the release candidates' tags and chart packages stay on GitHub and in the registry.
 
+## Bumping a2a-go
+
+The engine reads the HTTP status of a failed read from a2a-go's own error wording ("unexpected HTTP status: NNN …", in v2.8.0). `TestPollClassesAFailedRead` (internal/engine/kagent0103), through the real client, is the tripwire: if a bump changes that wording, it fails, and the classification is updated before the bump merges.
+
 ## Bumping agentgateway's pin
 
 A new `AGENTGATEWAY_VERSION` in `hack/versions.env` merges only with `make guard-corpus` green on it (ADR 0020): the Ranger's guards, run by the new gateway's engine on the corpus of real tool outputs, must leave every output unchanged and mask every sample whole. The CI's `guard corpus` job runs it on the bump's pull request. A difference is read in the job's log, in shape only (letters as `a`, digits as `9`), and decided before the bump: a pattern of ours changed, or the builtin given up. Refresh the corpus first with `test/guardcorpus/capture.sh` when the tools' outputs have changed. The corpus is also where a gateway builtin, new or handed back to the gateway, is tried first (ADR 0020, statement 5): it is adopted only once the corpus passes it.

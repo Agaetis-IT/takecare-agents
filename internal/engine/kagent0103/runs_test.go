@@ -7,9 +7,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -308,5 +310,73 @@ func TestCancel(t *testing.T) {
 				t.Errorf("methods = %v", f.methods)
 			}
 		})
+	}
+}
+
+// A read that fails is classed by its HTTP status or a fixed class, and
+// keeps no text of the answer: a body may quote anything.
+func TestPollClassesAFailedRead(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		ctype  string
+		body   string
+		want   string
+	}{
+		{http.StatusNotFound, "text/plain", questionMarker + " a body that must not be kept", "404"},
+		{http.StatusServiceUnavailable, "text/plain", questionMarker + " a body that must not be kept", "503"},
+		// A body that reads like the status phrase is never read: the
+		// client's own status (503) or, for a JSON-RPC error, the class
+		// other; never the 200 in the body.
+		{http.StatusServiceUnavailable, "application/json", `{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"unexpected HTTP status: 200 ` + questionMarker + `"}}`, "503|other"},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", tc.ctype)
+			w.WriteHeader(tc.status)
+			_, _ = w.Write([]byte(tc.body))
+		}))
+		g := &Runs{HTTP: &http.Client{Timeout: 5 * time.Second}}
+		_, done, err := g.Poll(context.Background(), run(srv.URL), taskID)
+		srv.Close()
+		re, ok := errors.AsType[*engine.ReadError](err)
+		if done || !ok || !slices.Contains(strings.Split(tc.want, "|"), re.Label()) {
+			t.Errorf("HTTP %d: done %t, err %v, want a read error %s", tc.status, done, err, tc.want)
+			continue
+		}
+		if strings.Contains(re.Error(), questionMarker) {
+			t.Errorf("HTTP %d: the read error's text holds the body: %q", tc.status, re.Error())
+		}
+	}
+	// A server that is not there: a transport failure, its class only.
+	srv := httptest.NewServer(http.NotFoundHandler())
+	url := srv.URL
+	srv.Close()
+	g := &Runs{HTTP: &http.Client{Timeout: 5 * time.Second}}
+	_, _, err := g.Poll(context.Background(), run(url), taskID)
+	if re, ok := errors.AsType[*engine.ReadError](err); !ok || re.Label() != "network" {
+		t.Errorf("no server: %v, want the network class", err)
+	}
+}
+
+// classOther is the class of a read with no status.
+const classOther = "other"
+
+// The status is read only from the client's own phrase, opening the
+// error's text, and only from 100 to 599.
+func TestReadErrorStatusPhrase(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		want string
+	}{
+		{errors.New("unexpected HTTP status: 404 Not Found"), "404"},
+		{fmt.Errorf("get task: %w", errors.New("unexpected HTTP status: 503 Service Unavailable")), "503"},
+		{errors.New("unexpected HTTP status: 999 Nope"), classOther},
+		{errors.New("unexpected HTTP status: 042 Nope"), classOther},
+		{errors.New("a body: unexpected HTTP status: 200 OK"), classOther},
+		{errors.New("failed to send HTTP request: dial tcp: refused"), "network"},
+		{errors.New("failed to decode response: unexpected EOF"), "decode"},
+	} {
+		if got := readError(tc.err).Label(); got != tc.want {
+			t.Errorf("%q: %s, want %s", tc.err, got, tc.want)
+		}
 	}
 }

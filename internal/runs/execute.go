@@ -7,10 +7,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
+	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/agaetis-it/takecare-agents/internal/engine"
 )
@@ -81,6 +82,10 @@ type Recorder func(ctx context.Context, taskID string) error
 type Metrics struct {
 	Outcomes *prometheus.CounterVec
 	Cancels  *prometheus.CounterVec
+	// Reads counts the reads of a followed task by result, from a closed
+	// set: ok_working, ok_terminal, error_<HTTP status>, error_network,
+	// error_timeout, error_decode, error_other.
+	Reads *prometheus.CounterVec
 }
 
 // NewMetrics creates and registers takecare_runs_total and
@@ -88,17 +93,23 @@ type Metrics struct {
 func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 	outcomes, err := register(reg, prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "takecare_runs_total", Help: "Runs of agent roles by outcome (completed, failed, failed_after_answer, lost, timed_out).",
-	}, []string{"role", "outcome"}))
+	}, []string{labelRole, "outcome"}))
 	if err != nil {
 		return nil, err
 	}
 	cancels, err := register(reg, prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "takecare_run_cancels_total", Help: "Cancellations sent to the engine by result (canceled, unsupported, finished, error).",
-	}, []string{"role", "result"}))
+	}, []string{labelRole, "result"}))
 	if err != nil {
 		return nil, err
 	}
-	return &Metrics{Outcomes: outcomes, Cancels: cancels}, nil
+	reads, err := register(reg, prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "takecare_run_reads_total", Help: "Reads of a followed task by result (ok_working, ok_terminal, error_<HTTP status>, error_network, error_timeout, error_decode, error_other).",
+	}, []string{labelRole, "result"}))
+	if err != nil {
+		return nil, err
+	}
+	return &Metrics{Outcomes: outcomes, Cancels: cancels, Reads: reads}, nil
 }
 
 func register(reg prometheus.Registerer, c *prometheus.CounterVec) (*prometheus.CounterVec, error) {
@@ -112,6 +123,9 @@ func register(reg prometheus.Registerer, c *prometheus.CounterVec) (*prometheus.
 	}
 	return c, nil
 }
+
+// labelRole is the role label of the run metrics.
+const labelRole = "role"
 
 // Executor runs one role's runs on the engine.
 type Executor struct {
@@ -163,20 +177,32 @@ func (e *Executor) Follow(ctx context.Context, r engine.Run, taskID string, dead
 	if interval <= 0 {
 		interval = DefaultInterval
 	}
-	var lastErr error
+	var seen follow
 	for {
+		seen.reading(e.clock().Now(), interval)
 		res, done, err := e.Engine.Poll(ctx, r, taskID)
 		switch {
 		case errors.Is(err, engine.ErrTaskUnknown):
 			return e.end(Outcome{Result: res, TaskID: taskID}), nil
 		case err != nil:
-			lastErr = err
+			label := "other"
+			if re, ok := errors.AsType[*engine.ReadError](err); ok {
+				label = re.Label()
+			}
+			e.read("error_" + label)
+			if seen.failed(e.clock().Now(), label) {
+				log.FromContext(ctx).Info("a read of the followed task failed", "task", taskID, "result", label, "failedInARow", seen.fails)
+			}
 		case done:
+			e.read("ok_terminal")
 			return e.end(Outcome{Result: res, TaskID: taskID}), nil
+		default:
+			e.read("ok_working")
+			seen.working(e.clock().Now())
 		}
 		wait := min(interval, deadline.Sub(e.clock().Now()))
 		if wait <= 0 {
-			return e.timedOut(ctx, r, taskID, lastErr), nil
+			return e.timedOut(ctx, r, taskID, seen), nil
 		}
 		select {
 		case <-ctx.Done():
@@ -186,7 +212,77 @@ func (e *Executor) Follow(ctx context.Context, r engine.Run, taskID string, dead
 	}
 }
 
-func (e *Executor) timedOut(ctx context.Context, r engine.Run, taskID string, lastErr error) Outcome {
+func (e *Executor) read(result string) {
+	if e.Metrics != nil && e.Metrics.Reads != nil {
+		e.Metrics.Reads.WithLabelValues(e.Role, result).Inc()
+	}
+}
+
+// follow is what a follow saw: the last unbroken run of failed reads, the
+// last read that found the task working, and the longest pause between two
+// reads. No text of an error is kept.
+type follow struct {
+	fails       int
+	failLabel   string
+	lastLog     time.Time
+	lastWorking time.Time
+	lastRead    time.Time
+	paused      time.Duration
+}
+
+// reading notes a read's time; a gap far larger than the interval is a
+// pause of the process or of the machine.
+func (f *follow) reading(now time.Time, interval time.Duration) {
+	if !f.lastRead.IsZero() {
+		if gap := now.Sub(f.lastRead); gap > 5*interval && gap > time.Minute && gap > f.paused {
+			f.paused = gap
+		}
+	}
+	f.lastRead = now
+}
+
+// failed notes a failed read and says whether to log it: at most once a
+// minute per run. A line the rate swallows loses nothing: the run's end
+// carries the totals in its reason, and the counter every read.
+func (f *follow) failed(now time.Time, label string) bool {
+	// An unbroken run counts failures of one kind: another status or class
+	// starts a new run, so that the count never mixes two.
+	if label != f.failLabel {
+		f.fails = 0
+	}
+	f.fails++
+	f.failLabel = label
+	if !f.lastLog.IsZero() && now.Sub(f.lastLog) < time.Minute {
+		return false
+	}
+	f.lastLog = now
+	return true
+}
+
+func (f *follow) working(now time.Time) { f.fails, f.lastWorking = 0, now }
+
+// what is the follow's part of a timed-out run's reason.
+func (f follow) what() string {
+	out := ""
+	if f.paused > 0 {
+		out += fmt.Sprintf("; the follow was paused for %d minutes (a suspended process or machine)", int(f.paused.Round(time.Minute)/time.Minute))
+	}
+	switch {
+	case f.fails > 0:
+		what := f.failLabel
+		if _, err := strconv.Atoi(what); err == nil {
+			what = "HTTP " + what
+		}
+		out += fmt.Sprintf("; the last %d reads failed (%s)", f.fails, what)
+	case !f.lastWorking.IsZero():
+		out += "; the task was still working at the last read (" + f.lastWorking.UTC().Format(time.RFC3339) + ")"
+	default:
+		out += "; no read succeeded"
+	}
+	return out
+}
+
+func (e *Executor) timedOut(ctx context.Context, r engine.Run, taskID string, seen follow) Outcome {
 	res, errText := e.cancel(ctx, r, taskID)
 	reason := "the engine's share of the timeout passed"
 	switch res {
@@ -197,9 +293,7 @@ func (e *Executor) timedOut(ctx context.Context, r engine.Run, taskID string, la
 	case CancelFailed:
 		reason += "; the cancellation request failed: " + errText
 	}
-	if lastErr != nil {
-		reason += "; last read: " + lastErr.Error()
-	}
+	reason += seen.what()
 	return e.end(Outcome{Outcome: engine.OutcomeFailed, Reason: reason, TaskID: taskID, TimedOut: true, Cancel: res, CancelErr: errText})
 }
 
@@ -211,7 +305,11 @@ func (e *Executor) cancel(ctx context.Context, r engine.Run, taskID string) (eng
 	res, err := e.Engine.Cancel(cctx, r, taskID)
 	errText := ""
 	if err != nil {
-		res, errText = CancelFailed, strings.SplitN(err.Error(), "\n", 2)[0]
+		// The failure's status or class, never its text (a body).
+		res, errText = CancelFailed, "other"
+		if re, ok := errors.AsType[*engine.ReadError](err); ok {
+			errText = re.Label()
+		}
 	}
 	if e.Metrics != nil {
 		e.Metrics.Cancels.WithLabelValues(e.Role, string(res)).Inc()
