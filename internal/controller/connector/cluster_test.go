@@ -83,6 +83,7 @@ func (h *harness) secret(name string, data map[string][]byte) {
 // client certificate from its Secrets, the gateway's backend carries the
 // same material, and the read-only guard comes from the front's /guardz.
 func TestRemoteClusterConnector(t *testing.T) {
+	t.Parallel()
 	srv := mcptest.Start(t, mcptest.ToolSpec{Name: toolPodsList, ReadOnly: true}, mcptest.ToolSpec{Name: mcp.ProbeTool, ReadOnly: true, Reply: "[]"})
 	m := certtest.MutualTLS(t)
 	var guard atomic.Value

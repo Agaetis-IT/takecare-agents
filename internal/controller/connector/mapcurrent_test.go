@@ -65,6 +65,7 @@ const (
 )
 
 func TestMapCurrent(t *testing.T) {
+	t.Parallel()
 	h := start(t, mcptest.Start(t, mcptest.ToolSpec{Name: "entry", ReadOnly: true}))
 	h.endpoints(mapAddon, true)
 	labels := map[string]string{"app": mapAddon}

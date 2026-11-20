@@ -102,6 +102,7 @@ func blindSpots(d *v1alpha1.TakeCareDoc) string {
 
 // ADR 0014 §1, spec 08 §7: scope.entities covered through the Map.
 func TestEntityCoverage(t *testing.T) {
+	t.Parallel()
 	entities := []v1alpha1.EntityKey{"service/shop-api", "service/proposed", "service/ghost", "datastore/aws-db", "compute/billing-worker", "team/platform", "environment/other"}
 	f := start(t)
 	f.maps.url.Store(startMap(t, map[string]string{

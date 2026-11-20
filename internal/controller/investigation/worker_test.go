@@ -247,18 +247,16 @@ func (f *workerFixture) setReady(t *testing.T, ready bool) {
 
 func (f *workerFixture) setDocReady(t *testing.T, name string, ready bool) {
 	t.Helper()
-	var d v1alpha1.TakeCareDoc
-	if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: name}, &d); err != nil {
-		t.Fatal(err)
-	}
 	status := metav1.ConditionFalse
 	if ready {
 		status = metav1.ConditionTrue
 	}
-	for _, ct := range []string{v1alpha1.ConditionReady, v1alpha1.ConditionEngineReady} {
-		meta.SetStatusCondition(&d.Status.Conditions, metav1.Condition{Type: ct, Status: status, Reason: testReason, LastTransitionTime: metav1.Now()})
-	}
-	if err := f.c.Status().Update(context.Background(), &d); err != nil {
+	// The worker patches the Doc's status too (worker.go, lastInvestigation).
+	if err := testenv.UpdateStatus(context.Background(), f.c, &v1alpha1.TakeCareDoc{Namespace: ns, Name: name}, func(d *v1alpha1.TakeCareDoc) {
+		for _, ct := range []string{v1alpha1.ConditionReady, v1alpha1.ConditionEngineReady} {
+			meta.SetStatusCondition(&d.Status.Conditions, metav1.Condition{Type: ct, Status: status, Reason: testReason, LastTransitionTime: metav1.Now()})
+		}
+	}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -278,8 +276,8 @@ func (f *workerFixture) investigationOf(t *testing.T, doc, name string, status *
 		t.Fatal(err)
 	}
 	if status != nil {
-		inv.Status = *status
-		if err := f.c.Status().Update(context.Background(), inv); err != nil {
+		// Once the manager runs, the controller marks a new record Queued.
+		if err := testenv.UpdateStatus(context.Background(), f.c, inv, func(inv *v1alpha1.TakeCareInvestigation) { inv.Status = *status }); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -344,6 +342,7 @@ func events(s tracetest.SpanStub) string {
 // A completed run: the record, its trace (AC 7) and the engine's call
 // under that trace.
 func TestRunCompleted(t *testing.T) {
+	t.Parallel()
 	f := startWorker(t, map[string][]poll{task1: {{}, completed}})
 	d := f.doc(t, true, nil)
 	f.start()
@@ -389,6 +388,7 @@ func TestRunCompleted(t *testing.T) {
 
 // The ends of a run other than success.
 func TestRunEndings(t *testing.T) {
+	t.Parallel()
 	f := startWorker(t, map[string][]poll{
 		// doc-after-answer
 		task1: {{res: engine.Result{Outcome: engine.OutcomeFailedAfterAnswer, Text: diagnosis, Reason: "the engine failed the task after the agent answered: 500"}, done: true}},
@@ -430,6 +430,7 @@ func TestRunEndings(t *testing.T) {
 // A task that never ends is canceled at the engine's share of the timeout;
 // kagent 0.10.3 refuses, which the reason says (no new API field).
 func TestRunTimedOut(t *testing.T) {
+	t.Parallel()
 	f := startWorker(t, nil)
 	f.doc(t, true, func(d *v1alpha1.TakeCareDoc) { d.Spec.Investigation.Timeout = &metav1.Duration{Duration: time.Second} })
 	f.start()
@@ -446,6 +447,7 @@ func TestRunTimedOut(t *testing.T) {
 // A suspended Doc, or one whose agent does not answer, runs nothing: the
 // record waits Queued, then runs once the Doc can.
 func TestRunWaitsForTheDoc(t *testing.T) {
+	t.Parallel()
 	f := startWorker(t, map[string][]poll{task1: {completed}})
 	f.doc(t, false, nil)
 	f.start()
@@ -463,6 +465,7 @@ func TestRunWaitsForTheDoc(t *testing.T) {
 // 02 §2): the first Doc at maxConcurrent does not hold the second Doc's
 // record, and its own older record starts first once its slot frees.
 func TestABlockedDocHoldsOnlyItsOwnRecords(t *testing.T) {
+	t.Parallel()
 	script := make([]poll, 60, 61) // task-1 answers after 60 polls of 5 ms
 	f := startWorker(t, map[string][]poll{task1: append(script, completed)})
 	f.doc(t, true, nil)
@@ -490,6 +493,7 @@ func TestABlockedDocHoldsOnlyItsOwnRecords(t *testing.T) {
 }
 
 func TestSuspendedDocRunsNothing(t *testing.T) {
+	t.Parallel()
 	f := startWorker(t, nil)
 	f.doc(t, true, func(d *v1alpha1.TakeCareDoc) { d.Spec.Suspend = true })
 	f.start()
@@ -504,6 +508,7 @@ func TestSuspendedDocRunsNothing(t *testing.T) {
 // A bound connector that is not ready degrades the run, in status and on
 // the trace (issue #10).
 func TestRunDegraded(t *testing.T) {
+	t.Parallel()
 	f := startWorker(t, map[string][]poll{task1: {completed}})
 	f.doc(t, true, func(d *v1alpha1.TakeCareDoc) {
 		d.Spec.Connectors = v1alpha1.DocConnectors{Cluster: []string{k8sConn}, Metrics: []string{promConn}}
@@ -539,6 +544,7 @@ func TestRunDegraded(t *testing.T) {
 // recorded, the engine deciding whether the task is lost; without a task
 // ID, as lost, retried once.
 func TestResume(t *testing.T) {
+	t.Parallel()
 	f := startWorker(t, map[string][]poll{taskLeft: {completed}, task1: {completed}})
 	f.doc(t, true, nil)
 	started := metav1.Now()

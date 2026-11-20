@@ -58,6 +58,7 @@ func TestSharedScope(t *testing.T) {
 // Doc's namespace is ScopeOverlap and runs nothing; the earlier one runs;
 // a disjoint scope lifts it.
 func TestScopeOverlap(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.maps.url.Store(startMap(t, map[string]string{
 		string(shopAPI): "provenance: declared\nstatus: validated\nsources:\n  - kubernetes: shop/Deployment/shop-api\n",
