@@ -33,11 +33,15 @@ import (
 //     name is shared by every package's process of a run and by any other
 //     run of the same user at the same time (another worktree, a loop): the
 //     cap then holds for the machine, which is what the servers contend
-//     for.
+//     for. To lift it for a deliberate comparison of two runs, give each
+//     run its own TESTENV_SLOTS_DIR.
 const (
 	envParallel = "TESTENV_PARALLEL"
 	envSlotsDir = "TESTENV_SLOTS_DIR"
-	slotPoll    = 100 * time.Millisecond
+	// slotPoll is how often a test waiting for a slot tries the locks
+	// again: a wait on a lock another process holds, not a wait on state,
+	// so a fixed short poll is right here.
+	slotPoll = 100 * time.Millisecond
 )
 
 // acquireSlot blocks until one of the run's slots is free, takes it, and
