@@ -79,14 +79,36 @@ images() {
   if [[ "${DEMO_IMAGES:-pull}" != build ]]; then
     return 0
   fi
-  local tag
+  local tag ref node missing=() refs=()
   # What the images are built from, untracked files included.
   tag="$(demo_tag)"
-  if [[ "$(cat "${STATE}/images" 2>/dev/null)" != "$tag" ]]; then
-    log "building and importing the images (${tag})" >&2
+  for ref in operator mcp-report-slack mcp-corpus mcp-map mcp-front demo-app; do
+    refs+=("${IMAGE_REGISTRY}/takecare-agents-${ref}:${tag}")
+  done
+  # The stamp is a build cache only: a missing local image builds again.
+  if [[ "$(cat "${STATE}/images" 2>/dev/null)" != "$tag" ]] || ! docker image inspect "${refs[@]}" >/dev/null 2>&1; then
+    log "building the images (${tag})" >&2
     make docker-build VERSION="$tag" LOCAL_LABELS="--label org.agaetis.takecare.local=true --label org.agaetis.takecare.hash=${tag#local-}" >/dev/null
-    k3d image import -c "$CLUSTER" "${IMAGE_REGISTRY}"/takecare-agents-{operator,mcp-report-slack,mcp-corpus,mcp-map,mcp-front,demo-app}:"$tag" >/dev/null
     echo "$tag" >"${STATE}/images"
+  fi
+  # The import is decided by the nodes themselves, never by the stamp: a
+  # cluster deleted with k3d and created again holds none of them.
+  local nodes
+  nodes="$(docker ps --format '{{.Names}} {{.Label "k3d.role"}}' --filter "label=k3d.cluster=${CLUSTER}" | awk '$2 == "server" || $2 == "agent" {print $1}')"
+  # No node found is not "nothing missing": the install would wait on an
+  # image no node holds.
+  [[ -n "$nodes" ]] || die "no server or agent node of the k3d cluster ${CLUSTER} is running: cannot check its images"
+  for ref in "${refs[@]}"; do
+    for node in $nodes; do
+      if ! docker exec "$node" crictl inspecti "$ref" >/dev/null 2>&1; then
+        missing+=("$ref")
+        break
+      fi
+    done
+  done
+  if (( ${#missing[@]} > 0 )); then
+    log "importing ${#missing[@]} image(s) the cluster's nodes do not hold (${tag})" >&2
+    k3d image import -c "$CLUSTER" "${missing[@]}" >/dev/null
   fi
   echo "$tag"
 }
