@@ -70,7 +70,7 @@ func (r *Reconciler) survey(ctx context.Context, in *v1alpha1.TakeCareIntendant,
 	if err != nil {
 		return out, err
 	}
-	digest, err := r.registrations(ctx, in)
+	digest, set, err := r.registrations(ctx, in)
 	if err != nil {
 		return out, err
 	}
@@ -92,7 +92,8 @@ func (r *Reconciler) survey(ctx context.Context, in *v1alpha1.TakeCareIntendant,
 		if quiet := out.since.Add(r.Quiet); now.Before(quiet) {
 			out.requeue = earliest(out.requeue, quiet)
 		} else {
-			fired, why[v1alpha1.TriggerRegistration] = append(fired, v1alpha1.TriggerRegistration), "the registrations changed"
+			oldKnown := newest == nil || len(last.RegistrationSet) > 0
+			fired, why[v1alpha1.TriggerRegistration] = append(fired, v1alpha1.TriggerRegistration), registrationReason(last.RegistrationSet, oldKnown, set)
 		}
 	}
 	if since, owed := passOwed(in, newest, st, now); owed {
@@ -135,6 +136,7 @@ func (r *Reconciler) survey(ctx context.Context, in *v1alpha1.TakeCareIntendant,
 		Spec: v1alpha1.TakeCareSurveySpec{
 			IntendantRef: v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareIntendant, Name: in.Name},
 			Trigger:      trigger, MapRevision: b.mapRevision, Registrations: digest, Reason: why[trigger],
+			RegistrationSet: storedSet(set),
 		},
 	}
 	if err := r.Create(ctx, s); err != nil {
@@ -226,8 +228,10 @@ func (r *Reconciler) firstPassWait(in *v1alpha1.TakeCareIntendant, newest *v1alp
 // engine object whose status.observedGeneration (or, without it, a
 // condition's) is its generation. One still changing is left out, so a
 // flapping object restarts the quiet period instead of firing.
-func (r *Reconciler) registrations(ctx context.Context, in *v1alpha1.TakeCareIntendant) (string, error) {
-	var lines []string
+func (r *Reconciler) registrations(ctx context.Context, in *v1alpha1.TakeCareIntendant) (string, []string, error) {
+	// lines give the digest, as before; set names each entry so that a
+	// reader can find it (the engine's objects with their namespace).
+	var lines, set []string
 	c := in.Spec.Connectors
 	for _, name := range slices.Concat(c.Map, c.Cluster, c.Metrics, c.Knowledge) {
 		var conn v1alpha1.TakeCareConnector
@@ -239,25 +243,37 @@ func (r *Reconciler) registrations(ctx context.Context, in *v1alpha1.TakeCareInt
 		case client.IgnoreNotFound(err) == nil:
 			lines = append(lines, "connector "+name+" absent")
 		default:
-			return "", fmt.Errorf("get connector %s: %w", name, err)
+			return "", nil, fmt.Errorf("get connector %s: %w", name, err)
 		}
 	}
 	for _, gvk := range r.AgentKinds {
 		list := &unstructured.UnstructuredList{}
 		list.SetGroupVersionKind(gvk.GroupVersion().WithKind(gvk.Kind + "List"))
 		if err := r.List(ctx, list, client.InNamespace(r.EngineNamespace)); err != nil {
-			return "", fmt.Errorf("list %s: %w", gvk.Kind, err)
+			return "", nil, fmt.Errorf("list %s: %w", gvk.Kind, err)
 		}
 		for _, o := range list.Items {
 			if o.GetLabels()["takecare.agaetis.fr/role"] == surveyagent.Kind || !settled(&o) {
 				continue
 			}
 			lines = append(lines, fmt.Sprintf("%s %s %d", gvk.Kind, o.GetName(), o.GetGeneration()))
+			ref := o.GetName()
+			if r.EngineNamespace != in.Namespace {
+				ref = r.EngineNamespace + "/" + ref
+			}
+			set = append(set, fmt.Sprintf("%s %s %d", gvk.Kind, ref, o.GetGeneration()))
 		}
 	}
 	slices.Sort(lines)
 	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
-	return hex.EncodeToString(sum[:]), nil
+	// The connectors' lines already read as entries ("connector map 1").
+	for _, l := range lines {
+		if strings.HasPrefix(l, "connector ") {
+			set = append(set, l)
+		}
+	}
+	slices.Sort(set)
+	return hex.EncodeToString(sum[:]), set, nil
 }
 
 // settled says whether the engine's status has caught up with the object's

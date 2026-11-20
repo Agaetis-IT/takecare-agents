@@ -36,7 +36,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=51
+CHECKS_EXPECTED=52
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s %s\n' "$(date +%H:%M:%S)" "$*"; }
@@ -515,6 +515,7 @@ run() {
   tool_output_guards
   intendant
   resumed
+  check "each Registration survey says what changed: the install's additions, then the Doc east's agent removed (spec 10 §3)" survey_reasons
   # Last: the bench's cooldown patch and restore touch the demo Doc.
   check "a bench run that does not settle stops after a dump with every file, and no content in any (spec 04)" bench_dump
   if [[ "$checks" -ne "$CHECKS_EXPECTED" || "$failed" -ne 0 ]]; then
@@ -527,6 +528,24 @@ run() {
     exit 1
   fi
   echo "checks: ${checks} run, all passed"
+}
+
+# survey_reasons: the operator says why it created each Registration
+# survey (spec 10 §3): the install's names what was added, and the one
+# after the e2e removed the Doc east's agent names that removal.
+survey_reasons() {
+  local reasons=""
+  for _ in $(seq 36); do
+    reasons="$(kubectl -n "$NS" get takecaresurveys -o json |
+      jq -r '[.items[] | select(.spec.trigger == "Registration") | .spec.reason // ""] | join("\n")')"
+    if grep -q '^the registrations changed: .* added' <<<"$reasons" &&
+      grep -qF 'agent kagent/takecare-doc-east removed' <<<"$reasons"; then
+      return 0
+    fi
+    sleep 5
+  done
+  echo "Registration surveys' reasons: ${reasons}"
+  return 1
 }
 
 # The words of the recorded Doc's answer, of its instructions and of a tool
