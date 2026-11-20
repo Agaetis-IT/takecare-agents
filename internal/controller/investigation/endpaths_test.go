@@ -115,7 +115,7 @@ func TestAnUnrecordedEndIsEndedByTheBackstop(t *testing.T) {
 	if !strings.HasPrefix(inv.Status.Reason, "Abandoned: the run's end was not recorded; the operator ended it at ") || inv.Status.CompletedAt == nil {
 		t.Errorf("status = %+v", inv.Status)
 	}
-	f.waitUsageUnknown(t, "doc-unrecorded", usageEndNotRecorded)
+	f.waitUsageUnknown(t, "doc-unrecorded", v1alpha1.MessageEndNotRecorded)
 }
 
 // failCompleted is a client whose status write of a Completed record fails.
@@ -179,7 +179,7 @@ func TestBackstop(t *testing.T) {
 			want := "Abandoned: the run's end was not recorded; the operator ended it at 2026-11-19T10:03:40Z"
 			c2 := meta.FindStatusCondition(inv.Status.Conditions, ConditionUsageAttributed)
 			if inv.Status.Phase != v1alpha1.PhaseTimedOut || inv.Status.Reason != want || inv.Status.CompletedAt == nil ||
-				c2 == nil || c2.Reason != v1alpha1.ReasonNotMeasured || c2.Message != usageEndNotRecorded {
+				c2 == nil || c2.Reason != v1alpha1.ReasonNotMeasured || c2.Message != v1alpha1.MessageEndNotRecorded {
 				t.Fatalf("status = %+v", inv.Status)
 			}
 			// Once: a second reconcile finds it ended.

@@ -41,6 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- A survey whose end was never written no longer stays `Running` for ever. Before this fix, when the operator could not write a survey's outcome (a status write that failed), the survey stayed `Running` until someone deleted it. Now, once it is past its bound (its start, twice the pass deadline, one scrape interval and 40 seconds) and no runner holds it, the operator ends it `Failed` with reason `Abandoned`, `UsageAttributed` False (`NotMeasured`) and one `Abandoned` Warning, as it already did for investigations. A survey the runner holds is never ended this way, and after a restart a survey left `Running` is still run again.
 - A `Registration` survey's reason says what changed ("agent kagent/takecare-doc-east removed; connector east added") instead of "the registrations changed", so that a reader can see why the Intendant looked again.
 - `make demo-up` imports the images a recreated cluster lacks. Before, it skipped the import when the image tag it last built was unchanged, even in a cluster deleted with `k3d cluster delete` and created again: the chart's hook Job then waited for an image no node held, and the install failed with "Job … not ready". It now asks the cluster's nodes for each image and imports the missing ones. The tag it last built remains a build cache only.
 
