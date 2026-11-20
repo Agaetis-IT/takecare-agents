@@ -21,11 +21,14 @@ const (
 
 // Reasons of a notSeen line: fixed phrases, never the server's text.
 const (
-	reasonForbidden    = "forbidden: the connector's identity may not list it"
-	reasonNotServed    = "API not served"
-	reasonToolError    = "the tool reported an error"
-	reasonCallFailed   = "the call failed"
-	reasonNotAllowed   = "the operator may not call this tool on the connector"
+	reasonForbidden  = "forbidden: the connector's identity may not list it"
+	reasonNotServed  = "API not served"
+	reasonToolError  = "the tool reported an error"
+	reasonCallFailed = "the call failed"
+	reasonNotAllowed = "the operator may not call this tool on the connector"
+	// reasonInvalidEntry: an entry the import would propose does not pass
+	// the Map's schema (mapserver.ValidateEntry); it is not proposed.
+	reasonInvalidEntry = "the import's proposal for this entry does not pass the Map's schema: not proposed"
 	reasonUnrecognized = "unrecognized %s output"
 	reasonNoNamespace  = "the namespace does not exist"
 )

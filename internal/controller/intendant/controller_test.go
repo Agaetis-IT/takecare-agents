@@ -48,9 +48,18 @@ const (
 	waitFor     = 20 * time.Second
 )
 
+// clock is the fixture's time. The reconciler reads it once, at the start
+// of each reconcile, and stamps that reading on whatever the reconcile
+// writes: a reconcile already running when a test moves the clock finishes
+// on the old time, even for state it reads after the move. A test that
+// moves the clock and then changes state whose time the reconciler records
+// (a readiness transition, a registration) uses moveClock, which waits for
+// a reconcile that read the new time; reconciles of one Intendant are
+// serialized, so the stale one has ended by then.
 type clock struct {
-	mu  sync.Mutex
-	now time.Time
+	mu    sync.Mutex
+	now   time.Time
+	reads int // the reconciler's readings since the last Set
 }
 
 func (c *clock) Now() time.Time {
@@ -59,10 +68,37 @@ func (c *clock) Now() time.Time {
 	return c.now
 }
 
+// reconcilerNow is the reconciler's reading, counted.
+func (c *clock) reconcilerNow() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.reads++
+	return c.now
+}
+
 func (c *clock) Set(t time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.now = t
+	c.now, c.reads = t, 0
+}
+
+func (c *clock) readSinceSet() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.reads > 0
+}
+
+// moveClock sets the clock, wakes the Intendant name and waits for a
+// reconcile that read the new time (see clock).
+func (f *fixture) moveClock(t *testing.T, name string, to time.Time) {
+	t.Helper()
+	f.clock.Set(to)
+	f.poke(t, name)
+	for deadline := time.Now().Add(waitFor); !f.clock.readSinceSet(); time.Sleep(50 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("no reconcile of %s read the clock moved to %s", name, to.Format(time.RFC3339))
+		}
+	}
 }
 
 // testStart is the fixture's clock when it starts. The test Map servers
@@ -181,7 +217,7 @@ func (f *fixture) startManager(t *testing.T) {
 	}
 	r := &Reconciler{
 		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("test"), OperatorNamespace: ns,
-		EngineNamespace: engineNS, AgentKinds: (&kagent0103.Agents{}).AgentTypes(), Now: f.clock.Now, Metrics: f.metrics, PassTimeout: passTimeout,
+		EngineNamespace: engineNS, AgentKinds: (&kagent0103.Agents{}).AgentTypes(), Now: f.clock.reconcilerNow, Metrics: f.metrics, PassTimeout: passTimeout,
 		Agents: &kagent0103.Agents{Client: mgr.GetClient()}, Models: &kagent0103.Models{Client: mgr.GetClient()},
 		Quiet: f.quiet, FirstPassWait: f.firstPassWait,
 	}
@@ -351,6 +387,7 @@ func (f *fixture) policy(t *testing.T, name, connector string) (string, bool) {
 // The happy path: every connector ready, the routes on the gateway with
 // their allow-lists: the operator's tools and the agent's read tools.
 func TestReadyWithItsRoutes(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.platform(t)
 	f.connector(t, connMap, v1alpha1.ConnectorMap, []string{mcp.MapEntryTool, mcp.MapListTool, toolPath})
@@ -387,6 +424,7 @@ func TestReadyWithItsRoutes(t *testing.T) {
 // The Map is required; the cluster and metrics connectors are optional,
 // each one that cannot be read named.
 func TestConnectors(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.platform(t)
 	f.connector(t, connMap, v1alpha1.ConnectorMap, []string{mcp.MapEntryTool})
@@ -431,6 +469,7 @@ func TestConnectors(t *testing.T) {
 // whose tools are act (its annotations untrusted, spec 05) is named, with
 // what to do, and given nothing.
 func TestCustomerKnowledgeWithoutReadTool(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.platform(t)
 	f.connector(t, connMap, v1alpha1.ConnectorMap, []string{mcp.MapEntryTool, mcp.MapListTool})
@@ -458,6 +497,7 @@ func TestCustomerKnowledgeWithoutReadTool(t *testing.T) {
 // Expert works as Practitioner, and says so; an invalid schedule is
 // reported, with no next survey.
 func TestLevelAndSchedule(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.platform(t)
 	f.connector(t, connMap, v1alpha1.ConnectorMap, []string{mcp.MapEntryTool, mcp.MapListTool})
@@ -485,6 +525,7 @@ func TestLevelAndSchedule(t *testing.T) {
 
 // A route the Intendant no longer needs goes.
 func TestRoutesPruned(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.platform(t)
 	f.connector(t, connMap, v1alpha1.ConnectorMap, []string{mcp.MapEntryTool, mcp.MapListTool})

@@ -121,6 +121,7 @@ func (f *fixture) pending(t *testing.T, name string, want v1alpha1.SurveyTrigger
 // The first survey starts once the Intendant is Ready: one, though the Map
 // revision and the registrations are both new.
 func TestFirstSurvey(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.ready(t, "first", nil)
 	s := f.waitSurveys(t, "first", 1)[0]
@@ -135,6 +136,7 @@ func TestFirstSurvey(t *testing.T) {
 
 // Each trigger, once the survey before ended, starts one survey.
 func TestTriggers(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.ready(t, "triggers", nil)
 	f.waitSurveys(t, "triggers", 1)
@@ -192,6 +194,7 @@ func hasSurvey(list []v1alpha1.TakeCareSurvey, trigger v1alpha1.SurveyTrigger) b
 // Triggers during a run leave one pending, the first in the coalescing
 // order; once the run ends, exactly one more survey.
 func TestDebounce(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.ready(t, "debounce", nil)
 	f.waitSurveys(t, "debounce", 1)
@@ -214,6 +217,7 @@ func TestDebounce(t *testing.T) {
 // A suspended Intendant starts no survey; its triggers are recorded, and
 // the one pending survey runs when it is resumed.
 func TestSuspended(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.ready(t, "suspended", func(in *v1alpha1.TakeCareIntendant) { in.Spec.Suspend = true })
 	f.pending(t, "suspended", v1alpha1.TriggerMapRevision)
@@ -231,6 +235,7 @@ func TestSuspended(t *testing.T) {
 
 // A pending trigger is in status: it survives an operator restart.
 func TestRestartKeepsPending(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.ready(t, "restart", nil)
 	f.waitSurveys(t, "restart", 1)
@@ -248,6 +253,7 @@ func TestRestartKeepsPending(t *testing.T) {
 // A survey created by hand is in flight like the Intendant's own: it
 // starts no other, and a trigger meanwhile waits.
 func TestOnDemand(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.ready(t, "ondemand", nil)
 	f.waitSurveys(t, "ondemand", 1)

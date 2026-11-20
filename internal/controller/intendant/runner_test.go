@@ -172,6 +172,7 @@ func phases(l []v1alpha1.TakeCareSurvey) []string {
 // the import's layers, its counts and its first proposals; the next one is
 // not blocked.
 func TestSurveyRuns(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.grounded(t)
 	f.surveyed(t, "runs", mapServer(t, nil), nil)
@@ -241,6 +242,7 @@ func (f *fixture) checkInventory(t *testing.T, s *v1alpha1.TakeCareSurvey) {
 
 // An Intendant whose survey runs holds back only its own: another's runs.
 func TestSurveysDoNotStarve(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.grounded(t)
 	hold := newGate()
@@ -262,6 +264,7 @@ func TestSurveysDoNotStarve(t *testing.T) {
 
 // A Map that does not answer fails the survey, with the reason.
 func TestSurveyMapFailure(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.grounded(t)
 	dead := httptest.NewServer(http.NotFoundHandler())
@@ -276,6 +279,7 @@ func TestSurveyMapFailure(t *testing.T) {
 // A survey a stopped operator left Running is run again from the start:
 // no half status is kept.
 func TestSurveyResumed(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.grounded(t)
 	f.stop()
@@ -325,6 +329,7 @@ func TestSurveyResumed(t *testing.T) {
 // An entity-only scope is surveyed through its entities' Map sources: the
 // demo's billing-api, in demo-apps, gives a ground on demo-apps.
 func TestEntityScope(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.grounded(t)
 	f.surveyed(t, "entities", mapServer(t, nil), func(in *v1alpha1.TakeCareIntendant) {
@@ -343,6 +348,7 @@ func TestEntityScope(t *testing.T) {
 // the coverage rule gives: a source in a namespace no connector declares,
 // a proposed entry, an entry with no kubernetes source.
 func TestEntityBlindSpots(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.CopyFS(dir, os.DirFS(demoMap)); err != nil {
 		t.Fatal(err)

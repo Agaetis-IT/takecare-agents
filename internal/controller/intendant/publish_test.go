@@ -112,6 +112,7 @@ func (f *fixture) waitPublished(t *testing.T, name string, n int) []v1alpha1.Tak
 // A Completed survey's digest is posted once through the report
 // connector, to the Practitioner's destination, and recorded.
 func TestDigestPublished(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.grounded(t)
 	f.connector(t, connReport, v1alpha1.ConnectorReport, []string{postTool})
@@ -135,6 +136,7 @@ func TestDigestPublished(t *testing.T) {
 // report connector that does not exist, an Apprentice with no review
 // destination (status only, nothing posted).
 func TestDigestNotPosted(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.grounded(t)
 	f.reporting(t, "missing", v1alpha1.LevelPractitioner, "nowhere")
@@ -155,6 +157,7 @@ func TestDigestNotPosted(t *testing.T) {
 // A refused digest is tried four times, then recorded as failed; while it
 // is retried, the Intendant's next survey runs.
 func TestDigestRefused(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.poster.fail, f.poster.hold = true, newGate()
 	f.grounded(t)
@@ -178,6 +181,7 @@ func TestDigestRefused(t *testing.T) {
 // A digest an operator stopped before it was recorded is posted again by
 // the next one: at least once.
 func TestDigestResumed(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.poster.hold = newGate()
 	f.grounded(t)
@@ -198,6 +202,7 @@ func TestDigestResumed(t *testing.T) {
 // After a stop, the digests left unposted go one after another, oldest
 // first, never two at once.
 func TestDigestResumedInOrder(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.poster.hold = newGate()
 	f.grounded(t)
@@ -334,6 +339,7 @@ func (f *fixture) newPublished(t *testing.T, name string, n int, seen map[string
 // The same proposals twice post one digest; the second survey says whose
 // digest it repeats, and the Intendant records the first.
 func TestDigestOnChange(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.grounded(t)
 	f.connector(t, connReport, v1alpha1.ConnectorReport, []string{postTool})
@@ -387,6 +393,7 @@ func TestDigestOnChange(t *testing.T) {
 // A failed post records nothing as the last digest: the next survey with
 // the same set posts.
 func TestDigestAfterFailure(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.poster.fail = true
 	f.grounded(t)
@@ -411,6 +418,7 @@ func TestDigestAfterFailure(t *testing.T) {
 // Two surveys with the same set published at once post one digest: the
 // compare, the post and the record are one step per Intendant.
 func TestDigestRace(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.poster.hold = newGate()
 	f.grounded(t)
@@ -430,6 +438,7 @@ func TestDigestRace(t *testing.T) {
 // first post, held past its bound, fails; the second, which waited longer
 // than the bound, still posts.
 func TestDigestWaitsForTheLock(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.publishTimeout = 2 * time.Second
 	f.restart(t)
@@ -455,6 +464,7 @@ func TestDigestWaitsForTheLock(t *testing.T) {
 // before the survey's own record: the next leader records it as posted,
 // without posting it again.
 func TestDigestRecordedBeforeStop(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.grounded(t)
 	f.connector(t, connReport, v1alpha1.ConnectorReport, []string{postTool})
