@@ -100,15 +100,19 @@ func TestRegistrationSurveySaysWhatChanged(t *testing.T) {
 	// since one survey in flight holds the next.
 	f.handMade(t, "said-by-hand", "said")
 	f.surveyPhase(t, "said-by-hand", v1alpha1.RunCompleted)
+	// last tells the new survey by the names of the counts before and after
+	// it: one count at each step.
+	f.waitSurveys(t, "said", 2)
 	f.touch(t, "changed")
 	f.seen(t, "said", digest)
 	f.clock.Set(testStart.Add(2 * time.Minute))
 	f.poke(t, "said")
-	f.wait(t, "said", func(in *v1alpha1.TakeCareIntendant) bool {
-		n := f.last(t, "said")
-		return n.Name != first.Name && n.Spec.Trigger == v1alpha1.TriggerRegistration
-	})
-	if got, want := f.last(t, "said").Spec.Reason, "the registrations changed: connector "+connMap+" changed (generation 2)"; got != want {
+	f.waitSurveys(t, "said", 3)
+	n := f.last(t, "said")
+	if n.Spec.Trigger != v1alpha1.TriggerRegistration {
+		t.Errorf("the new survey's trigger is %s, want Registration", n.Spec.Trigger)
+	}
+	if got, want := n.Spec.Reason, "the registrations changed: connector "+connMap+" changed (generation 2)"; got != want {
 		t.Errorf("reason %q, want %q", got, want)
 	}
 }
