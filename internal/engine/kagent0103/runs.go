@@ -7,8 +7,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
@@ -86,6 +88,9 @@ func (g *Runs) client(ctx context.Context, r engine.Run) (*a2aclient.Client, err
 	if next == nil {
 		next = http.DefaultTransport
 	}
+	// The shared client's timeout (30 s, cmd/operator/main.go) bounds one
+	// read of the task: a read that hangs fails with class timeout, so the
+	// follow never takes it for a pause (internal/runs).
 	hc := &http.Client{Transport: headers{next: next, conversationID: r.ConversationID}, Timeout: base.Timeout}
 	c, err := a2aclient.NewFromEndpoints(ctx,
 		[]*a2a.AgentInterface{{URL: URL(r), ProtocolBinding: a2a.TransportProtocolJSONRPC, ProtocolVersion: a2a.Version}},
@@ -126,12 +131,55 @@ func (g *Runs) Poll(ctx context.Context, r engine.Run, taskID string) (engine.Re
 	case errors.Is(err, a2a.ErrTaskNotFound):
 		return engine.Result{Outcome: engine.OutcomeLost, Reason: "the engine does not know task " + taskID}, true, engine.ErrTaskUnknown
 	case err != nil:
-		return engine.Result{}, false, fmt.Errorf("read task %s: %w", taskID, err)
+		return engine.Result{}, false, readError(err)
 	}
 	if !task.Status.State.Terminal() && task.Status.State != a2a.TaskStateInputRequired && task.Status.State != a2a.TaskStateAuthRequired {
 		return engine.Result{}, false, nil
 	}
 	return outcome(task), true, nil
+}
+
+// a2a-go v2.8.0 reports an HTTP failure without a JSON-RPC body as an
+// error whose whole text is "unexpected HTTP status: 404 Not Found"
+// (internal/jsonrpc FromHTTPError), a transport failure as one opening
+// with "failed to send HTTP request", an unreadable answer as one opening
+// with "failed to decode response"; none carries a type with the status.
+// A JSON-RPC error (*a2a.Error) carries the server's own message, which may
+// be anything: it is never read. TestPollClassesAFailedRead, through the
+// real client, is the tripwire for that wording at an a2a-go bump.
+var httpStatusRead = regexp.MustCompile(`^unexpected HTTP status: ([0-9]{3})(?: |$)`)
+
+// readError classes a failed call to the engine, keeping no text of it:
+// the HTTP status (100 to 599) or a fixed class.
+func readError(err error) *engine.ReadError {
+	re := &engine.ReadError{Err: err, Class: "other"}
+	var ne net.Error
+	var ae *a2a.Error
+	switch {
+	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &ne) && ne.Timeout():
+		re.Class = "timeout"
+		return re
+	case errors.As(err, &ae):
+		return re
+	}
+	for e := err; e != nil; e = errors.Unwrap(e) {
+		msg := e.Error()
+		if m := httpStatusRead.FindStringSubmatch(msg); m != nil {
+			if n, _ := strconv.Atoi(m[1]); n >= 100 && n <= 599 {
+				re.Status, re.Class = n, ""
+			}
+			return re
+		}
+		switch {
+		case strings.HasPrefix(msg, "failed to send HTTP request"):
+			re.Class = "network"
+			return re
+		case strings.HasPrefix(msg, "failed to decode response"):
+			re.Class = "decode"
+			return re
+		}
+	}
+	return re
 }
 
 // outcome maps a task that stopped to a result. A failure after an answer
@@ -248,6 +296,6 @@ func (g *Runs) Cancel(ctx context.Context, r engine.Run, taskID string) (engine.
 	case errors.Is(err, a2a.ErrUnsupportedOperation), strings.Contains(err.Error(), cancelUnsupported):
 		return engine.CancelUnsupported, nil
 	default:
-		return "", fmt.Errorf("cancel task %s: %w", taskID, err)
+		return "", readError(err)
 	}
 }

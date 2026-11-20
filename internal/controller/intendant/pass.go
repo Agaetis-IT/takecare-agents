@@ -6,6 +6,7 @@ package intendant
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -197,7 +198,7 @@ func (w *Runner) previousUnfinished(ctx context.Context, s *v1alpha1.TakeCareSur
 	}
 	for _, l := range last.Status.Layers {
 		for _, n := range l.NotSeen {
-			if l.Name == surveyagent.Layer && n.Reason == passNotFinished {
+			if l.Name == surveyagent.Layer && notFinished(n.Reason) {
 				return true
 			}
 		}
@@ -295,13 +296,25 @@ func (w *Runner) passRun(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec pa
 			done()
 		}
 	}
-	line := passNotFinished
-	if out.Reason == engine.ReasonQuestionAsked {
-		line = passQuestionAsked
+	head, line := passNotFinished, passNotFinished
+	switch {
+	case out.Reason == engine.ReasonQuestionAsked:
+		head, line = passQuestionAsked, passQuestionAsked
+	case out.TimedOut:
+		// What the follow saw (the reads' results, a pause), never a text of
+		// the engine's: the reason of a run its deadline ended. The log and
+		// the span keep the fixed sentence.
+		line = passNotFinished + ": " + out.Reason
 	}
-	logger.Info(line, "task", out.TaskID, "outcome", out.Label())
-	span.SetStatus(codes.Error, line)
+	logger.Info(head, "task", out.TaskID, "outcome", out.Label())
+	span.SetStatus(codes.Error, head)
 	return surveyagent.NotRead(res, line), nil
+}
+
+// notFinished says whether a line of the agent layer is an unfinished
+// pass's, with or without what its follow saw.
+func notFinished(reason string) bool {
+	return reason == passNotFinished || strings.HasPrefix(reason, passNotFinished+": ")
 }
 
 // agentTools are the names of the tools the Intendant's agent is given:

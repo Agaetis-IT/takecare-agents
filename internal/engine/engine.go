@@ -10,6 +10,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"strconv"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -223,4 +224,29 @@ type Runs interface {
 	Poll(ctx context.Context, r Run, taskID string) (res Result, done bool, err error)
 	// Cancel asks the engine to stop the run.
 	Cancel(ctx context.Context, r Run, taskID string) (CancelResult, error)
+}
+
+// ReadError is a failed read of a task, classed without its text: an
+// error's text may quote a response body (#216's rule). Status is the
+// HTTP status when the engine answered one, otherwise Class says what
+// failed: network, timeout, decode or other.
+type ReadError struct {
+	Status int
+	Class  string
+	Err    error
+}
+
+func (e *ReadError) Error() string { return "the read of the task failed (" + e.Label() + ")" }
+
+func (e *ReadError) Unwrap() error { return e.Err }
+
+// Label is the HTTP status as a number, or the class: a closed set.
+func (e *ReadError) Label() string {
+	if e.Status > 0 {
+		return strconv.Itoa(e.Status)
+	}
+	if e.Class == "" {
+		return "other"
+	}
+	return e.Class
 }
