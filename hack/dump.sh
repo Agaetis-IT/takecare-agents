@@ -66,6 +66,8 @@ RECORD='{kind, name: .metadata.name, created: .metadata.creationTimestamp,
   echo "# date $(date -u +%Y-%m-%dT%H:%M:%SZ), commit $(git rev-parse HEAD), cluster $(kubectl config current-context 2>/dev/null || echo unknown)"
   echo "# No Secret, no kubeconfig, no pod environment, no message content: run status, conditions, events, logs (agents' filtered), task states, counters."
 } >"$dir/README.txt"
+# Whether the machine slept during the run, when the caller recorded its start.
+[[ -z "${RUN_STARTED_AT:-}" ]] || hack/power-window.sh "$RUN_STARTED_AT" >>"$dir/README.txt" 2>&1 || true
 
 # get FILE FILTER RESOURCES: the objects through FILTER, or the error.
 get() {
