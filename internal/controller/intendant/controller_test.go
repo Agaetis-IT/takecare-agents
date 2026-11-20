@@ -231,10 +231,7 @@ func (f *fixture) startManager(t *testing.T) {
 	}
 	if f.runner {
 		queue := runs.NewQueue(16)
-		if err := (&SurveyQueuer{Client: mgr.GetClient(), Reader: scopedReader{mgr.GetAPIReader()}, Queue: queue, Recorder: mgr.GetEventRecorder("test")}).SetupWithManager(mgr); err != nil {
-			t.Fatal(err)
-		}
-		if err := mgr.Add(&Runner{
+		runner := &Runner{
 			Client: mgr.GetClient(), Reader: scopedReader{mgr.GetAPIReader()}, Queue: queue, GateRetry: 100 * time.Millisecond,
 			Caller: &mcp.Client{HTTP: &http.Client{Timeout: time.Minute}}, Canary: &f.canary, Now: f.passClock.Now, Metrics: f.metrics,
 			Runs: f.runs, EngineKind: kagent0103.Kind, EngineNamespace: engineNS, Usage: f.usage, PassTimeout: passTimeout, PassInterval: 50 * time.Millisecond, PassClock: f.passClock,
@@ -246,7 +243,13 @@ func (f *fixture) startManager(t *testing.T) {
 				s, _ := u.(string)
 				return s
 			},
-		}); err != nil {
+		}
+		// The backstop as the operator wires it, on the runner's clock.
+		if err := (&SurveyQueuer{Client: mgr.GetClient(), Reader: scopedReader{mgr.GetAPIReader()}, Queue: queue, Recorder: mgr.GetEventRecorder("test"),
+			Runs: runner, PassTimeout: passTimeout, Now: f.passClock.Now}).SetupWithManager(mgr); err != nil {
+			t.Fatal(err)
+		}
+		if err := mgr.Add(runner); err != nil {
 			t.Fatal(err)
 		}
 	}

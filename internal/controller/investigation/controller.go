@@ -66,8 +66,6 @@ const (
 	// queuedResync: a Queued record is looked at again this often, so that
 	// one that left the queue without running is put back (level-based).
 	queuedResync = time.Minute
-	// ReasonAbandoned ends a Running record whose end was never recorded.
-	ReasonAbandoned = "Abandoned"
 )
 
 // NewPhaseMetric creates and registers takecare_investigations_total.
@@ -153,20 +151,20 @@ func (r *Reconciler) backstop(ctx context.Context, inv *v1alpha1.TakeCareInvesti
 	if r.holds(client.ObjectKeyFromObject(inv)) {
 		return ctrl.Result{RequeueAfter: grace}, nil
 	}
-	reason := fmt.Sprintf("%s: the run's end was not recorded; the operator ended it at %s", ReasonAbandoned, now.UTC().Format(time.RFC3339))
+	reason := fmt.Sprintf("%s: %s; the operator ended it at %s", v1alpha1.ReasonAbandoned, v1alpha1.MessageEndNotRecorded, now.UTC().Format(time.RFC3339))
 	patch := client.MergeFromWithOptions(inv.DeepCopy(), client.MergeFromWithOptimisticLock{})
 	at := metav1.NewTime(now)
 	inv.Status.Phase = v1alpha1.PhaseTimedOut
 	inv.Status.Reason = reason
 	inv.Status.CompletedAt = &at
 	inv.Status.ObservedGeneration = inv.Generation
-	usageUnknown(usageEndNotRecorded)(inv)
+	usageUnknown(v1alpha1.MessageEndNotRecorded)(inv)
 	if err := r.Status().Patch(ctx, inv, patch); err != nil {
 		// A conflict (the record changed: its end was written after all) or
 		// another error: returned, so the reconcile runs again on a fresh read.
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	r.Recorder.Eventf(inv, nil, corev1.EventTypeWarning, ReasonAbandoned, "Run", "%s", reason)
+	r.Recorder.Eventf(inv, nil, corev1.EventTypeWarning, v1alpha1.ReasonAbandoned, "Run", "%s", reason)
 	if r.Phases != nil {
 		r.Phases.WithLabelValues(inv.Spec.RoleRef.Kind, string(v1alpha1.PhaseTimedOut)).Inc()
 	}

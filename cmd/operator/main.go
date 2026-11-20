@@ -342,11 +342,7 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	// Its surveys (spec 10 §4): queued as they come, run one per Intendant
 	// at a time through its routes on the gateway.
 	surveys := runs.NewQueue(16)
-	if err := (&intendant.SurveyQueuer{Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: surveys,
-		Recorder: mgr.GetEventRecorder("takecare-operator")}).SetupWithManager(mgr); err != nil {
-		return nil, fmt.Errorf("set up the survey queue: %w", err)
-	}
-	if err := mgr.Add(&intendant.Runner{
+	surveyRunner := &intendant.Runner{
 		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: surveys,
 		Caller: &mcp.Client{HTTP: gatewayClient}, Canary: &mcp.Client{HTTP: gatewayClient}, Metrics: surveyMetrics,
 		Tracer: traces.Tracer("github.com/agaetis-it/takecare-agents/internal/controller/intendant"),
@@ -357,7 +353,15 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		Poster: &mcp.Client{HTTP: mcpClient}, Recorder: mgr.GetEventRecorder("takecare-operator"),
 		// The inventory (spec 10 §8) lists the engine's agents.
 		AgentKinds: (&kagent0103.Agents{}).AgentTypes(),
-	}); err != nil {
+	}
+	// The queuer ends a Running survey the runner does not hold at its
+	// bound (spec 10 §5), with the runner's timeouts.
+	if err := (&intendant.SurveyQueuer{Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: surveys,
+		Recorder: mgr.GetEventRecorder("takecare-operator"), Runs: surveyRunner,
+		PassTimeout: surveyRunner.PassTimeout, ScrapeWait: surveyRunner.ScrapeWait}).SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("set up the survey queue: %w", err)
+	}
+	if err := mgr.Add(surveyRunner); err != nil {
 		return nil, fmt.Errorf("add the survey runner: %w", err)
 	}
 	if err := mgr.Add(&intendant.Sweeper{Client: mgr.GetClient(), Namespace: cfg.operatorNamespace}); err != nil {

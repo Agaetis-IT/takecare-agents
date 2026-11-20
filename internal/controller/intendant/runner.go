@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -89,7 +90,8 @@ const (
 
 // SurveyQueuer feeds the runner: a survey with no phase is Queued at once,
 // a Queued one goes into the queue and is looked at again every minute,
-// so that one that left the queue without running is put back.
+// so that one that left the queue without running is put back; a Running
+// one nobody holds is ended at its bound (the backstop, backstop.go).
 type SurveyQueuer struct {
 	client.Client
 	// Reader reads a survey before it is written, outside the cache;
@@ -97,6 +99,15 @@ type SurveyQueuer struct {
 	Reader   client.Reader
 	Queue    *runs.Queue
 	Recorder recorder.EventRecorder
+	// Runs says which surveys the runner holds; nil: every survey is
+	// unheld; main always sets it.
+	Runs Holder
+	// PassTimeout and ScrapeWait are the runner's; Grace is what the
+	// backstop adds (defaultGrace when zero).
+	PassTimeout time.Duration
+	ScrapeWait  time.Duration
+	Grace       time.Duration
+	Now         func() time.Time
 
 	mu sync.Mutex
 	// full holds the Intendants told that the queue is full, so that the
@@ -119,6 +130,8 @@ func (q *SurveyQueuer) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Re
 		return q.enqueue(ctx, &s)
 	case v1alpha1.RunQueued:
 		return q.enqueue(ctx, &s)
+	case v1alpha1.RunRunning:
+		return q.backstop(ctx, &s)
 	}
 	return ctrl.Result{}, nil
 }
@@ -209,6 +222,31 @@ func markRunning(now metav1.Time, traceID string) func(*v1alpha1.TakeCareSurveyS
 	}
 }
 
+// recordOutcome: the runner ends a Running survey with its outcome, its
+// start, attempts and task kept.
+func recordOutcome(out v1alpha1.TakeCareSurveyStatus, done metav1.Time, traceID string) func(*v1alpha1.TakeCareSurveyStatus) bool {
+	return func(st *v1alpha1.TakeCareSurveyStatus) bool {
+		if st.Phase != v1alpha1.RunRunning {
+			return false // ended meanwhile (the backstop): that end stands
+		}
+		next := out
+		next.StartedAt, next.Attempts, next.CompletedAt, next.TraceID, next.Engine = st.StartedAt, st.Attempts, &done, traceID, st.Engine
+		*st = next
+		return true
+	}
+}
+
+// recordPublished: the digest's publication, on a Completed survey only.
+func recordPublished(result v1alpha1.Publication) func(*v1alpha1.TakeCareSurveyStatus) bool {
+	return func(st *v1alpha1.TakeCareSurveyStatus) bool {
+		if st.Phase != v1alpha1.RunCompleted {
+			return false // ended otherwise meanwhile (the backstop): nothing to record
+		}
+		st.Published = &result
+		return true
+	}
+}
+
 // requeueResumed: at a leader's start, a survey left Running is Queued
 // again from the start, no half status kept, but its agent pass's task and
 // start are, so that the pass follows that task again (spec 10 §5).
@@ -286,6 +324,11 @@ type Runner struct {
 
 	mu      sync.Mutex
 	running map[types.NamespacedName]types.NamespacedName // by Intendant: its running survey
+	// held are the surveys this runner runs, from admit to the run's end
+	// (the backstop leaves them alone); resumed turns true once, when
+	// resume has put back, or given up on, every survey left Running.
+	held    map[types.NamespacedName]bool
+	resumed atomic.Bool
 	// digestLocks hold one lock per Intendant (a chan struct{} of one):
 	// its digests are compared, posted and recorded one at a time.
 	digestLocks sync.Map
@@ -313,8 +356,11 @@ func (w *Runner) Start(ctx context.Context) error {
 	}
 	defer w.wg.Wait()
 	if err := w.resume(ctx); err != nil {
+		// Not retried: a survey left Running is ended at its bound by the
+		// backstop, which acts from here on.
 		log.FromContext(ctx).Error(err, "resume the surveys left running")
 	}
+	w.resumed.Store(true)
 	w.resumePublish(ctx)
 	ownerOf := map[types.NamespacedName]types.NamespacedName{}
 	blocked := map[types.NamespacedName]bool{}
@@ -399,8 +445,12 @@ func (w *Runner) admit(ctx context.Context, key types.NamespacedName) (types.Nam
 	busy, held := w.running[owner]
 	if !held {
 		w.running[owner] = key
+		if w.held == nil {
+			w.held = map[types.NamespacedName]bool{}
+		}
+		w.held[key] = true // before markRunning: never Running unheld while it runs
 		w.wg.Go(func() {
-			defer w.release(owner)
+			defer w.release(owner, key)
 			w.run(ctx, &s)
 		})
 	}
@@ -468,9 +518,21 @@ const (
 	adoptRetry
 )
 
-func (w *Runner) release(owner types.NamespacedName) {
+// Holds implements Holder: the survey runs here, or the leader's resume is
+// not done, in which case it says true for every survey.
+func (w *Runner) Holds(key types.NamespacedName) bool {
+	if !w.resumed.Load() {
+		return true
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.held[key]
+}
+
+func (w *Runner) release(owner, key types.NamespacedName) {
 	w.mu.Lock()
 	delete(w.running, owner)
+	delete(w.held, key)
 	w.mu.Unlock()
 	select {
 	case w.freed <- struct{}{}:
@@ -530,14 +592,7 @@ func (w *Runner) run(ctx context.Context, s *v1alpha1.TakeCareSurvey) {
 		span.SetAttributes(attribute.Int(semconv.SurveyProposals, len(res.Proposals)))
 		w.Metrics.Record(s.Spec.IntendantRef.Name, res)
 	}
-	recorded, err := w.patch(ctx, s, func(st *v1alpha1.TakeCareSurveyStatus) bool {
-		if st.Phase != v1alpha1.RunRunning {
-			return false // ended meanwhile (the backstop): that end stands
-		}
-		out.StartedAt, out.Attempts, out.CompletedAt, out.TraceID, out.Engine = st.StartedAt, st.Attempts, &done, traceID, st.Engine
-		*st = out
-		return true
-	})
+	recorded, err := w.patch(ctx, s, recordOutcome(out, done, traceID))
 	if err != nil || !recorded {
 		if err != nil {
 			logger.Error(err, "record the survey's outcome")
