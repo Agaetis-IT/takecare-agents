@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	kevents "k8s.io/client-go/tools/events"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -317,4 +318,56 @@ func TestBackstopMeetsTheWriters(t *testing.T) {
 		interleave(t, c, key, abandon(reason, at), outcomeThenPublication)
 		checkCompleted(t, survey(t, c, key), &published)
 	})
+}
+
+// After the backstop's end the Intendant moves on by itself: the rendering
+// a Running survey held is applied, and the survey a trigger was waiting
+// for is created (envtest, the runner and the queuer as the operator wires
+// them).
+func TestAbandonedSurveyFreesTheIntendant(t *testing.T) {
+	t.Parallel()
+	const name = "abandoned"
+	f := startRunner(t)
+	f.grounded(t)
+	f.connector(t, connKnowledge, v1alpha1.ConnectorKnowledge, []string{toolRunbooks})
+	f.surveyed(t, name, mapServer(t, nil), nil)
+	first := f.waitPhase(t, name, 1, v1alpha1.RunCompleted)[0].Name
+	// Its end as if never written: Running again, unheld, started now on
+	// the runner's clock, so its bound is ahead.
+	started := metav1.NewTime(f.passClock.Now())
+	f.surveyStatus(t, first, func(st *v1alpha1.TakeCareSurveyStatus) {
+		st.Phase, st.StartedAt, st.CompletedAt, st.Reason, st.Published = v1alpha1.RunRunning, &started, nil, "", nil
+	})
+	// A trigger and a new rendering wait for that survey.
+	f.mapRevision(t, rev2)
+	f.pending(t, name, v1alpha1.TriggerMapRevision)
+	f.update(t, name, func(in *v1alpha1.TakeCareIntendant) { in.Spec.Connectors.Knowledge = []string{connKnowledge} })
+	f.wait(t, name, pending)
+	f.countSurveys(t, name, 1)
+	// Past its bound: the backstop ends it at its next look.
+	f.passClock.jump(2*passTimeout + defaultGrace + time.Second)
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var s v1alpha1.TakeCareSurvey
+		if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: first}, &s); err != nil {
+			return err
+		}
+		metav1.SetMetaDataAnnotation(&s.ObjectMeta, "test/poke", "backstop")
+		return f.c.Update(context.Background(), &s)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, "the backstop's end", func() bool {
+		var s v1alpha1.TakeCareSurvey
+		err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: first}, &s)
+		return err == nil && s.Status.Phase == v1alpha1.RunFailed && strings.HasPrefix(s.Status.Reason, v1alpha1.ReasonAbandoned+": ")
+	})
+	f.wait(t, name, func(in *v1alpha1.TakeCareIntendant) bool {
+		c := cond(in, v1alpha1.ConditionEngineReady)
+		return in.Status.RenderPendingSince == nil && c != nil && c.Reason != ReasonRenderPending
+	})
+	for _, s := range f.waitSurveys(t, name, 2) {
+		if s.Name != first && (s.Spec.Trigger != v1alpha1.TriggerMapRevision || s.Spec.MapRevision != rev2) {
+			t.Errorf("the waiting trigger's survey: %s %s", s.Spec.Trigger, s.Spec.MapRevision)
+		}
+	}
 }
