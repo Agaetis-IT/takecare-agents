@@ -266,7 +266,7 @@ func TestPassNeverEnds(t *testing.T) {
 	f.passReady(t, "never")
 	f.runs.set("never", "", false)
 	s := f.byHand(t, "never-pass", "never")
-	if s.Status.Phase != v1alpha1.RunCompleted || strings.Join(agentLine(s), "|") != passNotFinished {
+	if s.Status.Phase != v1alpha1.RunCompleted || !timedOutPass(agentLine(s)) {
 		t.Fatalf("survey %+v, agent layer %v", s.Status.RunStatus, agentLine(s))
 	}
 	if _, cancels := f.runs.counts(); len(cancels) != 1 {
@@ -338,7 +338,7 @@ func TestPassResumedKeepsDeadline(t *testing.T) {
 	if starts, cancels := f.runs.counts(); starts != 0 || len(cancels) != 1 || cancels[0] != "t-old" {
 		t.Errorf("starts %d, cancels %v: the recorded task was not the one followed", starts, cancels)
 	}
-	if got.Status.Phase != v1alpha1.RunCompleted || !got.Status.StartedAt.Equal(&started) || strings.Join(agentLine(got), "|") != passNotFinished {
+	if got.Status.Phase != v1alpha1.RunCompleted || !got.Status.StartedAt.Equal(&started) || !timedOutPass(agentLine(got)) {
 		t.Errorf("survey %+v, agent layer %v", got.Status.RunStatus, agentLine(got))
 	}
 }
@@ -468,7 +468,7 @@ func TestPassUsageAfterUnfinished(t *testing.T) {
 	f.usageURL.Store(promOnRoute(t, route, f.runs))
 	f.runs.set("never", "", false)
 	first := f.byHand(t, "after-1", "after")
-	if strings.Join(agentLine(first), "|") != passNotFinished || first.Status.Usage == nil || first.Status.Usage.Approximate {
+	if !timedOutPass(agentLine(first)) || first.Status.Usage == nil || first.Status.Usage.Approximate {
 		t.Fatalf("first survey: agent layer %v, usage %+v", agentLine(first), first.Status.Usage)
 	}
 	f.runs.set("complete", goodAnswer, false)
@@ -497,4 +497,10 @@ func TestPassAskedAQuestion(t *testing.T) {
 	if strings.Contains(string(raw), "QUESTION-MARKER") {
 		t.Errorf("the question reached the survey: %s", raw)
 	}
+}
+
+// timedOutPass says whether the agent layer holds one line, an unfinished
+// pass's ended by its deadline, saying what the follow saw.
+func timedOutPass(lines []string) bool {
+	return len(lines) == 1 && strings.HasPrefix(lines[0], passNotFinished+": ")
 }
