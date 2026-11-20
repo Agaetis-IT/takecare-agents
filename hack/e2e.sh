@@ -122,6 +122,9 @@ operator_not_forbidden() {
 resumed() {
   log "restarting the operator after a stop (the surveys' resume)"
   check "the operator's log has no forbidden line before the restart" operator_not_forbidden
+  # The restart replaces the operator's pod: its log is kept for the dump.
+  mkdir -p bin/demo
+  kubectl -n "$NS" logs deploy/takecare-operator --timestamps --tail=5000 >bin/demo/operator-before-restart.log 2>&1 || true
   kubectl -n "$NS" scale deploy/takecare-operator --replicas=0 >/dev/null
   kubectl -n "$NS" wait --for=delete pod -l app.kubernetes.io/component=operator --timeout=120s >/dev/null 2>&1 || true
   kubectl apply -f - >/dev/null <<YAML
@@ -398,11 +401,19 @@ east_alert() {
 }
 
 run() {
+  # The operator's log saved before its restart describes this run only: a
+  # copy left by an earlier run must not reach this run's dump.
+  rm -f bin/demo/operator-before-restart.log
+  # A setup that fails (the cluster, the fakes, the install) is dumped
+  # before anything else, as a failed check is.
+  set -E
+  trap 'd="$(hack/dump.sh "e2e: the setup failed" | tail -1)" && echo "dump: ${d}"; trap - ERR' ERR
   # Last, after the checks' line: whether the machine slept during the run.
   trap power_guard EXIT
   hack/demo.sh cluster
   fakes
   hack/demo.sh up
+  trap - ERR
   kubectl apply -f test/e2e/doc-ops.yaml >/dev/null
   # An Agent in the demo Intendant's scope, for its inventory: no pod.
   kubectl apply -f test/e2e/inventory-agent.yaml >/dev/null
@@ -569,10 +580,12 @@ bench_dump() {
   d="$(sed -n 's/.*dump: //p' <<<"$out" | tail -1)"
   [[ -n "$d" && -d "$d" ]] || { echo "no dump directory in: ${out}"; return 1; }
   for f in README.txt records.json roles.json pods.txt events-takecare-system.txt events-kagent.txt \
-    events-demo-apps.txt operator.log agents.log tasks.json guards.json; do
+    events-demo-apps.txt operator.log agents.log tasks.json guards.json operator-before-restart.log hooks.txt node-images.txt; do
     [[ -s "${d}/${f}" ]] || { echo "dump ${f}: missing or empty"; return 1; }
   done
   head -1 "${d}/agents.log" | grep -q '^# filtered' || { echo "agents.log: no filtered header"; return 1; }
+  grep -q "takecare-operator before its restart: replaced at .*; its log saved before" "${d}/README.txt" ||
+    { echo "README.txt: no line for the operator's replaced pod"; return 1; }
   jq -e 'type == "array" and length > 0' "${d}/records.json" >/dev/null || { echo "records.json: no record"; return 1; }
   jq -e 'type == "array" and length > 0' "${d}/guards.json" >/dev/null || { echo "guards.json: no counter"; return 1; }
   for m in "${DUMP_MARKERS[@]}" "$MASKED_CARD" "$MASKED_EMAIL"; do
