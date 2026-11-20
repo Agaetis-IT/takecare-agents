@@ -1449,13 +1449,13 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=143 install ;;
-  upgrade) CHECKS_EXPECTED=143 upgrade ;;
+  install) CHECKS_EXPECTED=193 install ;;
+  upgrade) CHECKS_EXPECTED=193 upgrade ;;
   status) status ;;
   mask-test) mask_test ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=5 cluster_chart ;;
   url) CHECKS_EXPECTED=8 url_connector ;;
-  all) mask_test; up; CHECKS_EXPECTED=143 install; CHECKS_EXPECTED=143 upgrade; CHECKS_EXPECTED=8 url_connector; CHECKS_EXPECTED=5 cluster_chart ;;
+  all) mask_test; up; CHECKS_EXPECTED=193 install; CHECKS_EXPECTED=193 upgrade; CHECKS_EXPECTED=8 url_connector; CHECKS_EXPECTED=5 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|url|cluster|status|mask-test|down|all]"; exit 2 ;;
 esac
