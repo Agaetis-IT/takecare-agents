@@ -93,6 +93,9 @@ check_not() { # NAME COMMAND...: PASS when the command fails
 assert_checks() { # EXPECTED
   if [[ "$checks" -ne "$1" || "$failed" -ne 0 ]]; then
     echo "checks: ${checks} run (expected $1), ${failed} failed"
+    # The cluster's state before anything else touches it (hack/dump.sh).
+    local d
+    d="$(hack/dump.sh "smoke: ${failed} of ${checks} checks failed" | tail -1)" && echo "dump: ${d}"
     exit 1
   fi
   echo "checks: ${checks} run, all passed"

@@ -153,13 +153,27 @@ install() {
     return 0
   fi
   log "installing takecare-crds and takecare (values-demo.yaml)"
-  "$HELM" upgrade --install takecare-crds charts/takecare-crds -n "$NS" "${crds[@]}" --wait --timeout 5m >/dev/null
+  "$HELM" upgrade --install takecare-crds charts/takecare-crds -n "$NS" "${crds[@]}" --wait --timeout 5m >/dev/null || hook_failed takecare-crds
   # The TakeCareDemo before the operator: its controller writes the corpora
   # the corpus servers need to be ready, which the install below waits for.
   kubectl apply -f demo/manifests/demo.yaml >/dev/null
   "$HELM" upgrade --install takecare charts/takecare -n "$NS" "${values[@]}" ${sets[@]+"${sets[@]}"} \
-    --wait --timeout 10m >/dev/null
+    --wait --timeout 10m >/dev/null || hook_failed takecare
   echo "$stamp" >"${STATE}/helm"
+}
+
+# hook_failed RELEASE: helm's error names a Job, not why it did not
+# finish; its pods' events do (an image no node holds, a failed pull).
+hook_failed() {
+  local jobs
+  jobs="$(kubectl -n "$NS" get jobs -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{end}' 2>/dev/null)"
+  if [[ -n "$jobs" ]]; then
+    printf '%s\n' "the install's hook Job did not finish; its pod's events:" >&2
+    kubectl -n "$NS" get events --sort-by=.lastTimestamp -o json 2>/dev/null |
+      jq -r --arg j "${jobs%|}" '.items[] | select(.involvedObject.kind == "Pod" and (.involvedObject.name | test("^(" + $j + ")-"))) | "  " + .message' |
+      tail -15 >&2
+  fi
+  die "the release $1 did not install"
 }
 
 up() {
