@@ -11,7 +11,6 @@ import (
 
 	eventsv1 "k8s.io/api/events/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 )
@@ -57,16 +56,12 @@ func TestContentToolUnknownIsSaid(t *testing.T) {
 }
 
 // change updates the Intendant through mutate, on a fresh read.
+// The operator writes the Intendant too (its finalizer, its status), so a
+// write between the read and the update conflicts: f.update reads again
+// and retries, as every other change in the package does.
 func (f *fixture) change(t *testing.T, name string, mutate func(*v1alpha1.TakeCareIntendant)) {
 	t.Helper()
-	var in v1alpha1.TakeCareIntendant
-	if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: name}, &in); err != nil {
-		t.Fatal(err)
-	}
-	mutate(&in)
-	if err := f.c.Update(context.Background(), &in); err != nil {
-		t.Fatal(err)
-	}
+	f.update(t, name, mutate)
 }
 
 // eventCount waits for exactly want events of a reason on the Intendants,
