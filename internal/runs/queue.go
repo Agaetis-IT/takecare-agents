@@ -73,6 +73,9 @@ func (q *Queue) Contains(key types.NamespacedName) bool {
 	return ok
 }
 
+// Cap is the number of runs the queue holds at most.
+func (q *Queue) Cap() int { return q.capacity }
+
 // Len is the number of pending runs.
 func (q *Queue) Len() int {
 	q.mu.Lock()

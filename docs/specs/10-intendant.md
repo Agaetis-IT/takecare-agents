@@ -25,6 +25,12 @@ Out of scope for 0.3.0: the Bib (its own ADR and spec), cloud importers, any wri
   - Spec, immutable: `intendantRef`, `trigger` (`Schedule`, `OnDemand`, `MapRevision`, `Registration`; `OnDemand` by default) and `mapRevision`, the Map revision to survey against (empty: the one served when the survey starts).
   - Status: `layers[]` (per layer: seen, matched, proposed, not seen with the reason), `proposals[]` (§7), `inventory` (agents, MCP servers and tools on the cluster, with the first 100 items, §8), `blindSpots`.
   - Printer columns: phase, trigger, revision, proposals, published, age.
+  - **Waiting.** A `Queued` survey that cannot start says why in `status.reason`, a waiting reason, never a failure. It is written only when it changes:
+    - `IntendantBusy: the Intendant <name> runs survey <name>`: one survey runs at a time per Intendant. It clears when the survey starts.
+    - `QueueFull: the survey queue is full (<n>)`: the leader's survey queue is full (its configured capacity). The survey is tried again every 30 seconds and clears when it starts. The Intendant gets one `QueueFull` Warning event, said again only once a survey of it has fit in the queue; the leader keeps that in memory, so a restart may say it once more.
+
+    No survey is lost: a `Queued` survey is looked at every minute and put back in the queue if it left it, and a survey the runner could not read is put back.
+  - **Writers.** Several writers meet on a survey's status: the queuer (`Queued`), the runner (`Running`, its outcome, the waiting reasons, a leader's resume of a `Running` survey back to `Queued`), the agent pass (its task) and the publication (`published`). Each writes on a fresh read under an optimistic lock and applies only to the phase it is for: an outcome is never written over an end, a task never after the outcome, and a waiting reason never on a survey that has started.
 
 ## 3. Triggers
 
@@ -89,6 +95,7 @@ Tools: the Map's five, the cluster's `read` tools and the knowledge tools; no co
 
 The pass runs after the import when the Intendant's agent is ready (`EngineReady`):
 
+- **Before it:** a survey that has not started waits `Queued`, and its reason says why (§2, Waiting).
 - **Its deadline** is 10 minutes counted from the survey's start (`status.startedAt`), the engine getting its usual share. A survey resumed after a restart keeps that start and follows its recorded task (`status.engine.taskID`); a new pass counts from its own start.
 - **A task stopped** waiting for an input or an authorization ends the pass at once and is canceled.
 - **The agent is not re-rendered during a pass.** kagent 0.10.3 rolls the agent's Deployment on any change of its rendering (the pod template's `kagent.dev/config-hash`, RollingUpdate with `maxSurge` 1 and `maxUnavailable` 0), and the old pod takes the pass's task with it. So while a survey of the Intendant is `Running`, a new rendering waits, at most until that survey's pass deadline; the last rendering asked for is applied when the survey ends or the deadline passes. `EngineReady` stays True with reason `RenderPending`, naming the survey and the deadline, and `status.renderPendingSince` says since when. The gateway's routes and policies are never deferred. A `Queued` survey does not hold the rendering: it starts on the new agent, once it is ready. The Doc does the same for its investigations (spec 02).
