@@ -5,6 +5,7 @@ package intendant
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -64,11 +65,10 @@ func (f *fixture) endSkipped(t *testing.T, name string, phase v1alpha1.RunPhase)
 		if s.Status.Phase == phase {
 			continue
 		}
-		s.Status.Phase = phase
-		s.Status.Layers = []v1alpha1.SurveyLayer{{Name: surveyagent.Layer, NotSeen: []v1alpha1.NotSeen{{Ref: surveyagent.Layer, Reason: passNotReady}}}}
-		if err := f.c.Status().Update(context.Background(), &s); err != nil {
-			t.Fatal(err)
-		}
+		f.surveyStatus(t, s.Name, func(st *v1alpha1.TakeCareSurveyStatus) {
+			st.Phase = phase
+			st.Layers = []v1alpha1.SurveyLayer{{Name: surveyagent.Layer, NotSeen: []v1alpha1.NotSeen{{Ref: surveyagent.Layer, Reason: passNotReady}}}}
+		})
 	}
 }
 
@@ -79,9 +79,10 @@ func (f *fixture) agentReady(t *testing.T, name string, ready bool) {
 	agent := surveyagent.AgentName(&v1alpha1.TakeCareIntendant{Name: name})
 	status := map[bool]string{true: condTrue, false: condFalse}[ready]
 	for _, gvk := range []schema.GroupVersionKind{modelConfigGVK, agentGVK} {
-		u, err := f.engineObject(gvk, agent)
+		// The operator creates the object: wait for it, then set its status.
+		_, err := f.engineObject(gvk, agent)
 		for deadline := time.Now().Add(waitFor); err != nil && time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
-			u, err = f.engineObject(gvk, agent)
+			_, err = f.engineObject(gvk, agent)
 		}
 		if err != nil {
 			t.Fatal(err)
@@ -90,10 +91,7 @@ func (f *fixture) agentReady(t *testing.T, name string, ready bool) {
 		if gvk == modelConfigGVK {
 			readiness = condTrue
 		}
-		u.Object["status"] = map[string]any{keyConditions: []any{condition("Accepted", condTrue), condition("Ready", readiness)}}
-		if err := f.c.Status().Update(context.Background(), u); err != nil {
-			t.Fatal(err)
-		}
+		f.engineStatus(t, gvk, agent, map[string]any{keyConditions: []any{condition("Accepted", condTrue), condition("Ready", readiness)}})
 	}
 }
 
@@ -105,7 +103,12 @@ func (f *fixture) engineReady(t *testing.T, name string, want metav1.ConditionSt
 // A1: a burst of registrations gives one survey, once they have held for
 // the quiet period; before it, none.
 func TestRegistrationBurstGivesOneSurvey(t *testing.T) {
-	t.Parallel()
+	// Serial, not t.Parallel: this test moves the fixture's clock to fixed
+	// times, and under the parallel load a late reconcile can record
+	// registrationsSince or a transition at the frozen time, so the
+	// survey is never due before the wait ends (1 in 20 on main at the
+	// runner's shape). fix/intendant-level-tests-clock makes it move the
+	// clock relative to what the operator wrote, and brings it back.
 	f := startWith(t, false, withWaits(time.Minute, 0))
 	f.ready(t, "burst", nil)
 	f.waitSurveys(t, "burst", 1)
@@ -153,7 +156,12 @@ func TestFailedSurveysDoNotRepeat(t *testing.T) {
 // skipped again, nothing more until the agent goes not ready and ready
 // again.
 func TestOwedPassOnce(t *testing.T) {
-	t.Parallel()
+	// Serial, not t.Parallel: this test moves the fixture's clock to fixed
+	// times, and under the parallel load a late reconcile can record
+	// registrationsSince or a transition at the frozen time, so the
+	// survey is never due before the wait ends (1 in 20 on main at the
+	// runner's shape). fix/intendant-level-tests-clock makes it move the
+	// clock relative to what the operator wrote, and brings it back.
 	f := start(t)
 	f.ready(t, "owed", nil)
 	f.waitSurveys(t, "owed", 1)
@@ -191,7 +199,12 @@ func TestOwedPassOnce(t *testing.T) {
 // An agent that flaps gives no survey per flap: its readiness must hold
 // for the quiet period first.
 func TestFlappingAgentGivesNoStorm(t *testing.T) {
-	t.Parallel()
+	// Serial, not t.Parallel: this test moves the fixture's clock to fixed
+	// times, and under the parallel load a late reconcile can record
+	// registrationsSince or a transition at the frozen time, so the
+	// survey is never due before the wait ends (1 in 20 on main at the
+	// runner's shape). fix/intendant-level-tests-clock makes it move the
+	// clock relative to what the operator wrote, and brings it back.
 	f := startWith(t, false, withWaits(time.Minute, 0))
 	f.ready(t, "flap", nil)
 	f.waitSurveys(t, "flap", 1)
@@ -214,7 +227,12 @@ func TestFlappingAgentGivesNoStorm(t *testing.T) {
 // registrationsSince is in status: a restart does not restart the quiet
 // period.
 func TestQuietPeriodSurvivesRestart(t *testing.T) {
-	t.Parallel()
+	// Serial, not t.Parallel: this test moves the fixture's clock to fixed
+	// times, and under the parallel load a late reconcile can record
+	// registrationsSince or a transition at the frozen time, so the
+	// survey is never due before the wait ends (1 in 20 on main at the
+	// runner's shape). fix/intendant-level-tests-clock makes it move the
+	// clock relative to what the operator wrote, and brings it back.
 	f := startWith(t, false, withWaits(time.Minute, 0))
 	f.ready(t, "since", nil)
 	f.waitSurveys(t, "since", 1)
@@ -236,7 +254,12 @@ func TestQuietPeriodSurvivesRestart(t *testing.T) {
 // A3: the first survey waits for an expected agent, and says so; past the
 // wait it runs with its import only.
 func TestFirstSurveyWaitsForTheAgent(t *testing.T) {
-	t.Parallel()
+	// Serial, not t.Parallel: this test moves the fixture's clock to fixed
+	// times, and under the parallel load a late reconcile can record
+	// registrationsSince or a transition at the frozen time, so the
+	// survey is never due before the wait ends (1 in 20 on main at the
+	// runner's shape). fix/intendant-level-tests-clock makes it move the
+	// clock relative to what the operator wrote, and brings it back.
 	f := startWith(t, false, withWaits(0, 10*time.Minute))
 	f.ready(t, "patient", nil)
 	in := f.wait(t, "patient", func(in *v1alpha1.TakeCareIntendant) bool { return in.Status.PendingTrigger != "" })
@@ -275,13 +298,43 @@ func TestEngineReadyFollowsTheAgent(t *testing.T) {
 // last is the survey the reconciler created last (status.lastSurvey).
 func (f *fixture) last(t *testing.T, name string) v1alpha1.TakeCareSurvey {
 	t.Helper()
-	in := f.wait(t, name, func(*v1alpha1.TakeCareIntendant) bool { return true })
+	// The operator creates a survey, then records it in status.lastSurvey:
+	// the new survey is the one waitSurveys saw at its last count and not at
+	// the count before, and lastSurvey must come to name it.
+	f.surveysMu.Lock()
+	seen := f.surveysSeen[name]
+	f.surveysMu.Unlock()
+	var fresh []string
+	for _, n := range seen[1] {
+		if !slices.Contains(seen[0], n) {
+			fresh = append(fresh, n)
+		}
+	}
+	if len(fresh) != 1 {
+		t.Fatalf("last(%s): %d new surveys since the previous count (before %v, now %v), want exactly one", name, len(fresh), seen[0], seen[1])
+	}
+	var lastSeen string
+	deadline := time.Now().Add(waitFor)
+	for {
+		var in v1alpha1.TakeCareIntendant
+		if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: name}, &in); err != nil {
+			t.Fatal(err)
+		}
+		lastSeen = in.Status.LastSurvey
+		if lastSeen == fresh[0] {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("last(%s): status.lastSurvey is %q, the new survey is %q (before %v, now %v)", name, lastSeen, fresh[0], seen[0], seen[1])
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 	for _, s := range f.surveys(t, name) {
-		if s.Name == in.Status.LastSurvey {
+		if s.Name == fresh[0] {
 			return s
 		}
 	}
-	t.Fatalf("no survey %q", in.Status.LastSurvey)
+	t.Fatalf("last(%s): survey %q is gone", name, fresh[0])
 	return v1alpha1.TakeCareSurvey{}
 }
 

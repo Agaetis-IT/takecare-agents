@@ -108,11 +108,16 @@ func (f *fixture) moveClock(t *testing.T, name string, to time.Time) {
 var testStart = time.Date(2026, 11, 11, 10, 0, 0, 0, time.UTC)
 
 type fixture struct {
-	c      client.Client
-	clock  *clock
-	cfg    *rest.Config
-	scheme *runtime.Scheme
-	stop   context.CancelFunc
+	// surveysSeen holds, per Intendant, the survey names the last two
+	// waitSurveys calls returned: last tells the new survey by name, not by
+	// a creation time of one-second grain. Only waitSurveys writes it.
+	surveysMu   sync.Mutex
+	surveysSeen map[string][2][]string
+	c           client.Client
+	clock       *clock
+	cfg         *rest.Config
+	scheme      *runtime.Scheme
+	stop        context.CancelFunc
 	// runner, when set, runs the survey queue and runner too, their routes
 	// to a connector, by "<intendant>/<connector>", pointing at test servers.
 	runner bool

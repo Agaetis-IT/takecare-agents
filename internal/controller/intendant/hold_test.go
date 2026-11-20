@@ -11,7 +11,6 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
@@ -40,15 +39,8 @@ func (f *fixture) handSurvey(t *testing.T, name, intendant string, phase v1alpha
 
 func (f *fixture) surveyPhase(t *testing.T, name string, phase v1alpha1.RunPhase) {
 	t.Helper()
-	var s v1alpha1.TakeCareSurvey
-	if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: name}, &s); err != nil {
-		t.Fatal(err)
-	}
 	at := metav1.NewTime(f.clock.Now())
-	s.Status.Phase, s.Status.StartedAt = phase, &at
-	if err := f.c.Status().Update(context.Background(), &s); err != nil {
-		t.Fatal(err)
-	}
+	f.surveyStatus(t, name, func(st *v1alpha1.TakeCareSurveyStatus) { st.Phase, st.StartedAt = phase, &at })
 }
 
 // knowledge binds the Intendant to these knowledge connectors only: a
