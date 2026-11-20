@@ -93,8 +93,13 @@ images() {
   fi
   # The import is decided by the nodes themselves, never by the stamp: a
   # cluster deleted with k3d and created again holds none of them.
+  local nodes
+  nodes="$(docker ps --format '{{.Names}} {{.Label "k3d.role"}}' --filter "label=k3d.cluster=${CLUSTER}" | awk '$2 == "server" || $2 == "agent" {print $1}')"
+  # No node found is not "nothing missing": the install would wait on an
+  # image no node holds.
+  [[ -n "$nodes" ]] || die "no server or agent node of the k3d cluster ${CLUSTER} is running: cannot check its images"
   for ref in "${refs[@]}"; do
-    for node in $(docker ps --format '{{.Names}} {{.Label "k3d.role"}}' --filter "label=k3d.cluster=${CLUSTER}" | awk '$2 == "server" || $2 == "agent" {print $1}'); do
+    for node in $nodes; do
       if ! docker exec "$node" crictl inspecti "$ref" >/dev/null 2>&1; then
         missing+=("$ref")
         break
