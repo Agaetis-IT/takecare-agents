@@ -105,6 +105,7 @@ func (f *fixture) engineReady(t *testing.T, name string, want metav1.ConditionSt
 // A1: a burst of registrations gives one survey, once they have held for
 // the quiet period; before it, none.
 func TestRegistrationBurstGivesOneSurvey(t *testing.T) {
+	t.Parallel()
 	f := startWith(t, false, withWaits(time.Minute, 0))
 	f.ready(t, "burst", nil)
 	f.waitSurveys(t, "burst", 1)
@@ -114,7 +115,7 @@ func TestRegistrationBurstGivesOneSurvey(t *testing.T) {
 		f.touch(t, d)
 		digest = f.seen(t, "burst", digest)
 		f.countSurveys(t, "burst", 1)
-		f.clock.Set(testStart.Add(time.Duration(i+1) * 20 * time.Second))
+		f.moveClock(t, "burst", testStart.Add(time.Duration(i+1)*20*time.Second))
 	}
 	f.clock.Set(testStart.Add(2 * time.Minute))
 	f.poke(t, "burst")
@@ -127,6 +128,7 @@ func TestRegistrationBurstGivesOneSurvey(t *testing.T) {
 // Surveys that fail are not run again by the registrations or the Map's
 // revision while nothing changes: three in a row give no fourth.
 func TestFailedSurveysDoNotRepeat(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.ready(t, "failing", nil)
 	f.waitSurveys(t, "failing", 1)
@@ -151,6 +153,7 @@ func TestFailedSurveysDoNotRepeat(t *testing.T) {
 // skipped again, nothing more until the agent goes not ready and ready
 // again.
 func TestOwedPassOnce(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.ready(t, "owed", nil)
 	f.waitSurveys(t, "owed", 1)
@@ -160,9 +163,10 @@ func TestOwedPassOnce(t *testing.T) {
 	// ready from the start, and no transition followed).
 	f.agentReady(t, "owed", false)
 	f.engineReady(t, "owed", metav1.ConditionFalse)
-	// The clock moves before the survey ends: every reconcile its end
-	// wakes reads the new time, so the agent is ready after the survey.
-	f.clock.Set(testStart.Add(time.Minute))
+	// The clock moves, and a reconcile reads the new time, before the
+	// survey ends and the agent turns ready: the readiness is stamped after
+	// the survey (see clock).
+	f.moveClock(t, "owed", testStart.Add(time.Minute))
 	f.endSkipped(t, "owed", v1alpha1.RunCompleted)
 	f.agentReady(t, "owed", true)
 	f.engineReady(t, "owed", metav1.ConditionTrue)
@@ -178,7 +182,7 @@ func TestOwedPassOnce(t *testing.T) {
 
 	f.agentReady(t, "owed", false)
 	f.engineReady(t, "owed", metav1.ConditionFalse)
-	f.clock.Set(testStart.Add(3 * time.Minute))
+	f.moveClock(t, "owed", testStart.Add(3*time.Minute))
 	f.agentReady(t, "owed", true)
 	f.engineReady(t, "owed", metav1.ConditionTrue)
 	f.waitSurveys(t, "owed", 3)
@@ -187,6 +191,7 @@ func TestOwedPassOnce(t *testing.T) {
 // An agent that flaps gives no survey per flap: its readiness must hold
 // for the quiet period first.
 func TestFlappingAgentGivesNoStorm(t *testing.T) {
+	t.Parallel()
 	f := startWith(t, false, withWaits(time.Minute, 0))
 	f.ready(t, "flap", nil)
 	f.waitSurveys(t, "flap", 1)
@@ -209,12 +214,13 @@ func TestFlappingAgentGivesNoStorm(t *testing.T) {
 // registrationsSince is in status: a restart does not restart the quiet
 // period.
 func TestQuietPeriodSurvivesRestart(t *testing.T) {
+	t.Parallel()
 	f := startWith(t, false, withWaits(time.Minute, 0))
 	f.ready(t, "since", nil)
 	f.waitSurveys(t, "since", 1)
 	f.end(t, "since", v1alpha1.RunCompleted)
 	digest := f.wait(t, "since", func(in *v1alpha1.TakeCareIntendant) bool { return in.Status.Registrations != "" }).Status.Registrations
-	f.clock.Set(testStart.Add(10 * time.Second))
+	f.moveClock(t, "since", testStart.Add(10*time.Second))
 	f.touch(t, "changed")
 	f.seen(t, "since", digest)
 	f.clock.Set(testStart.Add(50 * time.Second))
@@ -230,6 +236,7 @@ func TestQuietPeriodSurvivesRestart(t *testing.T) {
 // A3: the first survey waits for an expected agent, and says so; past the
 // wait it runs with its import only.
 func TestFirstSurveyWaitsForTheAgent(t *testing.T) {
+	t.Parallel()
 	f := startWith(t, false, withWaits(0, 10*time.Minute))
 	f.ready(t, "patient", nil)
 	in := f.wait(t, "patient", func(in *v1alpha1.TakeCareIntendant) bool { return in.Status.PendingTrigger != "" })
@@ -249,6 +256,7 @@ func TestFirstSurveyWaitsForTheAgent(t *testing.T) {
 // itself is proven by TestEngineWatchPassesReadyFlips; this one keeps the
 // end-to-end behavior.
 func TestEngineReadyFollowsTheAgent(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.ready(t, "follow", nil)
 	f.agentReady(t, "follow", true)
@@ -290,6 +298,7 @@ func (s staleSurveys) List(ctx context.Context, list client.ObjectList, opts ...
 // Two reconciles back to back, with a cache that has not seen the first
 // one's survey, create one survey: the check before creating reads live.
 func TestBackToBackReconcilesCreateOneSurvey(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.ready(t, "twice", func(in *v1alpha1.TakeCareIntendant) { in.Spec.Suspend = true })
 	f.pending(t, "twice", v1alpha1.TriggerMapRevision)
@@ -297,7 +306,7 @@ func TestBackToBackReconcilesCreateOneSurvey(t *testing.T) {
 	f.update(t, "twice", func(in *v1alpha1.TakeCareIntendant) { in.Spec.Suspend = false })
 	r := &Reconciler{
 		Client: staleSurveys{f.c}, Reader: f.c, Recorder: kevents.NewFakeRecorder(10), OperatorNamespace: ns,
-		EngineNamespace: engineNS, AgentKinds: (&kagent0103.Agents{}).AgentTypes(), Now: f.clock.Now, Metrics: f.metrics, PassTimeout: passTimeout,
+		EngineNamespace: engineNS, AgentKinds: (&kagent0103.Agents{}).AgentTypes(), Now: f.clock.reconcilerNow, Metrics: f.metrics, PassTimeout: passTimeout,
 		Agents: &kagent0103.Agents{Client: f.c}, Models: &kagent0103.Models{Client: f.c},
 	}
 	req := ctrl.Request{Namespace: ns, Name: "twice"}

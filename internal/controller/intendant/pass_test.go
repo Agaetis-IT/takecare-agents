@@ -172,6 +172,7 @@ const goodAnswer = "Here is what I found.\n```json\n{\"proposals\": [{\"key\": \
 // A completed pass joins its proposals to the import's: in the ConfigMap
 // and the status, with the source Agent; the trace has the pass.
 func TestPassMerged(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.passReady(t, "merged")
 	f.runs.set("complete", goodAnswer, false)
@@ -221,6 +222,7 @@ func TestPassMerged(t *testing.T) {
 // An answer that cannot be read leaves the import's proposals and the
 // fixed phrase: never the answer, in the status, the ConfigMap or a log.
 func TestPassUnreadable(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.passReady(t, "unread")
 	const secret = "SECRET-ANSWER-7731"
@@ -241,6 +243,7 @@ func TestPassUnreadable(t *testing.T) {
 // A task stopped for an input it will never get, or failed, ends the
 // pass at once, and is canceled; the survey is Completed.
 func TestPassInterrupted(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.passReady(t, "interrupted")
 	f.runs.set("fail", "half an answer", false)
@@ -260,6 +263,7 @@ func TestPassInterrupted(t *testing.T) {
 // A pass that never ends is bounded by its deadline: canceled, and the
 // survey Completed with the import's proposals.
 func TestPassNeverEnds(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.passReady(t, "never")
 	f.runs.set("never", "", false)
@@ -274,6 +278,7 @@ func TestPassNeverEnds(t *testing.T) {
 
 // A task the engine never kept is started once more.
 func TestPassLostOnce(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.passReady(t, "lost")
 	f.runs.set("complete", goodAnswer, true)
@@ -288,6 +293,7 @@ func TestPassLostOnce(t *testing.T) {
 
 // The engine never runs a pass for an agent that is not ready.
 func TestPassNotReady(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.grounded(t)
 	f.surveyed(t, "notready", mapServer(t, nil), nil)
@@ -302,6 +308,7 @@ func TestPassNotReady(t *testing.T) {
 const resumedName = "resumed-pass"
 
 func TestPassResumedKeepsDeadline(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.passReady(t, resumedName)
 	f.runs.set("never", "", false)
@@ -351,6 +358,7 @@ func (f *fixture) configMapData(t *testing.T, name string) map[string]string {
 // Running with that task, never "did not finish"; the next runner follows
 // the same task to its end.
 func TestPassStoppedResumes(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.passReady(t, "stopped")
 	f.runs.set("never", "", false)
@@ -416,6 +424,7 @@ func promOnRoute(t *testing.T, route string, runs *fakeRuns) string {
 // A pass's usage is measured on the Intendant's own model route, and
 // recorded in the survey.
 func TestPassUsage(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.passReady(t, "metered")
 	f.runs.set("complete", goodAnswer, false)
@@ -432,6 +441,7 @@ func TestPassUsage(t *testing.T) {
 // A pass whose usage cannot be measured says why in status, not only in
 // the operator's log (spec 10 §5).
 func TestPassUsageUnknownIsSaid(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.passReady(t, "unmetered")
 	f.runs.set("complete", goodAnswer, false)
@@ -453,6 +463,7 @@ func wantUsageCondition(t *testing.T, s *v1alpha1.TakeCareSurvey, status metav1.
 // The pass after one that did not finish is measured, but approximate:
 // kagent may still run the earlier one on the same route.
 func TestPassUsageAfterUnfinished(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.passReady(t, "after")
 	route := routes.ModelRoute(roleOf(&v1alpha1.TakeCareIntendant{Name: "after", Namespace: ns}), "default")
