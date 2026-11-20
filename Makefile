@@ -90,6 +90,7 @@ TEST_TIMEOUT ?= 20m
 
 .PHONY: test
 test: setup-envtest chart-deps ## Run unit, golden, envtest and chart tests.
+	hack/power-window-test.sh
 	@# setup-envtest installs its binaries read-only: writable, a worktree's bin/ can be removed.
 	"$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" >/dev/null && chmod -R u+w "$(LOCALBIN)/k8s"
 	KUBEBUILDER_ASSETS="$$("$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
@@ -192,6 +193,10 @@ chart-package: chart-deps ## Package the three charts at RELEASE_VERSION into CH
 	$(HELM_RUN) lint "$(CHART_PKG)/takecare-$(RELEASE_VERSION).tgz" -f charts/takecare/values-prod.yaml
 	$(HELM_RUN) lint "$(CHART_PKG)/takecare-$(RELEASE_VERSION).tgz" -f charts/takecare/values-demo.yaml
 	$(HELM_RUN) lint "$(CHART_PKG)/takecare-cluster-$(RELEASE_VERSION).tgz" $(CLUSTER_CHART_SETS)
+
+.PHONY: power-window-test
+power-window-test: ## Check hack/power-window.sh (did the machine sleep during a run) against its fixture.
+	hack/power-window-test.sh
 
 .PHONY: release-notes-test
 release-notes-test: ## Check hack/release-notes.sh against its fixture.

@@ -17,6 +17,7 @@ The workflow refuses a tag that is not `v<major>.<minor>.<patch>` with an option
 1. **Bench.** Run both benches on a real model, as spec 04 and spec 10 ask before each release:
    - the Doc's accuracy bench (`make demo-bench N=5`, or the `bench` workflow): below 4 out of 5 correct, do not release;
    - the Intendant's bench (`make demo-bench-intendant N=5 BENCH_MIN=5`): the bar, set by the product owner, is five runs ok out of five; below it, do not release. On macOS, run both under `caffeinate -i`.
+   - a bench or an e2e that ends with "INVALID: the machine slept from … to …" (hack/power-window.sh) is discarded and run again, never interpreted; a bench's report is marked invalid. Keep the lid open, on power or not.
    - a run that does not settle stops the bench after a dump of the cluster's state (`hack/dump.sh`, spec 04). The bench prints the dump's directory, outside the repository, and names it in the report. Keep the dump and the cluster until the cause is known: do not rerun first.
 2. **Cut the CHANGELOG, the charts and the site**, in one docs PR:
    - rename `## [Unreleased]` to `## [x.y.z] - YYYY-MM-DD`, and open a new empty `## [Unreleased]` above it;

@@ -19,6 +19,9 @@ set -a
 # shellcheck disable=SC1091
 source hack/versions.env
 set +a
+# shellcheck source=hack/run-window.sh
+source hack/run-window.sh
+trap power_guard EXIT
 NS=takecare-system
 OUT=test/guardcorpus/testdata/outputs
 export KUBECONFIG="${PWD}/bin/takecare-demo.kubeconfig"

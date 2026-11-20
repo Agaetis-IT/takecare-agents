@@ -21,6 +21,8 @@ set -a
 source hack/versions.env
 # shellcheck source=hack/local-tags.sh
 source hack/local-tags.sh
+# shellcheck source=hack/run-window.sh
+source hack/run-window.sh
 set +a
 
 NS=takecare-system
@@ -406,6 +408,8 @@ run() {
   # before anything else, as a failed check is.
   set -E
   trap 'd="$(hack/dump.sh "e2e: the setup failed" | tail -1)" && echo "dump: ${d}"; trap - ERR' ERR
+  # Last, after the checks' line: whether the machine slept during the run.
+  trap power_guard EXIT
   hack/demo.sh cluster
   fakes
   hack/demo.sh up
