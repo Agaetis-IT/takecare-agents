@@ -4,9 +4,13 @@
 package intendant
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 )
 
 // maxRegistrationSet bounds the settled registrations a survey's spec
@@ -103,4 +107,19 @@ func registrationReason(old []string, oldKnown bool, cur []string) string {
 func entryWords(key string) string {
 	kind, ref, _ := strings.Cut(key, " ")
 	return strings.ToLower(kind) + " " + ref
+}
+
+// emptyDigest is the registrations digest of an empty set: no settled
+// registration at all.
+var emptyDigest = func() string {
+	sum := sha256.Sum256(nil)
+	return hex.EncodeToString(sum[:])
+}()
+
+// baselineKnown says whether a survey's spec holds the set its digest was
+// made from. An empty set is not stored (omitempty), so it reads as absent;
+// it is known when the survey's digest is the empty set's. A survey made
+// before this field existed, or one whose set was too large, is not known.
+func baselineKnown(last v1alpha1.TakeCareSurveySpec) bool {
+	return len(last.RegistrationSet) > 0 || last.Registrations == emptyDigest
 }

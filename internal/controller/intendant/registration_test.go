@@ -4,6 +4,8 @@
 package intendant
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"slices"
 	"strings"
@@ -108,5 +110,34 @@ func TestRegistrationSurveySaysWhatChanged(t *testing.T) {
 	})
 	if got, want := f.last(t, "said").Spec.Reason, "the registrations changed: connector "+connMap+" changed (generation 2)"; got != want {
 		t.Errorf("reason %q, want %q", got, want)
+	}
+}
+
+// The sequence of a connector's spec written, then its status caught up,
+// with a survey made in between (TestTriggers' failure under the full
+// make test): each Registration reason names the connector. The survey
+// made in between saw an empty set, which is not stored (omitempty) and is
+// known by its digest, the empty set's.
+func TestRegistrationReasonThroughAnUnsettledConnector(t *testing.T) {
+	digest := func(lines ...string) string {
+		sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
+		return hex.EncodeToString(sum[:])
+	}
+	if digest() != emptyDigest {
+		t.Fatalf("the empty set's digest %s is not registrations()'s %s", emptyDigest, digest())
+	}
+	settled := v1alpha1.TakeCareSurveySpec{Registrations: digest("connector map 1"), RegistrationSet: []string{"connector map 1"}}
+	if got := registrationReason(settled.RegistrationSet, baselineKnown(settled), nil); got != "the registrations changed: connector map removed" {
+		t.Errorf("spec written, the connector left out: %q", got)
+	}
+	between := v1alpha1.TakeCareSurveySpec{Registrations: digest()}
+	if got := registrationReason(between.RegistrationSet, baselineKnown(between), []string{"connector map 2"}); got != "the registrations changed: connector map added" {
+		t.Errorf("status caught up, the connector back: %q", got)
+	}
+	// A survey made before the set was stored, with a non-empty digest,
+	// stays unknown: the plain sentence.
+	old := v1alpha1.TakeCareSurveySpec{Registrations: digest("connector map 1")}
+	if got := registrationReason(old.RegistrationSet, baselineKnown(old), []string{"connector map 2"}); got != "the registrations changed" {
+		t.Errorf("a baseline without its set: %q", got)
 	}
 }

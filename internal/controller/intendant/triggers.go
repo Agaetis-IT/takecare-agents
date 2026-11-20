@@ -92,7 +92,7 @@ func (r *Reconciler) survey(ctx context.Context, in *v1alpha1.TakeCareIntendant,
 		if quiet := out.since.Add(r.Quiet); now.Before(quiet) {
 			out.requeue = earliest(out.requeue, quiet)
 		} else {
-			oldKnown := newest == nil || len(last.RegistrationSet) > 0
+			oldKnown := newest == nil || baselineKnown(last)
 			fired, why[v1alpha1.TriggerRegistration] = append(fired, v1alpha1.TriggerRegistration), registrationReason(last.RegistrationSet, oldKnown, set)
 		}
 	}
