@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- A survey the operator creates records the settled registrations it saw (`spec.registrationSet`, at most 200 entries).
 - The dump (`hack/dump.sh`) covers what it used to miss. It keeps the operator's log from before the e2e restarts it. It says in its README which pods' logs it could not read and why. On a cluster where the charts never installed, it records the hook Jobs' pod events and logs, each node's images (names and tags) and what is absent. The e2e also dumps when its setup fails, and the chart smoke when its checks fail. `make demo-up` names the hook Job pod's events when an install fails, instead of helm's bare "Job … not ready".
 - The long runs (the e2e, the chart smoke, both benches, the guard corpus capture) say at their end whether the machine slept during them, from macOS's power log: "no sleep during the run", or "INVALID: the machine slept from … to …" and exit 2 whatever their checks said. A bench report written before is marked invalid in its own file, and a dump names it in its README. A closed lid's maintenance wakes do not end a sleep, and a run that starts inside a sleep is invalid too. Elsewhere it says the power log was not checked.
 
@@ -40,6 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- A `Registration` survey's reason says what changed ("agent kagent/takecare-doc-east removed; connector east added") instead of "the registrations changed", so that a reader can see why the Intendant looked again.
 - `make demo-up` imports the images a recreated cluster lacks. Before, it skipped the import when the image tag it last built was unchanged, even in a cluster deleted with `k3d cluster delete` and created again: the chart's hook Job then waited for an image no node held, and the install failed with "Job … not ready". It now asks the cluster's nodes for each image and imports the missing ones. The tag it last built remains a build cache only.
 
 - The Intendant says when `spec.contentTools` lists a tool that no connector given to its agent exposes, as the Doc does: in `ConnectorsReady`'s message and in one `ContentToolUnknown` warning, instead of dropping it silently. Its import checks every entry it proposes against the Map's schema, as the agent's proposals already were: an entry the Map would not load is not proposed, and the survey's layer names it. The Intendant's and the Doc's instructions now forbid asking a question (kagent gives every agent `ask_user`, and no one answers), and a survey whose agent pass asked one anyway says so, never the question.

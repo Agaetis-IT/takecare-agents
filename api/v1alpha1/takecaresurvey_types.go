@@ -66,6 +66,16 @@ type TakeCareSurveySpec struct {
 	// +optional
 	Registrations string `json:"registrations,omitempty"`
 
+	// The settled registrations behind that digest, one entry each:
+	// "<Kind> <name> <generation>", the name with its namespace when it is
+	// not the survey's; at most 200, none past that. A Registration
+	// survey's reason is the difference with the previous survey's set.
+	// +kubebuilder:validation:MaxItems=200
+	// +kubebuilder:validation:items:MaxLength=320
+	// +listType=atomic
+	// +optional
+	RegistrationSet []string `json:"registrationSet,omitempty"`
+
 	// Why the operator created the survey, in plain words.
 	// +kubebuilder:validation:MaxLength=256
 	// +optional
