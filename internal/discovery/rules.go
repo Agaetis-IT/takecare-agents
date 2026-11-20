@@ -6,6 +6,7 @@ package discovery
 import (
 	"errors"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
@@ -38,7 +39,46 @@ var (
 	groupItem = regexp.MustCompile(`\{Name:[^ ]* File:`)
 
 	errTruncated = errors.New("truncated")
+
+	// A group's opening of the shape the import may ask for by name
+	// (mcp.RuleGroupAllowed).
+	groupOpen = regexp.MustCompile(`^\{Name:([A-Za-z0-9][A-Za-z0-9_.:-]{0,127}) File:`)
 )
+
+// groupsBeforeCut reads a truncated get_rules answer: the rule groups it
+// printed before the cut, in order, at most limit of them, the last one
+// possibly partial; and how many other groups it opened, one whose name
+// the import may not ask for (a space, a slash: Prometheus allows them) or
+// one past the limit. Those are counted, never named: a name outside the
+// shape may be any text. An item is a group when " File:" comes before
+// " Query:" and before the next item, a rule when " Query:" comes first;
+// an item cut before either is past the last group named, which the
+// layer's line on the cut covers.
+func groupsBeforeCut(text string, limit int) (groups []string, other int) {
+	opens := itemOpen.FindAllStringIndex(text, -1)
+	for i, at := range opens {
+		end := len(text)
+		if i+1 < len(opens) {
+			end = opens[i+1][0]
+		}
+		item := text[at[0]:end]
+		file, query := strings.Index(item, " File:"), strings.Index(item, " Query:")
+		if file < 0 || query >= 0 && query < file {
+			continue
+		}
+		m := groupOpen.FindStringSubmatch(item)
+		switch {
+		case m == nil:
+			other++
+		case slices.Contains(groups, m[1]):
+		case len(groups) == limit:
+			other++
+		default:
+			groups = append(groups, m[1])
+		}
+	}
+	return groups, other
+}
 
 // parseRules reads get_rules' answer. Every "{Name:" must open a group or a
 // rule the parser recognizes: an expression that holds one, or anything the

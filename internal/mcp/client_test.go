@@ -5,8 +5,13 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"maps"
 	"net/http"
+	"os"
+	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -151,38 +156,63 @@ func TestUnreachableServerIsAnError(t *testing.T) {
 	}
 }
 
+// RulesArgsCase is one row of testdata/rules-args.json: get_rules'
+// arguments and whether they are admitted. The operator's client check and
+// the gateway's rule on the metrics route (intendant.RulesCallCEL, and the
+// chart smoke on a real gateway) are tested against this one table, so
+// they cannot drift.
+type rulesArgsCase struct {
+	Name string         `json:"name"`
+	Args map[string]any `json:"args"`
+	Want bool           `json:"want"`
+}
+
+func rulesArgsCases(t *testing.T) []rulesArgsCase {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", "rules-args.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []rulesArgsCase
+	if err := json.Unmarshal(b, &cases); err != nil {
+		t.Fatal(err)
+	}
+	if len(cases) == 0 {
+		t.Fatal("testdata/rules-args.json holds no case")
+	}
+	return cases
+}
+
 // get_rules on a metrics connector: the alerting rules only, never the
-// firing alerts, never another Prometheus or tenant (spec 10 §4).
+// firing alerts, never another Prometheus or tenant (spec 10 §4, §8).
 func TestRulesToolArgs(t *testing.T) {
 	metrics := Endpoint{Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorMetrics}, StateTools: map[string]bool{RulesTool: true}}
-	ok := func() map[string]any { return map[string]any{"type": "alert", "exclude_alerts": true} }
-	with := func(k string, v any) map[string]any { a := ok(); a[k] = v; return a }
-	many := make([]any, maxRuleNames+1)
-	for i := range many {
-		many[i] = "Alert" + string(rune('A'+i%26))
+	cases := rulesArgsCases(t)
+	// The canary is the table's own row, refused: the gateway's rule is
+	// tested against it with the rest, so a rule that admits it cannot pass.
+	canary := slices.IndexFunc(cases, func(c rulesArgsCase) bool { return c.Name == "the canary" })
+	if canary < 0 || cases[canary].Want || !cmp.Equal(cases[canary].Args, canaryArgs()) {
+		t.Errorf("testdata/rules-args.json's row \"the canary\" is not canaryArgs(), refused")
 	}
+	for _, tt := range cases {
+		t.Run(tt.Name, func(t *testing.T) {
+			if got := metrics.Allowed(RulesTool, tt.Args); got != tt.Want {
+				t.Errorf("Allowed(%v) = %v, want %v", tt.Args, got, tt.Want)
+			}
+		})
+	}
+	ok := map[string]any{"type": "alert", "exclude_alerts": true}
+	with := func(k string, v any) map[string]any { a := maps.Clone(ok); a[k] = v; return a }
 	tests := []struct {
 		name string
 		ep   Endpoint
 		args map[string]any
 		want bool
 	}{
-		{"every alerting rule", metrics, ok(), true},
-		{"by name", metrics, with("rule_name", []any{"HighErrorRate", "PodNotReady"}), true},
-		{"by name, as strings", metrics, with("rule_name", []string{"HighErrorRate"}), true},
-		{"another Prometheus", metrics, with("prometheus_url", "http://elsewhere:9090"), false},
-		{"another tenant", metrics, with("org_id", "tenant-b"), false},
-		{"recording rules", metrics, with("type", "record"), false},
-		{"no type", metrics, map[string]any{"exclude_alerts": true}, false},
-		{"with the firing alerts", metrics, with("exclude_alerts", false), false},
-		{"exclude_alerts as a string", metrics, with("exclude_alerts", "true"), false},
-		{"a malformed rule name", metrics, with("rule_name", []any{"High Error Rate"}), false},
-		{"a rule name that is not a string", metrics, with("rule_name", []any{3}), false},
-		{"an empty name list", metrics, with("rule_name", []any{}), false},
-		{"too many names", metrics, with("rule_name", many), false},
-		{"another argument", metrics, with("rule_group", []any{"takecare-demo"}), false},
-		{"not a state tool", Endpoint{Types: metrics.Types}, ok(), false},
-		{"on a cluster connector", Endpoint{Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, StateTools: metrics.StateTools}, ok(), false},
+		{"by name, as Go strings", metrics, with("rule_name", []string{"HighErrorRate"}), true},
+		{"by group, as Go strings", metrics, with("rule_group", []string{"corpus-12"}), true},
+		{"not a state tool", Endpoint{Types: metrics.Types}, ok, false},
+		{"on a cluster connector", Endpoint{Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, StateTools: metrics.StateTools}, ok, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

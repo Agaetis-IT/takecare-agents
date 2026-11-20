@@ -866,6 +866,22 @@ EOF
     check "get_rules with ${bad} is refused by the gateway's argument rule (403)" \
       mcp_forbidden kagent smoke-a2a "${iroute}/prometheus" get_rules "$bad"
   done
+  # The table the operator's client check and the rule's CEL test read
+  # (internal/mcp/testdata/rules-args.json), against the pinned gateway: a
+  # value of the wrong type is an evaluation error, which must refuse.
+  local rows row name args want
+  rows="$(jq -c '.[]' internal/mcp/testdata/rules-args.json)"
+  check "the table of get_rules' arguments holds rows" test -n "$rows"
+  while IFS= read -r row; do
+    name="$(jq -r .name <<<"$row")" args="$(jq -c .args <<<"$row")" want="$(jq -r .want <<<"$row")"
+    if [[ "$want" == true ]]; then
+      check "get_rules, ${name}: let through by the argument rule" \
+        mcp_allowed kagent smoke-a2a "${iroute}/prometheus" get_rules "$args"
+    else
+      check "get_rules, ${name}: refused by the argument rule (403)" \
+        mcp_forbidden kagent smoke-a2a "${iroute}/prometheus" get_rules "$args"
+    fi
+  done <<<"$rows"
   # The MCP route matches its exact path (spec 05): no path below it
   # reaches the server, the gateway answers 404 (no route), not the server
   # and not the rule. On the route itself the rule holds on methods other
