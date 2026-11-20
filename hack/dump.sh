@@ -88,8 +88,17 @@ for ns in "${NAMESPACES[@]}"; do
     >"$dir/events-${ns}.txt" 2>&1
 done
 
-kubectl -n "$NS" logs deployment/takecare-operator --tail=2000 --timestamps >"$dir/operator.log" 2>&1 || true
+# Logs the dump could not get, and why: said in the README.
+unread=()
+kubectl -n "$NS" logs deployment/takecare-operator --tail=2000 --timestamps >"$dir/operator.log" 2>&1 ||
+  unread+=("takecare-operator: not found")
 kubectl -n "$NS" logs deployment/takecare-operator --tail=500 --timestamps --previous >>"$dir/operator.log" 2>/dev/null || true
+# The e2e restarts the operator, which replaces its pod: it saves the log
+# before (hack/e2e.sh resumed), and the dump keeps that copy.
+if [[ -f bin/demo/operator-before-restart.log ]]; then
+  cp bin/demo/operator-before-restart.log "$dir/operator-before-restart.log"
+  unread+=("takecare-operator before its restart: replaced at $(date -r bin/demo/operator-before-restart.log '+%F %T'); its log saved before (operator-before-restart.log)")
+fi
 
 # The agents' logs: only the lines of a level, a task's life or an error,
 # never one that names content, until a recorded run's log has shown what
@@ -99,9 +108,33 @@ AGENT_DROP='([Cc]ontent|[Pp]rompt|[Mm]essage|"text"|[Aa]rguments|[Rr]esult|[Aa]r
 echo "# filtered: lines matching ${AGENT_KEEP} and not ${AGENT_DROP}; the rest left out" >"$dir/agents.log"
 for pod in $(kubectl -n kagent get pods -o name | grep -E '^pod/takecare-'); do
   echo "## ${pod#pod/}" >>"$dir/agents.log"
-  kubectl -n kagent logs "$pod" --all-containers --tail=2000 --timestamps 2>&1 |
-    grep -E "$AGENT_KEEP" | grep -vE "$AGENT_DROP" >>"$dir/agents.log" || true
+  if lines="$(kubectl -n kagent logs "$pod" --all-containers --tail=2000 --timestamps 2>/dev/null)"; then
+    grep -E "$AGENT_KEEP" <<<"$lines" | grep -vE "$AGENT_DROP" >>"$dir/agents.log" || true
+  else
+    unread+=("${pod#pod/}: its log could not be read")
+  fi
 done
+
+# A cluster where the charts never installed: the hook Jobs' pods (their
+# events and logs) and what each node holds, names and tags only.
+{
+  echo "# the hook Jobs of ${NS}: their pods' events and logs; what is absent"
+  kubectl get crd -o name 2>/dev/null | grep -q 'takecare.agaetis.fr' || echo "absent: no CRD of ours"
+  kubectl -n "$NS" get deployment takecare-operator >/dev/null 2>&1 || echo "absent: no takecare-operator Deployment"
+  for job in $(kubectl -n "$NS" get jobs -o name 2>/dev/null); do
+    echo "## ${job#*/}"
+    kubectl -n "$NS" get events -o json 2>/dev/null |
+      jq -r --arg j "${job#*/}" '.items[] | select(.involvedObject.kind == "Pod" and (.involvedObject.name | startswith($j + "-"))) | "event: " + .reason + ": " + .message'
+    for pod in $(kubectl -n "$NS" get pods -l "job-name=${job#*/}" -o name 2>/dev/null); do
+      kubectl -n "$NS" logs "$pod" --all-containers --tail=200 2>&1 | sed 's/^/log: /'
+    done
+  done
+} >"$dir/hooks.txt"
+cluster="$(kubectl config current-context 2>/dev/null)" && cluster="${cluster#k3d-}"
+for node in $(docker ps --format '{{.Names}} {{.Label "k3d.role"}}' --filter "label=k3d.cluster=${cluster}" 2>/dev/null | awk '$2 == "server" || $2 == "agent" {print $1}'); do
+  echo "## ${node}"
+  docker exec "$node" crictl images -o json 2>/dev/null | jq -r '.images[].repoTags[]?' | sort
+done >"$dir/node-images.txt"
 
 # The engine's tasks, as kagent's controller reports them over A2A: the
 # state and its time, never the history, the status message or artifacts.
@@ -123,5 +156,9 @@ done < <(jq -r '.[] | select(.status.engine.taskID) | "\(.status.engine.agent) \
 rm -f "$dir/tasks.jsonl"
 
 hack/guardrail-counts.sh >"$dir/guards.json" 2>&1 || true
+
+if [[ ${#unread[@]} -gt 0 ]]; then
+  { echo "# Logs not read:"; printf '#   %s\n' "${unread[@]}"; } >>"$dir/README.txt"
+fi
 
 echo "$dir"
