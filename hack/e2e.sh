@@ -399,6 +399,9 @@ east_alert() {
 }
 
 run() {
+  # The operator's log saved before its restart describes this run only: a
+  # copy left by an earlier run must not reach this run's dump.
+  rm -f bin/demo/operator-before-restart.log
   # A setup that fails (the cluster, the fakes, the install) is dumped
   # before anything else, as a failed check is.
   set -E
