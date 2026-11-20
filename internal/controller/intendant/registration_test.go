@@ -4,8 +4,6 @@
 package intendant
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"slices"
 	"strings"
@@ -123,13 +121,7 @@ func TestRegistrationSurveySaysWhatChanged(t *testing.T) {
 // made in between saw an empty set, which is not stored (omitempty) and is
 // known by its digest, the empty set's.
 func TestRegistrationReasonThroughAnUnsettledConnector(t *testing.T) {
-	digest := func(lines ...string) string {
-		sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
-		return hex.EncodeToString(sum[:])
-	}
-	if digest() != emptyDigest {
-		t.Fatalf("the empty set's digest %s is not registrations()'s %s", emptyDigest, digest())
-	}
+	digest := func(lines ...string) string { return registrationsDigest(lines) }
 	settled := v1alpha1.TakeCareSurveySpec{Registrations: digest("connector map 1"), RegistrationSet: []string{"connector map 1"}}
 	if got := registrationReason(settled.RegistrationSet, baselineKnown(settled), nil); got != "the registrations changed: connector map removed" {
 		t.Errorf("spec written, the connector left out: %q", got)

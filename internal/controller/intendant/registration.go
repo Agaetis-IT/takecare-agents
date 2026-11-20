@@ -111,10 +111,14 @@ func entryWords(key string) string {
 
 // emptyDigest is the registrations digest of an empty set: no settled
 // registration at all.
-var emptyDigest = func() string {
-	sum := sha256.Sum256(nil)
+var emptyDigest = registrationsDigest(nil)
+
+// registrationsDigest is the digest of a set of registrations' lines,
+// sorted: the one formula registrations() and emptyDigest share.
+func registrationsDigest(lines []string) string {
+	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
 	return hex.EncodeToString(sum[:])
-}()
+}
 
 // baselineKnown says whether a survey's spec holds the set its digest was
 // made from. An empty set is not stored (omitempty), so it reads as absent;

@@ -5,8 +5,6 @@ package intendant
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"slices"
 	"strings"
@@ -265,7 +263,6 @@ func (r *Reconciler) registrations(ctx context.Context, in *v1alpha1.TakeCareInt
 		}
 	}
 	slices.Sort(lines)
-	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
 	// The connectors' lines already read as entries ("connector map 1").
 	for _, l := range lines {
 		if strings.HasPrefix(l, "connector ") {
@@ -273,7 +270,7 @@ func (r *Reconciler) registrations(ctx context.Context, in *v1alpha1.TakeCareInt
 		}
 	}
 	slices.Sort(set)
-	return hex.EncodeToString(sum[:]), set, nil
+	return registrationsDigest(lines), set, nil
 }
 
 // settled says whether the engine's status has caught up with the object's
