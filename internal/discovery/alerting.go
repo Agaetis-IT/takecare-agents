@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/agaetis-it/takecare-agents/internal/mapserver"
@@ -165,10 +166,11 @@ func (r *run) rulesByGroup(ctx context.Context, caller Caller, m *Metrics, group
 		}
 		switch {
 		case cut != nil:
-			r.notSeen(LayerAlerting, m.Connector, withGroups(reasonGroupCut, chunk))
+			before, after, _ := strings.Cut(reasonGroupCut, "%s")
+			r.notSeen(LayerAlerting, m.Connector, withGroups(before, after, chunk))
 			continue
 		case why != "":
-			r.notSeen(LayerAlerting, m.Connector, withGroups(why+", for the groups %s", chunk))
+			r.notSeen(LayerAlerting, m.Connector, withGroups(why+", for the groups ", "", chunk))
 			continue
 		}
 		keep(dedupe(rules, ambiguous))
@@ -180,20 +182,21 @@ func (r *run) rulesByGroup(ctx context.Context, caller Caller, m *Metrics, group
 // (v1alpha1.NotSeen.Reason).
 const maxNotSeenReason = 1024
 
-// withGroups formats a reason naming groups, as many whole names as fit
-// in maxNotSeenReason and "and N more" for the rest: eight names of 128
-// characters do not fit.
-func withGroups(format string, groups []string) string {
+// withGroups is a reason naming groups between before and after, as many
+// whole names as fit in maxNotSeenReason and "and N more" for the rest:
+// eight names of 128 characters do not fit. Nothing is used as a format,
+// so a "%" in before stays as it is.
+func withGroups(before, after string, groups []string) string {
 	for n := len(groups); n > 0; n-- {
 		names := strings.Join(groups[:n], ", ")
 		if n < len(groups) {
 			names += fmt.Sprintf(" and %d more", len(groups)-n)
 		}
-		if out := fmt.Sprintf(format, names); len(out) <= maxNotSeenReason {
+		if out := before + names + after; len(out) <= maxNotSeenReason {
 			return out
 		}
 	}
-	return fmt.Sprintf(format, fmt.Sprintf("%d groups", len(groups)))
+	return before + strconv.Itoa(len(groups)) + " groups" + after
 }
 
 // dedupe marks a name loaded twice with two expressions, within one answer
