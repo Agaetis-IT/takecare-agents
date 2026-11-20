@@ -95,6 +95,18 @@ spec:
                 description: Why the operator created the survey, in plain words.
                 maxLength: 256
                 type: string
+              registrationSet:
+                description: |-
+                  The settled registrations behind that digest, one entry each:
+                  "<Kind> <name> <generation>", the name with its namespace when it is
+                  not the survey's; at most 200, none past that. A Registration
+                  survey's reason is the difference with the previous survey's set.
+                items:
+                  maxLength: 320
+                  type: string
+                maxItems: 200
+                type: array
+                x-kubernetes-list-type: atomic
               registrations:
                 description: |-
                   The digest of the settled registrations the operator observed when

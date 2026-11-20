@@ -344,8 +344,24 @@ func (f *fixture) wait(t *testing.T, name string, check func(*v1alpha1.TakeCareI
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("intendant %s: conditions %+v", name, in.Status.Conditions)
+	t.Fatalf("intendant %s: %s; conditions %+v", name, f.triggerState(&in), in.Status.Conditions)
 	return nil
+}
+
+// triggerState is what a timed-out wait on a trigger needs to be read: the
+// registrations' digest and since, the pending trigger, the last survey,
+// EngineReady's transition and the fixture clock's reading, so that a late
+// stamp (a reconcile that read an earlier time) shows in the failure.
+func (f *fixture) triggerState(in *v1alpha1.TakeCareIntendant) string {
+	since, engine := "-", "-"
+	if in.Status.RegistrationsSince != nil {
+		since = in.Status.RegistrationsSince.UTC().Format(time.RFC3339)
+	}
+	if c := meta.FindStatusCondition(in.Status.Conditions, v1alpha1.ConditionEngineReady); c != nil {
+		engine = fmt.Sprintf("%s since %s", c.Status, c.LastTransitionTime.UTC().Format(time.RFC3339))
+	}
+	return fmt.Sprintf("clock %s, registrationsSince %s, registrations %.12s, pendingTrigger %q, lastSurvey %q, EngineReady %s",
+		f.clock.Now().UTC().Format(time.RFC3339), since, in.Status.Registrations, in.Status.PendingTrigger, in.Status.LastSurvey, engine)
 }
 
 // update changes the Intendant on a fresh read, again on a conflict: the

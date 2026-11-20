@@ -120,8 +120,7 @@ func TestRegistrationBurstGivesOneSurvey(t *testing.T) {
 		f.countSurveys(t, "burst", 1)
 		f.moveClock(t, "burst", testStart.Add(time.Duration(i+1)*20*time.Second))
 	}
-	f.clock.Set(testStart.Add(2 * time.Minute))
-	f.poke(t, "burst")
+	f.pastQuiet(t, "burst", time.Minute)
 	f.waitSurveys(t, "burst", 2)
 	if n := f.last(t, "burst"); !strings.Contains(n.Spec.Reason, "registrations changed") || n.Spec.Trigger != v1alpha1.TriggerRegistration {
 		t.Errorf("after the quiet period: %+v", n.Spec)
@@ -296,6 +295,8 @@ func TestEngineReadyFollowsTheAgent(t *testing.T) {
 }
 
 // last is the survey the reconciler created last (status.lastSurvey).
+// Two waitSurveys at the same count before last leave it no new survey:
+// it then fails with "0 new surveys".
 func (f *fixture) last(t *testing.T, name string) v1alpha1.TakeCareSurvey {
 	t.Helper()
 	// The operator creates a survey, then records it in status.lastSurvey:
@@ -336,6 +337,21 @@ func (f *fixture) last(t *testing.T, name string) v1alpha1.TakeCareSurvey {
 	}
 	t.Fatalf("last(%s): survey %q is gone", name, fresh[0])
 	return v1alpha1.TakeCareSurvey{}
+}
+
+// pastQuiet moves the clock past the quiet period counted from the
+// registrationsSince the operator wrote, not to a fixed time: a reconcile
+// that stamps since late (at a later clock reading) cannot leave the
+// survey due after the clock, then pokes.
+func (f *fixture) pastQuiet(t *testing.T, name string, quiet time.Duration) {
+	t.Helper()
+	in := f.wait(t, name, func(in *v1alpha1.TakeCareIntendant) bool { return in.Status.RegistrationsSince != nil })
+	at := in.Status.RegistrationsSince.Add(quiet + time.Second)
+	if now := f.clock.Now(); at.Before(now) {
+		at = now
+	}
+	f.clock.Set(at)
+	f.poke(t, name)
 }
 
 // staleSurveys is a cache that has not seen any survey yet.
