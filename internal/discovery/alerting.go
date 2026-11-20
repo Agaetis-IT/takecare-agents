@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/agaetis-it/takecare-agents/internal/mapserver"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
@@ -18,9 +20,25 @@ import (
 // operator's MCP client does.
 const maxNamesPerCall = 100
 
+// maxGroupsReread bounds the groups a cut every-rule answer has read again
+// by name, mcp.MaxRuleGroups a call: at most 16 more calls a survey. The
+// server cuts at 50,000 characters and Prometheus drops a group with no
+// alerting rule from the answer, so a group prints a rule at least, about
+// 300 characters: a cut answer names fewer than 170.
+const maxGroupsReread = 128
+
 const (
 	reasonNoMetrics = "no metrics connector given"
 	reasonTruncated = "truncated get_rules output"
+	// reasonCutAfter: the every-rule answer was cut; the groups it named
+	// were read again by name, the ones after the cut cannot be listed.
+	reasonCutAfter = "get_rules was cut at 50,000 characters: the alerting rules of the groups after %s were not read"
+	// reasonGroupsNotRead: groups the cut answer opened that cannot be
+	// asked for by name, counted, never named.
+	reasonGroupsNotRead = "%d rule groups before the cut have a name the import may not ask for, or are past %d: their alerting rules were not read"
+	// reasonGroupCut: a group read again by name was cut as well; it is
+	// said, never read again.
+	reasonGroupCut  = "get_rules was cut at 50,000 characters for the groups %s: their alerting rules were not read"
 	reasonAmbiguous = "ambiguous rule name"
 )
 
@@ -52,7 +70,7 @@ func (r *run) alerting(ctx context.Context, caller Caller, m *Metrics) error {
 	}
 	names := slices.Sorted(maps.Keys(declared))
 	for chunk := range slices.Chunk(names, maxNamesPerCall) {
-		rules, why, err := r.rules(ctx, caller, m, map[string]any{"rule_name": chunk})
+		rules, why, _, err := r.rules(ctx, caller, m, map[string]any{"rule_name": chunk})
 		if err != nil {
 			return err
 		}
@@ -62,13 +80,29 @@ func (r *run) alerting(ctx context.Context, caller Caller, m *Metrics) error {
 		}
 		keep(dedupe(rules, ambiguous))
 	}
-	all, why, err := r.rules(ctx, caller, m, nil)
+	all, why, cut, err := r.rules(ctx, caller, m, nil)
 	if err != nil {
 		return err
 	}
-	if why != "" {
+	switch {
+	case cut != nil && len(cut.groups)+cut.other > 0:
+		// Cut at the server's 50,000 characters, with no way to list what
+		// follows: the groups it named are read again by name, once, and
+		// the rest is said not read.
+		if err := r.rulesByGroup(ctx, caller, m, cut.groups, keep, ambiguous); err != nil {
+			return err
+		}
+		if n := len(cut.groups); n > 0 {
+			r.notSeen(LayerAlerting, m.Connector, fmt.Sprintf(reasonCutAfter, cut.groups[n-1]))
+		} else {
+			r.notSeen(LayerAlerting, m.Connector, reasonTruncated)
+		}
+		if cut.other > 0 {
+			r.notSeen(LayerAlerting, m.Connector, fmt.Sprintf(reasonGroupsNotRead, cut.other, maxGroupsReread))
+		}
+	case why != "":
 		r.notSeen(LayerAlerting, m.Connector, why)
-	} else {
+	default:
 		keep(dedupe(all, ambiguous))
 	}
 	for _, name := range slices.Sorted(maps.Keys(ambiguous)) {
@@ -92,22 +126,77 @@ func (r *run) alerting(ctx context.Context, caller Caller, m *Metrics) error {
 	return nil
 }
 
-// rules calls get_rules for the alerting rules, by name when names is set.
-func (r *run) rules(ctx context.Context, caller Caller, m *Metrics, extra map[string]any) ([]rule, string, error) {
+// cutAnswer is what a truncated get_rules answer printed before the cut:
+// the groups the import may read again by name, and how many others.
+type cutAnswer struct {
+	groups []string
+	other  int
+}
+
+// rules calls get_rules for the alerting rules, with the extra arguments
+// (rule_name, rule_group). A truncated answer gives no rule, and what it
+// printed before the cut.
+func (r *run) rules(ctx context.Context, caller Caller, m *Metrics, extra map[string]any) ([]rule, string, *cutAnswer, error) {
 	args := map[string]any{"type": "alert", "exclude_alerts": true}
 	maps.Copy(args, extra)
 	res, why, err := call(ctx, caller, m.Endpoint, mcp.RulesTool, args)
 	if err != nil || why != "" {
-		return nil, why, err
+		return nil, why, nil, err
 	}
 	rules, err := parseRules(res)
 	switch {
 	case errors.Is(err, errTruncated):
-		return nil, reasonTruncated, nil
+		groups, other := groupsBeforeCut(res.Text, maxGroupsReread)
+		return nil, reasonTruncated, &cutAnswer{groups: groups, other: other}, nil
 	case err != nil:
-		return nil, fmt.Sprintf(reasonUnrecognized, mcp.RulesTool), nil
+		return nil, fmt.Sprintf(reasonUnrecognized, mcp.RulesTool), nil, nil
 	}
-	return rules, "", nil
+	return rules, "", nil, nil
+}
+
+// rulesByGroup reads the named groups' alerting rules, mcp.MaxRuleGroups
+// a call. A call whose answer is cut again, or not read, is a notSeen line
+// naming its groups, whose names have the shape mcp.RuleGroupAllowed
+// admits; it is never read again.
+func (r *run) rulesByGroup(ctx context.Context, caller Caller, m *Metrics, groups []string, keep func([]rule), ambiguous map[string]bool) error {
+	for chunk := range slices.Chunk(groups, mcp.MaxRuleGroups) {
+		rules, why, cut, err := r.rules(ctx, caller, m, map[string]any{"rule_group": chunk})
+		if err != nil {
+			return err
+		}
+		switch {
+		case cut != nil:
+			before, after, _ := strings.Cut(reasonGroupCut, "%s")
+			r.notSeen(LayerAlerting, m.Connector, withGroups(before, after, chunk))
+			continue
+		case why != "":
+			r.notSeen(LayerAlerting, m.Connector, withGroups(why+", for the groups ", "", chunk))
+			continue
+		}
+		keep(dedupe(rules, ambiguous))
+	}
+	return nil
+}
+
+// maxNotSeenReason is the API's bound on a notSeen line's reason
+// (v1alpha1.NotSeen.Reason).
+const maxNotSeenReason = 1024
+
+// withGroups is a reason naming groups between before and after, as many
+// whole names as fit in maxNotSeenReason and "and N more" for the rest:
+// eight names of 128 characters do not fit. Nothing is used as a format,
+// so a "%" in before stays as it is.
+func withGroups(before, after string, groups []string) string {
+	for n := len(groups); n > 0; n-- {
+		names := strings.Join(groups[:n], ", ")
+		if n < len(groups) {
+			names += fmt.Sprintf(" and %d more", len(groups)-n)
+		}
+		if out := before + names + after; len(out) <= maxNotSeenReason {
+			return out
+		}
+	}
+	return before + strconv.Itoa(len(groups)) + " groups" + after
 }
 
 // dedupe marks a name loaded twice with two expressions, within one answer

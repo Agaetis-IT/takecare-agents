@@ -65,9 +65,26 @@ const RulesTool = "get_rules"
 // maxRuleNames bounds the rule_name list of one get_rules call.
 const maxRuleNames = 100
 
+// MaxRuleGroups bounds the rule_group list of one get_rules call.
+const MaxRuleGroups = 8
+
 // alertName is an alert's name as a Map's alertedBy names it
 // (api/map/entry.schema.json).
 var alertName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
+
+// ruleGroup is a rule group's name as the import may ask for it: 1 to 128
+// letters, digits, "_", ".", ":" and "-", starting with a letter or digit.
+// Prometheus allows any name; one outside this shape is not read, so that
+// no value of rule_group can carry a URL, a PromQL expression or another
+// argument (spec 10 §8). The gateway's rule on the metrics route has the
+// same pattern.
+var ruleGroup = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
+
+// RuleGroupAllowed says whether the import may ask get_rules for this rule
+// group by name.
+func RuleGroupAllowed(name string) bool {
+	return ruleGroup.MatchString(name)
+}
 
 // Endpoint is a connector's server as the operator reaches it.
 type Endpoint struct {
@@ -165,7 +182,8 @@ func (ep Endpoint) Allowed(tool string, args map[string]any) bool {
 }
 
 // rulesArgsAllowed admits get_rules with type "alert", exclude_alerts true
-// and, optionally, rule_name: at most maxRuleNames alert names. Every other
+// and, optionally, rule_name: 1 to maxRuleNames alert names, and rule_group:
+// 1 to MaxRuleGroups group names of the shape RuleGroupAllowed admits. Every other
 // argument is refused, prometheus_url and org_id above all: they would point
 // the server at another Prometheus or tenant.
 func rulesArgsAllowed(args map[string]any) bool {
@@ -176,7 +194,11 @@ func rulesArgsAllowed(args map[string]any) bool {
 		switch k {
 		case "type", "exclude_alerts":
 		case "rule_name":
-			if !ruleNamesAllowed(v) {
+			if !listAllowed(v, maxRuleNames, alertName.MatchString) {
+				return false
+			}
+		case "rule_group":
+			if !listAllowed(v, MaxRuleGroups, RuleGroupAllowed) {
 				return false
 			}
 		default:
@@ -186,27 +208,29 @@ func rulesArgsAllowed(args map[string]any) bool {
 	return true
 }
 
-func ruleNamesAllowed(v any) bool {
-	var names []string
+// listAllowed says whether v is a list of 1 to max strings, each of which
+// ok admits.
+func listAllowed(v any, limit int, ok func(string) bool) bool {
+	var items []string
 	switch l := v.(type) {
 	case []string:
-		names = l
+		items = l
 	case []any:
-		for _, n := range l {
-			s, ok := n.(string)
-			if !ok {
+		for _, x := range l {
+			s, isString := x.(string)
+			if !isString {
 				return false
 			}
-			names = append(names, s)
+			items = append(items, s)
 		}
 	default:
 		return false
 	}
-	if len(names) == 0 || len(names) > maxRuleNames {
+	if len(items) == 0 || len(items) > limit {
 		return false
 	}
-	for _, n := range names {
-		if !alertName.MatchString(n) {
+	for _, s := range items {
+		if !ok(s) {
 			return false
 		}
 	}

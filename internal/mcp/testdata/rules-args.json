@@ -1,0 +1,623 @@
+[
+ {
+  "name": "every alerting rule",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true
+  },
+  "want": true
+ },
+ {
+  "name": "the canary",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "takecare_canary": true
+  },
+  "want": false
+ },
+ {
+  "name": "by name",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_name": [
+    "HighErrorRate",
+    "PodNotReady"
+   ]
+  },
+  "want": true
+ },
+ {
+  "name": "another Prometheus",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "prometheus_url": "http://elsewhere:9090"
+  },
+  "want": false
+ },
+ {
+  "name": "another tenant",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "org_id": "tenant-b"
+  },
+  "want": false
+ },
+ {
+  "name": "recording rules",
+  "args": {
+   "type": "record",
+   "exclude_alerts": true
+  },
+  "want": false
+ },
+ {
+  "name": "no type",
+  "args": {
+   "exclude_alerts": true
+  },
+  "want": false
+ },
+ {
+  "name": "no exclude_alerts",
+  "args": {
+   "type": "alert"
+  },
+  "want": false
+ },
+ {
+  "name": "with the firing alerts",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": false
+  },
+  "want": false
+ },
+ {
+  "name": "exclude_alerts as a string",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": "true"
+  },
+  "want": false
+ },
+ {
+  "name": "a file",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "file": [
+    "/etc/prometheus/rules.yml"
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "a malformed rule name",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_name": [
+    "High Error Rate"
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "a rule name with a dash",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_name": [
+    "high-error"
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "a rule name that is not a string",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_name": [
+    3
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "rule_name as a string",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_name": "HighErrorRate"
+  },
+  "want": false
+ },
+ {
+  "name": "rule_name as a number",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_name": 3
+  },
+  "want": false
+ },
+ {
+  "name": "rule_name as an object",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_name": {
+    "0": "HighErrorRate"
+   }
+  },
+  "want": false
+ },
+ {
+  "name": "an empty name list",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_name": []
+  },
+  "want": false
+ },
+ {
+  "name": "too many names",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_name": [
+    "AlertA",
+    "AlertB",
+    "AlertC",
+    "AlertD",
+    "AlertE",
+    "AlertF",
+    "AlertG",
+    "AlertH",
+    "AlertI",
+    "AlertJ",
+    "AlertK",
+    "AlertL",
+    "AlertM",
+    "AlertN",
+    "AlertO",
+    "AlertP",
+    "AlertQ",
+    "AlertR",
+    "AlertS",
+    "AlertT",
+    "AlertU",
+    "AlertV",
+    "AlertW",
+    "AlertX",
+    "AlertY",
+    "AlertZ",
+    "AlertA",
+    "AlertB",
+    "AlertC",
+    "AlertD",
+    "AlertE",
+    "AlertF",
+    "AlertG",
+    "AlertH",
+    "AlertI",
+    "AlertJ",
+    "AlertK",
+    "AlertL",
+    "AlertM",
+    "AlertN",
+    "AlertO",
+    "AlertP",
+    "AlertQ",
+    "AlertR",
+    "AlertS",
+    "AlertT",
+    "AlertU",
+    "AlertV",
+    "AlertW",
+    "AlertX",
+    "AlertY",
+    "AlertZ",
+    "AlertA",
+    "AlertB",
+    "AlertC",
+    "AlertD",
+    "AlertE",
+    "AlertF",
+    "AlertG",
+    "AlertH",
+    "AlertI",
+    "AlertJ",
+    "AlertK",
+    "AlertL",
+    "AlertM",
+    "AlertN",
+    "AlertO",
+    "AlertP",
+    "AlertQ",
+    "AlertR",
+    "AlertS",
+    "AlertT",
+    "AlertU",
+    "AlertV",
+    "AlertW",
+    "AlertX",
+    "AlertY",
+    "AlertZ",
+    "AlertA",
+    "AlertB",
+    "AlertC",
+    "AlertD",
+    "AlertE",
+    "AlertF",
+    "AlertG",
+    "AlertH",
+    "AlertI",
+    "AlertJ",
+    "AlertK",
+    "AlertL",
+    "AlertM",
+    "AlertN",
+    "AlertO",
+    "AlertP",
+    "AlertQ",
+    "AlertR",
+    "AlertS",
+    "AlertT",
+    "AlertU",
+    "AlertV",
+    "AlertW"
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "by group",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    "corpus-12"
+   ]
+  },
+  "want": true
+ },
+ {
+  "name": "by group, the shape's every character",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    "a0_.:-Z"
+   ]
+  },
+  "want": true
+ },
+ {
+  "name": "by group, eight groups",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    "g1",
+    "g2",
+    "g3",
+    "g4",
+    "g5",
+    "g6",
+    "g7",
+    "g8"
+   ]
+  },
+  "want": true
+ },
+ {
+  "name": "by group, a 128-character name",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"
+   ]
+  },
+  "want": true
+ },
+ {
+  "name": "by group and by name",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    "corpus-12"
+   ],
+   "rule_name": [
+    "HighErrorRate"
+   ]
+  },
+  "want": true
+ },
+ {
+  "name": "by group, nine groups",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    "g1",
+    "g2",
+    "g3",
+    "g4",
+    "g5",
+    "g6",
+    "g7",
+    "g8",
+    "g9"
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "by group, a 129-character name",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    "ggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "by group, a name with a space",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    "my group"
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "by group, a name with a slash",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    "a/b"
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "by group, a URL",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    "http://elsewhere:9090"
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "by group, a name with a quote",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    "a\"b"
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "by group, a name with a brace",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    "up{job=\"x\"}"
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "by group, a name starting with a dash",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    "-g"
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "by group, an empty name",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    ""
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "by group, a name with a newline",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    "g\nprometheus_url"
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "by group, a name that is not a string",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    3
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "by group, a list holding a list",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    [
+     "g"
+    ]
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "rule_group as a string",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": "corpus-12"
+  },
+  "want": false
+ },
+ {
+  "name": "rule_group as a number",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": 3
+  },
+  "want": false
+ },
+ {
+  "name": "rule_group as an object",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": {
+    "name": "corpus-12"
+   }
+  },
+  "want": false
+ },
+ {
+  "name": "rule_group as an object keyed 0",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": {
+    "0": "corpus-12"
+   }
+  },
+  "want": false
+ },
+ {
+  "name": "an empty group list",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": []
+  },
+  "want": false
+ },
+ {
+  "name": "by group, with another Prometheus",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    "corpus-12"
+   ],
+   "prometheus_url": "http://elsewhere:9090"
+  },
+  "want": false
+ },
+ {
+  "name": "by group, with recording rules",
+  "args": {
+   "type": "record",
+   "exclude_alerts": true,
+   "rule_group": [
+    "corpus-12"
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "rule_name null",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_name": null
+  },
+  "want": false
+ },
+ {
+  "name": "rule_name, a mixed list whose first item is valid",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_name": [
+    "AlertA",
+    3
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "rule_group null",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": null
+  },
+  "want": false
+ },
+ {
+  "name": "by group, a mixed list whose first item is valid",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    "g1",
+    3
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "by group, a trailing newline alone",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    "g\n"
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "a key in another case",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "Rule_group": [
+    "corpus-12"
+   ]
+  },
+  "want": false
+ }
+]

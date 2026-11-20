@@ -31,12 +31,20 @@ import (
 // operator's client check (mcp.Endpoint.Allowed), which stays: the
 // alerting rules only, never the firing alerts, never another Prometheus.
 // A request without a tool (initialize, tools/list) has no mcp.tool and
-// passes, so the tool is not hidden.
+// passes, so the tool is not hidden. rule_name and rule_group must be
+// lists: x[0] == x[0] is defined on a non-empty list only (an object's keys
+// are strings, a string has no index), and size and all would accept an
+// object by its keys; agentgateway v1.6.0 lists no type() function. A value
+// of the wrong type (a string, an object, a list holding a number) makes
+// the expression an error, which the gateway answers with a refusal: the
+// chart smoke shows it on the pinned gateway.
 const RulesCallCEL = `!has(mcp.tool) || mcp.tool.name != "get_rules" || ` +
 	`(mcp.tool.arguments.type == "alert" && mcp.tool.arguments.exclude_alerts == true && ` +
-	`mcp.tool.arguments.all(k, k in ["type", "exclude_alerts", "rule_name"]) && ` +
-	`(!has(mcp.tool.arguments.rule_name) || (size(mcp.tool.arguments.rule_name) <= 100 && ` +
-	`mcp.tool.arguments.rule_name.all(n, n.matches("^[A-Za-z][A-Za-z0-9_]*$")))))`
+	`mcp.tool.arguments.all(k, k in ["type", "exclude_alerts", "rule_name", "rule_group"]) && ` +
+	`(!has(mcp.tool.arguments.rule_name) || (size(mcp.tool.arguments.rule_name) > 0 && size(mcp.tool.arguments.rule_name) <= 100 && ` +
+	`mcp.tool.arguments.rule_name[0] == mcp.tool.arguments.rule_name[0] && mcp.tool.arguments.rule_name.all(n, n.matches("^[A-Za-z][A-Za-z0-9_]*$")))) && ` +
+	`(!has(mcp.tool.arguments.rule_group) || (size(mcp.tool.arguments.rule_group) > 0 && size(mcp.tool.arguments.rule_group) <= 8 && ` +
+	`mcp.tool.arguments.rule_group[0] == mcp.tool.arguments.rule_group[0] && mcp.tool.arguments.rule_group.all(g, g.matches("^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")))))`
 
 // notEnforced is the alerting layer's line while the gateway does not
 // enforce the rule: the runner does not call get_rules then.
