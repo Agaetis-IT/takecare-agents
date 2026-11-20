@@ -37,6 +37,9 @@ const DefaultPassTimeout = 10 * time.Minute
 const (
 	passNotReady    = "the agent pass did not run: the agent is not ready"
 	passNotFinished = "the agent pass did not finish"
+	// passQuestionAsked: the agent asked a question (kagent's ask_user); no
+	// one answers during a survey, and the question is not kept.
+	passQuestionAsked = "the agent pass asked a question, which no one answers during a survey; the question is not kept"
 )
 
 // passRecord is what the pass needs from the survey.
@@ -292,9 +295,13 @@ func (w *Runner) passRun(ctx context.Context, s *v1alpha1.TakeCareSurvey, rec pa
 			done()
 		}
 	}
-	logger.Info(passNotFinished, "task", out.TaskID, "outcome", out.Label())
-	span.SetStatus(codes.Error, passNotFinished)
-	return surveyagent.NotRead(res, passNotFinished), nil
+	line := passNotFinished
+	if out.Reason == engine.ReasonQuestionAsked {
+		line = passQuestionAsked
+	}
+	logger.Info(line, "task", out.TaskID, "outcome", out.Label())
+	span.SetStatus(codes.Error, line)
+	return surveyagent.NotRead(res, line), nil
 }
 
 // agentTools are the names of the tools the Intendant's agent is given:

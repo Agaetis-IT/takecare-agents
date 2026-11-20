@@ -364,3 +364,19 @@ func hasRemoval(res Result, key string) bool {
 	}
 	return false
 }
+
+// mcp A2: an entry the import would propose is checked against the Map's
+// schema, as the agent's are: one that does not pass is not proposed, and
+// the layer says it, with the entry's key and no detail of the value.
+func TestImportProposalsPassTheSchema(t *testing.T) {
+	r := &run{layers: map[string]*Layer{LayerService: {Name: LayerService}}, proposedKeys: map[string]bool{}}
+	l := r.layers[LayerService]
+	bad := mapserver.Entry{Key: "service/Not A Key"}
+	r.propose(l, v1alpha1.ProposalAdd, bad, nil)
+	if len(r.proposals) != 0 || l.Proposed != 0 {
+		t.Fatalf("an entry that does not pass the schema is proposed: %+v", r.proposals)
+	}
+	if want := (NotSeen{Ref: bad.Key, Reason: reasonInvalidEntry}); !slices.Contains(l.NotSeen, want) {
+		t.Errorf("notSeen %v, want %v", l.NotSeen, want)
+	}
+}

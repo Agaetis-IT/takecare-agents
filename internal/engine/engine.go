@@ -167,6 +167,10 @@ type Run struct {
 // Outcome is how a run ended, as the engine reports it.
 type Outcome string
 
+// ReasonQuestionAsked is a run's reason when the agent asked a question
+// (input-required): the state only, never the question (ADR 0006).
+const ReasonQuestionAsked = "the agent asked a question (input-required); the question is not kept"
+
 // Outcomes of a run.
 const (
 	// OutcomeCompleted: the agent answered; Result.Text is the answer.

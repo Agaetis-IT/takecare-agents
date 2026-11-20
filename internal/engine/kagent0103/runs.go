@@ -158,7 +158,7 @@ func outcome(t *a2a.Task) engine.Result {
 	case a2a.TaskStateInputRequired:
 		// The status message is the agent's question and its tool call's
 		// arguments: its text, never written in a record (ADR 0006).
-		return engine.Result{Outcome: engine.OutcomeFailed, Reason: "the agent asked a question (input-required); the question is not kept"}
+		return engine.Result{Outcome: engine.OutcomeFailed, Reason: engine.ReasonQuestionAsked}
 	case a2a.TaskStateAuthRequired:
 		return engine.Result{Outcome: engine.OutcomeFailed, Reason: "the agent asked for an authorization (auth-required); the request is not kept"}
 	default:

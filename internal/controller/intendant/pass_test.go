@@ -82,6 +82,8 @@ func (r *fakeRuns) Poll(_ context.Context, _ engine.Run, taskID string) (engine.
 		return engine.Result{Outcome: engine.OutcomeLost}, true, engine.ErrTaskUnknown
 	case r.mode == "complete":
 		return engine.Result{Outcome: engine.OutcomeCompleted, Text: r.answer}, true, nil
+	case r.mode == "question": // as the engine reports a question since #216: the state only
+		return engine.Result{Outcome: engine.OutcomeFailed, Text: r.answer, Reason: engine.ReasonQuestionAsked}, true, nil
 	case r.mode == "fail": // as the engine reports a task stopped for an input
 		return engine.Result{Outcome: engine.OutcomeFailed, Text: r.answer, Reason: "the task stopped in state TASK_STATE_INPUT_REQUIRED"}, true, nil
 	}
@@ -475,5 +477,26 @@ func TestPassUsageAfterUnfinished(t *testing.T) {
 	second := f.byHand(t, "after-2", "after")
 	if u := second.Status.Usage; u == nil || !u.Approximate {
 		t.Errorf("the pass after an unfinished one: usage %+v, want approximate", u)
+	}
+}
+
+// N5: a pass that asked a question (kagent's ask_user, input-required)
+// says so in the survey's agent layer, never the question: no one answers
+// during a survey.
+func TestPassAskedAQuestion(t *testing.T) {
+	f := startRunner(t)
+	f.passReady(t, "asked")
+	const marker = "QUESTION-MARKER-5b1c which namespace?"
+	f.runs.set("question", marker, false)
+	s := f.byHand(t, "asked-pass", "asked")
+	if s.Status.Phase != v1alpha1.RunCompleted || strings.Join(agentLine(s), "|") != passQuestionAsked {
+		t.Fatalf("survey %+v, agent layer %v", s.Status.RunStatus, agentLine(s))
+	}
+	raw, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "QUESTION-MARKER") {
+		t.Errorf("the question reached the survey: %s", raw)
 	}
 }
