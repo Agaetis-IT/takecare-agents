@@ -38,7 +38,6 @@ const ConditionUsageAttributed = v1alpha1.ConditionUsageAttributed
 const (
 	usageNeverReachedEngine  = "the run never reached the engine"
 	usageRestartedBeforeRead = "the operator restarted before the usage was read"
-	usageEndNotRecorded      = "the run's end was not recorded"
 )
 
 // usageUnknown sets UsageAttributed=False/NotMeasured with why, in the

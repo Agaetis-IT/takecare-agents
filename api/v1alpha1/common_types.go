@@ -50,6 +50,13 @@ const (
 	ReasonNotMeasured = "NotMeasured"
 )
 
+// The backstop's end of a Running record whose end was never written (spec
+// 02 §5, spec 10 §5): its reason, and why its usage is not measured.
+const (
+	ReasonAbandoned       = "Abandoned"
+	MessageEndNotRecorded = "the run's end was not recorded"
+)
+
 // Condition reasons shared by the roles, set from step 2's foundations on.
 const (
 	// ReasonBlindSpots (Degraded=True): some entities of the scope have no
