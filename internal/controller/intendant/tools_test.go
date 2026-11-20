@@ -11,6 +11,9 @@ import (
 
 	eventsv1 "k8s.io/api/events/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/util/retry"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 )
@@ -85,4 +88,39 @@ func (f *fixture) eventCount(t *testing.T, reason string, want int) {
 		}
 	}
 	t.Errorf("%s events %d, want %d: %v", reason, len(notes), want, notes)
+}
+
+// surveyStatus sets a survey's status through mutate, on a fresh read,
+// again on a conflict: the operator's queue and runner write surveys too.
+func (f *fixture) surveyStatus(t *testing.T, name string, mutate func(*v1alpha1.TakeCareSurveyStatus)) {
+	t.Helper()
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var s v1alpha1.TakeCareSurvey
+		if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: name}, &s); err != nil {
+			return err
+		}
+		mutate(&s.Status)
+		return f.c.Status().Update(context.Background(), &s)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// engineStatus sets an engine object's status on a fresh read, again on a
+// conflict: the operator applies the object's spec, which moves its
+// resource version.
+func (f *fixture) engineStatus(t *testing.T, gvk schema.GroupVersionKind, name string, status map[string]any) {
+	t.Helper()
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		u, err := f.engineObject(gvk, name)
+		if err != nil {
+			return err
+		}
+		u.Object["status"] = status
+		return f.c.Status().Update(context.Background(), u)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }

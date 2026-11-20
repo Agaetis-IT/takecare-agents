@@ -97,10 +97,7 @@ func (f *fixture) countSurveys(t *testing.T, name string, n int) {
 func (f *fixture) end(t *testing.T, name string, phase v1alpha1.RunPhase) {
 	t.Helper()
 	for _, s := range f.surveys(t, name) {
-		s.Status.Phase = phase
-		if err := f.c.Status().Update(context.Background(), &s); err != nil {
-			t.Fatal(err)
-		}
+		f.surveyStatus(t, s.Name, func(st *v1alpha1.TakeCareSurveyStatus) { st.Phase = phase })
 	}
 }
 

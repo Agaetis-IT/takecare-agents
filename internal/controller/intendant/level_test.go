@@ -64,11 +64,10 @@ func (f *fixture) endSkipped(t *testing.T, name string, phase v1alpha1.RunPhase)
 		if s.Status.Phase == phase {
 			continue
 		}
-		s.Status.Phase = phase
-		s.Status.Layers = []v1alpha1.SurveyLayer{{Name: surveyagent.Layer, NotSeen: []v1alpha1.NotSeen{{Ref: surveyagent.Layer, Reason: passNotReady}}}}
-		if err := f.c.Status().Update(context.Background(), &s); err != nil {
-			t.Fatal(err)
-		}
+		f.surveyStatus(t, s.Name, func(st *v1alpha1.TakeCareSurveyStatus) {
+			st.Phase = phase
+			st.Layers = []v1alpha1.SurveyLayer{{Name: surveyagent.Layer, NotSeen: []v1alpha1.NotSeen{{Ref: surveyagent.Layer, Reason: passNotReady}}}}
+		})
 	}
 }
 
@@ -79,9 +78,10 @@ func (f *fixture) agentReady(t *testing.T, name string, ready bool) {
 	agent := surveyagent.AgentName(&v1alpha1.TakeCareIntendant{Name: name})
 	status := map[bool]string{true: condTrue, false: condFalse}[ready]
 	for _, gvk := range []schema.GroupVersionKind{modelConfigGVK, agentGVK} {
-		u, err := f.engineObject(gvk, agent)
+		// The operator creates the object: wait for it, then set its status.
+		_, err := f.engineObject(gvk, agent)
 		for deadline := time.Now().Add(waitFor); err != nil && time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
-			u, err = f.engineObject(gvk, agent)
+			_, err = f.engineObject(gvk, agent)
 		}
 		if err != nil {
 			t.Fatal(err)
@@ -90,10 +90,7 @@ func (f *fixture) agentReady(t *testing.T, name string, ready bool) {
 		if gvk == modelConfigGVK {
 			readiness = condTrue
 		}
-		u.Object["status"] = map[string]any{keyConditions: []any{condition("Accepted", condTrue), condition("Ready", readiness)}}
-		if err := f.c.Status().Update(context.Background(), u); err != nil {
-			t.Fatal(err)
-		}
+		f.engineStatus(t, gvk, agent, map[string]any{keyConditions: []any{condition("Accepted", condTrue), condition("Ready", readiness)}})
 	}
 }
 
