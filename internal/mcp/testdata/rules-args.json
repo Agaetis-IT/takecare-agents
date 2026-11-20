@@ -555,5 +555,69 @@
    ]
   },
   "want": false
+ },
+ {
+  "name": "rule_name null",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_name": null
+  },
+  "want": false
+ },
+ {
+  "name": "rule_name, a mixed list whose first item is valid",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_name": [
+    "AlertA",
+    3
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "rule_group null",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": null
+  },
+  "want": false
+ },
+ {
+  "name": "by group, a mixed list whose first item is valid",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    "g1",
+    3
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "by group, a trailing newline alone",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "rule_group": [
+    "g\n"
+   ]
+  },
+  "want": false
+ },
+ {
+  "name": "a key in another case",
+  "args": {
+   "type": "alert",
+   "exclude_alerts": true,
+   "Rule_group": [
+    "corpus-12"
+   ]
+  },
+  "want": false
  }
 ]

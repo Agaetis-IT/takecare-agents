@@ -165,15 +165,35 @@ func (r *run) rulesByGroup(ctx context.Context, caller Caller, m *Metrics, group
 		}
 		switch {
 		case cut != nil:
-			r.notSeen(LayerAlerting, m.Connector, fmt.Sprintf(reasonGroupCut, strings.Join(chunk, ", ")))
+			r.notSeen(LayerAlerting, m.Connector, withGroups(reasonGroupCut, chunk))
 			continue
 		case why != "":
-			r.notSeen(LayerAlerting, m.Connector, fmt.Sprintf("%s, for the groups %s", why, strings.Join(chunk, ", ")))
+			r.notSeen(LayerAlerting, m.Connector, withGroups(why+", for the groups %s", chunk))
 			continue
 		}
 		keep(dedupe(rules, ambiguous))
 	}
 	return nil
+}
+
+// maxNotSeenReason is the API's bound on a notSeen line's reason
+// (v1alpha1.NotSeen.Reason).
+const maxNotSeenReason = 1024
+
+// withGroups formats a reason naming groups, as many whole names as fit
+// in maxNotSeenReason and "and N more" for the rest: eight names of 128
+// characters do not fit.
+func withGroups(format string, groups []string) string {
+	for n := len(groups); n > 0; n-- {
+		names := strings.Join(groups[:n], ", ")
+		if n < len(groups) {
+			names += fmt.Sprintf(" and %d more", len(groups)-n)
+		}
+		if out := fmt.Sprintf(format, names); len(out) <= maxNotSeenReason {
+			return out
+		}
+	}
+	return fmt.Sprintf(format, fmt.Sprintf("%d groups", len(groups)))
 }
 
 // dedupe marks a name loaded twice with two expressions, within one answer

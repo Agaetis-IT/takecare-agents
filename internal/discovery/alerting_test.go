@@ -383,3 +383,24 @@ func TestAlertingRereadBound(t *testing.T) {
 		}
 	}
 }
+
+// A notSeen line naming groups stays within the API's bound: eight names
+// of 128 characters give as many whole names as fit and "and N more".
+func TestWithGroupsBound(t *testing.T) {
+	long := make([]string, mcp.MaxRuleGroups)
+	for i := range long {
+		long[i] = fmt.Sprintf("%d%s", i, strings.Repeat("g", 127))
+	}
+	for _, format := range []string{reasonGroupCut, reasonToolError + ", for the groups %s"} {
+		got := withGroups(format, long)
+		if len(got) > maxNotSeenReason || !strings.Contains(got, " more") {
+			t.Errorf("withGroups = %d characters, want at most %d with \"and N more\": %q", len(got), maxNotSeenReason, got)
+		}
+		if !strings.Contains(got, long[0]) {
+			t.Errorf("withGroups names no group: %q", got)
+		}
+	}
+	if got, want := withGroups(reasonGroupCut, []string{"a", "b"}), fmt.Sprintf(reasonGroupCut, "a, b"); got != want {
+		t.Errorf("withGroups = %q, want %q", got, want)
+	}
+}
