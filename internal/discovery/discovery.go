@@ -664,6 +664,12 @@ func (r *run) propose(l *Layer, action v1alpha1.ProposalAction, e mapserver.Entr
 	if r.proposedKeys[e.Key] {
 		return
 	}
+	// As the agent's proposals are (surveyagent): an entry the Map would
+	// not load is not proposed, and the layer says it, by its key.
+	if err := mapserver.ValidateEntry(e); err != nil {
+		l.NotSeen = append(l.NotSeen, NotSeen{Ref: e.Key, Reason: reasonInvalidEntry})
+		return
+	}
 	raw, err := yaml.Marshal(e)
 	if err != nil {
 		return // an Entry always marshals
