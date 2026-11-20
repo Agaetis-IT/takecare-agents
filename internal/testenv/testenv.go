@@ -97,6 +97,9 @@ func start(t *testing.T, demo bool) *rest.Config {
 		CRDs:                  append(ChartCRDs(t, demo), bundle.CRDs...),
 		ErrorIfCRDPathMissing: true,
 	}
+	// One of the run's slots for as long as the server lives: cleanups run
+	// last-registered first, so the server stops before its slot frees.
+	t.Cleanup(acquireSlot(t))
 	cfg, err := env.Start()
 	if err != nil {
 		t.Fatalf("start envtest: %v", err)

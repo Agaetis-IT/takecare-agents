@@ -92,6 +92,7 @@ func pending(in *v1alpha1.TakeCareIntendant) bool {
 // rendering asked for is applied at the end. A Queued survey does not hold
 // it (spec 10 §5).
 func TestAgentHeldWhileASurveyRuns(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.platform(t)
 	f.connector(t, connMap, v1alpha1.ConnectorMap, []string{mcp.MapEntryTool, mcp.MapListTool})
@@ -111,9 +112,12 @@ func TestAgentHeldWhileASurveyRuns(t *testing.T) {
 		}
 		// A second rendering asked for while held: the last one wins.
 		f.knowledge(t, connManual)
-		time.Sleep(time.Second)
-		if got := f.agentServers(); !slices.Equal(got, []string{connCluster, connMap}) {
-			t.Fatalf("the agent changed during the survey: %v", got)
+		// For a second, looked at every 50 ms: the agent stays as it was
+		// while the survey runs.
+		for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+			if got := f.agentServers(); !slices.Equal(got, []string{connCluster, connMap}) {
+				t.Fatalf("the agent changed during the survey: %v", got)
+			}
 		}
 		f.surveyPhase(t, "held-1", v1alpha1.RunCompleted)
 		f.waitServers(t, connCluster, connManual, connMap)

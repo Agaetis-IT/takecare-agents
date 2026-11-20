@@ -59,6 +59,7 @@ func (f *fixture) agentTools(name string) map[string][]string {
 // listed, the knowledge connectors' too, and never get_rules; the routes
 // carry the operator's tools and the agent's (spec 10 §5, §8).
 func TestAgentRendered(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.platform(t)
 	f.connector(t, connMap, v1alpha1.ConnectorMap, []string{mcp.MapEntryTool, mcp.MapListTool, toolPath})
@@ -114,6 +115,7 @@ func TestAgentRendered(t *testing.T) {
 // Deleting the Intendant removes its agent, its model configuration and
 // its routes, then the Intendant goes.
 func TestAgentRemoved(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.platform(t)
 	f.connector(t, connMap, v1alpha1.ConnectorMap, []string{mcp.MapEntryTool, mcp.MapListTool})

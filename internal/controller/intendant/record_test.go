@@ -52,6 +52,7 @@ func intAttr(s tracetest.SpanStub, key string) (int64, bool) {
 // for the Map's read, one per ground listed and one per layer with its
 // counts; its trace ID is in the status; its gauges hold what it proposes.
 func TestSurveyTrace(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.grounded(t)
 	f.surveyed(t, "traced", mapServer(t, nil), nil)
@@ -126,6 +127,7 @@ func TestSurveyTrace(t *testing.T) {
 // A failed survey's root span is an error with the fixed reason; its
 // trace ID is in the status like a completed one's.
 func TestSurveyTraceFailure(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.grounded(t)
 	dead := httptest.NewServer(http.NotFoundHandler())
@@ -233,6 +235,7 @@ func (f *fixture) checkProposals(t *testing.T, s *v1alpha1.TakeCareSurvey) {
 // A ConfigMap of the proposals' name that the survey does not own is left
 // as it is, and the survey fails with the fixed reason.
 func TestProposalsForeign(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.grounded(t)
 	ctx := context.Background()

@@ -133,6 +133,7 @@ func (f *fixture) surveyOnce(t *testing.T, name string) discovery.Layer {
 // degraded, and its surveys do not call get_rules; once it is enforced,
 // they read the rules.
 func TestArgumentRuleGate(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 	f.grounded(t)
 	f.connector(t, connMetrics, v1alpha1.ConnectorMetrics, []string{mcp.RulesTool})

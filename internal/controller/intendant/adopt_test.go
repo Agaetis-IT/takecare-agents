@@ -45,6 +45,7 @@ func (f *fixture) handMade(t *testing.T, name, intendant string) {
 // Intendant; a survey whose Intendant does not exist or is being deleted
 // ends Failed, naming it, never left Queued (spec 10 §4).
 func TestHandMadeSurveyAdmission(t *testing.T) {
+	t.Parallel()
 	f := startRunner(t)
 
 	t.Run("owned by its Intendant once admitted", func(t *testing.T) {
