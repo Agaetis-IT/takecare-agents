@@ -99,7 +99,8 @@ type SurveyQueuer struct {
 	Reader   client.Reader
 	Queue    *runs.Queue
 	Recorder recorder.EventRecorder
-	// Runs says which surveys the runner holds; none when nil.
+	// Runs says which surveys the runner holds; nil: every survey is
+	// unheld; main always sets it.
 	Runs Holder
 	// PassTimeout and ScrapeWait are the runner's; Grace is what the
 	// backstop adds (defaultGrace when zero).
