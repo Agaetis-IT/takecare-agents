@@ -155,6 +155,12 @@ func TestTriggers(t *testing.T) {
 	}
 	f.end(t, "triggers", v1alpha1.RunCompleted)
 
+	// A connector's edit is two writes, its spec then its status. Between
+	// them the connector is unsettled and leaves the digest; with no quiet
+	// period that is a Registration survey, and its settling another. The
+	// test forces the reconcile in between, so the order is always the same
+	// (by chance it was not, and the schedule waited behind a Registration).
+	before := f.wait(t, "triggers", func(in *v1alpha1.TakeCareIntendant) bool { return in.Status.Registrations != "" }).Status.Registrations
 	var conn v1alpha1.TakeCareConnector
 	if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: connMap}, &conn); err != nil {
 		t.Fatal(err)
@@ -163,18 +169,22 @@ func TestTriggers(t *testing.T) {
 	if err := f.c.Update(context.Background(), &conn); err != nil {
 		t.Fatal(err)
 	}
+	unsettled := f.wait(t, "triggers", func(in *v1alpha1.TakeCareIntendant) bool { return in.Status.Registrations != before }).Status.Registrations
+	if s := f.waitSurveys(t, "triggers", 3); !hasSurvey(s, v1alpha1.TriggerRegistration) {
+		t.Errorf("the connector unsettled: %+v", s)
+	}
+	f.end(t, "triggers", v1alpha1.RunCompleted)
 	conn.Status.ObservedGeneration = conn.Generation // settled
 	if err := f.c.Status().Update(context.Background(), &conn); err != nil {
 		t.Fatal(err)
 	}
-	if s := f.waitSurveys(t, "triggers", 3); !hasSurvey(s, v1alpha1.TriggerRegistration) {
-		t.Errorf("a connector changed: %+v", s)
-	}
+	f.wait(t, "triggers", func(in *v1alpha1.TakeCareIntendant) bool { return in.Status.Registrations != unsettled })
+	f.waitSurveys(t, "triggers", 4)
 	f.end(t, "triggers", v1alpha1.RunCompleted)
 
 	f.clock.Set(time.Date(2026, 11, 12, 3, 1, 0, 0, time.UTC))
 	f.poke(t, "triggers")
-	if s := f.waitSurveys(t, "triggers", 4); !hasSurvey(s, v1alpha1.TriggerSchedule) {
+	if s := f.waitSurveys(t, "triggers", 5); !hasSurvey(s, v1alpha1.TriggerSchedule) {
 		t.Errorf("the schedule: %+v", s)
 	}
 	in := f.wait(t, "triggers", func(in *v1alpha1.TakeCareIntendant) bool {
