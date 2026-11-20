@@ -88,6 +88,9 @@ func (g *Runs) client(ctx context.Context, r engine.Run) (*a2aclient.Client, err
 	if next == nil {
 		next = http.DefaultTransport
 	}
+	// The shared client's timeout (30 s, cmd/operator/main.go) bounds one
+	// read of the task: a read that hangs fails with class timeout, so the
+	// follow never takes it for a pause (internal/runs).
 	hc := &http.Client{Transport: headers{next: next, conversationID: r.ConversationID}, Timeout: base.Timeout}
 	c, err := a2aclient.NewFromEndpoints(ctx,
 		[]*a2a.AgentInterface{{URL: URL(r), ProtocolBinding: a2a.TransportProtocolJSONRPC, ProtocolVersion: a2a.Version}},

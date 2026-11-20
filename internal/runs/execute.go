@@ -181,6 +181,7 @@ func (e *Executor) Follow(ctx context.Context, r engine.Run, taskID string, dead
 	for {
 		seen.reading(e.clock().Now(), interval)
 		res, done, err := e.Engine.Poll(ctx, r, taskID)
+		seen.read(e.clock().Now())
 		switch {
 		case errors.Is(err, engine.ErrTaskUnknown):
 			return e.end(Outcome{Result: res, TaskID: taskID}), nil
@@ -226,20 +227,25 @@ type follow struct {
 	failLabel   string
 	lastLog     time.Time
 	lastWorking time.Time
-	lastRead    time.Time
+	lastReadEnd time.Time
 	paused      time.Duration
 }
 
-// reading notes a read's time; a gap far larger than the interval is a
-// pause of the process or of the machine.
+// reading notes the start of a read. The gap since the end of the previous
+// read, far larger than the interval, is a pause of the process or of the
+// machine. A read itself is never a pause: one read is bounded by the
+// shared A2A client's timeout (30 s, cmd/operator/main.go), so a read that
+// hangs ends as a failed read of class timeout.
 func (f *follow) reading(now time.Time, interval time.Duration) {
-	if !f.lastRead.IsZero() {
-		if gap := now.Sub(f.lastRead); gap > 5*interval && gap > time.Minute && gap > f.paused {
+	if !f.lastReadEnd.IsZero() {
+		if gap := now.Sub(f.lastReadEnd); gap > 5*interval && gap > time.Minute && gap > f.paused {
 			f.paused = gap
 		}
 	}
-	f.lastRead = now
 }
+
+// read notes the end of a read, from which the next gap is measured.
+func (f *follow) read(now time.Time) { f.lastReadEnd = now }
 
 // failed notes a failed read and says whether to log it: at most once a
 // minute per run. A line the rate swallows loses nothing: the run's end
@@ -273,7 +279,11 @@ func (f follow) what() string {
 		if _, err := strconv.Atoi(what); err == nil {
 			what = "HTTP " + what
 		}
-		out += fmt.Sprintf("; the last %d reads failed (%s)", f.fails, what)
+		if f.fails == 1 {
+			out += "; the last read failed (" + what + ")"
+		} else {
+			out += fmt.Sprintf("; the last %d reads failed (%s)", f.fails, what)
+		}
 	case !f.lastWorking.IsZero():
 		out += "; the task was still working at the last read (" + f.lastWorking.UTC().Format(time.RFC3339) + ")"
 	default:

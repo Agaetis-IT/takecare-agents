@@ -40,15 +40,29 @@ func (c *stepClock) After(d time.Duration) <-chan time.Time {
 	return ch
 }
 
-// scriptEngine answers its reads in order, then the last one forever.
+func (c *stepClock) advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+}
+
+// scriptEngine answers its reads in order, then the last one forever. The
+// reads listed in hangs take that long on clock before they answer.
 type scriptEngine struct {
 	fakeEngine
 	script []read
+	clock  *stepClock
+	hangs  map[int]time.Duration
+	reads  int
 }
 
 func (s *scriptEngine) Poll(context.Context, engine.Run, string) (engine.Result, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.reads++
+	if d := s.hangs[s.reads]; d > 0 {
+		s.clock.advance(d)
+	}
 	r := s.script[0]
 	if len(s.script) > 1 {
 		s.script = s.script[1:]
@@ -86,6 +100,8 @@ func TestTimedOutSaysWhatTheFollowSaw(t *testing.T) {
 			want: "; the last 16 reads failed (HTTP 503)", not: "404"},
 		{name: "a transport failure is a class", script: []read{failed(0, "network")},
 			want: "; the last 21 reads failed (network)"},
+		{name: "one failed read at the end", script: append(repeat(read{}, 20), failed(404, "")),
+			want: "; the last read failed (HTTP 404)", not: "reads failed"},
 		{name: "a task still working", script: []read{{}},
 			want: "; the task was still working at the last read (2026-11-20T10:00:20Z)"},
 		{name: "a paused follow", script: []read{{}}, pauses: map[int]time.Duration{3: 5 * time.Minute},
@@ -97,7 +113,9 @@ func TestTimedOutSaysWhatTheFollowSaw(t *testing.T) {
 			e, _ := executor(t, &f.fakeEngine)
 			e.Engine = f
 			e.Interval = time.Second
-			e.Clock = &stepClock{now: start, pauses: tc.pauses}
+			clock := &stepClock{now: start, pauses: tc.pauses}
+			f.clock = clock
+			e.Clock = clock
 			deadline := start.Add(20 * time.Second)
 			if tc.pauses != nil {
 				deadline = deadline.Add(tc.pauses[3])
@@ -136,5 +154,40 @@ func TestFailedReadsThenAnEnd(t *testing.T) {
 		if got := testutil.ToFloat64(m.Reads.WithLabelValues("doc", result)); got != want {
 			t.Errorf("takecare_run_reads_total{result=%q} = %v, want %v", result, got, want)
 		}
+	}
+}
+
+// The gap is measured from the end of one read to the start of the next: a
+// read that hangs (bounded in production by the A2A client's timeout) is
+// not a pause, a real gap between two reads is.
+func TestAPauseIsAGapBetweenReads(t *testing.T) {
+	start := time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name   string
+		hangs  map[int]time.Duration
+		pauses map[int]time.Duration
+		paused bool
+	}{
+		{name: "a read that hangs for 3 minutes", hangs: map[int]time.Duration{3: 3 * time.Minute}},
+		{name: "a gap of 3 minutes between two reads", pauses: map[int]time.Duration{3: 3 * time.Minute}, paused: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &scriptEngine{script: []read{{}}, hangs: tc.hangs}
+			f.cancel = engine.CancelUnsupported
+			e, _ := executor(t, &f.fakeEngine)
+			e.Engine = f
+			e.Interval = time.Second
+			clock := &stepClock{now: start, pauses: tc.pauses}
+			f.clock = clock
+			e.Clock = clock
+			out, err := e.Follow(context.Background(), engine.Run{}, testTask, start.Add(20*time.Second+3*time.Minute))
+			if err != nil {
+				t.Fatal(err)
+			}
+			const pause = "; the follow was paused for 3 minutes (a suspended process or machine)"
+			if !out.TimedOut || strings.Contains(out.Reason, pause) != tc.paused {
+				t.Errorf("reason %q, paused %v", out.Reason, tc.paused)
+			}
+		})
 	}
 }
