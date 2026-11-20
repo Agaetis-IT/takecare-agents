@@ -21,6 +21,8 @@ set -a
 source hack/versions.env
 # shellcheck source=hack/local-tags.sh
 source hack/local-tags.sh
+# shellcheck source=hack/run-window.sh
+source hack/run-window.sh
 set +a
 
 NS=takecare-system
@@ -396,6 +398,8 @@ east_alert() {
 }
 
 run() {
+  # Last, after the checks' line: whether the machine slept during the run.
+  trap power_guard EXIT
   hack/demo.sh cluster
   fakes
   hack/demo.sh up

@@ -75,7 +75,9 @@ DIAG="$(mktemp "${TMPDIR:-/tmp}/chart-smoke-diag.XXXXXX")"
 # account that may read Secrets; the listener check creates a namespace:
 # all are undone right after their checks, and again on any exit.
 RANGER_CAPS_SAVED=""
-trap 'c1_cleanup 2>/dev/null || true; url_cleanup 2>/dev/null || true; kubectl delete namespace smoke-foreign --ignore-not-found --wait=false --request-timeout=5s >/dev/null 2>&1 || true; rm -f "$DIAG"; kubectl -n "$NS" delete agentgatewaypolicy smoke-override --ignore-not-found --request-timeout=5s >/dev/null 2>&1 || true; [[ -z "$RANGER_CAPS_SAVED" ]] || kubectl patch takecareranger main --type=json -p "[{\"op\":\"replace\",\"path\":\"/spec/caps\",\"value\":${RANGER_CAPS_SAVED}}]" --request-timeout=5s >/dev/null 2>&1 || true' EXIT
+# shellcheck source=hack/run-window.sh
+source hack/run-window.sh
+trap 'c1_cleanup 2>/dev/null || true; url_cleanup 2>/dev/null || true; kubectl delete namespace smoke-foreign --ignore-not-found --wait=false --request-timeout=5s >/dev/null 2>&1 || true; rm -f "$DIAG"; kubectl -n "$NS" delete agentgatewaypolicy smoke-override --ignore-not-found --request-timeout=5s >/dev/null 2>&1 || true; [[ -z "$RANGER_CAPS_SAVED" ]] || kubectl patch takecareranger main --type=json -p "[{\"op\":\"replace\",\"path\":\"/spec/caps\",\"value\":${RANGER_CAPS_SAVED}}]" --request-timeout=5s >/dev/null 2>&1 || true; power_guard' EXIT
 check() { # NAME COMMAND...: PASS when the command succeeds
   local name="$1"; shift
   checks=$((checks + 1))

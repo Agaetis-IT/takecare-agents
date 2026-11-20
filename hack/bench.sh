@@ -19,6 +19,8 @@
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
+# shellcheck source=hack/run-window.sh
+source hack/run-window.sh
 
 N="${1:-5}"
 [[ "$N" =~ ^[1-9][0-9]*$ ]] || { echo "N must be a positive integer" >&2; exit 1; }
@@ -75,6 +77,8 @@ restore() {
       log "could not restore the cooldown (${prev_cooldown:-unset}): check the Doc"
     fi
   fi
+  # Last: whether the machine slept during the run (the report marked).
+  power_guard "${report:-}"
 }
 trap restore EXIT
 trap 'exit 130' INT TERM
