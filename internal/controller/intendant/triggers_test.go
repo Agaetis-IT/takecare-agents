@@ -81,6 +81,16 @@ func (f *fixture) waitSurveys(t *testing.T, name string, n int) []v1alpha1.TakeC
 	if got = f.surveys(t, name); len(got) != n {
 		t.Fatalf("%d surveys of %s, want %d: %+v", len(got), name, n, phases(got))
 	}
+	names := make([]string, 0, len(got))
+	for _, s := range got {
+		names = append(names, s.Name)
+	}
+	f.surveysMu.Lock()
+	if f.surveysSeen == nil {
+		f.surveysSeen = map[string][2][]string{}
+	}
+	f.surveysSeen[name] = [2][]string{f.surveysSeen[name][1], names}
+	f.surveysMu.Unlock()
 	return got
 }
 
