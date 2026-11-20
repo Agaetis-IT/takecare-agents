@@ -112,17 +112,15 @@ func (f *fixture) passReady(t *testing.T, name string) {
 	f.waitPhase(t, name, 1, v1alpha1.RunCompleted)
 	agent := surveyagent.AgentName(&v1alpha1.TakeCareIntendant{Name: name})
 	for _, gvk := range []schema.GroupVersionKind{modelConfigGVK, agentGVK} {
-		u, err := f.engineObject(gvk, agent)
+		// The operator creates the object: wait for it, then set its status.
+		_, err := f.engineObject(gvk, agent)
 		for deadline := time.Now().Add(waitFor); err != nil && time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
-			u, err = f.engineObject(gvk, agent)
+			_, err = f.engineObject(gvk, agent)
 		}
 		if err != nil {
 			t.Fatal(err)
 		}
-		u.Object["status"] = map[string]any{keyConditions: []any{condition("Accepted", condTrue), condition("Ready", condTrue)}}
-		if err := f.c.Status().Update(context.Background(), u); err != nil {
-			t.Fatal(err)
-		}
+		f.engineStatus(t, gvk, agent, map[string]any{keyConditions: []any{condition("Accepted", condTrue), condition("Ready", condTrue)}})
 	}
 	f.poke(t, name)
 	f.wait(t, name, func(in *v1alpha1.TakeCareIntendant) bool {
