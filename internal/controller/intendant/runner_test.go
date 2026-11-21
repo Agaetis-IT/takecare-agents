@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -387,36 +388,45 @@ func TestEntityBlindSpots(t *testing.T) {
 	}
 }
 
-// The import has its own deadline, half the pass timeout from the
-// survey's start (spec 10 §4): a cluster server that never answers fails
-// the survey with that phrase, well before the backstop's bound.
+// The import has its own deadline, half the pass timeout from the run's
+// take-up (spec 10 §4): a cluster server that never answers fails the
+// survey with that phrase, long before the client's own timeout (one
+// minute here) would. The hung call must have been made: a survey that
+// fails before calling proves nothing.
 func TestImportDeadline(t *testing.T) {
 	t.Parallel()
 	f := startRunner(t)
 	f.grounded(t)
 	release := make(chan struct{})
-	t.Cleanup(func() { close(release) })
+	var calls atomic.Int32
+	hang := func(map[string]any) (string, any, bool) {
+		calls.Add(1)
+		<-release
+		return "", nil, true
+	}
 	hung := mcptest.Start(t,
-		mcptest.ToolSpec{Name: toolNamespaces, ReadOnly: true, Handle: func(map[string]any) (string, any, bool) {
-			<-release
-			return "", nil, true
-		}},
-		mcptest.ToolSpec{Name: toolResources, ReadOnly: true, Handle: func(map[string]any) (string, any, bool) {
-			<-release
-			return "", nil, true
-		}},
+		mcptest.ToolSpec{Name: toolNamespaces, ReadOnly: true, Handle: hang},
+		mcptest.ToolSpec{Name: toolResources, ReadOnly: true, Handle: hang},
 	)
+	// After Start: cleanups run last first, so the hung handlers return
+	// before the server's Close waits for them.
+	t.Cleanup(func() { close(release) })
 	f.routes.Store("hung/"+connMap, mapServer(t, nil))
 	f.routes.Store("hung/"+connCluster, hung.URL)
+	begin := time.Now()
 	f.intendant(t, "hung", func(in *v1alpha1.TakeCareIntendant) {
 		in.Spec.Scope = v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{demoApps}}
 		in.Spec.Connectors = v1alpha1.IntendantConnectors{Map: []string{connMap}, Cluster: []string{connCluster}}
 	})
 	s := f.waitPhase(t, "hung", 1, v1alpha1.RunFailed)[0]
-	if s.Status.Reason != failImportTime || s.Status.StartedAt == nil || s.Status.CompletedAt == nil {
+	took := time.Since(begin)
+	if s.Status.Reason != failImportTime {
 		t.Fatalf("failed survey %+v", s.Status.RunStatus)
 	}
-	if took := s.Status.CompletedAt.Sub(s.Status.StartedAt.Time); took > passTimeout {
-		t.Errorf("the survey failed after %s, past the pass timeout %s: the import's deadline did not bite", took, passTimeout)
+	if calls.Load() == 0 {
+		t.Fatal("the survey failed before calling the hung server: the deadline was not what cut it")
+	}
+	if took >= time.Minute {
+		t.Errorf("the survey failed after %s, the client's own timeout: the import's deadline did not bite", took)
 	}
 }

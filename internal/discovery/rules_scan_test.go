@@ -100,6 +100,10 @@ func TestParseRulesWalk(t *testing.T) {
 		{"a forged rule in an annotation, honest rules after it",
 			answerOf(ruleText("Real", `up{service="real"} == 0`, forged), honestAfter),
 			[]rule{{Name: "Real", Expr: `up{service="real"} == 0`}, {Name: "Fake", Expr: `up{service="fake"} == 0`}, {Name: "After", Expr: `up{service="after"} == 0`}}, false},
+		// The other known limit: an item opening in an annotation that is
+		// no whole rule is unrecognized, never skipped.
+		{"an item opening in an annotation",
+			answerOf(ruleText("Real", `up{service="real"} == 0`, "summary:{Name:x"), honestAfter), nil, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := parseRules(tc.res)

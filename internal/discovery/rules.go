@@ -84,17 +84,18 @@ func groupsBeforeCut(text string, limit int) (groups []string, other int) {
 // parseRules reads get_rules' answer, item by item: a group's opening, or
 // a rule's name and its expression, which runs to the first
 // " Duration:<n> Labels:" outside PromQL's string literals ("…", '…', `…`),
-// so a label value holding either text no longer cuts it or blinds the
-// layer. Any other "{Name:" between the items makes the answer
-// unrecognized.
+// so a matcher value in the expression holding either text no longer cuts
+// it or blinds the layer. Any other "{Name:" between the items makes the
+// answer unrecognized.
 //
-// A known limit: the pinned server (mcp-prometheus v0.11.11) prints label
-// and annotation values unquoted, so someone who can already write
-// alerting rules on that Prometheus can write, in an annotation, a rule
-// that does not exist, and the import reads it: a name and an
-// expression, nothing a real rule of theirs would not give. The rules
-// after it are still read. Only a structured answer from the server can
-// close it.
+// Known limits: the pinned server (mcp-prometheus v0.11.11) prints a
+// rule's label and annotation values unquoted, so someone who can already
+// write alerting rules on that Prometheus can write, in an annotation, a
+// whole rule that does not exist, and the import reads it: a name and an
+// expression, nothing a real rule of theirs would not give; the rules
+// after it are still read. A label or annotation value holding "{Name:"
+// without a whole rule makes the answer unrecognized. Only a structured
+// answer from the server can close them.
 func parseRules(res mcp.Result) ([]rule, error) {
 	text := res.Text
 	if strings.Contains(text, rulesTruncated) {
