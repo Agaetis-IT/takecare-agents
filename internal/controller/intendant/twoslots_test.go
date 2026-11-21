@@ -18,6 +18,8 @@ import (
 )
 
 const (
+	// twoName is the Intendant of the two-slot tests.
+	twoName   = "two"
 	connBoth  = "both"
 	toolQuery = "execute_query"
 	// toolEvents is a content tool of connector "both": given only when
@@ -61,35 +63,35 @@ func TestConnectorInTwoSlots(t *testing.T) {
 	if err := f.c.Update(ctx, &c); err != nil {
 		t.Fatal(err)
 	}
-	f.intendant(t, "two", func(in *v1alpha1.TakeCareIntendant) {
+	f.intendant(t, twoName, func(in *v1alpha1.TakeCareIntendant) {
 		in.Spec.Connectors = v1alpha1.IntendantConnectors{Map: []string{connMap}, Cluster: []string{connBoth}, Metrics: []string{connBoth}}
 	})
 	// Settled before "before" is read: the route shows the union and the
 	// status has observed the spec.
 	const union = `mcp.tool.name in ["execute_query", "namespaces_list", "pods_log", "resources_list"]`
-	in := f.wait(t, "two", func(in *v1alpha1.TakeCareIntendant) bool {
-		allow, _ := f.policy(t, "two", connBoth)
+	in := f.wait(t, twoName, func(in *v1alpha1.TakeCareIntendant) bool {
+		allow, _ := f.policy(t, twoName, connBoth)
 		return cond(in, ConditionRoutesReady) != nil && in.Status.ObservedGeneration == in.Generation && allow == union
 	})
 	role := roleOf(in)
 	before := f.versions(t, role, connBoth)
 	r := f.reconciler()
 	for range 3 {
-		if _, err := r.Reconcile(ctx, reconcileRequest("two")); err != nil {
+		if _, err := r.Reconcile(ctx, reconcileRequest(twoName)); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if after := f.versions(t, role, connBoth); after != before || before[0] == "" || before[1] == "" {
 		t.Errorf("the policies' versions went from %v to %v over three reconciles with nothing changed", before, after)
 	}
-	if allow, _ := f.policy(t, "two", connBoth); allow != union {
+	if allow, _ := f.policy(t, twoName, connBoth); allow != union {
 		t.Errorf("allow-list %s, want %s", allow, union)
 	}
-	tools := f.agentTools("two")[surveyagent.AgentName(in)+"-"+connBoth]
+	tools := f.agentTools(twoName)[surveyagent.AgentName(in)+"-"+connBoth]
 	if slices.Contains(tools, mcp.RulesTool) || len(tools) == 0 {
 		t.Errorf("the agent's tools of %s: %v", connBoth, tools)
 	}
-	in = f.wait(t, "two", func(*v1alpha1.TakeCareIntendant) bool { return true })
+	in = f.wait(t, twoName, func(*v1alpha1.TakeCareIntendant) bool { return true })
 	if c := cond(in, v1alpha1.ConditionConnectorsReady); c == nil || c.Reason != ReasonConnectorDegrade {
 		t.Errorf("ConnectorsReady %+v", c)
 	}
@@ -99,12 +101,12 @@ func TestConnectorInTwoSlots(t *testing.T) {
 	if slices.Contains(tools, toolEvents) {
 		t.Errorf("the unlisted content tool %s is given to the agent", toolEvents)
 	}
-	f.update(t, "two", func(in *v1alpha1.TakeCareIntendant) { in.Spec.ContentTools = []string{toolEvents} })
-	f.wait(t, "two", func(in *v1alpha1.TakeCareIntendant) bool {
-		allow, _ := f.policy(t, "two", connBoth)
+	f.update(t, twoName, func(in *v1alpha1.TakeCareIntendant) { in.Spec.ContentTools = []string{toolEvents} })
+	f.wait(t, twoName, func(in *v1alpha1.TakeCareIntendant) bool {
+		allow, _ := f.policy(t, twoName, connBoth)
 		return in.Status.ObservedGeneration == in.Generation && allow == `mcp.tool.name in ["events_log", "execute_query", "namespaces_list", "pods_log", "resources_list"]`
 	})
-	if tools := f.agentTools("two")[surveyagent.AgentName(in)+"-"+connBoth]; !slices.Contains(tools, toolEvents) || slices.Contains(tools, mcp.RulesTool) {
+	if tools := f.agentTools(twoName)[surveyagent.AgentName(in)+"-"+connBoth]; !slices.Contains(tools, toolEvents) || slices.Contains(tools, mcp.RulesTool) {
 		t.Errorf("the agent's tools of %s once %s is listed: %v", connBoth, toolEvents, tools)
 	}
 }
@@ -116,7 +118,7 @@ func TestConnectorInTwoSlots(t *testing.T) {
 // holds get_rules.
 func TestBindingUnion(t *testing.T) {
 	t.Parallel()
-	in := &v1alpha1.TakeCareIntendant{Name: "two", Namespace: ns}
+	in := &v1alpha1.TakeCareIntendant{Name: twoName, Namespace: ns}
 	conn := &v1alpha1.TakeCareConnector{Name: connBoth, Namespace: ns}
 	for _, name := range []string{toolNamespaces, mcp.RulesTool, toolQuery} {
 		conn.Status.Tools = append(conn.Status.Tools, v1alpha1.ToolStatus{Name: name, Class: v1alpha1.ToolRead})
