@@ -12,6 +12,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	kevents "k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -49,12 +50,56 @@ func (f *fixture) touch(t *testing.T, description string) {
 }
 
 // seen waits for the reconcile that saw the latest registrations: their
-// digest moved off the previous one.
+// digest moved off the previous one and is the digest of the settled
+// registrations, as a reconciler reads them now on the API server. Moved
+// alone is not enough: touch writes the spec, then the status, and a
+// reconcile in between sees the connector still changing, left out of
+// the digest, which moved too.
 func (f *fixture) seen(t *testing.T, name, previous string) string {
 	t.Helper()
 	return f.wait(t, name, func(in *v1alpha1.TakeCareIntendant) bool {
-		return in.Status.Registrations != previous && in.Status.ObservedGeneration == in.Generation
+		settled, _, err := f.reconciler().registrations(context.Background(), in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return in.Status.Registrations != previous && in.Status.Registrations == settled && in.Status.ObservedGeneration == in.Generation
 	}).Status.Registrations
+}
+
+// register creates an engine agent of no Intendant, a registration in one
+// write: an object whose status tells no generation counts as settled at
+// once. touch's two writes leave a connector still changing in between,
+// which with no quiet period is a registration of its own.
+func (f *fixture) register(t *testing.T, name string) {
+	t.Helper()
+	u := &unstructured.Unstructured{}
+	u.SetGroupVersionKind(remoteMCPServerGVK)
+	u.SetNamespace(engineNS)
+	u.SetName(name)
+	if err := unstructured.SetNestedMap(u.Object, map[string]any{"description": name, "url": "http://" + name + ".example/mcp"}, "spec"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.c.Create(context.Background(), u); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// equivalentSchedules spell the default schedule in several ways: settle
+// moves the generation without changing what is due.
+var equivalentSchedules = []string{"0 3 * * *", "00 3 * * *", "0 03 * * *", "00 03 * * *"}
+
+// settle makes the Intendant reconcile and waits for that reconcile's
+// status: it rewrites the schedule in an equivalent spelling, which moves
+// the generation (poke's annotation does not), so observedGeneration
+// catching up proves a reconcile that read what the test wrote before.
+func (f *fixture) settle(t *testing.T, name string) *v1alpha1.TakeCareIntendant {
+	t.Helper()
+	f.update(t, name, func(in *v1alpha1.TakeCareIntendant) {
+		i := slices.Index(equivalentSchedules, in.Spec.Schedule)
+		in.Spec.Schedule = equivalentSchedules[(i+1)%len(equivalentSchedules)]
+	})
+	edited := f.wait(t, name, func(*v1alpha1.TakeCareIntendant) bool { return true }).Generation
+	return f.wait(t, name, func(in *v1alpha1.TakeCareIntendant) bool { return in.Status.ObservedGeneration >= edited })
 }
 
 // endSkipped ends every survey of the Intendant as the runner ends one
@@ -136,17 +181,17 @@ func TestFailedSurveysDoNotRepeat(t *testing.T) {
 	f.waitSurveys(t, "failing", 1)
 	f.end(t, "failing", v1alpha1.RunFailed)
 	for i, d := range []string{"one", "two"} {
-		f.touch(t, d)
+		f.register(t, d)
 		f.waitSurveys(t, "failing", i+2)
 		f.end(t, "failing", v1alpha1.RunFailed)
 	}
+	// Each settle is a reconcile that read the three ended surveys: none
+	// is due, none pending.
 	for range 3 {
-		f.poke(t, "failing")
-		f.wait(t, "failing", func(in *v1alpha1.TakeCareIntendant) bool { return in.Status.ObservedGeneration == in.Generation })
-	}
-	f.countSurveys(t, "failing", 3)
-	if in := f.wait(t, "failing", func(*v1alpha1.TakeCareIntendant) bool { return true }); in.Status.PendingTrigger != "" {
-		t.Errorf("pending %q after failures with nothing changed; %s; surveys %+v", in.Status.PendingTrigger, f.triggerState(in), phases(f.surveys(t, "failing")))
+		if in := f.settle(t, "failing"); in.Status.PendingTrigger != "" {
+			t.Errorf("pending %q after failures with nothing changed; %s; surveys %+v", in.Status.PendingTrigger, f.triggerState(in), phases(f.surveys(t, "failing")))
+		}
+		f.countSurveys(t, "failing", 3)
 	}
 }
 
@@ -183,8 +228,7 @@ func TestOwedPassOnce(t *testing.T) {
 	}
 	f.clock.Set(testStart.Add(2 * time.Minute))
 	f.endSkipped(t, "owed", v1alpha1.RunFailed)
-	f.poke(t, "owed")
-	f.wait(t, "owed", func(in *v1alpha1.TakeCareIntendant) bool { return in.Status.ObservedGeneration == in.Generation })
+	f.settle(t, "owed")
 	f.countSurveys(t, "owed", 2)
 
 	f.agentReady(t, "owed", false)
@@ -242,8 +286,7 @@ func TestQuietPeriodSurvivesRestart(t *testing.T) {
 	f.seen(t, "since", digest)
 	f.clock.Set(testStart.Add(50 * time.Second))
 	f.restart(t)
-	f.poke(t, "since")
-	f.wait(t, "since", func(in *v1alpha1.TakeCareIntendant) bool { return in.Status.ObservedGeneration == in.Generation })
+	f.settle(t, "since")
 	f.countSurveys(t, "since", 1)
 	f.clock.Set(testStart.Add(75 * time.Second))
 	f.poke(t, "since")
@@ -286,10 +329,7 @@ func TestEngineReadyFollowsTheAgent(t *testing.T) {
 	f.engineReady(t, "follow", metav1.ConditionTrue)
 	// Settled: the reconciles that writing EngineReady wakes have ended,
 	// so only the agent's own change can wake the next one.
-	f.poke(t, "follow")
-	f.wait(t, "follow", func(in *v1alpha1.TakeCareIntendant) bool {
-		return in.Annotations["test/poke"] != "" && in.Status.ObservedGeneration == in.Generation
-	})
+	f.settle(t, "follow")
 	f.agentReady(t, "follow", false)
 	f.engineReady(t, "follow", metav1.ConditionFalse)
 }

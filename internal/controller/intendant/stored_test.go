@@ -305,6 +305,13 @@ func TestSuspendedWithoutGatewayPolls(t *testing.T) {
 		in.Spec.Suspend = true
 		in.Spec.Connectors = v1alpha1.IntendantConnectors{Map: []string{connMap}}
 	})
+	// The manager's reconcile first: it adds the finalizer with an update,
+	// which the direct reconcile below would race ("the object has been
+	// modified"). Its status is written after the finalizer.
+	f.wait(t, "waiting", func(in *v1alpha1.TakeCareIntendant) bool {
+		c := cond(in, v1alpha1.ConditionReady)
+		return controllerutil.ContainsFinalizer(in, Finalizer) && c != nil && c.ObservedGeneration == in.Generation
+	})
 	res, err := f.reconciler().Reconcile(context.Background(), reconcileRequest("waiting"))
 	if err != nil {
 		t.Fatal(err)
