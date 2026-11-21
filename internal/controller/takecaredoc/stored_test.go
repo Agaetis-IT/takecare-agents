@@ -12,6 +12,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -136,14 +137,22 @@ func TestStoredDocOverCap(t *testing.T) {
 	}
 	f.storeDoc(t, d)
 	ctx := context.Background()
-	got := f.getDoc(t, "wide")
-	got.Spec.Report.Practitioner = "elsewhere"
-	if err := f.c.Update(ctx, got); err != nil {
+	// Each edit on a fresh read, again on a conflict: the controller
+	// patches the Doc meanwhile.
+	edit := func(change func(*v1alpha1.TakeCareDoc)) error {
+		return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			got := f.getDoc(t, "wide")
+			change(got)
+			return f.c.Update(ctx, got)
+		})
+	}
+	if err := edit(func(d *v1alpha1.TakeCareDoc) { d.Spec.Report.Practitioner = "elsewhere" }); err != nil {
 		t.Errorf("an edit elsewhere: %v", err)
 	}
-	got = f.getDoc(t, "wide")
-	got.Spec.Connectors.Knowledge = append(got.Spec.Connectors.Knowledge, "one-more")
-	if err := f.c.Update(ctx, got); err == nil || !strings.Contains(err.Error(), "knowledge") {
+	err := edit(func(d *v1alpha1.TakeCareDoc) {
+		d.Spec.Connectors.Knowledge = append(d.Spec.Connectors.Knowledge, "one-more")
+	})
+	if err == nil || !strings.Contains(err.Error(), "knowledge") {
 		t.Errorf("an edit of the list past the cap: %v", err)
 	}
 }

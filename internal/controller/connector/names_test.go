@@ -10,6 +10,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
@@ -72,9 +73,13 @@ func TestLongReportConnectorRetyped(t *testing.T) {
 	name := strings.Repeat("r", v1alpha1.MaxConnectorName+1)
 	h.connector(name, reportSpec())
 	h.waitCondition(name, v1alpha1.ConditionReady, metav1.ConditionTrue, ReasonReady)
-	c := h.get(name)
-	c.Spec.Types, c.Spec.Report = []v1alpha1.ConnectorType{v1alpha1.ConnectorMetrics}, nil
-	h.must(h.c.Update(h.ctx, c))
+	// On a fresh read, again on a conflict: the controller writes the
+	// connector's status meanwhile.
+	h.must(retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		c := h.get(name)
+		c.Spec.Types, c.Spec.Report = []v1alpha1.ConnectorType{v1alpha1.ConnectorMetrics}, nil
+		return h.c.Update(h.ctx, c)
+	}))
 	if got := h.waitCondition(name, ConditionBackendAccepted, metav1.ConditionFalse, v1alpha1.ReasonNameTooLong); got.Message != v1alpha1.MessageConnectorName || !h.noBackend(name) {
 		t.Errorf("BackendAccepted %+v, no backend %v", got, h.noBackend(name))
 	}

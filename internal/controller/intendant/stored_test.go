@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -55,13 +56,22 @@ func (f *fixture) store(t *testing.T, in *v1alpha1.TakeCareIntendant) {
 // redestine changes a field no rule bounds, so that the Intendant's
 // generation moves: an edit of a stored object.
 func (f *fixture) redestine(name, dest string) error {
+	return f.edit(name, func(in *v1alpha1.TakeCareIntendant) { in.Spec.Report.Practitioner = dest })
+}
+
+// edit changes the Intendant on a fresh read, again on a conflict (the
+// reconciler patches it meanwhile), and returns any other error, a
+// refusal by the API server included.
+func (f *fixture) edit(name string, change func(*v1alpha1.TakeCareIntendant)) error {
 	ctx := context.Background()
-	var in v1alpha1.TakeCareIntendant
-	if err := f.c.Get(ctx, client.ObjectKey{Namespace: ns, Name: name}, &in); err != nil {
-		return err
-	}
-	in.Spec.Report.Practitioner = dest
-	return f.c.Update(ctx, &in)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var in v1alpha1.TakeCareIntendant
+		if err := f.c.Get(ctx, client.ObjectKey{Namespace: ns, Name: name}, &in); err != nil {
+			return err
+		}
+		change(&in)
+		return f.c.Update(ctx, &in)
+	})
 }
 
 // At the bound, the engine agent's name is exactly 63 characters, and the
@@ -164,13 +174,10 @@ func TestStoredOverCap(t *testing.T) {
 	if err := f.redestine("wide", "elsewhere"); err != nil {
 		t.Errorf("an edit elsewhere: %v", err)
 	}
-	ctx := context.Background()
-	var in v1alpha1.TakeCareIntendant
-	if err := f.c.Get(ctx, client.ObjectKey{Namespace: ns, Name: "wide"}, &in); err != nil {
-		t.Fatal(err)
-	}
-	in.Spec.Connectors.Knowledge = append(in.Spec.Connectors.Knowledge, "k17")
-	if err := f.c.Update(ctx, &in); err == nil || !strings.Contains(err.Error(), "knowledge") {
+	err := f.edit("wide", func(in *v1alpha1.TakeCareIntendant) {
+		in.Spec.Connectors.Knowledge = append(in.Spec.Connectors.Knowledge, "k17")
+	})
+	if err == nil || !strings.Contains(err.Error(), "knowledge") {
 		t.Errorf("an edit of the list past the cap: %v", err)
 	}
 }
