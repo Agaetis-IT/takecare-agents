@@ -180,10 +180,28 @@ func (g Gateway) parentRefs() []any {
 	return []any{map[string]any{keyGroup: gatewayAPIGroup, keyKind: "Gateway", keyName: g.Name, "sectionName": ListenerName}}
 }
 
-// EnsureMCP writes the route and its policy. The policy is written first:
-// a route never exists without its allow-list.
+// EnsureMCP writes the route and its policies. The policies are written
+// before the route: a route never exists without its allow-list. The
+// argument rule is applied before the allow-list and deleted after it, so
+// an allow-list that admits a tool the rule constrains (get_rules, spec 10
+// §8) is never live without the rule, whichever of the two changes.
 func EnsureMCP(ctx context.Context, c client.Client, g Gateway, r Role, m MCP) error {
 	name := mcpName(r, m.Connector)
+	// One field per policy per target: the call rule is a traffic policy of
+	// its own on the route, removed when the route no longer carries one.
+	calls := r.object(PolicyGVK, CallsPolicyName(r, m.Connector))
+	if m.CallRule != "" {
+		calls.Object["spec"] = map[string]any{
+			"targetRefs": []any{map[string]any{keyGroup: gatewayAPIGroup, keyKind: HTTPRouteGVK.Kind, keyName: name}},
+			"traffic": map[string]any{"authorization": map[string]any{
+				"action": "Require",
+				"policy": map[string]any{"matchExpressions": []any{CallsExpression(m.CallRule)}},
+			}},
+		}
+		if err := apply.Strict(ctx, c, calls); err != nil {
+			return fmt.Errorf("apply policy %s: %w", calls.GetName(), err)
+		}
+	}
 	policy := r.object(PolicyGVK, name)
 	policy.Object["spec"] = map[string]any{
 		"targetRefs": []any{map[string]any{keyGroup: gatewayAPIGroup, keyKind: HTTPRouteGVK.Kind, keyName: name}},
@@ -195,23 +213,9 @@ func EnsureMCP(ctx context.Context, c client.Client, g Gateway, r Role, m MCP) e
 	if err := apply.Strict(ctx, c, policy); err != nil {
 		return fmt.Errorf("apply policy %s: %w", name, err)
 	}
-	// One field per policy per target: the call rule is a traffic policy of
-	// its own on the route, removed when the route no longer carries one.
-	calls := r.object(PolicyGVK, CallsPolicyName(r, m.Connector))
 	if m.CallRule == "" {
 		if err := c.Delete(ctx, calls); client.IgnoreNotFound(err) != nil {
 			return fmt.Errorf("delete policy %s: %w", calls.GetName(), err)
-		}
-	} else {
-		calls.Object["spec"] = map[string]any{
-			"targetRefs": []any{map[string]any{keyGroup: gatewayAPIGroup, keyKind: HTTPRouteGVK.Kind, keyName: name}},
-			"traffic": map[string]any{"authorization": map[string]any{
-				"action": "Require",
-				"policy": map[string]any{"matchExpressions": []any{CallsExpression(m.CallRule)}},
-			}},
-		}
-		if err := apply.Strict(ctx, c, calls); err != nil {
-			return fmt.Errorf("apply policy %s: %w", calls.GetName(), err)
 		}
 	}
 	route := r.object(HTTPRouteGVK, name)

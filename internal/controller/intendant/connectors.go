@@ -52,19 +52,44 @@ type binding struct {
 	contentUnknown bool
 }
 
-// agentTools is a connector given to the agent and its tools.
+// agentTools is a connector given to the agent, the types it is given
+// for, and its tools.
 type agentTools struct {
 	name  string
-	typ   v1alpha1.ConnectorType
+	types []v1alpha1.ConnectorType
 	tools []string
+}
+
+// addRoute adds a slot's route to the binding. A connector named in
+// several slots (spec 05 gives a connector several types) has one route:
+// the union of what each slot allows, and the argument rule of any of
+// them. Two routes of one name would be written in turn at every
+// reconcile, each write undoing the other.
+func (b *binding) addRoute(m routes.MCP) {
+	for i := range b.routes {
+		if b.routes[i].Connector != m.Connector {
+			continue
+		}
+		b.routes[i].Tools = union(b.routes[i].Tools, m.Tools)
+		if b.routes[i].CallRule == "" {
+			b.routes[i].CallRule = m.CallRule
+		}
+		return
+	}
+	b.routes = append(b.routes, m)
+}
+
+// union is the sorted union of two tool lists.
+func union(a, b []string) []string {
+	out := slices.Concat(a, b)
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 // route is a connector's route: the operator's tools and the agent's, the
 // gateway's allow-list for both (spec 10 §8).
 func route(name string, operator, agent []string) routes.MCP {
-	tools := slices.Concat(operator, agent)
-	slices.Sort(tools)
-	return routes.MCP{Connector: name, Backend: "mcp-" + name, Tools: slices.Compact(tools)}
+	return routes.MCP{Connector: name, Backend: "mcp-" + name, Tools: union(operator, agent)}
 }
 
 // giveAgent records a connector's tools the agent is given, the read tools
@@ -79,9 +104,22 @@ func (b *binding) giveAgent(in *v1alpha1.TakeCareIntendant, conn *v1alpha1.TakeC
 			b.content[t.Name] = true
 		}
 	}
-	if len(read) > 0 {
-		b.agent = append(b.agent, agentTools{name: conn.Name, typ: typ, tools: read})
+	// get_rules is the operator's tool (spec 10 §5), whatever slot gives
+	// the connector: never the agent's.
+	read = slices.DeleteFunc(read, func(t string) bool { return t == mcp.RulesTool })
+	if len(read) == 0 {
+		return read
 	}
+	for i := range b.agent {
+		if b.agent[i].name == conn.Name {
+			b.agent[i].tools = union(b.agent[i].tools, read)
+			if !slices.Contains(b.agent[i].types, typ) {
+				b.agent[i].types = append(b.agent[i].types, typ)
+			}
+			return read
+		}
+	}
+	b.agent = append(b.agent, agentTools{name: conn.Name, types: []v1alpha1.ConnectorType{typ}, tools: read})
 	return read
 }
 
@@ -101,7 +139,7 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 			continue
 		}
 		b.mapRevision = conn.Status.MapRevision
-		b.routes = append(b.routes, route(name, tools, b.giveAgent(in, conn, v1alpha1.ConnectorMap)))
+		b.addRoute(route(name, tools, b.giveAgent(in, conn, v1alpha1.ConnectorMap)))
 	}
 	if len(c.Map) == 0 {
 		b.mapProblem = "no map connector is given"
@@ -119,7 +157,7 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 			b.contentUnknown = true
 			continue
 		}
-		b.routes = append(b.routes, route(name, tools, b.giveAgent(in, conn, v1alpha1.ConnectorCluster)))
+		b.addRoute(route(name, tools, b.giveAgent(in, conn, v1alpha1.ConnectorCluster)))
 	}
 	// The knowledge connectors are the agent's alone: the import does not
 	// read them (spec 10 §4).
@@ -128,7 +166,11 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 		if err != nil {
 			return b, err
 		}
-		if problem == "" && len(b.giveAgent(in, conn, v1alpha1.ConnectorKnowledge)) == 0 {
+		var given []string
+		if problem == "" {
+			given = b.giveAgent(in, conn, v1alpha1.ConnectorKnowledge)
+		}
+		if problem == "" && len(given) == 0 {
 			problem = fmt.Sprintf("connector %s has no read tool to give the agent", name)
 			if slices.ContainsFunc(conn.Status.Tools, func(t v1alpha1.ToolStatus) bool { return t.Source == v1alpha1.ToolSourceUntrusted }) {
 				problem += " (a customer's server: its tools are act until its spec.tools lists them as read)"
@@ -139,7 +181,7 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 			b.contentUnknown = b.contentUnknown || conn == nil
 			continue
 		}
-		b.routes = append(b.routes, route(name, nil, b.agent[len(b.agent)-1].tools))
+		b.addRoute(route(name, nil, given))
 	}
 	if len(c.Metrics) == 0 {
 		b.problems = append(b.problems, "no metrics connector is given: the alerting rules are not surveyed")
@@ -171,7 +213,7 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 		}
 		m := route(name, admitted, nil)
 		m.CallRule = RulesCallCEL
-		b.routes = append(b.routes, m)
+		b.addRoute(m)
 		b.rules[name] = state
 		if state.problem != "" {
 			b.problems = append(b.problems, state.problem)
