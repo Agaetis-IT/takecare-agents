@@ -141,9 +141,12 @@ func TestStoredDocOverCap(t *testing.T) {
 	// patches the Doc meanwhile.
 	edit := func(change func(*v1alpha1.TakeCareDoc)) error {
 		return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			got := f.getDoc(t, "wide")
-			change(got)
-			return f.c.Update(ctx, got)
+			var got v1alpha1.TakeCareDoc
+			if err := f.c.Get(ctx, client.ObjectKey{Namespace: ns, Name: "wide"}, &got); err != nil {
+				return err
+			}
+			change(&got)
+			return f.c.Update(ctx, &got)
 		})
 	}
 	if err := edit(func(d *v1alpha1.TakeCareDoc) { d.Spec.Report.Practitioner = "elsewhere" }); err != nil {
