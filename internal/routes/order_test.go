@@ -55,7 +55,7 @@ func TestRuleNeverMissing(t *testing.T) {
 		allow := &unstructured.Unstructured{}
 		allow.SetGroupVersionKind(PolicyGVK)
 		if err := raw.Get(ctx, client.ObjectKey{Namespace: ns, Name: MCPPolicyName(r, promConn)}, allow); err != nil {
-			return // no allow-list yet: nothing admitted
+			return // no allow-list yet, and no route either: nothing admitted
 		}
 		exprs, _, _ := unstructured.NestedStringSlice(allow.Object, "spec", "backend", "mcp", "authorization", "policy", "matchExpressions")
 		if len(exprs) != 1 || !strings.Contains(exprs[0], `"get_rules"`) {

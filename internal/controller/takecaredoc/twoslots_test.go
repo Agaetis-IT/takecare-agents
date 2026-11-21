@@ -29,6 +29,16 @@ func TestConnectorInTwoSlots(t *testing.T) {
 		d.Spec.Connectors = v1alpha1.DocConnectors{Cluster: []string{"both"}, Metrics: []string{"both"}, Report: reportName}
 	})
 	f.waitCondition(t, "doc", v1alpha1.ConditionConnectorsReady, metav1.ConditionTrue, "")
+	// The condition alone may be the previous generation's: wait for the
+	// reconcile of the current one before reading the policy.
+	reconciled := func() {
+		t.Helper()
+		eventually(t, "the new generation is reconciled", func() (bool, string) {
+			d := f.getDoc(t, "doc")
+			return d.Status.ObservedGeneration == d.Generation, describe(d)
+		})
+	}
+	reconciled()
 	version := func() string {
 		obj, err := f.get(routes.PolicyGVK, ns, "role-doc-doc-mcp-both")
 		if err != nil {
@@ -39,6 +49,7 @@ func TestConnectorInTwoSlots(t *testing.T) {
 	before := version()
 	for i := range 3 {
 		f.updateDoc(t, "doc", func(d *v1alpha1.TakeCareDoc) { d.Spec.Report.Practitioner = fmt.Sprintf("d%d", i) })
+		reconciled()
 		f.waitCondition(t, "doc", v1alpha1.ConditionConnectorsReady, metav1.ConditionTrue, "")
 	}
 	if after := version(); after != before {
