@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
@@ -64,7 +65,7 @@ type triggered struct {
 // schedule is due.
 func (r *Reconciler) survey(ctx context.Context, in *v1alpha1.TakeCareIntendant, b binding, st *status, now time.Time) (triggered, error) {
 	out := triggered{mapRevision: in.Status.LastMapRevision, since: in.Status.RegistrationsSince}
-	newest, busy, err := r.surveys(ctx, in, r.Client)
+	newest, busy, err := r.surveys(ctx, in, r.Client, true)
 	if err != nil {
 		return out, err
 	}
@@ -119,7 +120,7 @@ func (r *Reconciler) survey(ctx context.Context, in *v1alpha1.TakeCareIntendant,
 	if !busy {
 		// Read live just before creating: the cache may not hold the survey
 		// the previous reconcile created, and two would then run.
-		if _, busy, err = r.surveys(ctx, in, r.reader()); err != nil {
+		if _, busy, err = r.surveys(ctx, in, r.reader(), false); err != nil {
 			return out, err
 		}
 	}
@@ -145,30 +146,61 @@ func (r *Reconciler) survey(ctx context.Context, in *v1alpha1.TakeCareIntendant,
 	return out, nil
 }
 
+// indexIntendant is the cache's field index of surveys by the Intendant
+// they belong to: the reconcile reads an Intendant's surveys without
+// listing the namespace's.
+const indexIntendant = "spec.intendantRef.name"
+
+// indexSurveys registers indexIntendant on the manager's cache.
+func indexSurveys(ctx context.Context, mgr ctrl.Manager) error {
+	return mgr.GetFieldIndexer().IndexField(ctx, &v1alpha1.TakeCareSurvey{}, indexIntendant, intendantOf)
+}
+
+// intendantOf is a survey's value in indexIntendant.
+func intendantOf(o client.Object) []string {
+	s, ok := o.(*v1alpha1.TakeCareSurvey)
+	if !ok {
+		return nil
+	}
+	return []string{s.Spec.IntendantRef.Name}
+}
+
+// surveysOf lists the Intendant's surveys: through indexIntendant on the
+// cache when indexed, else every survey of the namespace (the API server
+// knows no such index), filtered.
+func surveysOf(ctx context.Context, c client.Reader, in *v1alpha1.TakeCareIntendant, indexed bool) ([]v1alpha1.TakeCareSurvey, error) {
+	var list v1alpha1.TakeCareSurveyList
+	opts := []client.ListOption{client.InNamespace(in.Namespace)}
+	if indexed {
+		opts = append(opts, client.MatchingFields{indexIntendant: in.Name})
+	}
+	if err := c.List(ctx, &list, opts...); err != nil {
+		return nil, fmt.Errorf("list surveys: %w", err)
+	}
+	return slices.DeleteFunc(list.Items, func(s v1alpha1.TakeCareSurvey) bool { return s.Spec.IntendantRef.Name != in.Name }), nil
+}
+
 // surveys returns the newest survey the operator created for the
 // Intendant (one that recorded its registrations), in flight or ended: the
 // one status.lastSurvey names, else the latest created (creation times
 // have a one-second grain); and
 // whether any survey of it, one made by hand included, is Queued or
 // Running: one survey at a time.
-func (r *Reconciler) surveys(ctx context.Context, in *v1alpha1.TakeCareIntendant, c client.Reader) (*v1alpha1.TakeCareSurvey, bool, error) {
-	var list v1alpha1.TakeCareSurveyList
-	if err := c.List(ctx, &list, client.InNamespace(in.Namespace)); err != nil {
-		return nil, false, fmt.Errorf("list surveys: %w", err)
+func (r *Reconciler) surveys(ctx context.Context, in *v1alpha1.TakeCareIntendant, c client.Reader, indexed bool) (*v1alpha1.TakeCareSurvey, bool, error) {
+	list, err := surveysOf(ctx, c, in, indexed)
+	if err != nil {
+		return nil, false, err
 	}
 	var newest *v1alpha1.TakeCareSurvey
 	busy := false
-	for i, s := range list.Items {
-		if s.Spec.IntendantRef.Name != in.Name {
-			continue
-		}
+	for i, s := range list {
 		switch s.Status.Phase {
 		case "", v1alpha1.RunQueued, v1alpha1.RunRunning:
 			busy = true
 		}
 		if s.Spec.Registrations != "" && (newest == nil || newest.Name != in.Status.LastSurvey &&
 			(s.Name == in.Status.LastSurvey || newest.CreationTimestamp.Before(&s.CreationTimestamp))) {
-			newest = &list.Items[i]
+			newest = &list[i]
 		}
 	}
 	return newest, busy, nil

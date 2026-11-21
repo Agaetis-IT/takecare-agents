@@ -287,8 +287,13 @@ spec:
                           - Connector
                           type: string
                         name:
+                          maxLength: 253
                           type: string
                         namespace:
+                          description: |-
+                            The namespace, prefixed by its cluster's name and a slash for a
+                            workload cluster: a cluster name (63), a slash, a namespace (63).
+                          maxLength: 127
                           type: string
                         tools:
                           description: |-

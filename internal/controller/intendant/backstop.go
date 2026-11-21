@@ -70,7 +70,8 @@ func (q *SurveyQueuer) backstop(ctx context.Context, s *v1alpha1.TakeCareSurvey)
 	if err != nil || !ended {
 		return ctrl.Result{}, err
 	}
-	// Only the writer whose patch ended the survey says it.
+	// Only the writer whose patch ended the survey says it, and counts it.
+	q.Metrics.End(resultAbandoned)
 	if q.Recorder != nil {
 		q.Recorder.Eventf(s, nil, corev1.EventTypeWarning, v1alpha1.ReasonAbandoned, "Run", "%s", reason)
 	}

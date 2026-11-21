@@ -178,12 +178,12 @@ func rulesRouteState(statusOK bool, statusProblem string, last canaryRecord) rul
 
 // rulesRouteOf reads the state's two inputs: the gateway's status of the
 // rule, and the last completed survey of the Intendant.
-func rulesRouteOf(ctx context.Context, c client.Reader, in *v1alpha1.TakeCareIntendant, connector string) (rulesRoute, error) {
+func rulesRouteOf(ctx context.Context, c client.Reader, in *v1alpha1.TakeCareIntendant, connector string, indexed bool) (rulesRoute, error) {
 	ok, problem, err := callRuleEnforced(ctx, c, roleOf(in), connector)
 	if err != nil {
 		return rulesRoute{}, err
 	}
-	last, err := lastCanary(ctx, c, in, connector)
+	last, err := lastCanary(ctx, c, in, connector, indexed)
 	if err != nil {
 		return rulesRoute{}, err
 	}
@@ -199,16 +199,16 @@ func rulesRouteOf(ctx context.Context, c client.Reader, in *v1alpha1.TakeCareInt
 // completed counts (its completedAt, which the runner writes; surveys of
 // one Intendant run one at a time). Surveys completed in the same second
 // all count: a problem in any of them wins, then a proof.
-func lastCanary(ctx context.Context, c client.Reader, in *v1alpha1.TakeCareIntendant, connector string) (canaryRecord, error) {
-	var list v1alpha1.TakeCareSurveyList
-	if err := c.List(ctx, &list, client.InNamespace(in.Namespace)); err != nil {
-		return canaryRecord{}, fmt.Errorf("list surveys: %w", err)
+func lastCanary(ctx context.Context, c client.Reader, in *v1alpha1.TakeCareIntendant, connector string, indexed bool) (canaryRecord, error) {
+	list, err := surveysOf(ctx, c, in, indexed)
+	if err != nil {
+		return canaryRecord{}, err
 	}
 	var latest *metav1.Time
-	done := make([]*v1alpha1.TakeCareSurvey, 0, len(list.Items))
-	for i := range list.Items {
-		s := &list.Items[i]
-		if s.Spec.IntendantRef.Name != in.Name || s.Status.Phase != v1alpha1.RunCompleted || s.Status.CompletedAt == nil {
+	done := make([]*v1alpha1.TakeCareSurvey, 0, len(list))
+	for i := range list {
+		s := &list[i]
+		if s.Status.Phase != v1alpha1.RunCompleted || s.Status.CompletedAt == nil {
 			continue
 		}
 		done = append(done, s)

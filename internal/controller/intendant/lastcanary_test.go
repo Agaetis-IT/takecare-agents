@@ -75,13 +75,18 @@ func TestRulesRouteState(t *testing.T) {
 			for _, s := range tc.surveys {
 				objs = append(objs, s)
 			}
-			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).WithStatusSubresource(&v1alpha1.TakeCareSurvey{}).Build()
-			last, err := lastCanary(t.Context(), c, &v1alpha1.TakeCareIntendant{Name: "i", Namespace: ns}, connMetrics)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got := rulesRouteState(tc.statusOK, statusProblem, last); got != tc.want {
-				t.Errorf("rulesRouteState = %+v, want %+v", got, tc.want)
+			// The reconcile reads through the cache's index, the runner
+			// lists the namespace live: both give the same record.
+			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).WithStatusSubresource(&v1alpha1.TakeCareSurvey{}).
+				WithIndex(&v1alpha1.TakeCareSurvey{}, indexIntendant, intendantOf).Build()
+			for _, indexed := range []bool{true, false} {
+				last, err := lastCanary(t.Context(), c, &v1alpha1.TakeCareIntendant{Name: "i", Namespace: ns}, connMetrics, indexed)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := rulesRouteState(tc.statusOK, statusProblem, last); got != tc.want {
+					t.Errorf("indexed %v: rulesRouteState = %+v, want %+v", indexed, got, tc.want)
+				}
 			}
 		})
 	}

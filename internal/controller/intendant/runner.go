@@ -102,6 +102,8 @@ type SurveyQueuer struct {
 	// Runs says which surveys the runner holds; nil: every survey is
 	// unheld; main always sets it.
 	Runs Holder
+	// Metrics counts the surveys the backstop ends; nil counts nothing.
+	Metrics *SurveyMetrics
 	// PassTimeout and ScrapeWait are the runner's; Grace is what the
 	// backstop adds (defaultGrace when zero).
 	PassTimeout time.Duration
@@ -485,15 +487,19 @@ func (w *Runner) adopt(ctx context.Context, s *v1alpha1.TakeCareSurvey, owner ty
 	}
 	if reason != "" {
 		done := metav1.NewTime(w.now())
-		if _, err := w.patch(ctx, s, func(st *v1alpha1.TakeCareSurveyStatus) bool {
+		ended, err := w.patch(ctx, s, func(st *v1alpha1.TakeCareSurveyStatus) bool {
 			if st.Phase != v1alpha1.RunQueued {
 				return false
 			}
 			st.Phase, st.Reason, st.CompletedAt = v1alpha1.RunFailed, reason[:min(len(reason), maxReason)], &done
 			return true
-		}); err != nil {
+		})
+		if err != nil {
 			logger.Error(err, "fail the survey")
 			return adoptRetry
+		}
+		if ended {
+			w.Metrics.End(resultFailed)
 		}
 		return adoptFailed
 	}
@@ -592,7 +598,7 @@ func (w *Runner) run(ctx context.Context, s *v1alpha1.TakeCareSurvey) {
 		span.SetAttributes(attribute.Int(semconv.SurveyProposals, len(res.Proposals)))
 		w.Metrics.Record(s.Spec.IntendantRef.Name, res)
 	}
-	recorded, err := w.patch(ctx, s, recordOutcome(out, done, traceID))
+	recorded, err := w.end(ctx, s, out, done, traceID)
 	if err != nil || !recorded {
 		if err != nil {
 			logger.Error(err, "record the survey's outcome")
@@ -602,6 +608,22 @@ func (w *Runner) run(ctx context.Context, s *v1alpha1.TakeCareSurvey) {
 	if out.Phase == v1alpha1.RunCompleted {
 		w.startPublish(ctx, client.ObjectKeyFromObject(s))
 	}
+}
+
+// end records a Running survey's outcome, and counts the survey when this
+// write is the one that ended it (an end written meanwhile stands, and was
+// counted by its own writer).
+func (w *Runner) end(ctx context.Context, s *v1alpha1.TakeCareSurvey, out v1alpha1.TakeCareSurveyStatus, done metav1.Time, traceID string) (bool, error) {
+	recorded, err := w.patch(ctx, s, recordOutcome(out, done, traceID))
+	if err != nil || !recorded {
+		return recorded, err
+	}
+	result := resultFailed
+	if out.Phase == v1alpha1.RunCompleted {
+		result = resultCompleted
+	}
+	w.Metrics.End(result)
+	return true, nil
 }
 
 // survey reads the Map and the ground through the Intendant's routes.
@@ -660,7 +682,7 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 		case !ok:
 			blocked = m.name
 		default:
-			last, err := lastCanary(ctx, w.Reader, &in, m.name)
+			last, err := lastCanary(ctx, w.Reader, &in, m.name, false)
 			if err != nil {
 				return out, none, fail(failImport, err)
 			}

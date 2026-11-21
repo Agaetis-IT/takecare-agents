@@ -161,7 +161,7 @@ func (r *Reconciler) connectors(ctx context.Context, in *v1alpha1.TakeCareIntend
 		// and from a survey whose canary was not refused until one whose
 		// canary is. The rule stays on the route either way, so the canary
 		// can prove it again.
-		state, err := rulesRouteOf(ctx, r.Client, in, name)
+		state, err := rulesRouteOf(ctx, r.Client, in, name, true)
 		if err != nil {
 			return b, err
 		}

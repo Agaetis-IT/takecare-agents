@@ -357,7 +357,7 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	// The queuer ends a Running survey the runner does not hold at its
 	// bound (spec 10 §5), with the runner's timeouts.
 	if err := (&intendant.SurveyQueuer{Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: surveys,
-		Recorder: mgr.GetEventRecorder("takecare-operator"), Runs: surveyRunner,
+		Recorder: mgr.GetEventRecorder("takecare-operator"), Runs: surveyRunner, Metrics: surveyMetrics,
 		PassTimeout: surveyRunner.PassTimeout, ScrapeWait: surveyRunner.ScrapeWait}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up the survey queue: %w", err)
 	}

@@ -153,22 +153,39 @@ func (r *Reconciler) holdAgent(ctx context.Context, in *v1alpha1.TakeCareIntenda
 }
 
 // runningUntil returns the Intendant's Running survey and its deadline:
-// its start plus the pass timeout.
+// its start plus the pass timeout. It reads the cache through the index;
+// when the cache shows none Running, it reads status.lastSurvey live, the
+// survey a previous reconcile created, which the runner may have started
+// since the cache last heard of it: the hold must not miss it (N2).
 func (r *Reconciler) runningUntil(ctx context.Context, in *v1alpha1.TakeCareIntendant) (string, time.Time, error) {
-	var list v1alpha1.TakeCareSurveyList
-	if err := r.reader().List(ctx, &list, client.InNamespace(in.Namespace)); err != nil {
-		return "", time.Time{}, fmt.Errorf("list surveys: %w", err)
+	list, err := surveysOf(ctx, r.Client, in, true)
+	if err != nil {
+		return "", time.Time{}, err
 	}
-	for _, s := range list.Items {
-		if s.Spec.IntendantRef.Name != in.Name || s.Status.Phase != v1alpha1.RunRunning {
-			continue
+	for _, s := range list {
+		if s.Status.Phase == v1alpha1.RunRunning {
+			// One survey runs at a time (spec 10 §4).
+			return s.Name, r.until(&s), nil
 		}
-		start := s.CreationTimestamp.Time
-		if s.Status.StartedAt != nil {
-			start = s.Status.StartedAt.Time
-		}
-		// One survey runs at a time (spec 10 §4).
-		return s.Name, start.Add(r.passTimeout()), nil
 	}
-	return "", time.Time{}, nil
+	if in.Status.LastSurvey == "" {
+		return "", time.Time{}, nil
+	}
+	var s v1alpha1.TakeCareSurvey
+	if err := r.reader().Get(ctx, client.ObjectKey{Namespace: in.Namespace, Name: in.Status.LastSurvey}, &s); err != nil {
+		return "", time.Time{}, client.IgnoreNotFound(err)
+	}
+	if s.Status.Phase != v1alpha1.RunRunning {
+		return "", time.Time{}, nil
+	}
+	return s.Name, r.until(&s), nil
+}
+
+// until is a Running survey's deadline: its start plus the pass timeout.
+func (r *Reconciler) until(s *v1alpha1.TakeCareSurvey) time.Time {
+	start := s.CreationTimestamp.Time
+	if s.Status.StartedAt != nil {
+		start = s.Status.StartedAt.Time
+	}
+	return start.Add(r.passTimeout())
 }

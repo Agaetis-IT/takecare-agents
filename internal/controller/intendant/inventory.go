@@ -17,6 +17,13 @@ import (
 // maxInventoryItems bounds status.inventory.items; the counts count all.
 const maxInventoryItems = 100
 
+// maxItemNamespace and maxItemName are status.inventory.items' bounds in
+// the API: a cluster name, a slash and a namespace; an object name.
+const (
+	maxItemNamespace = 127
+	maxItemName      = 253
+)
+
 // ownItems are the operator's own objects in circulation (spec 10 §8),
 // from its cache: the kagent Agents of the engine namespace, with the
 // tools they are given, and the TakeCareConnectors of the Intendant's
@@ -78,7 +85,10 @@ func inventory(items []discovery.Item) *v1alpha1.Inventory {
 			inv.MCPServers++
 			inv.Tools += it.Tools
 		}
-		if len(inv.Items) < maxInventoryItems {
+		// A name past the API's bounds is not a Kubernetes name: a
+		// listing parsed from a tool's text may hold one. It is counted,
+		// never written, so the status update cannot be refused for it.
+		if len(inv.Items) < maxInventoryItems && len(it.Namespace) <= maxItemNamespace && len(it.Name) <= maxItemName {
 			inv.Items = append(inv.Items, v1alpha1.InventoryItem{Kind: it.Kind, Namespace: it.Namespace, Name: it.Name, Tools: it.Tools})
 		}
 	}

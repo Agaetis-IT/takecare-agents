@@ -72,20 +72,25 @@ spec:
                     description: The kubernetes connectors the import reads the ground
                       through.
                     items:
+                      maxLength: 253
                       type: string
+                    maxItems: 16
                     type: array
                     x-kubernetes-list-type: set
                   knowledge:
                     description: The knowledge connectors whose records become runbook
                       entries.
                     items:
+                      maxLength: 253
                       type: string
+                    maxItems: 16
                     type: array
                     x-kubernetes-list-type: set
                   map:
                     description: The Map connector (type map, spec 08) the survey
                       is made against.
                     items:
+                      maxLength: 253
                       type: string
                     type: array
                     x-kubernetes-list-type: set
@@ -94,6 +99,7 @@ spec:
                       The metrics connector whose rules tool lists the alerting rules
                       Prometheus has loaded (spec 10 §4).
                     items:
+                      maxLength: 253
                       type: string
                     maxItems: 1
                     type: array
@@ -101,6 +107,7 @@ spec:
                   report:
                     description: 'The report connector: where the operator publishes
                       the digest.'
+                    maxLength: 253
                     type: string
                 type: object
                 x-kubernetes-validations:
@@ -172,6 +179,9 @@ spec:
                 maxLength: 100
                 minLength: 1
                 type: string
+                x-kubernetes-validations:
+                - message: 'the schedule is in UTC: TZ= and CRON_TZ= are refused'
+                  rule: '!self.contains(''TZ='')'
               scope:
                 description: |-
                   What the role works on: namespaces, Map entries, or both. Each kind
@@ -319,16 +329,20 @@ spec:
                   connector:
                     description: The report connector and the destination it was posted
                       to.
+                    maxLength: 253
                     type: string
                   destination:
+                    maxLength: 256
                     type: string
                   fingerprint:
                     description: |-
                       A hash of the survey's proposal ids and their total: nothing of an
                       entry.
+                    maxLength: 128
                     type: string
                   survey:
                     description: The survey whose digest was posted.
+                    maxLength: 253
                     type: string
                 required:
                 - connector
@@ -396,6 +410,11 @@ spec:
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: 'an Intendant''s name is at most 44 characters: its engine agent
+            takecare-intendant-<name> is a Kubernetes service name (63)'
+          optionalOldSelf: true
+          rule: oldSelf.hasValue() || size(self.metadata.name) <= 44
     served: true
     storage: true
     subresources:
