@@ -24,6 +24,8 @@ import (
 var (
 	agentGVK       = schema.GroupVersionKind{Group: "kagent.dev", Version: "v1alpha2", Kind: "Agent"}
 	modelConfigGVK = agentGVK.GroupVersion().WithKind("ModelConfig")
+	// remoteMCPServerGVK is an engine kind the registrations read.
+	remoteMCPServerGVK = agentGVK.GroupVersion().WithKind("RemoteMCPServer")
 )
 
 const (
