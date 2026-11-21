@@ -19,6 +19,7 @@ import (
 
 // ADR 0014 §1-2, spec 02 AC 6: readiness by coverage of the scope.
 func TestCoverage(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.platform(t)
 	cluster := []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}
@@ -122,6 +123,7 @@ func (f *fixture) remoteCluster(t *testing.T, name string, namespaces ...v1alpha
 // Doc reads; a named cluster's blind spot is keyed environment/<cluster>.<ns>
 // and the instructions name cluster/namespace.
 func TestCoverageOnNamedClusters(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.platform(t)
 	f.connector(t, "report", []v1alpha1.ConnectorType{v1alpha1.ConnectorReport}, nil, true)
@@ -159,6 +161,7 @@ const billingAPI = "service/billing-api"
 // the Doc's connector of that cluster reads its namespace; otherwise the
 // pair's own reason.
 func TestEntitiesOnNamedClusters(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.maps.url.Store(startMap(t, map[string]string{
 		"environment/east":     "provenance: declared\nstatus: validated\n",

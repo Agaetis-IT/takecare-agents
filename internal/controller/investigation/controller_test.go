@@ -106,6 +106,7 @@ func create(t *testing.T, c client.Client, name string) {
 // fit is Dropped with a reason; a new leader rebuilds the queue from the
 // Queued records.
 func TestAdmission(t *testing.T) {
+	t.Parallel()
 	restCfg := testenv.Start(t)
 	scheme := runtime.NewScheme()
 	for _, add := range []func(*runtime.Scheme) error{clientgoscheme.AddToScheme, v1alpha1.AddToScheme} {

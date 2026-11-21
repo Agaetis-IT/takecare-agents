@@ -56,6 +56,7 @@ func tlsTo(bundle ...any) map[string]any {
 // headers from their Secrets, by reference, and speaks TLS to an https
 // URL, trusting the chart's CA bundle when one is set (spec 05).
 func TestURLBackendCarriesReferences(t *testing.T) {
+	t.Parallel()
 	srv := mcptest.Start(t, mcptest.ToolSpec{Name: toolSearch, ReadOnly: true})
 	headers := []v1alpha1.HeaderFrom{
 		{Name: headerAuth, SecretKeyRef: v1alpha1.SecretKeyRef{Name: urlToken, Key: tokenKey}},
@@ -114,6 +115,7 @@ func TestURLBackendCarriesReferences(t *testing.T) {
 // and a connector stored before them gets no backend rather than part of
 // its credentials.
 func TestHeadersFromLimits(t *testing.T) {
+	t.Parallel()
 	nine := make([]v1alpha1.HeaderFrom, 9)
 	for i := range nine {
 		nine[i] = v1alpha1.HeaderFrom{Name: "X-H" + string(rune('a'+i)), SecretKeyRef: v1alpha1.SecretKeyRef{Name: urlToken, Key: "k"}}

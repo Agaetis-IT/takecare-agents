@@ -15,6 +15,7 @@ import (
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/mcp/mcptest"
+	"github.com/agaetis-it/takecare-agents/internal/testenv"
 )
 
 // TestCustomerToolsAreActUntilListed: a customer's server by url claims a
@@ -22,6 +23,7 @@ import (
 // spec.tools lists it as read (spec 05). An operator upgraded from the
 // annotation rule says the change once.
 func TestCustomerToolsAreActUntilListed(t *testing.T) {
+	t.Parallel()
 	const tool = "lookup"
 	h := start(t, mcptest.Start(t, mcptest.ToolSpec{Name: tool, ReadOnly: true}))
 	h.connector("customer", v1alpha1.TakeCareConnectorSpec{
@@ -39,9 +41,10 @@ func TestCustomerToolsAreActUntilListed(t *testing.T) {
 	h.eventually("the claimed read tool is act, untrusted", toolIs(v1alpha1.ToolAct, v1alpha1.ToolSourceUntrusted))
 
 	// The status an operator under the annotation rule left: read.
-	c := h.get("customer")
-	c.Status.Tools = []v1alpha1.ToolStatus{{Name: tool, Class: v1alpha1.ToolRead, Source: v1alpha1.ToolSourceAnnotation}}
-	h.must(h.c.Status().Update(h.ctx, c))
+	// The controller writes the status too: retry on a conflict.
+	h.must(testenv.UpdateStatus(h.ctx, h.c, h.get("customer"), func(c *v1alpha1.TakeCareConnector) {
+		c.Status.Tools = []v1alpha1.ToolStatus{{Name: tool, Class: v1alpha1.ToolRead, Source: v1alpha1.ToolSourceAnnotation}}
+	}))
 	for _, n := range []string{"1", "2"} {
 		h.must(h.c.Patch(h.ctx, h.get("customer"), client.RawPatch(types.MergePatchType, []byte(`{"metadata":{"annotations":{"takecare.agaetis.fr/discover":"`+n+`"}}}`))))
 		h.eventually("rediscovered after the upgrade", toolIs(v1alpha1.ToolAct, v1alpha1.ToolSourceUntrusted))
@@ -66,9 +69,9 @@ func TestCustomerToolsAreActUntilListed(t *testing.T) {
 	})
 
 	// Listed as read: the override, recorded and warned as any relaxing.
-	c = h.get("customer")
-	c.Spec.Tools = []v1alpha1.ToolOverride{{Name: tool, Class: v1alpha1.ToolRead}}
-	h.must(h.c.Update(h.ctx, c))
+	h.must(testenv.Update(h.ctx, h.c, h.get("customer"), func(c *v1alpha1.TakeCareConnector) {
+		c.Spec.Tools = []v1alpha1.ToolOverride{{Name: tool, Class: v1alpha1.ToolRead}}
+	}))
 	h.eventually("the listed tool is read, by override", toolIs(v1alpha1.ToolRead, v1alpha1.ToolSourceOverride))
 	if o := h.get("customer").Status.Overrides; len(o) != 1 || o[0] != (v1alpha1.ToolClassChange{Name: tool, From: v1alpha1.ToolAct, To: v1alpha1.ToolRead}) {
 		t.Errorf("status.overrides = %+v", o)

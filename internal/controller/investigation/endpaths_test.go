@@ -22,6 +22,7 @@ import (
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/runs"
+	"github.com/agaetis-it/takecare-agents/internal/testenv"
 )
 
 // Every end of a run says its usage, measured or not (spec 02 §5): a
@@ -46,6 +47,7 @@ func (f *workerFixture) waitUsageUnknown(t *testing.T, name, why string) {
 // A start that fails ends the record Failed, and says the usage unknown:
 // before, the record ended without the condition, forever.
 func TestStartFailedSaysUsageUnknown(t *testing.T) {
+	t.Parallel()
 	f := startWorker(t, nil)
 	f.engine.startErr = errors.New("connection refused")
 	f.doc(t, true, nil)
@@ -60,6 +62,7 @@ func TestStartFailedSaysUsageUnknown(t *testing.T) {
 
 // A record whose Doc is gone ends Failed, its usage said unknown.
 func TestDocMissingSaysUsageUnknown(t *testing.T) {
+	t.Parallel()
 	f := startWorker(t, nil)
 	f.start()
 	f.investigationOf(t, "gone", "gone-run", nil)
@@ -74,6 +77,7 @@ func TestDocMissingSaysUsageUnknown(t *testing.T) {
 // previous one stopped during the scrape wait): it says the usage unknown,
 // and leaves a record that has one as it is.
 func TestResumeSaysUsageUnknownOfAnUnaccountedEnd(t *testing.T) {
+	t.Parallel()
 	f := startWorker(t, nil)
 	f.doc(t, true, nil)
 	done := metav1.Now()
@@ -102,6 +106,7 @@ func TestResumeSaysUsageUnknownOfAnUnaccountedEnd(t *testing.T) {
 // fails) left the record Running forever: the reconciler now ends it past
 // its bound, once the worker no longer holds it.
 func TestAnUnrecordedEndIsEndedByTheBackstop(t *testing.T) {
+	t.Parallel()
 	f := startWorker(t, map[string][]poll{task1: {completed}})
 	f.grace = 200 * time.Millisecond
 	f.wrap = func(c client.Client) client.Client { return failCompleted{c} }
@@ -250,6 +255,7 @@ func TestAQueuedRecordOutOfTheQueueIsPutBack(t *testing.T) {
 // A Queued record says why it waits, in its Doc's own words, and the reason
 // clears when it runs.
 func TestAQueuedRecordSaysWhyItWaits(t *testing.T) {
+	t.Parallel()
 	script := make([]poll, 200, 201) // task-1 answers after 200 polls of 5 ms
 	f := startWorker(t, map[string][]poll{task1: append(script, completed)})
 	f.doc(t, false, nil)
@@ -257,13 +263,11 @@ func TestAQueuedRecordSaysWhyItWaits(t *testing.T) {
 	f.investigation(t, "doc-waits", nil)
 	f.waitReason(t, "doc-waits", "DocNotRunnable: the Doc doc is not Ready (Test)")
 
-	var d v1alpha1.TakeCareDoc
-	if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: docName}, &d); err != nil {
-		t.Fatal(err)
-	}
-	meta.SetStatusCondition(&d.Status.Conditions, metav1.Condition{Type: v1alpha1.ConditionReady, Status: metav1.ConditionTrue, Reason: testReason})
-	meta.SetStatusCondition(&d.Status.Conditions, metav1.Condition{Type: v1alpha1.ConditionEngineReady, Status: metav1.ConditionFalse, Reason: "A2AUnreachable", Message: "the agent card does not answer"})
-	if err := f.c.Status().Update(context.Background(), &d); err != nil {
+	// The worker patches the Doc's status too (worker.go, lastInvestigation).
+	if err := testenv.UpdateStatus(context.Background(), f.c, &v1alpha1.TakeCareDoc{Namespace: ns, Name: docName}, func(d *v1alpha1.TakeCareDoc) {
+		meta.SetStatusCondition(&d.Status.Conditions, metav1.Condition{Type: v1alpha1.ConditionReady, Status: metav1.ConditionTrue, Reason: testReason})
+		meta.SetStatusCondition(&d.Status.Conditions, metav1.Condition{Type: v1alpha1.ConditionEngineReady, Status: metav1.ConditionFalse, Reason: "A2AUnreachable", Message: "the agent card does not answer"})
+	}); err != nil {
 		t.Fatal(err)
 	}
 	f.waitReason(t, "doc-waits", "DocNotRunnable: the Doc doc's agent does not answer (EngineReady A2AUnreachable: the agent card does not answer)")

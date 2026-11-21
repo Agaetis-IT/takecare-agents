@@ -56,6 +56,8 @@ type harness struct {
 	cancel context.CancelFunc
 	// promMode drives the fake Prometheus of the probe.
 	promMode *atomic.Value
+	// promURL is the fake Prometheus of this harness.
+	promURL string
 }
 
 func start(t *testing.T) *harness {
@@ -96,7 +98,6 @@ func start(t *testing.T) *harness {
 	if err := r.SetupWithManager(mgr); err != nil {
 		t.Fatal(err)
 	}
-	promURL = prom.URL
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		if err := mgr.Start(ctx); err != nil {
@@ -108,7 +109,7 @@ func start(t *testing.T) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &harness{t: t, c: c, ctx: ctx, cancel: cancel, promMode: promMode}
+	h := &harness{t: t, c: c, ctx: ctx, cancel: cancel, promMode: promMode, promURL: prom.URL}
 	for _, ns := range []string{operatorNS, engineNS} {
 		h.must(c.Create(ctx, &corev1.Namespace{Name: ns}))
 	}
@@ -210,16 +211,18 @@ func (h *harness) accept(gvk schema.GroupVersionKind, ns, name string, parents b
 		return h.c.Get(h.ctx, client.ObjectKey{Namespace: ns, Name: name}, obj) == nil
 	})
 	conds := []any{trueCondition(condAccepted), trueCondition("ResolvedRefs")}
-	if parents {
-		obj.Object["status"] = map[string]any{"parents": []any{map[string]any{
-			"controllerName": "agentgateway.dev/agentgateway",
-			"parentRef":      map[string]any{"name": gatewayNm},
-			keyConds:         conds,
-		}}}
-	} else {
+	// The controller applies the object too: retry on a conflict.
+	h.must(testenv.UpdateStatus(h.ctx, h.c, obj, func(obj *unstructured.Unstructured) {
+		if parents {
+			obj.Object["status"] = map[string]any{"parents": []any{map[string]any{
+				"controllerName": "agentgateway.dev/agentgateway",
+				"parentRef":      map[string]any{"name": gatewayNm},
+				keyConds:         conds,
+			}}}
+			return
+		}
 		obj.Object["status"] = map[string]any{keyConds: conds[:1]}
-	}
-	h.must(h.c.Status().Update(h.ctx, obj))
+	}))
 }
 
 func (h *harness) eventually(what string, ok func() bool) {
@@ -259,15 +262,13 @@ const (
 	apiKeyField    = "apiKey"
 )
 
-// promURL is the fake Prometheus of the current harness.
-var promURL string
-
 var (
 	backendGVKTest = schema.GroupVersionKind{Group: "agentgateway.dev", Version: "v1alpha1", Kind: "AgentgatewayBackend"}
 	policyGVKTest  = schema.GroupVersionKind{Group: "agentgateway.dev", Version: "v1alpha1", Kind: "AgentgatewayPolicy"}
 )
 
 func TestPlatformBecomesReadyWithTwoModels(t *testing.T) {
+	t.Parallel()
 	h := start(t)
 	h.gateway()
 	h.secret(engineNS, DummyKeySecretName, DummyKeyField, "dummy")
@@ -348,10 +349,10 @@ func TestPlatformBecomesReadyWithTwoModels(t *testing.T) {
 	})
 
 	t.Run("removing the OTLP endpoint removes the tracing policy", func(t *testing.T) {
-		var p v1alpha1.TakeCarePlatform
-		h.must(h.c.Get(h.ctx, client.ObjectKey{Name: PlatformName}, &p))
-		p.Spec.Observability.OTLP = nil
-		h.must(h.c.Update(h.ctx, &p))
+		// The controller writes the status meanwhile: retry on a conflict.
+		h.must(testenv.Update(h.ctx, h.c, &v1alpha1.TakeCarePlatform{Name: PlatformName}, func(p *v1alpha1.TakeCarePlatform) {
+			p.Spec.Observability.OTLP = nil
+		}))
 		h.waitCondition(v1alpha1.ConditionObservability, metav1.ConditionTrue, ReasonTracingExportDisabled)
 		pol := &unstructured.Unstructured{}
 		pol.SetGroupVersionKind(policyGVKTest)
@@ -362,6 +363,7 @@ func TestPlatformBecomesReadyWithTwoModels(t *testing.T) {
 }
 
 func TestPlatformRefusesWhatItCannotDoSafely(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		mutate   func(*v1alpha1.TakeCarePlatform)
@@ -415,6 +417,7 @@ func TestPlatformRefusesWhatItCannotDoSafely(t *testing.T) {
 // routes, and the backend of a model no longer declared; a Doc's own
 // ModelConfig (no platform label) stays.
 func TestPlatformRetiresSharedModels(t *testing.T) {
+	t.Parallel()
 	h := start(t)
 	h.gateway()
 	h.secret(engineNS, DummyKeySecretName, DummyKeyField, "dummy")
@@ -461,6 +464,7 @@ func TestPlatformRetiresSharedModels(t *testing.T) {
 }
 
 func TestEngineDummySecretMissingIsNamed(t *testing.T) {
+	t.Parallel()
 	h := start(t)
 	h.gateway()
 	h.secret(operatorNS, providerSecret, apiKeyField, "k")
@@ -538,6 +542,7 @@ func (h *harness) waitGapDetail(gap string, ok func(string) bool) string {
 // stable gaps; fixing each one, in the cluster or in the spec, clears it
 // until the condition turns True; it never touches Ready.
 func TestProductionGaps(t *testing.T) {
+	t.Parallel()
 	h := start(t)
 	h.gateway()
 	h.secret(engineNS, DummyKeySecretName, DummyKeyField, "dummy")
@@ -552,7 +557,7 @@ func TestProductionGaps(t *testing.T) {
 			Gateway: v1alpha1.GatewaySpec{GatewayRef: &v1alpha1.ObjectRef{Name: gatewayNm, Namespace: operatorNS}},
 			Engine:  v1alpha1.EngineSpec{Namespace: engineNS},
 			Observability: v1alpha1.ObservabilitySpec{
-				Metrics:          &v1alpha1.MetricsSpec{PrometheusURL: promURL},
+				Metrics:          &v1alpha1.MetricsSpec{PrometheusURL: h.promURL},
 				CaptureContent:   true,
 				SamplingPerMille: &one,
 			},
@@ -590,11 +595,10 @@ func TestProductionGaps(t *testing.T) {
 		two := int32(2)
 		dep.Spec.Replicas = &two
 		h.must(h.c.Update(h.ctx, &dep))
-		var cur v1alpha1.TakeCarePlatform
-		h.must(h.c.Get(h.ctx, client.ObjectKey{Name: PlatformName}, &cur))
-		cur.Spec.Observability.CaptureContent = false
-		cur.Spec.Observability.OTLP = &v1alpha1.OTLPSpec{Endpoint: "http://otel-collector.takecare-system.svc:4317", Protocol: "grpc"}
-		h.must(h.c.Update(h.ctx, &cur))
+		h.must(testenv.Update(h.ctx, h.c, &v1alpha1.TakeCarePlatform{Name: PlatformName}, func(cur *v1alpha1.TakeCarePlatform) {
+			cur.Spec.Observability.CaptureContent = false
+			cur.Spec.Observability.OTLP = &v1alpha1.OTLPSpec{Endpoint: "http://otel-collector.takecare-system.svc:4317", Protocol: "grpc"}
+		}))
 		h.waitGaps()
 		_, cond := h.gaps()
 		if cond.Status != metav1.ConditionTrue || cond.Reason != ReasonNoGaps {
