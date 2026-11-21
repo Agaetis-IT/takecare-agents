@@ -16,11 +16,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/doc"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
+	"github.com/agaetis-it/takecare-agents/internal/testenv"
 	"github.com/agaetis-it/takecare-agents/internal/usage"
 )
 
@@ -132,6 +132,7 @@ func (f *workerFixture) waitPublished(t *testing.T, name string) *v1alpha1.TakeC
 // AC 3: the destination follows the level the record was created at;
 // Apprentice carries the banner and never reaches on-call.
 func TestPublishByLevel(t *testing.T) {
+	t.Parallel()
 	poster := &fakePoster{}
 	f, duration := publishing(t, &fakeUsage{}, poster, v1alpha1.ReportDestinations{Apprentice: "review", Practitioner: onCall})
 	f.start()
@@ -185,6 +186,7 @@ func TestPublishByLevel(t *testing.T) {
 // AC 3: at Apprentice without an Apprentice destination, status only;
 // nothing to on-call.
 func TestApprenticeWithoutDestinationIsStatusOnly(t *testing.T) {
+	t.Parallel()
 	poster := &fakePoster{}
 	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.ReportDestinations{Practitioner: onCall})
 	f.start()
@@ -199,6 +201,7 @@ func TestApprenticeWithoutDestinationIsStatusOnly(t *testing.T) {
 // by the next one; a record published, or kept in status only, is not
 // touched.
 func TestResumePublishes(t *testing.T) {
+	t.Parallel()
 	poster := &fakePoster{}
 	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.ReportDestinations{Practitioner: onCall})
 	done := metav1.Now()
@@ -233,6 +236,7 @@ func TestResumePublishes(t *testing.T) {
 // A publication that keeps failing is retried three times, then recorded
 // with its reason.
 func TestPublicationFailure(t *testing.T) {
+	t.Parallel()
 	poster := &fakePoster{fail: true}
 	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.ReportDestinations{Practitioner: onCall})
 	f.start()
@@ -249,6 +253,7 @@ func TestPublicationFailure(t *testing.T) {
 // Prometheus unreachable: no usage and no wait; the record and the message
 // say why, never a number.
 func TestUsageUnmeasured(t *testing.T) {
+	t.Parallel()
 	poster := &fakePoster{}
 	f, _ := publishing(t, &fakeUsage{err: errors.New("Prometheus at http://prometheus is unreachable")}, poster, v1alpha1.ReportDestinations{Practitioner: onCall})
 	f.start()
@@ -266,16 +271,14 @@ func TestUsageUnmeasured(t *testing.T) {
 // An alert folded into the record after its run started is named in the
 // publication; one the run's message carried is not.
 func TestPublicationNamesLaterAlerts(t *testing.T) {
+	t.Parallel()
 	poster := &fakePoster{}
 	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.ReportDestinations{Practitioner: onCall})
 	f.engine.beforeDone = func() {
-		var inv v1alpha1.TakeCareInvestigation
-		if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: "doc-grouped"}, &inv); err != nil {
-			t.Error(err)
-			return
-		}
-		inv.Status.Alerts = append(inv.Status.Alerts, v1alpha1.GroupedAlert{Name: "PodCrashLooping", Fingerprint: "later", FiredAt: metav1.Now()})
-		if err := f.c.Status().Update(context.Background(), &inv); err != nil {
+		// The worker writes the record's status while its run is in flight.
+		if err := testenv.UpdateStatus(context.Background(), f.c, &v1alpha1.TakeCareInvestigation{Namespace: ns, Name: "doc-grouped"}, func(inv *v1alpha1.TakeCareInvestigation) {
+			inv.Status.Alerts = append(inv.Status.Alerts, v1alpha1.GroupedAlert{Name: "PodCrashLooping", Fingerprint: "later", FiredAt: metav1.Now()})
+		}); err != nil {
 			t.Error(err)
 		}
 	}

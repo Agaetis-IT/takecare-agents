@@ -20,6 +20,7 @@ import (
 // The patch reconciles the Doc once, with the same rendered agent, and its
 // EngineReady never leaves True, so the next investigation is never held.
 func TestCooldownChangeKeepsTheAgent(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.platform(t)
 	f.connector(t, k8sConnector, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, read("pods_list", podsLog), true)

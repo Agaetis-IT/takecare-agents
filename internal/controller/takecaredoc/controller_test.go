@@ -330,6 +330,7 @@ func (f *fixture) events(t *testing.T, reason string) []string {
 // A content tool reaches the agent and the gateway only when the Doc lists
 // it (ADR 0014 §5); what is withheld or unknown is said once per generation.
 func TestContentTools(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.platform(t)
 	content := func(name string) v1alpha1.ToolStatus {
@@ -365,11 +366,7 @@ func TestContentTools(t *testing.T) {
 	}
 
 	// Unlisted, pods_log leaves the agent and the gateway alike.
-	d := f.getDoc(t, "doc")
-	d.Spec.ContentTools = nil
-	if err := f.c.Update(context.Background(), d); err != nil {
-		t.Fatal(err)
-	}
+	f.updateDoc(t, "doc", func(d *v1alpha1.TakeCareDoc) { d.Spec.ContentTools = nil })
 	eventually(t, "pods_log is withheld everywhere", func() (bool, string) {
 		got := strings.Join(f.agentTools(t)[agent+"-kubernetes"], ",") + " " + f.policy(t)
 		return got == `pods_list mcp.tool.name in ["pods_list"]`, got
@@ -387,6 +384,7 @@ const executeQuery = "execute_query"
 // agent and the gateway, with a reason a person can act on, and returns
 // once spec.tools lists it as read.
 func TestCustomerToolLeavesAndReturns(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.platform(t)
 	f.connector(t, k8sConnector, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, read("pods_list"), true)
@@ -437,11 +435,13 @@ func (f *fixture) agentReady(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		obj.Object["status"] = map[string]any{"conditions": []any{
-			map[string]any{"type": "Accepted", "status": "True", "reason": "Accepted", "message": "", "lastTransitionTime": "2026-10-30T00:00:00Z"},
-			map[string]any{"type": "Ready", "status": "True", "reason": "Ready", "message": "", "lastTransitionTime": "2026-10-30T00:00:00Z"},
-		}}
-		if err := f.c.Status().Update(context.Background(), obj); err != nil {
+		// The controller applies these objects too: retry on a conflict.
+		if err := testenv.UpdateStatus(context.Background(), f.c, obj, func(obj *unstructured.Unstructured) {
+			obj.Object["status"] = map[string]any{"conditions": []any{
+				map[string]any{"type": "Accepted", "status": "True", "reason": "Accepted", "message": "", "lastTransitionTime": "2026-10-30T00:00:00Z"},
+				map[string]any{"type": "Ready", "status": "True", "reason": "Ready", "message": "", "lastTransitionTime": "2026-10-30T00:00:00Z"},
+			}}
+		}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -451,6 +451,7 @@ func (f *fixture) agentReady(t *testing.T) {
 // with read tools only (AC 4), then Ready once its card answers through
 // the gateway.
 func TestRendering(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.platform(t)
 	k8sTools := append(read("pods_list", podsLog), v1alpha1.ToolStatus{Name: "resources_delete", Class: v1alpha1.ToolAct, Source: "annotation"})
@@ -634,6 +635,7 @@ func mapKeys(m map[string][]string) []string {
 
 // AC 6 and 8, and a second Doc on the same namespace (ScopeOverlap).
 func TestConfigurationErrors(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.platform(t)
 	f.connector(t, k8sConnector, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, read("pods_list"), true)
@@ -642,17 +644,16 @@ func TestConfigurationErrors(t *testing.T) {
 
 	f.doc(t, "doc", func(d *v1alpha1.TakeCareDoc) { d.Spec.Connectors.Report = "" })
 	f.waitCondition(t, "doc", v1alpha1.ConditionConnectorsReady, metav1.ConditionFalse, ReasonConnectorMissing)
-	d := f.waitCondition(t, "doc", v1alpha1.ConditionReady, metav1.ConditionFalse, "")
+	f.waitCondition(t, "doc", v1alpha1.ConditionReady, metav1.ConditionFalse, "")
 	if _, err := f.get(agentGVK, engineNS, agent); err == nil {
 		t.Error("an agent is rendered for a Practitioner Doc without a report connector")
 	}
 
-	d.Spec.Connectors.Report = "report"
-	d.Spec.Level = v1alpha1.LevelExpert
-	if err := f.c.Update(context.Background(), d); err != nil {
-		t.Fatal(err)
-	}
-	d = f.waitCondition(t, "doc", v1alpha1.ConditionLevelSupported, metav1.ConditionFalse, ReasonNotImplemented)
+	f.updateDoc(t, "doc", func(d *v1alpha1.TakeCareDoc) {
+		d.Spec.Connectors.Report = "report"
+		d.Spec.Level = v1alpha1.LevelExpert
+	})
+	d := f.waitCondition(t, "doc", v1alpha1.ConditionLevelSupported, metav1.ConditionFalse, ReasonNotImplemented)
 	if d.Status.Level != v1alpha1.LevelPractitioner {
 		t.Errorf("Expert behaves as Practitioner, effective level %s", d.Status.Level)
 	}
@@ -675,6 +676,7 @@ func TestConfigurationErrors(t *testing.T) {
 // ADR 0015 §1, spec 08 §9 (1): the Map's read tools reach the agent at
 // every level, and the instructions name the Map.
 func TestMapIsGivenAtEveryLevel(t *testing.T) {
+	t.Parallel()
 	f := start(t)
 	f.platform(t)
 	f.connector(t, k8sConnector, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, read("pods_list"), true)

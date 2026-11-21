@@ -202,10 +202,12 @@ func (h *harness) acceptBackend(name string) {
 	h.eventually("backend "+name, func() bool {
 		return h.c.Get(h.ctx, client.ObjectKey{Namespace: operatorNS, Name: "mcp-" + name}, obj) == nil
 	})
-	obj.Object["status"] = map[string]any{"conditions": []any{map[string]any{
-		"type": "Accepted", "status": "True", "reason": "Accepted", "message": "ok", "lastTransitionTime": metav1.Now().UTC().Format(time.RFC3339),
-	}}}
-	h.must(h.c.Status().Update(h.ctx, obj))
+	// The controller applies the backend too: retry on a conflict.
+	h.must(testenv.UpdateStatus(h.ctx, h.c, obj, func(obj *unstructured.Unstructured) {
+		obj.Object["status"] = map[string]any{"conditions": []any{map[string]any{
+			"type": "Accepted", "status": "True", "reason": "Accepted", "message": "ok", "lastTransitionTime": metav1.Now().UTC().Format(time.RFC3339),
+		}}}
+	}))
 }
 
 func (h *harness) eventually(what string, ok func() bool) {
@@ -254,6 +256,7 @@ func clusterSpec(extra ...v1alpha1.ResourceRef) v1alpha1.TakeCareConnectorSpec {
 }
 
 func TestClusterConnectorBecomesReady(t *testing.T) {
+	t.Parallel()
 	srv := mcptest.Start(t,
 		mcptest.ToolSpec{Name: toolPodsList, ReadOnly: true},
 		mcptest.ToolSpec{Name: toolPodsLog, ReadOnly: false},
@@ -356,6 +359,7 @@ func TestClusterConnectorBecomesReady(t *testing.T) {
 }
 
 func TestDiscoveryCacheIsRefreshed(t *testing.T) {
+	t.Parallel()
 	srv := mcptest.Start(t, mcptest.ToolSpec{Name: mcp.ProbeTool, ReadOnly: true})
 	h := start(t, srv)
 	h.addon()
@@ -408,6 +412,7 @@ func TestDiscoveryCacheIsRefreshed(t *testing.T) {
 }
 
 func TestConnectorsThatCannotWork(t *testing.T) {
+	t.Parallel()
 	srv := mcptest.Start(t, mcptest.ToolSpec{Name: "search", ReadOnly: true})
 	h := start(t, srv)
 	t.Run("an add-on that is not deployed", func(t *testing.T) {
