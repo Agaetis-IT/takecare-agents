@@ -20,6 +20,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
@@ -37,6 +38,7 @@ const (
 type fixture struct {
 	t       *testing.T
 	c       client.Client
+	cfg     *rest.Config
 	srv     *httptest.Server
 	metrics *Metrics
 	now     time.Time
@@ -85,7 +87,7 @@ func start(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &fixture{t: t, c: c, metrics: metrics, now: time.Now()}
+	f := &fixture{t: t, c: c, cfg: cfg, metrics: metrics, now: time.Now()}
 	f.srv = httptest.NewServer(&Handler{Client: c, Namespace: ns, Metrics: metrics, Resolver: f, Now: func() time.Time { return f.now }})
 	t.Cleanup(f.srv.Close)
 	return f
@@ -443,5 +445,33 @@ func TestRoutingByScope(t *testing.T) {
 	}
 	if f.ignored(ReasonOutsideGround) != 1 || f.ignored(ReasonOutOfScope) != 1 {
 		t.Errorf("outside ground %v, out of scope %v", f.ignored(ReasonOutsideGround), f.ignored(ReasonOutOfScope))
+	}
+}
+
+// A Doc stored with a name past its bound before the API refused it can
+// never run: an alert in its scope creates no investigation that would
+// wait on it, and is counted as name_too_long.
+func TestDocNameTooLongTakesNoAlert(t *testing.T) {
+	f := start(t)
+	ctx := context.Background()
+	var d v1alpha1.TakeCareDoc
+	if err := f.c.Get(ctx, client.ObjectKey{Namespace: ns, Name: roleDoc}, &d); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.c.Delete(ctx, &d); err != nil {
+		t.Fatal(err)
+	}
+	long := &v1alpha1.TakeCareDoc{Name: strings.Repeat("l", v1alpha1.MaxDocName+1), Namespace: ns, Spec: d.Spec}
+	probe := long.DeepCopy()
+	probe.Name = strings.Repeat("p", v1alpha1.MaxDocName+1)
+	testenv.StoreUnvalidated(t, f.cfg, "takecaredocs.takecare.agaetis.fr",
+		func() error { return f.c.Create(ctx, long.DeepCopy()) },
+		func() error { return f.c.Create(ctx, probe.DeepCopy(), client.DryRunAll) })
+	f.post(token, alert("HighErrorRate", "5152535455565758", "p-1", time.Now().Add(-time.Minute).Truncate(time.Second), nil))
+	if n := len(f.investigations()); n != 0 {
+		t.Errorf("%d investigations created", n)
+	}
+	if got := f.ignored(ReasonNameTooLong); got != 1 {
+		t.Errorf("name_too_long %v, want 1", got)
 	}
 }

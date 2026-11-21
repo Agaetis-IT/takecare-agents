@@ -80,6 +80,12 @@ func (u *fakeUsage) Snapshot(context.Context) (usage.Counters, error) {
 // connector at the given level's destinations.
 func publishing(t *testing.T, source *fakeUsage, poster *fakePoster, report v1alpha1.ReportDestinations) (*workerFixture, *prometheus.HistogramVec) {
 	t.Helper()
+	return publishingThrough(t, reportConn, source, poster, report)
+}
+
+// publishingThrough is publishing through a report connector of that name.
+func publishingThrough(t *testing.T, conn string, source *fakeUsage, poster *fakePoster, report v1alpha1.ReportDestinations) (*workerFixture, *prometheus.HistogramVec) {
+	t.Helper()
 	f := startWorker(t, map[string][]poll{task1: {completed}, task2: {completed}, task3: {completed}})
 	duration, err := NewDurationMetric(prometheus.NewRegistry())
 	if err != nil {
@@ -89,7 +95,7 @@ func publishing(t *testing.T, source *fakeUsage, poster *fakePoster, report v1al
 		Usage:      func(*v1alpha1.TakeCarePlatform) usage.Source { return source },
 		ScrapeWait: 10 * time.Millisecond, Poster: poster, Backoff: time.Millisecond, Duration: duration,
 	}
-	c := &v1alpha1.TakeCareConnector{Name: reportConn, Namespace: ns}
+	c := &v1alpha1.TakeCareConnector{Name: conn, Namespace: ns}
 	c.Spec.Types = []v1alpha1.ConnectorType{v1alpha1.ConnectorReport}
 	c.Spec.MCP.URL = reportURL
 	c.Spec.Report = &v1alpha1.ReportSpec{Adapter: "log", Destinations: []v1alpha1.Destination{{Name: onCall, Target: "#on-call"}, {Name: "review", Target: "#review"}}}
@@ -97,7 +103,7 @@ func publishing(t *testing.T, source *fakeUsage, poster *fakePoster, report v1al
 		t.Fatal(err)
 	}
 	f.doc(t, true, func(d *v1alpha1.TakeCareDoc) {
-		d.Spec.Connectors.Report = reportConn
+		d.Spec.Connectors.Report = conn
 		d.Spec.Report = report
 	})
 	return f, duration
@@ -127,6 +133,19 @@ func (f *workerFixture) waitPublished(t *testing.T, name string) *v1alpha1.TakeC
 	}
 	t.Fatalf("%s was never published", name)
 	return nil
+}
+
+// A report-only connector keeps names past 63 characters (it has no
+// gateway backend, so the API's bound does not apply to it), and posts.
+func TestPublishThroughLongReportName(t *testing.T) {
+	poster := &fakePoster{}
+	conn := strings.Repeat("r", v1alpha1.MaxConnectorName+10)
+	f, _ := publishingThrough(t, conn, &fakeUsage{}, poster, v1alpha1.ReportDestinations{Practitioner: onCall})
+	f.start()
+	f.investigationAt(t, "doc-long-report", v1alpha1.LevelPractitioner, false)
+	if p := f.waitPublished(t, "doc-long-report").Status.Published; !p.OK || p.Connector != conn || p.Destination != onCall {
+		t.Errorf("published = %+v", p)
+	}
 }
 
 // AC 3: the destination follows the level the record was created at;

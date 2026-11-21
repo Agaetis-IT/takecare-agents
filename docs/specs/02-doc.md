@@ -16,6 +16,8 @@ This spec turns the challenge POC (Alertmanager → receiver → HolmesGPT → S
 
 ### `TakeCareDoc`
 
+Its name is at most 50 characters, refused beyond at creation: its engine agent is `takecare-doc-<name>`, and kagent names the agent's Service after it and sets it as a label value, both at most 63 characters. A Doc stored with a longer name before the rule says so in `Ready` (reason `NameTooLong`), renders nothing more, and takes no alert (the intake counts it as `name_too_long`); what an earlier release rendered for it (routes, model configuration) goes when it is deleted. Each connector slot takes at most 16 names (the map one, one), each at most 253 characters.
+
 ```yaml
 apiVersion: takecare.agaetis.fr/v1alpha1
 kind: TakeCareDoc

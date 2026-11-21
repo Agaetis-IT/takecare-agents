@@ -458,6 +458,12 @@ spec:
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: 'a connector''s name is at most 63 characters unless its only type
+            is report: its gateway backend carries the name as a label'
+          optionalOldSelf: true
+          rule: oldSelf.hasValue() || size(self.metadata.name) <= 63 || self.spec.types.all(t,
+            t == 'report')
     served: true
     storage: true
     subresources:

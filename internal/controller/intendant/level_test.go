@@ -146,7 +146,7 @@ func TestFailedSurveysDoNotRepeat(t *testing.T) {
 	}
 	f.countSurveys(t, "failing", 3)
 	if in := f.wait(t, "failing", func(*v1alpha1.TakeCareIntendant) bool { return true }); in.Status.PendingTrigger != "" {
-		t.Errorf("pending %q after failures with nothing changed", in.Status.PendingTrigger)
+		t.Errorf("pending %q after failures with nothing changed; %s; surveys %+v", in.Status.PendingTrigger, f.triggerState(in), phases(f.surveys(t, "failing")))
 	}
 }
 

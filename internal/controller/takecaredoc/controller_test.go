@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
@@ -78,6 +79,7 @@ func (c *clock) Advance(d time.Duration) {
 
 type fixture struct {
 	c      client.Client
+	cfg    *rest.Config
 	clock  *clock
 	answer atomic.Bool
 	probed atomic.Value
@@ -104,7 +106,7 @@ func start(t *testing.T) *fixture {
 			t.Fatal(err)
 		}
 	}
-	f := &fixture{c: c, clock: &clock{now: time.Now()}, maps: &mapCaller{}}
+	f := &fixture{c: c, cfg: cfg, clock: &clock{now: time.Now()}, maps: &mapCaller{}}
 	skip := true
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{Scheme: scheme, Metrics: metricsserver.Options{BindAddress: "0"}, Controller: config.Controller{SkipNameValidation: &skip}})
 	if err != nil {

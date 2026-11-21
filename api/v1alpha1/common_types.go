@@ -69,6 +69,11 @@ const (
 	// already covers an entity of this scope; the older one keeps it
 	// (ADR 0015 §5).
 	ReasonScopeOverlap = "ScopeOverlap"
+	// ReasonNameTooLong (Ready=False, or BackendAccepted=False for a
+	// connector): an object stored with a name past its kind's bound,
+	// before the API refused it; nothing that would carry the name is
+	// rendered.
+	ReasonNameTooLong = "NameTooLong"
 )
 
 // Level is the intervention level of a role.

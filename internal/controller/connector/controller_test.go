@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -81,6 +82,7 @@ func (f *fakeLister) Call(_ context.Context, ep mcp.Endpoint, tool string, _ map
 type harness struct {
 	t       *testing.T
 	c       client.Client
+	cfg     *rest.Config
 	ctx     context.Context
 	lister  *fakeLister
 	r       *Reconciler
@@ -107,7 +109,7 @@ func start(t *testing.T, srv *mcptest.Server, opts ...func(*Reconciler)) *harnes
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &harness{t: t, now: time.Now()}
+	h := &harness{t: t, cfg: cfg, now: time.Now()}
 	h.lister = &fakeLister{client: &mcp.Client{HTTP: &http.Client{Timeout: 5 * time.Second}}, url: srv.URL, probeReply: "[]"}
 	h.statusz = startStatusz(t)
 	h.r = &Reconciler{Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("test"), OperatorNamespace: operatorNS, MCP: h.lister, HTTP: h.statusz.client, Now: func() time.Time { return h.now }}
@@ -452,11 +454,7 @@ func TestConnectorsThatCannotWork(t *testing.T) {
 	})
 
 	t.Run("a report connector: no backend, tools not classified", func(t *testing.T) {
-		h.connector("report", v1alpha1.TakeCareConnectorSpec{
-			Types:  []v1alpha1.ConnectorType{v1alpha1.ConnectorReport},
-			MCP:    v1alpha1.MCPSpec{URL: "https://report.example.com/mcp"},
-			Report: &v1alpha1.ReportSpec{Adapter: "log", Destinations: []v1alpha1.Destination{{Name: "on-call", Target: "log"}}},
-		})
+		h.connector("report", reportSpec())
 		h.waitCondition("report", v1alpha1.ConditionReady, metav1.ConditionTrue, ReasonReady)
 		if c := h.get("report"); len(c.Status.Tools) != 0 {
 			t.Errorf("report tools classified: %v", c.Status.Tools)

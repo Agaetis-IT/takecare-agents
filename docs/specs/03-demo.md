@@ -24,6 +24,8 @@ A correct diagnosis names the proxy idle timeout as the root cause and rules out
 
 ## Resource
 
+A demo's name is at most 63 characters, refused beyond at creation: its scenery carries the name as a label value. One stored with a longer name before the rule says so in `SceneryReady` and `Ready` (reason `NameTooLong`) and applies nothing.
+
 ```yaml
 apiVersion: takecare.agaetis.fr/v1alpha1
 kind: TakeCareDemo

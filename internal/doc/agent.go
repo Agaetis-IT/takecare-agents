@@ -35,7 +35,7 @@ var Skill = engine.Skill{
 
 // AgentName names the engine's agent of a Doc. The engine namespace is
 // shared, the Doc's name is unique in the operator namespace.
-func AgentName(d *v1alpha1.TakeCareDoc) string { return "takecare-doc-" + d.Name }
+func AgentName(d *v1alpha1.TakeCareDoc) string { return v1alpha1.DocAgentPrefix + d.Name }
 
 // sources describes, per connector type, what the Doc can read. Order is
 // the order of the instructions.
