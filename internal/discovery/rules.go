@@ -31,12 +31,13 @@ type rule struct {
 }
 
 var (
-	// A rule item: its name, its expression up to " Duration:<n> Labels:",
-	// the field %+v prints after Query.
-	ruleItem = regexp.MustCompile(`(?s)\{Name:([A-Za-z][A-Za-z0-9_]*) Query:(.*?) Duration:[0-9]+ Labels:`)
+	// A rule item's opening and name; its expression follows Query:.
+	ruleOpen = regexp.MustCompile(`^\{Name:([A-Za-z][A-Za-z0-9_]*) Query:`)
+	// The field %+v prints after a rule's Query.
+	ruleQueryEnd = regexp.MustCompile(`^ Duration:[0-9]+ Labels:`)
 	// Every item opening, a rule's or a group's.
 	itemOpen  = regexp.MustCompile(`\{Name:`)
-	groupItem = regexp.MustCompile(`\{Name:[^ ]* File:`)
+	groupItem = regexp.MustCompile(`^\{Name:[^ ]* File:`)
 
 	errTruncated = errors.New("truncated")
 
@@ -80,9 +81,20 @@ func groupsBeforeCut(text string, limit int) (groups []string, other int) {
 	return groups, other
 }
 
-// parseRules reads get_rules' answer. Every "{Name:" must open a group or a
-// rule the parser recognizes: an expression that holds one, or anything the
-// %+v dump would print differently, makes the answer unrecognized.
+// parseRules reads get_rules' answer, item by item: a group's opening, or
+// a rule's name and its expression, which runs to the first
+// " Duration:<n> Labels:" outside PromQL's string literals ("…", '…', `…`),
+// so a label value holding either text no longer cuts it or blinds the
+// layer. Any other "{Name:" between the items makes the answer
+// unrecognized.
+//
+// A known limit: the pinned server (mcp-prometheus v0.11.11) prints label
+// and annotation values unquoted, so someone who can already write
+// alerting rules on that Prometheus can write, in an annotation, a rule
+// that does not exist, and the import reads it: a name and an
+// expression, nothing a real rule of theirs would not give. The rules
+// after it are still read. Only a structured answer from the server can
+// close it.
 func parseRules(res mcp.Result) ([]rule, error) {
 	text := res.Text
 	if strings.Contains(text, rulesTruncated) {
@@ -94,18 +106,58 @@ func parseRules(res mcp.Result) ([]rule, error) {
 	if !strings.HasPrefix(text, rulesPrefix) || !strings.HasSuffix(text, rulesSuffix) || len(res.Structured) != 0 {
 		return nil, errUnrecognized
 	}
-	items := ruleItem.FindAllStringSubmatch(text, -1)
-	if len(items)+len(groupItem.FindAllString(text, -1)) != len(itemOpen.FindAllString(text, -1)) {
-		return nil, errUnrecognized
-	}
-	rules := make([]rule, 0, len(items))
-	for _, m := range items {
-		if strings.TrimSpace(m[2]) == "" {
+	var rules []rule
+	for at := 0; ; {
+		next := itemOpen.FindStringIndex(text[at:])
+		if next == nil {
+			return rules, nil
+		}
+		item := text[at+next[0]:]
+		if groupItem.MatchString(item) {
+			at += next[1]
+			continue
+		}
+		m := ruleOpen.FindStringSubmatchIndex(item)
+		if m == nil {
 			return nil, errUnrecognized
 		}
-		rules = append(rules, rule{Name: m[1], Expr: strings.TrimSpace(m[2])})
+		expr, rest, ok := ruleExpr(item[m[1]:])
+		if !ok || strings.TrimSpace(expr) == "" {
+			return nil, errUnrecognized
+		}
+		rules = append(rules, rule{Name: item[m[2]:m[3]], Expr: strings.TrimSpace(expr)})
+		at = len(text) - len(rest)
 	}
-	return rules, nil
+}
+
+// ruleExpr reads a rule's expression from the start of s up to the first
+// " Duration:<n> Labels:" outside a PromQL string literal, and returns it
+// and what follows that field; ok is false when no such field ends it or
+// a literal is left open, or a "{Name:" stands outside a literal.
+func ruleExpr(s string) (expr, rest string, ok bool) {
+	var quote byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case quote != 0:
+			if c == '\\' && quote != '`' {
+				i++
+			} else if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'' || c == '`':
+			quote = c
+		case strings.HasPrefix(s[i:], "{Name:"):
+			// Not PromQL outside a literal (a selector's matchers take =):
+			// the dump would print it only in another item.
+			return "", "", false
+		default:
+			if m := ruleQueryEnd.FindStringIndex(s[i:]); m != nil {
+				return s[:i], s[i+m[1]:], true
+			}
+		}
+	}
+	return "", "", false
 }
 
 // sameExpr compares two expressions up to whitespace: Prometheus returns its

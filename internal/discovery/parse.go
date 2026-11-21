@@ -30,7 +30,11 @@ const (
 	// the Map's schema (mapserver.ValidateEntry); it is not proposed.
 	reasonInvalidEntry = "the import's proposal for this entry does not pass the Map's schema: not proposed"
 	reasonUnrecognized = "unrecognized %s output"
-	reasonNoNamespace  = "the namespace does not exist"
+	// reasonNoLabels: a listing whose items carry no Labels column (a later
+	// server release may drop it, A6). Its objects are kept; no service is
+	// proposed from their labels.
+	reasonNoLabels    = "the %s listing through %s gave no labels: no service is proposed from app.kubernetes.io/part-of or app.kubernetes.io/name"
+	reasonNoNamespace = "the namespace does not exist"
 )
 
 var errUnrecognized = errors.New("unrecognized output")
@@ -88,29 +92,42 @@ type structuredItem struct {
 
 // parseList reads resources_list's answer for one kind in one namespace:
 // its structuredContent, or an empty text for an empty list. Any other
-// shape, or an item of another kind or namespace, is unrecognized.
-func parseList(res mcp.Result, apiVersion, kind, namespace string) ([]object, error) {
+// shape, or an item of another kind or namespace, is unrecognized. The
+// Labels key is a by-product of the server's table printer (A6): a listing
+// whose items all lack it is read, and says so (labels false); a listing
+// where some items carry it and others do not is unrecognized. Every other
+// key stays required.
+func parseList(res mcp.Result, apiVersion, kind, namespace string) (objects []object, labels bool, err error) {
 	if len(res.Structured) == 0 {
 		if strings.TrimSpace(res.Text) == "" {
-			return nil, nil
+			return nil, true, nil
 		}
-		return nil, errUnrecognized
+		return nil, false, errUnrecognized
 	}
 	var content struct {
 		Items *[]structuredItem `json:"items"`
 	}
 	if err := json.Unmarshal(res.Structured, &content); err != nil || content.Items == nil {
-		return nil, errUnrecognized
+		return nil, false, errUnrecognized
 	}
-	objects := make([]object, 0, len(*content.Items))
+	objects = make([]object, 0, len(*content.Items))
+	withLabels := 0
 	for _, it := range *content.Items {
-		if it.APIVersion == nil || it.Kind == nil || it.Name == nil || it.Namespace == nil || it.Labels == nil ||
+		if it.APIVersion == nil || it.Kind == nil || it.Name == nil || it.Namespace == nil ||
 			*it.APIVersion != apiVersion || *it.Kind != kind || *it.Namespace != namespace || *it.Name == "" {
-			return nil, errUnrecognized
+			return nil, false, errUnrecognized
 		}
-		objects = append(objects, object{Namespace: namespace, Kind: kind, Name: *it.Name, PartOf: it.Labels.partOf, AppName: it.Labels.name})
+		o := object{Namespace: namespace, Kind: kind, Name: *it.Name}
+		if it.Labels != nil {
+			withLabels++
+			o.PartOf, o.AppName = it.Labels.partOf, it.Labels.name
+		}
+		objects = append(objects, o)
 	}
-	return objects, nil
+	if withLabels != 0 && withLabels != len(objects) {
+		return nil, false, errUnrecognized
+	}
+	return objects, withLabels == len(objects), nil
 }
 
 // namespacesHeader is namespaces_list's table header, which the import
