@@ -386,3 +386,37 @@ func TestEntityBlindSpots(t *testing.T) {
 		t.Errorf("billing-api's namespace was not surveyed: %+v", st.Layers[1])
 	}
 }
+
+// The import has its own deadline, half the pass timeout from the
+// survey's start (spec 10 §4): a cluster server that never answers fails
+// the survey with that phrase, well before the backstop's bound.
+func TestImportDeadline(t *testing.T) {
+	t.Parallel()
+	f := startRunner(t)
+	f.grounded(t)
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	hung := mcptest.Start(t,
+		mcptest.ToolSpec{Name: toolNamespaces, ReadOnly: true, Handle: func(map[string]any) (string, any, bool) {
+			<-release
+			return "", nil, true
+		}},
+		mcptest.ToolSpec{Name: toolResources, ReadOnly: true, Handle: func(map[string]any) (string, any, bool) {
+			<-release
+			return "", nil, true
+		}},
+	)
+	f.routes.Store("hung/"+connMap, mapServer(t, nil))
+	f.routes.Store("hung/"+connCluster, hung.URL)
+	f.intendant(t, "hung", func(in *v1alpha1.TakeCareIntendant) {
+		in.Spec.Scope = v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{demoApps}}
+		in.Spec.Connectors = v1alpha1.IntendantConnectors{Map: []string{connMap}, Cluster: []string{connCluster}}
+	})
+	s := f.waitPhase(t, "hung", 1, v1alpha1.RunFailed)[0]
+	if s.Status.Reason != failImportTime || s.Status.StartedAt == nil || s.Status.CompletedAt == nil {
+		t.Fatalf("failed survey %+v", s.Status.RunStatus)
+	}
+	if took := s.Status.CompletedAt.Sub(s.Status.StartedAt.Time); took > passTimeout {
+		t.Errorf("the survey failed after %s, past the pass timeout %s: the import's deadline did not bite", took, passTimeout)
+	}
+}

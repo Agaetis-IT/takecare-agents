@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -209,4 +210,18 @@ func TestSurveysCountedOnce(t *testing.T) {
 			t.Errorf("completed %v, failed %v, abandoned %v; want 0, 0, 1", c, f, a)
 		}
 	})
+}
+
+// An agent's given tools count both tool types of kagent v0.10.3: an
+// McpServer's toolNames, and one for another agent used as a tool (N6).
+func TestGivenToolsCountsBothTypes(t *testing.T) {
+	t.Parallel()
+	o := &unstructured.Unstructured{Object: map[string]any{"spec": map[string]any{"declarative": map[string]any{"tools": []any{
+		map[string]any{"type": "McpServer", "mcpServer": map[string]any{"name": "a", "toolNames": []any{"x", "y"}}},
+		map[string]any{"type": "Agent", "agent": map[string]any{"name": "helper"}},
+		map[string]any{"type": "McpServer", "mcpServer": map[string]any{"name": "b"}},
+	}}}}}
+	if n := givenTools(o); n != 3 {
+		t.Errorf("given tools %d, want 3 (two names and one agent)", n)
+	}
 }

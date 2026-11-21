@@ -59,8 +59,11 @@ const (
 	failIntendant = "the Intendant could not be read"
 	failGateway   = "the gateway is not ready"
 	failImport    = "the import failed"
-	failRecord    = "the proposals could not be recorded"
-	maxReason     = 256
+	// failImportTime: the import before the pass, or the inventory after
+	// it, ran past its share of the pass timeout (spec 10 §4).
+	failImportTime = "the import did not finish within half the pass timeout"
+	failRecord     = "the proposals could not be recorded"
+	maxReason      = 256
 )
 
 // failed is a survey's failure: its class for the status, its error for
@@ -74,6 +77,22 @@ func (f failed) Error() string { return f.class + ": " + f.err.Error() }
 func (f failed) Unwrap() error { return f.err }
 
 func fail(class string, err error) error { return failed{class: class, err: err} }
+
+// importShare is the import's and the inventory's time each: half the
+// pass timeout. The backstop's bound (two pass timeouts) covers the worst
+// case, the import, the pass to its deadline from the start, then the
+// inventory: one and a half (spec 10 §5).
+func (w *Runner) importShare() time.Duration { return w.passTimeout() / 2 }
+
+// importFailure classes an import's error: its own deadline passed, or
+// another failure. The run's context ending is the operator stopping, not
+// the import's time.
+func importFailure(run, step context.Context, err error) error {
+	if run.Err() == nil && errors.Is(step.Err(), context.DeadlineExceeded) {
+		return fail(failImportTime, err)
+	}
+	return fail(failImport, err)
+}
 
 // Why a survey waits: status.reason while it is Queued (spec 10 §2).
 const (
@@ -701,9 +720,13 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 			}
 		}
 	}
-	res, err := discovery.Import(ctx, w.Caller, grounds, metrics, discovery.NewIndex(idx.entries), w.now(), w.observer(ctx))
+	// The import's own deadline (spec 10 §4): half the pass timeout from
+	// the survey's start, the pass's deadline counting from the same start.
+	ictx, cancel := context.WithDeadline(ctx, s.Status.StartedAt.Add(w.importShare()))
+	res, err := discovery.Import(ictx, w.Caller, grounds, metrics, discovery.NewIndex(idx.entries), w.now(), w.observer(ictx))
+	cancel()
 	if err != nil {
-		return out, none, fail(failImport, err)
+		return out, none, importFailure(ctx, ictx, err)
 	}
 	if blocked != "" {
 		for i := range res.Layers {
@@ -726,9 +749,12 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 	if err != nil {
 		return out, none, fail(failImport, err)
 	}
-	invLayer, items, err := discovery.Inventory(ctx, w.Caller, grounds, own)
+	// The inventory after the pass: half the pass timeout of its own.
+	vctx, cancel := context.WithTimeout(ctx, w.importShare())
+	invLayer, items, err := discovery.Inventory(vctx, w.Caller, grounds, own)
+	cancel()
 	if err != nil {
-		return out, none, fail(failImport, err)
+		return out, none, importFailure(ctx, vctx, err)
 	}
 	res.Layers = append(res.Layers, invLayer)
 	// The full set, before the status: the not-seen line of what does not

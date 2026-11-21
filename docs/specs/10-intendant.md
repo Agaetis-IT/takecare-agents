@@ -183,7 +183,7 @@ One trace per survey (ADR 0006), its ID in the survey's `status.traceID` and in 
 - one `list <connector>` per ground, timed as the listing ran, with its cluster and number of namespaces;
 - `read rules`, the alerting rules' read, when a metrics connector is bound;
 - one `layer <name>` per layer, carrying its counts: seen, matched, proposed, not seen;
-- `agent pass`, the agent pass (§5): its task, outcome and attempt (`takecare.run.*`), an error with its fixed phrase when it does not finish. The root then carries the agent's identity, the survey as the conversation, and the platform model.
+- `agent pass`, the agent pass (§5): its task, outcome and attempt (`takecare.run.*`), an error with its fixed phrase when it does not finish. The root then carries the agent's identity, the survey as the conversation, and the platform model. kagent's own spans for the pass carry kagent's context id as `gen_ai.conversation.id`, not the survey's, and each pass is a new kagent session: the operator's trace and kagent's are joined by the pass's task id (`takecare.run.*`), not by the conversation id.
 
 The attribute names (`takecare.survey.*`, `takecare.run.*`) live in `internal/telemetry/semconv` like every other.
 
