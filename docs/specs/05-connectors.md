@@ -12,7 +12,7 @@ Everything an agent reads or writes goes through a **connector**: one MCP server
 
 ## Resource
 
-Namespaced, in `takecare-system`. Roles reference connectors by name. A connector's name is at most 63 characters unless its only type is `report`, refused beyond at creation: its gateway backend carries the name as a label value. A report-only connector has no backend and keeps longer names. A connector stored past 63 characters with another type (before the rule, or a report connector whose type was replaced since) gets no backend and says so in `BackendAccepted` (reason `NameTooLong`).
+Namespaced, in `takecare-system`. Roles reference connectors by name. A slot gives the agent the read tools of the connector named in it, whatever their type (tools carry no type); a content tool still needs `spec.contentTools`. A connector's name is at most 63 characters unless its only type is `report`, refused beyond at creation: its gateway backend carries the name as a label value. A report-only connector has no backend and keeps longer names. A connector stored past 63 characters with another type (before the rule, or a report connector whose type was replaced since) gets no backend and says so in `BackendAccepted` (reason `NameTooLong`).
 
 ```yaml
 apiVersion: takecare.agaetis.fr/v1alpha1

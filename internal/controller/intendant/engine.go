@@ -75,7 +75,9 @@ func (r *Reconciler) renderAgent(ctx context.Context, in *v1alpha1.TakeCareInten
 	types := map[v1alpha1.ConnectorType]bool{}
 	for _, a := range b.agent {
 		servers = append(servers, engine.ToolServer{Connector: a.name, URL: p.Status.GatewayURL + routes.MCPPath(role, a.name), Tools: a.tools})
-		types[a.typ] = true
+		for _, t := range a.types {
+			types[t] = true
+		}
 	}
 	slices.SortFunc(servers, func(x, y engine.ToolServer) int { return strings.Compare(x.Connector, y.Connector) })
 	desired, err := surveyagent.Agent{
