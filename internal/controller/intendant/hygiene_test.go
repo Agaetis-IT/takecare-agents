@@ -216,11 +216,15 @@ func TestSurveysCountedOnce(t *testing.T) {
 // McpServer's toolNames, and one for another agent used as a tool (N6).
 func TestGivenToolsCountsBothTypes(t *testing.T) {
 	t.Parallel()
-	o := &unstructured.Unstructured{Object: map[string]any{"spec": map[string]any{"declarative": map[string]any{"tools": []any{
-		map[string]any{"type": "McpServer", "mcpServer": map[string]any{"name": "a", "toolNames": []any{"x", "y"}}},
-		map[string]any{"type": "Agent", "agent": map[string]any{"name": "helper"}},
-		map[string]any{"type": "McpServer", "mcpServer": map[string]any{"name": "b"}},
-	}}}}}
+	// The tools as kagent v0.10.3's Agent CRD writes them; the McpServer
+	// without toolNames gives its server's every tool, which is not said.
+	o := &unstructured.Unstructured{}
+	if err := o.UnmarshalJSON([]byte(`{"apiVersion": "kagent.dev/v1alpha2", "kind": "Agent", "spec": {"declarative": {"tools": [
+		{"type": "McpServer", "mcpServer": {"name": "a", "toolNames": ["x", "y"]}},
+		{"type": "Agent", "agent": {"name": "helper"}},
+		{"type": "McpServer", "mcpServer": {"name": "b"}}]}}}`)); err != nil {
+		t.Fatal(err)
+	}
 	if n := givenTools(o); n != 3 {
 		t.Errorf("given tools %d, want 3 (two names and one agent)", n)
 	}

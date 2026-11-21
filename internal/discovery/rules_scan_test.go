@@ -73,6 +73,7 @@ func ruleText(name, expr, annotations string) string {
 }
 
 func TestParseRulesWalk(t *testing.T) {
+	const odd = "Odd"
 	honestAfter := ruleText("After", `up{service="after"} == 0`, "")
 	// A rule author's annotation that closes its item and opens a rule that
 	// does not exist; the real tail then closes the fake item.
@@ -85,16 +86,16 @@ func TestParseRulesWalk(t *testing.T) {
 		fails bool
 	}{
 		{"a quoted label value holding the Duration field: whole now, cut before",
-			answerOf(ruleText("Odd", `up{note=" Duration:1 Labels:"} == 0`, "")),
-			[]rule{{Name: "Odd", Expr: `up{note=" Duration:1 Labels:"} == 0`}}, false},
+			answerOf(ruleText(odd, `up{note=" Duration:1 Labels:"} == 0`, "")),
+			[]rule{{Name: odd, Expr: `up{note=" Duration:1 Labels:"} == 0`}}, false},
 		{"a quoted label value holding an item opening: read now, unrecognized before",
-			answerOf(ruleText("Odd", `up{note='{Name:x'} == 0`, ""), honestAfter),
-			[]rule{{Name: "Odd", Expr: `up{note='{Name:x'} == 0`}, {Name: "After", Expr: `up{service="after"} == 0`}}, false},
+			answerOf(ruleText(odd, `up{note='{Name:x'} == 0`, ""), honestAfter),
+			[]rule{{Name: odd, Expr: `up{note='{Name:x'} == 0`}, {Name: "After", Expr: `up{service="after"} == 0`}}, false},
 		{"a backquoted value and an escaped quote",
-			answerOf(ruleText("Odd", "up{a=`x\"y`, b=\"p\\\"q\"} == 0", "")),
-			[]rule{{Name: "Odd", Expr: "up{a=`x\"y`, b=\"p\\\"q\"} == 0"}}, false},
-		{"a literal left open", answerOf(ruleText("Odd", `up{note="open} == 0`, "")), nil, true},
-		{"an item opening outside a literal", answerOf(ruleText("Odd", `up == 0 {Name:x`, "")), nil, true},
+			answerOf(ruleText(odd, "up{a=`x\"y`, b=\"p\\\"q\"} == 0", "")),
+			[]rule{{Name: odd, Expr: "up{a=`x\"y`, b=\"p\\\"q\"} == 0"}}, false},
+		{"a literal left open", answerOf(ruleText(odd, `up{note="open} == 0`, "")), nil, true},
+		{"an item opening outside a literal", answerOf(ruleText(odd, `up == 0 {Name:x`, "")), nil, true},
 		// The known limit (rules.go): the forged rule is read, exactly so,
 		// and every honest rule after it still is.
 		{"a forged rule in an annotation, honest rules after it",
@@ -119,7 +120,7 @@ func TestParseRulesWalk(t *testing.T) {
 		})
 	}
 	// Before the walk, the first two rows were cut or unrecognized.
-	if got, _ := regexpParseRules(answerOf(ruleText("Odd", `up{note=" Duration:1 Labels:"} == 0`, ""))); len(got) == 1 && got[0].Expr == `up{note=" Duration:1 Labels:"} == 0` {
+	if got, _ := regexpParseRules(answerOf(ruleText(odd, `up{note=" Duration:1 Labels:"} == 0`, ""))); len(got) == 1 && got[0].Expr == `up{note=" Duration:1 Labels:"} == 0` {
 		t.Error("the regexp read the quoted Duration field whole: the row does not show the change")
 	}
 }
