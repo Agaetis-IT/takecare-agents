@@ -61,7 +61,7 @@ const (
 	ReasonScheduleTimeZone = "ScheduleTimeZone"
 	// ReasonNameTooLong: an Intendant stored with a name past
 	// v1alpha1.MaxIntendantName, before the API refused it.
-	ReasonNameTooLong      = "NameTooLong"
+	ReasonNameTooLong      = v1alpha1.ReasonNameTooLong
 	ReasonConnectorsReady  = "ConnectorsReady"
 	ReasonMapMissing       = "MapConnectorMissing"
 	ReasonConnectorDegrade = "ConnectorsDegraded"

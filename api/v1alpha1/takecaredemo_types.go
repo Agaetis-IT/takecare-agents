@@ -78,6 +78,15 @@ type LastHandled struct {
 	Reset string `json:"reset,omitempty"`
 }
 
+// MaxDemoName is the longest name a demo can have: its scenery carries
+// the name as a label value (63). The CEL rule on TakeCareDemo states the
+// same number; a test keeps them equal. It holds at creation.
+const MaxDemoName = 63
+
+// MessageDemoName is the refusal of a longer name, by the API server and,
+// for a demo stored past it, on its status.
+const MessageDemoName = "a demo's name is at most 63 characters: its scenery carries the name as a label"
+
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:metadata:annotations="helm.sh/resource-policy=keep"
@@ -86,6 +95,7 @@ type LastHandled struct {
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+// +kubebuilder:validation:XValidation:rule="oldSelf.hasValue() || size(self.metadata.name) <= 63",optionalOldSelf=true,message="a demo's name is at most 63 characters: its scenery carries the name as a label"
 
 // TakeCareDemo sets up the demo scenery and replayable incidents.
 type TakeCareDemo struct {

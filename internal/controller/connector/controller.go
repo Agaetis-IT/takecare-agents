@@ -323,6 +323,16 @@ func (r *Reconciler) applyBackend(ctx context.Context, c *v1alpha1.TakeCareConne
 		st.set(ConditionBackendAccepted, true, ReasonNotApplicable, "report connectors are not exposed to agents")
 		return nil
 	}
+	if len(c.Name) > v1alpha1.MaxConnectorName {
+		// Stored past the bound (before the rule, or a report connector
+		// given another type since): the backend's label would be refused
+		// at every reconcile. No backend: the roles see it not ready.
+		if err := r.Delete(ctx, obj); client.IgnoreNotFound(err) != nil {
+			return fmt.Errorf("delete backend of connector %s: %w", c.Name, err)
+		}
+		st.set(ConditionBackendAccepted, false, v1alpha1.ReasonNameTooLong, v1alpha1.MessageConnectorName)
+		return nil
+	}
 	obj.SetLabels(map[string]string{
 		"app.kubernetes.io/managed-by":  apply.FieldOwner,
 		"app.kubernetes.io/part-of":     "takecare",

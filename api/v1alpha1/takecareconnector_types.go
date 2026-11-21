@@ -5,6 +5,16 @@ package v1alpha1
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+// MaxConnectorName is the longest name of a connector with a type other
+// than report: its gateway backend carries the name as a label value (63).
+// A report connector has no backend. The CEL rule on TakeCareConnector
+// states the same number; a test keeps them equal. It holds at creation.
+const MaxConnectorName = 63
+
+// MessageConnectorName is the refusal of a longer name, by the API server
+// and, for a connector stored past it, on its status.
+const MessageConnectorName = "a connector's name is at most 63 characters unless its only type is report: its gateway backend carries the name as a label"
+
 // ConnectorType says what a connector gives access to (ADR 0008).
 // +kubebuilder:validation:Enum=cluster;metrics;logs;knowledge;changes;tickets;report;map
 type ConnectorType string
@@ -266,6 +276,7 @@ type ToolClassChange struct {
 // +kubebuilder:printcolumn:name="Tools",type=integer,JSONPath=`.status.toolCount`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+// +kubebuilder:validation:XValidation:rule="oldSelf.hasValue() || size(self.metadata.name) <= 63 || self.spec.types.all(t, t == 'report')",optionalOldSelf=true,message="a connector's name is at most 63 characters unless its only type is report: its gateway backend carries the name as a label"
 
 // TakeCareConnector is one MCP server typed by what it gives access to.
 type TakeCareConnector struct {

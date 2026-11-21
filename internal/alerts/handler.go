@@ -42,11 +42,14 @@ const (
 	ReasonNotMatched    = "not_matched"
 	ReasonNoRole        = "no_role"
 	ReasonSuspended     = "suspended"
-	ReasonCooldown      = "cooldown"
-	ReasonGrouped       = "grouped"
-	ReasonDuplicate     = "duplicate"
-	ReasonNotFiring     = "not_firing"
-	ReasonNoNamespace   = "no_namespace"
+	// ReasonNameTooLong: the Doc was stored with a name past its bound
+	// before the API refused it, and can never run.
+	ReasonNameTooLong = "name_too_long"
+	ReasonCooldown    = "cooldown"
+	ReasonGrouped     = "grouped"
+	ReasonDuplicate   = "duplicate"
+	ReasonNotFiring   = "not_firing"
+	ReasonNoNamespace = "no_namespace"
 	// ReasonClusterMismatch: the alert's cluster label contradicts the
 	// cluster its token identifies.
 	ReasonClusterMismatch = "cluster_mismatch"
@@ -326,6 +329,12 @@ func (h *Handler) docFor(ctx context.Context, a v1alpha1.AlertRecord) (*v1alpha1
 		}
 		if d.Spec.Suspend {
 			reason = ReasonSuspended
+			continue
+		}
+		if len(d.Name) > v1alpha1.MaxDocName {
+			// Stored before the API refused its name: it can never run
+			// (its Ready says why), so no investigation waits on it.
+			reason = ReasonNameTooLong
 			continue
 		}
 		return d, "", nil

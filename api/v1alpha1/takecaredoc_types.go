@@ -8,6 +8,21 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // KindTakeCareDoc is the Doc's kind, as records name their role (RoleRef).
 const KindTakeCareDoc = "TakeCareDoc"
 
+// DocAgentPrefix starts the name of a Doc's engine agent, followed by the
+// Doc's name. kagent names the agent's Service after it, and sets it as a
+// label value: both at most 63 characters.
+const DocAgentPrefix = "takecare-doc-"
+
+// MaxDocName is the longest name a Doc can have: its engine agent's name
+// must stay a Kubernetes service name. The CEL rule on TakeCareDoc states
+// the same number; a test keeps them equal. The rule holds at creation
+// only (a name never changes).
+const MaxDocName = 63 - len(DocAgentPrefix)
+
+// MessageDocName is the refusal of a longer name, by the API server and,
+// for a Doc stored before the rule, on its status.
+const MessageDocName = "a Doc's name is at most 50 characters: its engine agent takecare-doc-<name> is a Kubernetes service name (63)"
+
 // TakeCareDocSpec configures the Doc, the incident diagnosis role (spec 02).
 // A Doc with scope.entities only takes the alerts that resolve to them.
 type TakeCareDocSpec struct {
@@ -39,28 +54,40 @@ type TakeCareDocSpec struct {
 
 // DocConnectors lists TakeCareConnector names, by type.
 type DocConnectors struct {
+	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:items:MaxLength=253
 	// +listType=set
 	// +optional
 	Cluster []string `json:"cluster,omitempty"`
+	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:items:MaxLength=253
 	// +listType=set
 	// +optional
 	Metrics []string `json:"metrics,omitempty"`
+	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:items:MaxLength=253
 	// +listType=set
 	// +optional
 	Knowledge []string `json:"knowledge,omitempty"`
+	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:items:MaxLength=253
 	// +listType=set
 	// +optional
 	Changes []string `json:"changes,omitempty"`
+	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:items:MaxLength=253
 	// +listType=set
 	// +optional
 	Tickets []string `json:"tickets,omitempty"`
 	// The Map connector (type map, spec 08): one Map per scope. Its read
 	// tools are given at every level, and it covers scope.entities.
 	// +kubebuilder:validation:MaxItems=1
+	// +kubebuilder:validation:items:MaxLength=253
 	// +listType=set
 	// +optional
 	Map []string `json:"map,omitempty"`
 	// The report connector: where the operator publishes diagnoses.
+	// +kubebuilder:validation:MaxLength=253
 	// +optional
 	Report string `json:"report,omitempty"`
 }
@@ -131,6 +158,7 @@ type TakeCareDocStatus struct {
 // +kubebuilder:printcolumn:name="Level",type=string,JSONPath=`.status.level`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+// +kubebuilder:validation:XValidation:rule="oldSelf.hasValue() || size(self.metadata.name) <= 50",optionalOldSelf=true,message="a Doc's name is at most 50 characters: its engine agent takecare-doc-<name> is a Kubernetes service name (63)"
 
 // TakeCareDoc is the Doc: it diagnoses incidents, read-only.
 type TakeCareDoc struct {

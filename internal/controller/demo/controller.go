@@ -111,6 +111,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 		return ctrl.Result{}, nil
 	}
+	if len(d.Name) > v1alpha1.MaxDemoName {
+		// Stored before the API refused such names: its scenery's label
+		// would be refused, so nothing is applied. No requeue.
+		before := d.DeepCopy()
+		d.Status.ObservedGeneration = d.Generation
+		r.set(&d, v1alpha1.ConditionSceneryReady, false, v1alpha1.ReasonNameTooLong, v1alpha1.MessageDemoName)
+		r.set(&d, v1alpha1.ConditionReady, false, v1alpha1.ReasonNameTooLong, v1alpha1.MessageDemoName)
+		return ctrl.Result{}, r.patchStatus(ctx, before, &d)
+	}
 	if controllerutil.AddFinalizer(&d, Finalizer) {
 		if err := r.Client.Update(ctx, &d); err != nil {
 			return ctrl.Result{}, fmt.Errorf("add the finalizer to %s: %w", d.Name, err)

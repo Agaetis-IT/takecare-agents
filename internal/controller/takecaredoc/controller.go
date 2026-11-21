@@ -245,6 +245,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 		return ctrl.Result{}, nil
 	}
+	if len(d.Name) > v1alpha1.MaxDocName {
+		// Stored before the API refused such names: its agent could never
+		// be deployed, so nothing is rendered and no write fails in a loop.
+		// Its name never changes: no requeue. The alert intake skips it.
+		st := &status{generation: d.Generation, level: d.Status.Level}
+		for _, c := range []string{v1alpha1.ConditionEngineReady, v1alpha1.ConditionReady} {
+			st.set(c, false, v1alpha1.ReasonNameTooLong, v1alpha1.MessageDocName)
+		}
+		return ctrl.Result{}, r.writeStatus(ctx, &d, st)
+	}
 	if controllerutil.AddFinalizer(&d, Finalizer) {
 		if err := r.Update(ctx, &d); err != nil {
 			return ctrl.Result{}, fmt.Errorf("add the finalizer to %s: %w", d.Name, err)

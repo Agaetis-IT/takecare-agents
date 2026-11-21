@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -45,6 +46,7 @@ const (
 type fixture struct {
 	t   *testing.T
 	c   client.Client
+	cfg *rest.Config
 	ctx context.Context
 }
 
@@ -85,7 +87,7 @@ func start(t *testing.T, rules RulesFunc) *fixture {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	go func() { _ = mgr.Start(ctx) }()
-	return &fixture{t: t, c: c, ctx: context.Background()}
+	return &fixture{t: t, c: c, cfg: cfg, ctx: context.Background()}
 }
 
 func (f *fixture) eventually(what string, cond func() bool) {

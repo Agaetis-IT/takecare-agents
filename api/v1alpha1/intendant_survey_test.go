@@ -6,17 +6,13 @@ package v1alpha1_test
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/yaml"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
-	"github.com/agaetis-it/takecare-agents/internal/surveyagent"
 )
 
 const (
@@ -80,7 +76,7 @@ func TestIntendantValidation(t *testing.T) {
 		{"16 knowledge connectors", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Knowledge = names(16) }, ""},
 		{"17 knowledge connectors", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Knowledge = names(17) }, "knowledge"},
 		{"connector name past 253", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Map = []string{strings.Repeat("m", 254)} }, "map"},
-		{"report connector past 253", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Report = strings.Repeat("r", 254) }, "report"},
+		{"report connector past 253", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Report = strings.Repeat("r", 254) }, connReport},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -101,54 +97,6 @@ func names(n int) []string {
 		out[i] = fmt.Sprintf("c%d", i)
 	}
 	return out
-}
-
-// TestIntendantNameBound: the rule's number, its message and the engine
-// agent's prefix agree, and an Intendant at the bound gives an agent name
-// of exactly 63 characters (kagent's Service name and label value).
-func TestIntendantNameBound(t *testing.T) {
-	crd, err := os.ReadFile(filepath.Join("..", "..", "config", "crd", "takecare.agaetis.fr_takecareintendants.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var doc any
-	if err := yaml.Unmarshal(crd, &doc); err != nil {
-		t.Fatal(err)
-	}
-	said := map[string]bool{}
-	var walk func(any)
-	walk = func(v any) {
-		switch v := v.(type) {
-		case map[string]any:
-			for k, x := range v {
-				if s, ok := x.(string); ok && (k == "rule" || k == "message") {
-					said[s] = true
-				}
-				walk(x)
-			}
-		case []any:
-			for _, x := range v {
-				walk(x)
-			}
-		}
-	}
-	walk(doc)
-	for _, want := range []string{
-		fmt.Sprintf("oldSelf.hasValue() || size(self.metadata.name) <= %d", v1alpha1.MaxIntendantName),
-		v1alpha1.MessageIntendantName, v1alpha1.MessageScheduleUTC,
-	} {
-		if !said[want] {
-			t.Errorf("no CEL rule or message of the CRD is %q", want)
-		}
-	}
-	if !strings.Contains(v1alpha1.MessageIntendantName, fmt.Sprintf("at most %d characters", v1alpha1.MaxIntendantName)) ||
-		!strings.Contains(v1alpha1.MessageIntendantName, v1alpha1.IntendantAgentPrefix) {
-		t.Errorf("the message %q does not name the bound and the prefix", v1alpha1.MessageIntendantName)
-	}
-	in := &v1alpha1.TakeCareIntendant{Name: strings.Repeat("a", v1alpha1.MaxIntendantName)}
-	if n := len(surveyagent.AgentName(in)); n != 63 {
-		t.Errorf("the agent of an Intendant at the bound is named with %d characters, want 63", n)
-	}
 }
 
 // TestIntendantStatusBounds: each bounded status field takes its bound and

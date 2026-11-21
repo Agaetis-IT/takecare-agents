@@ -93,17 +93,23 @@ spec:
                 properties:
                   changes:
                     items:
+                      maxLength: 253
                       type: string
+                    maxItems: 16
                     type: array
                     x-kubernetes-list-type: set
                   cluster:
                     items:
+                      maxLength: 253
                       type: string
+                    maxItems: 16
                     type: array
                     x-kubernetes-list-type: set
                   knowledge:
                     items:
+                      maxLength: 253
                       type: string
+                    maxItems: 16
                     type: array
                     x-kubernetes-list-type: set
                   map:
@@ -111,22 +117,28 @@ spec:
                       The Map connector (type map, spec 08): one Map per scope. Its read
                       tools are given at every level, and it covers scope.entities.
                     items:
+                      maxLength: 253
                       type: string
                     maxItems: 1
                     type: array
                     x-kubernetes-list-type: set
                   metrics:
                     items:
+                      maxLength: 253
                       type: string
+                    maxItems: 16
                     type: array
                     x-kubernetes-list-type: set
                   report:
                     description: 'The report connector: where the operator publishes
                       diagnoses.'
+                    maxLength: 253
                     type: string
                   tickets:
                     items:
+                      maxLength: 253
                       type: string
+                    maxItems: 16
                     type: array
                     x-kubernetes-list-type: set
                 type: object
@@ -354,6 +366,11 @@ spec:
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: 'a Doc''s name is at most 50 characters: its engine agent takecare-doc-<name>
+            is a Kubernetes service name (63)'
+          optionalOldSelf: true
+          rule: oldSelf.hasValue() || size(self.metadata.name) <= 50
     served: true
     storage: true
     subresources:

@@ -191,6 +191,11 @@ spec:
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: 'a demo''s name is at most 63 characters: its scenery carries the
+            name as a label'
+          optionalOldSelf: true
+          rule: oldSelf.hasValue() || size(self.metadata.name) <= 63
     served: true
     storage: true
     subresources:
