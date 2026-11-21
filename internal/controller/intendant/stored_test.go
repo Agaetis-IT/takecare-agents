@@ -8,15 +8,22 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/engine"
 	"github.com/agaetis-it/takecare-agents/internal/engine/kagent0103"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
+	"github.com/agaetis-it/takecare-agents/internal/roleagent"
+	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/surveyagent"
 	"github.com/agaetis-it/takecare-agents/internal/testenv"
 )
@@ -187,8 +194,116 @@ func TestSuspendedDoesNotPoll(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.RequeueAfter > 0 && res.RequeueAfter <= requeueNotReady {
-		t.Errorf("a suspended Intendant requeues after %s", res.RequeueAfter)
+	// The fixture's clock reads testStart, 10:00 UTC, whatever the hour
+	// the test runs at: the default schedule (03:00 UTC) is 17 hours away,
+	// so its wake-up can never be mistaken for the 30-second poll.
+	if want := 17 * time.Hour; res.RequeueAfter != want {
+		t.Errorf("a suspended Intendant requeues after %s, want the schedule's %s", res.RequeueAfter, want)
+	}
+}
+
+// A name of 45 to 63 characters got its routes, its model configuration
+// and the finalizer from an earlier release, never its agent: the agent's
+// tool servers carry the agent's name as a label value, which the API
+// server refuses past 63 bytes. The deletion path runs before the name's
+// check: deleting the Intendant removes what exists.
+func TestStoredLongNameDeleted(t *testing.T) {
+	t.Parallel()
+	f := start(t)
+	f.platform(t)
+	f.connector(t, connMap, v1alpha1.ConnectorMap, []string{mcp.MapEntryTool, mcp.MapListTool})
+	name := strings.Repeat("d", 50)
+	f.store(t, mapOnly(name, func(in *v1alpha1.TakeCareIntendant) { in.Finalizers = []string{Finalizer} }))
+	ctx := context.Background()
+	var in v1alpha1.TakeCareIntendant
+	if err := f.c.Get(ctx, client.ObjectKey{Namespace: ns, Name: name}, &in); err != nil {
+		t.Fatal(err)
+	}
+	// What the earlier release rendered, with the functions it used.
+	var p v1alpha1.TakeCarePlatform
+	if err := f.c.Get(ctx, client.ObjectKey{Name: "main"}, &p); err != nil {
+		t.Fatal(err)
+	}
+	role, gw, agentName := roleOf(&in), routes.Gateway{Name: p.Spec.Gateway.GatewayRef.Name}, surveyagent.AgentName(&in)
+	model, _, _ := roleagent.Model(&p, nil)
+	agents, models := &kagent0103.Agents{Client: f.c}, &kagent0103.Models{Client: f.c}
+	desired, err := surveyagent.Agent{Intendant: &in, EngineNamespace: engineNS, Model: agentName,
+		Tools: []engine.ToolServer{{Connector: connMap, URL: gwURL + routes.MCPPath(role, connMap), Tools: []string{toolPath}}}}.Render()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, seed := range []func() error{
+		func() error { return routes.EnsureA2A(ctx, f.c, gw, role, agents.Endpoint(engineNS, agentName)) },
+		func() error { return routes.EnsureModel(ctx, f.c, gw, role, model) },
+		func() error {
+			return models.EnsureModel(ctx, roleagent.ModelConfig(&p, role, model, agentName, engineNS, surveyagent.OwnerLabels(&in)))
+		},
+	} {
+		if err := seed(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := agents.EnsureAgent(ctx, desired); err == nil {
+		t.Error("the agent of a 50-character name was created: an earlier release could leave it behind")
+	}
+	if err := f.c.Delete(ctx, &in); err != nil {
+		t.Fatal(err)
+	}
+	gone := func(get func() error) bool { return apierrors.IsNotFound(get()) }
+	for deadline := time.Now().Add(waitFor); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		if gone(func() error {
+			return f.c.Get(ctx, client.ObjectKey{Namespace: ns, Name: name}, &v1alpha1.TakeCareIntendant{})
+		}) {
+			break
+		}
+	}
+	for what, get := range map[string]func() error{
+		"the Intendant": func() error {
+			return f.c.Get(ctx, client.ObjectKey{Namespace: ns, Name: name}, &v1alpha1.TakeCareIntendant{})
+		},
+		"the agent":                func() error { _, err := f.engineObject(agentGVK, agentName); return err },
+		"the model configuration":  func() error { _, err := f.engineObject(modelConfigGVK, agentName); return err },
+		"the A2A and model routes": func() error { return f.routesLeft(t, role) },
+	} {
+		if !gone(get) {
+			t.Errorf("%s is left after the deletion: %v", what, get())
+		}
+	}
+}
+
+// routesLeft returns NotFound once no HTTPRoute of the role is left.
+func (f *fixture) routesLeft(t *testing.T, role routes.Role) error {
+	t.Helper()
+	list := &unstructured.UnstructuredList{}
+	list.SetGroupVersionKind(schema.GroupVersionKind{Group: "gateway.networking.k8s.io", Version: "v1", Kind: "HTTPRouteList"})
+	if err := f.c.List(context.Background(), list, client.InNamespace(ns)); err != nil {
+		return err
+	}
+	prefix := "role-" + role.Kind + "-" + role.Name + "-"
+	for _, r := range list.Items {
+		if strings.HasPrefix(r.GetName(), prefix) {
+			return fmt.Errorf("route %s", r.GetName())
+		}
+	}
+	return apierrors.NewNotFound(schema.GroupResource{Resource: "httproutes"}, prefix)
+}
+
+// A suspended Intendant whose routes cannot be rendered (no gateway yet)
+// still looks again: render asks for it, whatever Ready's reason.
+func TestSuspendedWithoutGatewayPolls(t *testing.T) {
+	t.Parallel()
+	f := start(t)
+	f.connector(t, connMap, v1alpha1.ConnectorMap, []string{mcp.MapEntryTool, mcp.MapListTool})
+	f.intendant(t, "waiting", func(in *v1alpha1.TakeCareIntendant) {
+		in.Spec.Suspend = true
+		in.Spec.Connectors = v1alpha1.IntendantConnectors{Map: []string{connMap}}
+	})
+	res, err := f.reconciler().Reconcile(context.Background(), reconcileRequest("waiting"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.RequeueAfter != requeueNotReady {
+		t.Errorf("requeue after %s, want %s", res.RequeueAfter, requeueNotReady)
 	}
 }
 

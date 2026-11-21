@@ -16,7 +16,7 @@ Out of scope for 0.3.0: the Bib (its own ADR and spec), cloud importers, any wri
 
 ## 2. Resources
 
-- **`TakeCareIntendant`**, namespaced, one per Map scope. Its name is at most 44 characters, refused beyond at creation: its engine agent is `takecare-intendant-<name>`, and kagent names the agent's Service after it and sets it as a label value, both at most 63 characters. An Intendant stored with a longer name before the rule says so in `Ready` (reason `NameTooLong`) and does nothing. It embeds `RoleCommonSpec` (level, scope, connectors, model, report) and adds:
+- **`TakeCareIntendant`**, namespaced, one per Map scope. Its name is at most 44 characters, refused beyond at creation: its engine agent is `takecare-intendant-<name>`, and kagent names the agent's Service after it and sets it as a label value, both at most 63 characters. An Intendant stored with a longer name before the rule says so in `Ready` (reason `NameTooLong`) and renders nothing more; what an earlier release rendered for it (routes, model configuration) goes when it is deleted. It embeds `RoleCommonSpec` (level, scope, connectors, model, report) and adds:
   - `schedule`: a cron expression in UTC, daily by default (`0 3 * * *`); a schedule naming a time zone (`TZ=` or `CRON_TZ=`) is refused, as Kubernetes refuses it on a CronJob, and one stored before the rule sets `ScheduleValid` False (reason `ScheduleTimeZone`, one Warning event at the transition) and no survey starts;
   - `importers`: `Kubernetes` for 0.3.0, the default;
   - `connectors`: `cluster` and `knowledge` (at most 16 each), `map` (required, exactly one), `metrics` (optional, at most one) and `report`, each a connector name of at most 253 characters;

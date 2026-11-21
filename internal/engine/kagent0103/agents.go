@@ -17,6 +17,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/agaetis-it/takecare-agents/internal/apply"
@@ -260,6 +261,12 @@ func toAny(in []string) []any {
 
 // prune deletes the agent's tool servers that are no longer rendered.
 func (g *Agents) prune(ctx context.Context, namespace, name string, keep map[string]bool) error {
+	if len(validation.IsValidLabelValue(name)) > 0 {
+		// No tool server carries a label the API server refuses, so none
+		// is to prune; the selector itself would be refused, and the
+		// role's deletion would fail at every attempt.
+		return nil
+	}
 	list := &unstructured.UnstructuredList{}
 	list.SetGroupVersionKind(remoteMCPServerGVK.GroupVersion().WithKind("RemoteMCPServerList"))
 	if err := g.Client.List(ctx, list, client.InNamespace(namespace), client.MatchingLabels{agentLabel: name}); err != nil {
