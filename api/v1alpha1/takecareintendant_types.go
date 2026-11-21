@@ -9,6 +9,26 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // (RoleRef).
 const KindTakeCareIntendant = "TakeCareIntendant"
 
+// IntendantAgentPrefix starts the name of an Intendant's engine agent,
+// followed by the Intendant's name. kagent names the agent's Service after
+// it, and sets it as a label value: both at most 63 characters.
+const IntendantAgentPrefix = "takecare-intendant-"
+
+// MaxIntendantName is the longest name an Intendant can have: its engine
+// agent's name must stay a Kubernetes service name. The CEL rule on
+// TakeCareIntendant states the same number; a test keeps them equal. The
+// rule holds at creation only (a name never changes): an Intendant stored
+// before it can still be updated, and its status says why it does nothing.
+const MaxIntendantName = 63 - len(IntendantAgentPrefix)
+
+// MessageIntendantName is the refusal of a longer name, by the API server
+// and, for an Intendant stored before the rule, on its status.
+const MessageIntendantName = "an Intendant's name is at most 44 characters: its engine agent takecare-intendant-<name> is a Kubernetes service name (63)"
+
+// MessageScheduleUTC is the refusal of a schedule naming a time zone, by
+// the API server and, for one stored before the rule, on the status.
+const MessageScheduleUTC = "the schedule is in UTC: TZ= and CRON_TZ= are refused"
+
 // Importer names a deterministic importer the Intendant drives (spec 10 §4).
 // +kubebuilder:validation:Enum=Kubernetes
 type Importer string
@@ -28,6 +48,7 @@ type TakeCareIntendantSpec struct {
 	// +kubebuilder:default="0 3 * * *"
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:XValidation:rule="!self.contains('TZ=')",message="the schedule is in UTC: TZ= and CRON_TZ= are refused"
 	// +optional
 	Schedule string `json:"schedule,omitempty"`
 
@@ -52,24 +73,31 @@ type TakeCareIntendantSpec struct {
 // +kubebuilder:validation:XValidation:rule="has(self.map) && size(self.map) == 1",message="the Intendant needs exactly one map connector"
 type IntendantConnectors struct {
 	// The kubernetes connectors the import reads the ground through.
+	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:items:MaxLength=253
 	// +listType=set
 	// +optional
 	Cluster []string `json:"cluster,omitempty"`
 	// The knowledge connectors whose records become runbook entries.
+	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:items:MaxLength=253
 	// +listType=set
 	// +optional
 	Knowledge []string `json:"knowledge,omitempty"`
 	// The Map connector (type map, spec 08) the survey is made against.
+	// +kubebuilder:validation:items:MaxLength=253
 	// +listType=set
 	// +optional
 	Map []string `json:"map,omitempty"`
 	// The metrics connector whose rules tool lists the alerting rules
 	// Prometheus has loaded (spec 10 §4).
 	// +kubebuilder:validation:MaxItems=1
+	// +kubebuilder:validation:items:MaxLength=253
 	// +listType=set
 	// +optional
 	Metrics []string `json:"metrics,omitempty"`
 	// The report connector: where the operator publishes the digest.
+	// +kubebuilder:validation:MaxLength=253
 	// +optional
 	Report string `json:"report,omitempty"`
 }
@@ -125,12 +153,16 @@ type TakeCareIntendantStatus struct {
 // LastDigest records the Intendant's last posted digest.
 type LastDigest struct {
 	// The survey whose digest was posted.
+	// +kubebuilder:validation:MaxLength=253
 	Survey string `json:"survey"`
 	// The report connector and the destination it was posted to.
-	Connector   string `json:"connector"`
+	// +kubebuilder:validation:MaxLength=253
+	Connector string `json:"connector"`
+	// +kubebuilder:validation:MaxLength=256
 	Destination string `json:"destination"`
 	// A hash of the survey's proposal ids and their total: nothing of an
 	// entry.
+	// +kubebuilder:validation:MaxLength=128
 	Fingerprint string `json:"fingerprint"`
 }
 
@@ -142,6 +174,7 @@ type LastDigest struct {
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Last survey",type=string,JSONPath=`.status.lastSurvey`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+// +kubebuilder:validation:XValidation:rule="oldSelf.hasValue() || size(self.metadata.name) <= 44",optionalOldSelf=true,message="an Intendant's name is at most 44 characters: its engine agent takecare-intendant-<name> is a Kubernetes service name (63)"
 
 // TakeCareIntendant is the Intendant: it surveys the ground and proposes the
 // Map's entries, read-only.

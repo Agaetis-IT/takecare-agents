@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -158,7 +159,7 @@ func (w *Runner) post(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alpha1
 		return result, nil
 	}
 	all := w.allProposals(ctx, s)
-	this := &v1alpha1.LastDigest{Survey: s.Name, Connector: result.Connector, Destination: dest, Fingerprint: fingerprint(all, s.Status.ProposalCounts.Total)}
+	this := &v1alpha1.LastDigest{Survey: s.Name, Connector: result.Connector, Destination: cut(dest, maxDigestDestination), Fingerprint: fingerprint(all, s.Status.ProposalCounts.Total)}
 	if l := in.Status.LastDigest; l != nil && l.Survey == s.Name {
 		// Posted and recorded, the operator stopped before the survey's
 		// own record.
@@ -180,6 +181,25 @@ func (w *Runner) post(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alpha1
 	}
 	result.OK = true
 	return result, this
+}
+
+// maxDigestDestination is status.lastDigest.destination's bound in the
+// API. The destination is a name of the Intendant's spec, which the API
+// does not bound (the type is shared with the Doc): the record is cut, the
+// post went to the whole name. The survey, the connector and the
+// fingerprint are bounded at their source: an object name, a connector
+// name the spec bounds, a hex SHA-256.
+const maxDigestDestination = 256
+
+// cut bounds s to n bytes without splitting a character.
+func cut(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 // fingerprint is a hash of the proposals' ids, sorted, and their total,

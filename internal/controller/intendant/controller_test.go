@@ -322,8 +322,8 @@ func (f *fixture) connector(t *testing.T, name string, typ v1alpha1.ConnectorTyp
 	}
 }
 
-func (f *fixture) intendant(t *testing.T, name string, mutate func(*v1alpha1.TakeCareIntendant)) {
-	t.Helper()
+// newIntendant is the tests' Intendant, before mutate.
+func newIntendant(name string, mutate func(*v1alpha1.TakeCareIntendant)) *v1alpha1.TakeCareIntendant {
 	in := &v1alpha1.TakeCareIntendant{Name: name, Namespace: ns}
 	in.Spec.Level = v1alpha1.LevelPractitioner
 	in.Spec.Scope = v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{"shop"}}
@@ -331,6 +331,12 @@ func (f *fixture) intendant(t *testing.T, name string, mutate func(*v1alpha1.Tak
 	if mutate != nil {
 		mutate(in)
 	}
+	return in
+}
+
+func (f *fixture) intendant(t *testing.T, name string, mutate func(*v1alpha1.TakeCareIntendant)) {
+	t.Helper()
+	in := newIntendant(name, mutate)
 	if err := f.c.Create(context.Background(), in); err != nil {
 		t.Fatal(err)
 	}

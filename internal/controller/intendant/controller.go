@@ -50,13 +50,18 @@ const (
 
 // Reasons.
 const (
-	ReasonReady            = "Ready"
-	ReasonNotReady         = "NotReady"
-	ReasonSuspended        = "Suspended"
-	ReasonSupported        = "Supported"
-	ReasonNotImplemented   = "NotImplemented"
-	ReasonValid            = "Valid"
-	ReasonInvalidSchedule  = "InvalidSchedule"
+	ReasonReady           = "Ready"
+	ReasonNotReady        = "NotReady"
+	ReasonSuspended       = "Suspended"
+	ReasonSupported       = "Supported"
+	ReasonNotImplemented  = "NotImplemented"
+	ReasonValid           = "Valid"
+	ReasonInvalidSchedule = "InvalidSchedule"
+	// ReasonScheduleTimeZone: the schedule names a time zone; it is in UTC.
+	ReasonScheduleTimeZone = "ScheduleTimeZone"
+	// ReasonNameTooLong: an Intendant stored with a name past
+	// v1alpha1.MaxIntendantName, before the API refused it.
+	ReasonNameTooLong      = "NameTooLong"
 	ReasonConnectorsReady  = "ConnectorsReady"
 	ReasonMapMissing       = "MapConnectorMissing"
 	ReasonConnectorDegrade = "ConnectorsDegraded"
@@ -145,6 +150,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if !in.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, r.remove(ctx, &in)
 	}
+	if len(in.Name) > v1alpha1.MaxIntendantName {
+		// Stored before the API refused such names: its agent could never
+		// be deployed, so nothing is rendered or surveyed, and no write
+		// fails in a loop. Its name never changes: no requeue.
+		st := &status{generation: in.Generation, now: r.now()}
+		st.level = r.level(&in, st)
+		st.set(v1alpha1.ConditionReady, false, ReasonNameTooLong, v1alpha1.MessageIntendantName)
+		return ctrl.Result{}, r.writeStatus(ctx, &in, st, nil, kept(&in))
+	}
 	if controllerutil.AddFinalizer(&in, Finalizer) {
 		if err := r.Update(ctx, &in); err != nil {
 			return ctrl.Result{}, fmt.Errorf("add the finalizer to %s: %w", in.Name, err)
@@ -156,6 +170,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	st := &status{generation: in.Generation, prevPending: in.Status.RenderPendingSince, now: now}
 	st.level = r.level(&in, st)
 	next := schedule(&in, st, now)
+	r.scheduleEvent(&in, st)
 	bound, err := r.connectors(ctx, &in, st)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -177,7 +192,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		// latest; the survey's end wakes the reconcile sooner.
 		return ctrl.Result{RequeueAfter: st.heldUntil.Sub(now) + time.Second}, nil
 	}
-	if requeue || !st.isTrue(v1alpha1.ConditionReady) {
+	// Suspended alone waits for nothing: every input is watched.
+	if requeue || !st.isTrue(v1alpha1.ConditionReady) && st.reason(v1alpha1.ConditionReady) != ReasonSuspended {
 		return ctrl.Result{RequeueAfter: requeueNotReady}, nil
 	}
 	if !t.requeue.IsZero() && (next == nil || t.requeue.Before(next.Time)) {
@@ -215,6 +231,11 @@ func schedule(in *v1alpha1.TakeCareIntendant, st *status, now time.Time) *metav1
 	if spec == "" {
 		spec = "0 3 * * *"
 	}
+	if strings.Contains(spec, "TZ=") {
+		// Stored before the API refused it (the CEL rule says the same).
+		st.set(ConditionScheduleValid, false, ReasonScheduleTimeZone, v1alpha1.MessageScheduleUTC)
+		return nil
+	}
 	sched, err := cronParser.Parse(spec)
 	if err != nil {
 		st.set(ConditionScheduleValid, false, ReasonInvalidSchedule, fmt.Sprintf("spec.schedule %q: %v", spec, err))
@@ -223,6 +244,27 @@ func schedule(in *v1alpha1.TakeCareIntendant, st *status, now time.Time) *metav1
 	st.set(ConditionScheduleValid, true, ReasonValid, "spec.schedule "+spec+", in UTC")
 	next := metav1.NewTime(sched.Next(now.UTC()))
 	return &next
+}
+
+// scheduleEvent records one Warning when the schedule turns refused for
+// naming a time zone, not at every reconcile.
+func (r *Reconciler) scheduleEvent(in *v1alpha1.TakeCareIntendant, st *status) {
+	if r.Recorder == nil || st.reason(ConditionScheduleValid) != ReasonScheduleTimeZone {
+		return
+	}
+	if prev := meta.FindStatusCondition(in.Status.Conditions, ConditionScheduleValid); prev != nil && prev.Reason == ReasonScheduleTimeZone {
+		return
+	}
+	r.Recorder.Eventf(in, nil, corev1.EventTypeWarning, ReasonScheduleTimeZone, "Reconcile", "%s", v1alpha1.MessageScheduleUTC)
+}
+
+// kept is the trigger bookkeeping as the status holds it: a reconcile that
+// surveys nothing writes it back unchanged.
+func kept(in *v1alpha1.TakeCareIntendant) triggered {
+	return triggered{
+		mapRevision: in.Status.LastMapRevision, registrations: in.Status.Registrations,
+		pending: in.Status.PendingTrigger, since: in.Status.RegistrationsSince,
+	}
 }
 
 // render writes the Intendant's routes when the gateway is ready, and
@@ -356,6 +398,9 @@ func (r *Reconciler) writeStatus(ctx context.Context, in *v1alpha1.TakeCareInten
 // SetupWithManager watches the Intendant, what its routes are made of
 // (connectors, the platform) and the routes it renders.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := indexSurveys(context.Background(), mgr); err != nil {
+		return fmt.Errorf("index the surveys by Intendant: %w", err)
+	}
 	all := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, _ client.Object) []reconcile.Request {
 		return r.intendants(ctx)
 	})

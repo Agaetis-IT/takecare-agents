@@ -15,11 +15,20 @@ import (
 
 // SurveyMetrics are what awaits review now (spec 10 §10): gauges set from
 // each Intendant's last completed survey, never counters, since the same
-// proposals come back at every survey until a human merges them.
+// proposals come back at every survey until a human merges them. Ended
+// counts the surveys that ended, once each, by result.
 type SurveyMetrics struct {
 	Proposals *prometheus.GaugeVec
 	NotSeen   *prometheus.GaugeVec
+	Ended     *prometheus.CounterVec
 }
+
+// The results of takecare_surveys_total: a closed set.
+const (
+	resultCompleted = "completed"
+	resultFailed    = "failed"
+	resultAbandoned = "abandoned"
+)
 
 // NewSurveyMetrics registers the survey gauges, or returns the ones
 // already registered.
@@ -36,7 +45,29 @@ func NewSurveyMetrics(reg prometheus.Registerer) (*SurveyMetrics, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &SurveyMetrics{Proposals: proposals, NotSeen: notSeen}, nil
+	ended := prometheus.NewCounterVec(prometheus.CounterOpts{Name: "takecare_surveys_total",
+		Help: "Surveys ended, counted once, by result: completed, failed, abandoned (ended by the operator at its bound)."}, []string{"result"})
+	if err := reg.Register(ended); err != nil {
+		already, ok := errors.AsType[prometheus.AlreadyRegisteredError](err)
+		if !ok {
+			return nil, fmt.Errorf("register takecare_surveys_total: %w", err)
+		}
+		existing, ok := already.ExistingCollector.(*prometheus.CounterVec)
+		if !ok {
+			return nil, fmt.Errorf("register takecare_surveys_total: %w", err)
+		}
+		ended = existing
+	}
+	return &SurveyMetrics{Proposals: proposals, NotSeen: notSeen, Ended: ended}, nil
+}
+
+// End counts a survey that ended. Each end writer calls it only when its
+// own patch ended the survey, so a survey counts once.
+func (m *SurveyMetrics) End(result string) {
+	if m == nil || m.Ended == nil {
+		return
+	}
+	m.Ended.WithLabelValues(result).Inc()
 }
 
 func gauge(reg prometheus.Registerer, name, help string, labels ...string) (*prometheus.GaugeVec, error) {

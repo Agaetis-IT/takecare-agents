@@ -16,10 +16,10 @@ Out of scope for 0.3.0: the Bib (its own ADR and spec), cloud importers, any wri
 
 ## 2. Resources
 
-- **`TakeCareIntendant`**, namespaced, one per Map scope. It embeds `RoleCommonSpec` (level, scope, connectors, model, report) and adds:
-  - `schedule`: a cron expression, daily by default (`0 3 * * *`);
+- **`TakeCareIntendant`**, namespaced, one per Map scope. Its name is at most 44 characters, refused beyond at creation: its engine agent is `takecare-intendant-<name>`, and kagent names the agent's Service after it and sets it as a label value, both at most 63 characters. An Intendant stored with a longer name before the rule says so in `Ready` (reason `NameTooLong`) and does nothing. It embeds `RoleCommonSpec` (level, scope, connectors, model, report) and adds:
+  - `schedule`: a cron expression in UTC, daily by default (`0 3 * * *`); a schedule naming a time zone (`TZ=` or `CRON_TZ=`) is refused, as Kubernetes refuses it on a CronJob, and one stored before the rule sets `ScheduleValid` False (reason `ScheduleTimeZone`, one Warning event at the transition) and no survey starts;
   - `importers`: `Kubernetes` for 0.3.0, the default;
-  - `connectors`: `cluster`, `knowledge`, `map` (required, exactly one), `metrics` (optional, at most one) and `report`;
+  - `connectors`: `cluster` and `knowledge` (at most 16 each), `map` (required, exactly one), `metrics` (optional, at most one) and `report`, each a connector name of at most 253 characters;
   - `report`: the report connector's destinations by level, as the Doc's.
 - **`TakeCareSurvey`**, one record per survey, with a `RunStatus` (spec 06 §3).
   - Spec, immutable: `intendantRef`, `trigger` (`Schedule`, `OnDemand`, `MapRevision`, `Registration`; `OnDemand` by default) and `mapRevision`, the Map revision to survey against (empty: the one served when the survey starts).
@@ -191,6 +191,10 @@ Metrics are gauges, not counters: the same proposals come back at every survey u
 
 - `takecare_survey_proposals{intendant,action,source}`: what awaits review now;
 - `takecare_survey_not_seen{intendant,layer}`: what the survey could not read.
+
+One counter, since a survey ends once:
+
+- `takecare_surveys_total{result}` (completed, failed, abandoned): surveys ended, counted once. The writer whose patch ended the survey counts it: the runner (completed, failed), a survey failed at its admission (failed), the backstop (abandoned).
 
 The `intendant` label has a few values per cluster.
 

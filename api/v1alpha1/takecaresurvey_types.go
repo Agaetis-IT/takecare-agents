@@ -179,9 +179,13 @@ type Inventory struct {
 // InventoryItem is one agent or connector of the inventory.
 type InventoryItem struct {
 	// +kubebuilder:validation:Enum=Agent;Connector
-	Kind      string `json:"kind"`
+	Kind string `json:"kind"`
+	// The namespace, prefixed by its cluster's name and a slash for a
+	// workload cluster: a cluster name (63), a slash, a namespace (63).
+	// +kubebuilder:validation:MaxLength=127
 	Namespace string `json:"namespace"`
-	Name      string `json:"name"`
+	// +kubebuilder:validation:MaxLength=253
+	Name string `json:"name"`
 	// A connector's tools as discovered; an engine agent's tools as it is
 	// given them; 0 for an agent listed through the kubernetes connector,
 	// whose listing does not say.

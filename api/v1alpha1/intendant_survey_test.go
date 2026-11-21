@@ -5,15 +5,25 @@ package v1alpha1_test
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/surveyagent"
 )
 
-const wantOneMap = "exactly one map connector"
+const (
+	wantOneMap  = "exactly one map connector"
+	wantTooLong = "Too long"
+	itemAgent   = "Agent"
+)
 
 func intendantFixture() *v1alpha1.TakeCareIntendant {
 	return &v1alpha1.TakeCareIntendant{
@@ -62,12 +72,111 @@ func TestIntendantValidation(t *testing.T) {
 		{caseUnknownLevel, func(i *v1alpha1.TakeCareIntendant) { i.Spec.Level = badLevel }, wantLevel},
 		{"empty scope", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Scope.Namespaces = nil }, "at least one selector"},
 		{"schedule too long", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Schedule = string(make([]byte, 101)) }, "schedule"},
+		{"schedule naming a time zone", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Schedule = "CRON_TZ=Europe/Paris 0 3 * * *" }, v1alpha1.MessageScheduleUTC},
+		{"schedule with TZ=", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Schedule = "TZ=UTC 0 3 * * *" }, v1alpha1.MessageScheduleUTC},
+		{"name at the bound", func(i *v1alpha1.TakeCareIntendant) { i.Name = padded(i.Name, v1alpha1.MaxIntendantName) }, ""},
+		{"name past the bound", func(i *v1alpha1.TakeCareIntendant) { i.Name = padded(i.Name, v1alpha1.MaxIntendantName+1) }, v1alpha1.MessageIntendantName},
+		{"17 cluster connectors", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Cluster = names(17) }, "cluster"},
+		{"16 knowledge connectors", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Knowledge = names(16) }, ""},
+		{"17 knowledge connectors", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Knowledge = names(17) }, "knowledge"},
+		{"connector name past 253", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Map = []string{strings.Repeat("m", 254)} }, "map"},
+		{"report connector past 253", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Report = strings.Repeat("r", 254) }, "report"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			i := intendantFixture()
 			tt.mutate(i)
 			checkError(t, create(t, i), tt.want)
+		})
+	}
+}
+
+// padded is name lengthened to n characters, still a DNS label.
+func padded(name string, n int) string { return name + strings.Repeat("a", n-len(name)) }
+
+// names is n distinct connector names.
+func names(n int) []string {
+	out := make([]string, n)
+	for i := range out {
+		out[i] = fmt.Sprintf("c%d", i)
+	}
+	return out
+}
+
+// TestIntendantNameBound: the rule's number, its message and the engine
+// agent's prefix agree, and an Intendant at the bound gives an agent name
+// of exactly 63 characters (kagent's Service name and label value).
+func TestIntendantNameBound(t *testing.T) {
+	crd, err := os.ReadFile(filepath.Join("..", "..", "config", "crd", "takecare.agaetis.fr_takecareintendants.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc any
+	if err := yaml.Unmarshal(crd, &doc); err != nil {
+		t.Fatal(err)
+	}
+	said := map[string]bool{}
+	var walk func(any)
+	walk = func(v any) {
+		switch v := v.(type) {
+		case map[string]any:
+			for k, x := range v {
+				if s, ok := x.(string); ok && (k == "rule" || k == "message") {
+					said[s] = true
+				}
+				walk(x)
+			}
+		case []any:
+			for _, x := range v {
+				walk(x)
+			}
+		}
+	}
+	walk(doc)
+	for _, want := range []string{
+		fmt.Sprintf("oldSelf.hasValue() || size(self.metadata.name) <= %d", v1alpha1.MaxIntendantName),
+		v1alpha1.MessageIntendantName, v1alpha1.MessageScheduleUTC,
+	} {
+		if !said[want] {
+			t.Errorf("no CEL rule or message of the CRD is %q", want)
+		}
+	}
+	if !strings.Contains(v1alpha1.MessageIntendantName, fmt.Sprintf("at most %d characters", v1alpha1.MaxIntendantName)) ||
+		!strings.Contains(v1alpha1.MessageIntendantName, v1alpha1.IntendantAgentPrefix) {
+		t.Errorf("the message %q does not name the bound and the prefix", v1alpha1.MessageIntendantName)
+	}
+	in := &v1alpha1.TakeCareIntendant{Name: strings.Repeat("a", v1alpha1.MaxIntendantName)}
+	if n := len(surveyagent.AgentName(in)); n != 63 {
+		t.Errorf("the agent of an Intendant at the bound is named with %d characters, want 63", n)
+	}
+}
+
+// TestIntendantStatusBounds: each bounded status field takes its bound and
+// refuses one more character.
+func TestIntendantStatusBounds(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		set  func(*v1alpha1.LastDigest, int)
+		max  int
+	}{
+		{"survey", func(d *v1alpha1.LastDigest, n int) { d.Survey = strings.Repeat("s", n) }, 253},
+		{"connector", func(d *v1alpha1.LastDigest, n int) { d.Connector = strings.Repeat("c", n) }, 253},
+		{"destination", func(d *v1alpha1.LastDigest, n int) { d.Destination = strings.Repeat("d", n) }, 256},
+		{"fingerprint", func(d *v1alpha1.LastDigest, n int) { d.Fingerprint = strings.Repeat("f", n) }, 128},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			i := intendantFixture()
+			checkError(t, create(t, i), "")
+			for _, n := range []int{tc.max, tc.max + 1} {
+				d := &v1alpha1.LastDigest{Survey: "s", Connector: "c", Destination: "d", Fingerprint: "f"}
+				tc.set(d, n)
+				i.Status.LastDigest = d
+				want := ""
+				if n > tc.max {
+					want = wantTooLong
+				}
+				checkError(t, k8sClient.Status().Update(context.Background(), i), want)
+			}
 		})
 	}
 }
@@ -160,6 +269,15 @@ func TestSurveyIsARecord(t *testing.T) {
 				st.Proposals = append(st.Proposals, v1alpha1.Proposal{ID: uniqueName("p") + string(rune('a'+n%26)), Action: v1alpha1.ProposalAdd, Key: entityBilling, Source: v1alpha1.ProposalFromImport})
 			}
 		}, "proposals"},
+		{"inventory item at its bounds", func(st *v1alpha1.TakeCareSurveyStatus) {
+			st.Inventory.Items = []v1alpha1.InventoryItem{{Kind: itemAgent, Namespace: strings.Repeat("n", 127), Name: strings.Repeat("a", 253)}}
+		}, ""},
+		{"inventory namespace past 127", func(st *v1alpha1.TakeCareSurveyStatus) {
+			st.Inventory.Items = []v1alpha1.InventoryItem{{Kind: itemAgent, Namespace: strings.Repeat("n", 128), Name: "a"}}
+		}, wantTooLong},
+		{"inventory name past 253", func(st *v1alpha1.TakeCareSurveyStatus) {
+			st.Inventory.Items = []v1alpha1.InventoryItem{{Kind: itemAgent, Namespace: "n", Name: strings.Repeat("a", 254)}}
+		}, wantTooLong},
 	}
 	for _, tt := range statusTests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -34,7 +34,7 @@ var Skill = engine.Skill{
 
 // AgentName names the engine's agent of an Intendant. The engine namespace
 // is shared, the Intendant's name is unique in the operator namespace.
-func AgentName(in *v1alpha1.TakeCareIntendant) string { return "takecare-intendant-" + in.Name }
+func AgentName(in *v1alpha1.TakeCareIntendant) string { return v1alpha1.IntendantAgentPrefix + in.Name }
 
 // sources describes, per connector type, what the agent can read. Order
 // is the order of the instructions.
