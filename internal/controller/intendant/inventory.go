@@ -55,8 +55,11 @@ func (w *Runner) ownItems(ctx context.Context, in *v1alpha1.TakeCareIntendant) (
 	return items, nil
 }
 
-// givenTools counts the tools a kagent Agent is given: the toolNames of
-// each tool of its declarative spec (kagent v0.10.3).
+// givenTools counts the tools a kagent Agent is given, by the tool types
+// of kagent v0.10.3's Agent CRD (spec.declarative.tools[].type): an
+// McpServer gives the toolNames it lists, an Agent (another agent used as
+// a tool) gives one. An McpServer with no toolNames gives every tool of its
+// server, which the Agent does not say: it counts none.
 func givenTools(o *unstructured.Unstructured) int32 {
 	tools, _, _ := unstructured.NestedSlice(o.Object, "spec", "declarative", "tools")
 	var n int32
@@ -65,8 +68,13 @@ func givenTools(o *unstructured.Unstructured) int32 {
 		if !ok {
 			continue
 		}
-		names, _, _ := unstructured.NestedStringSlice(m, "mcpServer", "toolNames")
-		n += int32(len(names)) //nolint:gosec // an agent's tools
+		switch typ, _, _ := unstructured.NestedString(m, "type"); typ {
+		case "Agent":
+			n++
+		default:
+			names, _, _ := unstructured.NestedStringSlice(m, "mcpServer", "toolNames")
+			n += int32(len(names)) //nolint:gosec // an agent's tools
+		}
 	}
 	return n
 }

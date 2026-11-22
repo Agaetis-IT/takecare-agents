@@ -27,9 +27,11 @@ type Holder interface {
 }
 
 // bound is when a Running survey nobody holds is ended (spec 10 §5): two
-// pass timeouts from its start, the factor being the import's allowance
-// (it has no deadline of its own, its calls do), then the scrape wait and
-// a grace. It is not a deadline: a held survey is never ended here.
+// pass timeouts from its start, then the scrape wait and a grace. A run's
+// worst case is one and a half pass timeouts and the scrape wait: the
+// import within the pass's time, the pass to its deadline, the scrape
+// wait, the inventory's half (importShare). It is not a deadline: a held
+// survey is never ended here.
 func (q *SurveyQueuer) bound(s *v1alpha1.TakeCareSurvey) time.Time {
 	started := s.CreationTimestamp.Time
 	if s.Status.StartedAt != nil {

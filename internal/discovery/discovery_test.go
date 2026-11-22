@@ -6,6 +6,7 @@ package discovery
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -192,7 +193,8 @@ func TestNotSeen(t *testing.T) {
 	badHeader := answer{Content: []struct {
 		Text string `json:"text"`
 	}{{Text: "NAME   STATUS\ndemo-apps   Active\n"}}}
-	noLabels := listed(item("v1", "Service", "billing-api"))
+	mixedLabels := listed(item("v1", "Service", "billing-api"), item("v1", "Service", "orders", "<none>"))
+	noLabels := listed(item("apps/v1", deployment, "billing-api"), item("apps/v1", deployment, "orders"))
 	otherKind := listed(item("v1", "Secret", "x", "<none>"))
 	textOnly := answer{Content: []struct {
 		Text string `json:"text"`
@@ -208,8 +210,10 @@ func TestNotSeen(t *testing.T) {
 		{"forbidden namespace", fakeGround{lists: map[string]answer{ackSystem + "/" + deployment: fixture(t, "forbidden-ack-system-Deployment.json")}}, nil, nil,
 			LayerCompute, NotSeen{Ref: ackSystem + "/" + deployment, Reason: reasonForbidden}},
 		{"API not served, once per cluster", fakeGround{}, nil, nil, LayerNetwork, NotSeen{Ref: "HTTPRoute", Reason: reasonNotServed}},
-		{"an item without its labels", fakeGround{lists: map[string]answer{demoApps + "/Service": noLabels}}, nil, nil,
+		{"some items with labels, some without", fakeGround{lists: map[string]answer{demoApps + "/Service": mixedLabels}}, nil, nil,
 			LayerNetwork, NotSeen{Ref: demoApps + "/Service", Reason: wantUnrecognizedList}},
+		{"a compute listing without labels: read, and no service from it", fakeGround{lists: map[string]answer{demoApps + "/" + deployment: noLabels}}, nil, nil,
+			LayerService, NotSeen{Ref: demoApps + "/" + deployment, Reason: fmt.Sprintf(reasonNoLabels, deployment, connector)}},
 		{"an item of another kind", fakeGround{lists: map[string]answer{demoApps + "/Service": otherKind}}, nil, nil,
 			LayerNetwork, NotSeen{Ref: demoApps + "/Service", Reason: wantUnrecognizedList}},
 		{"a text table without structured content", fakeGround{lists: map[string]answer{demoApps + "/Service": textOnly}}, nil, nil,

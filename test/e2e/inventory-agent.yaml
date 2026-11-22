@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # An Agent in the demo Intendant's scope, for its inventory (spec 10 §8):
-# listed through the kubernetes connector whatever its state. BYO with no
-# replica: kagent v0.10.3 passes deployment.replicas through as is, so its
-# Deployment runs no pod. The image is under the reserved .invalid domain:
-# it is never pulled, and a mistake in replicas could fetch nothing.
+# listed through the kubernetes connector whatever its state. It stays
+# inert because kagent does not watch demo-apps: the chart gives kagent
+# Roles in its own namespace only (kagent.rbac.namespaces: [kagent]), from
+# which kagent v0.10.3 derives WATCH_NAMESPACES. The rest is a second
+# guard: a BYO agent with no replica (deployment.replicas is passed through
+# as is), and an image under the reserved .invalid domain, never pulled.
 apiVersion: kagent.dev/v1alpha2
 kind: Agent
 metadata:

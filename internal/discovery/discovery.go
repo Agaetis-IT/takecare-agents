@@ -349,8 +349,9 @@ func (r *run) list(ctx context.Context, caller Caller, g Ground) error {
 				return err
 			}
 			var objs []object
+			labels := true
 			if why == "" {
-				if objs, err = parseList(res, k.apiVersion, k.kind, ns); err != nil {
+				if objs, labels, err = parseList(res, k.apiVersion, k.kind, ns); err != nil {
 					why = fmt.Sprintf(reasonUnrecognized, toolList)
 				}
 			}
@@ -365,6 +366,10 @@ func (r *run) list(ctx context.Context, caller Caller, g Ground) error {
 				continue
 			}
 			r.surveyed[list] = true
+			if !labels && k.layer == LayerCompute {
+				// The services come from the compute objects' labels.
+				r.notSeen(LayerService, list, fmt.Sprintf(reasonNoLabels, k.kind, g.Connector))
+			}
 			for _, o := range objs {
 				if k.kind == "ServiceAccount" && o.Name == "default" {
 					continue // every namespace has one: not an identity of the ground's
