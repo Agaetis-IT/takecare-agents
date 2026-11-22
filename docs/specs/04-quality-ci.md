@@ -93,7 +93,7 @@ Thresholds: at least 4 out of 5 correct to merge a change of prompt, engine, mod
 |---|---|---|
 | `ci.yaml` | push, PR | lint (golangci-lint, shellcheck, markdownlint, SPDX headers), unit + golden + envtest, chart lint, image builds (no push; amd64 only on PRs, and skipped when a PR touches none of their inputs; layers in the Actions cache), gitleaks |
 | `e2e.yaml` | PR touching the paths it lists, push to `main` | k3d end-to-end with fake LLM and fake Slack |
-| `guard-corpus.yaml` | push, PR | the guard corpus through the pinned gateway (ADR 0020); a required check, so it always reports: on a PR touching none of the patterns, the Ranger's rendering, the corpus or the pins, it passes with "nothing to replay", its steps skipped |
+| `guard-corpus.yaml` | push, PR | the guard corpus through the pinned gateway (ADR 0020); it always reports, so that it can be a required check: on a PR touching none of the patterns, the Ranger's rendering, the corpus or the pins, it passes with "nothing to replay", its steps skipped |
 | `bench.yaml` | `workflow_dispatch` | accuracy bench with a real model (repository secret), report as an artifact |
 | `release.yaml` | tag `v*` | multi-arch images (amd64, arm64), charts packaged and pushed as OCI, GitHub release with CHANGELOG excerpt |
 

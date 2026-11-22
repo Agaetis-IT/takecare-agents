@@ -7,9 +7,11 @@
 # replay=true when they touch the patterns, the Ranger's rendering, the
 # corpus, the pins or the job itself, and replay=false otherwise, a line
 # for $GITHUB_OUTPUT. The guard-corpus workflow runs it on every pull
-# request, so that its job always reports (a required check). It fails,
-# instead of saying there is nothing to replay, when it cannot tell: no
-# base, a diff that fails, or no changed file at all.
+# request, so that its job always reports and can be a required check. It
+# fails, instead of saying there is nothing to replay, when it cannot
+# tell: no base, a diff that fails, or no changed file at all. Renames
+# count as a deletion and an addition (--no-renames), so that a file moved
+# out of the watched paths still asks for a replay.
 set -euo pipefail
 
 base="${1:-}"
@@ -20,7 +22,7 @@ if [[ -z "$base" ]]; then
 fi
 
 # The list is read on its own, so that a failed diff stops here.
-changed="$(git diff --name-only "$base" "$head")"
+changed="$(git diff --no-renames --name-only "$base" "$head")"
 if [[ -z "$changed" ]]; then
   echo "guard-corpus-paths: no file changed from ${base} to ${head}: cannot tell" >&2
   exit 1

@@ -6,11 +6,11 @@
 # tag from hack/versions.env), on the corpus of real tool outputs and
 # messages, which must come back unchanged, and on made-up samples, which
 # must come back masked whole. On every pull request and every push to
-# main: a required check, so the job always runs and reports. On a pull
-# request that touches none of the patterns, the Ranger's rendering, the
-# corpus or the pins, it passes with nothing to replay, its steps skipped
-# (a workflow left out by a paths filter would never report, and a required
-# check that never reports blocks the merge).
+# main, so that it can be a required check: the job always runs and
+# reports. On a pull request that touches none of the patterns, the
+# Ranger's rendering, the corpus or the pins, it passes with nothing to
+# replay, its steps skipped (a workflow left out by a paths filter would
+# never report, and a required check that never reports blocks the merge).
 name: guard-corpus
 
 on:
