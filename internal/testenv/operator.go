@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/rest"
@@ -87,7 +86,7 @@ func startOperator(t *testing.T, demo bool, onRefusals func([]string)) Env {
 		}
 	}
 	for _, ns := range namespaces {
-		if err := c.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ns}}); err != nil {
+		if err := c.Create(ctx, &corev1.Namespace{Name: ns}); err != nil {
 			t.Fatalf("create namespace %s: %v", ns, err)
 		}
 	}

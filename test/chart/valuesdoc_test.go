@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
@@ -25,11 +25,11 @@ var subcharts = map[string]bool{"agentgateway": true, "kagent": true}
 // description, or sit under a documented row that shows its default.
 func TestEveryValueIsDocumented(t *testing.T) {
 	t.Parallel()
-	row := regexp.MustCompile("^\\| ([A-Za-z0-9_.-]+) \\| [a-z]+ \\| (.*) \\| (.*) \\|$")
-	for _, chart := range []string{"takecare", "takecare-cluster", "takecare-crds"} {
+	row := regexp.MustCompile(`^\| ([A-Za-z0-9_.-]+) \| [a-z]+ \| (.*) \| (.*) \|$`)
+	for _, chart := range []string{releaseName, clusterChart, "takecare-crds"} {
 		t.Run(chart, func(t *testing.T) {
 			t.Parallel()
-			raw, err := os.ReadFile(filepath.Join(repoRoot, "charts", chart, "values.yaml"))
+			raw, err := os.ReadFile(filepath.Join(repoRoot, "charts", chart, "values.yaml")) //nolint:gosec // the repository's own charts
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -37,7 +37,7 @@ func TestEveryValueIsDocumented(t *testing.T) {
 			if err := yaml.Unmarshal(raw, &values); err != nil {
 				t.Fatal(err)
 			}
-			readme, err := os.ReadFile(filepath.Join(repoRoot, "charts", chart, "README.md"))
+			readme, err := os.ReadFile(filepath.Join(repoRoot, "charts", chart, "README.md")) //nolint:gosec // the repository's own charts
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -63,7 +63,7 @@ func TestEveryValueIsDocumented(t *testing.T) {
 					missing = append(missing, key)
 				}
 			}
-			sort.Strings(missing)
+			slices.Sort(missing)
 			if len(missing) > 0 {
 				t.Errorf("keys of values.yaml absent from the README (add a `# --` comment and run make chart-docs): %s", strings.Join(missing, ", "))
 			}
