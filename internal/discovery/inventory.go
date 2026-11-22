@@ -64,7 +64,7 @@ func Inventory(ctx context.Context, caller Caller, grounds []Ground, own []Item)
 				layer.NotSeen = append(layer.NotSeen, NotSeen{Ref: ref, Reason: why})
 				continue
 			}
-			objs, err := parseList(res, agentAPIVersion, agentKind, ns)
+			objs, _, err := parseList(res, agentAPIVersion, agentKind, ns) // the inventory keeps no label
 			if err != nil {
 				layer.NotSeen = append(layer.NotSeen, NotSeen{Ref: ref, Reason: fmt.Sprintf(reasonUnrecognized, toolList)})
 				continue

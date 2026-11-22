@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -73,7 +74,11 @@ func mapServerAt(t *testing.T, dir string, hold *gate) string {
 
 // clusterServer serves the kubernetes add-on's captured answers: the
 // demo-apps namespace's objects, an empty list elsewhere.
-func clusterServer(t *testing.T) string {
+func clusterServer(t *testing.T) string { return clusterServerWith(t, nil) }
+
+// clusterServerWith is clusterServer with a hook on resources_list: a
+// non-nil before runs first on each call's arguments.
+func clusterServerWith(t *testing.T, before func(args map[string]any)) string {
 	t.Helper()
 	answer := func(name string) (string, any, bool) {
 		raw, err := os.ReadFile(filepath.Join(kmsFixtures, name)) //nolint:gosec // a test's own testdata
@@ -95,6 +100,9 @@ func clusterServer(t *testing.T) string {
 	srv := mcptest.Start(t,
 		mcptest.ToolSpec{Name: toolNamespaces, ReadOnly: true, Handle: func(map[string]any) (string, any, bool) { return answer("namespaces_list.json") }},
 		mcptest.ToolSpec{Name: toolResources, ReadOnly: true, Handle: func(args map[string]any) (string, any, bool) {
+			if before != nil {
+				before(args)
+			}
 			name := args["namespace"].(string) + "-" + args["kind"].(string) + ".json"
 			if _, err := os.Stat(filepath.Join(kmsFixtures, name)); err == nil {
 				return answer(name)
@@ -384,5 +392,96 @@ func TestEntityBlindSpots(t *testing.T) {
 	}
 	if st.Layers[1].Seen == 0 {
 		t.Errorf("billing-api's namespace was not surveyed: %+v", st.Layers[1])
+	}
+}
+
+// The import has its own deadline, half the pass timeout from the run's
+// take-up (spec 10 §4): a cluster server that never answers fails the
+// survey with that phrase, long before the client's own timeout (one
+// minute here) would. The hung call must have been made: a survey that
+// fails before calling proves nothing.
+func TestImportDeadline(t *testing.T) {
+	t.Parallel()
+	f := startRunner(t)
+	f.grounded(t)
+	release := make(chan struct{})
+	var calls atomic.Int32
+	hang := func(map[string]any) (string, any, bool) {
+		calls.Add(1)
+		<-release
+		return "", nil, true
+	}
+	hung := mcptest.Start(t,
+		mcptest.ToolSpec{Name: toolNamespaces, ReadOnly: true, Handle: hang},
+		mcptest.ToolSpec{Name: toolResources, ReadOnly: true, Handle: hang},
+	)
+	// After Start: cleanups run last first, so the hung handlers return
+	// before the server's Close waits for them.
+	t.Cleanup(func() { close(release) })
+	f.routes.Store("hung/"+connMap, mapServer(t, nil))
+	f.routes.Store("hung/"+connCluster, hung.URL)
+	begin := time.Now()
+	f.intendant(t, "hung", func(in *v1alpha1.TakeCareIntendant) {
+		in.Spec.Scope = v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{demoApps}}
+		in.Spec.Connectors = v1alpha1.IntendantConnectors{Map: []string{connMap}, Cluster: []string{connCluster}}
+	})
+	s := f.waitPhase(t, "hung", 1, v1alpha1.RunFailed)[0]
+	took := time.Since(begin)
+	if s.Status.Reason != failImportTime {
+		t.Fatalf("failed survey %+v", s.Status.RunStatus)
+	}
+	if calls.Load() == 0 {
+		t.Fatal("the survey failed before calling the hung server: the deadline was not what cut it")
+	}
+	if took >= time.Minute {
+		t.Errorf("the survey failed after %s, the client's own timeout: the import's deadline did not bite", took)
+	}
+}
+
+// The inventory after the pass has its own half of the pass timeout (spec
+// 10 §4, §5): a cluster server that answers the import and the pass, then
+// never answers the kagent Agent listing, fails the survey with the same
+// phrase, long before the client's one-minute timeout. The hung listing
+// must have been called: the import's deadline must not be what cut it.
+func TestInventoryDeadline(t *testing.T) {
+	t.Parallel()
+	f := startRunner(t)
+	f.grounded(t)
+	var c v1alpha1.TakeCareConnector
+	if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: connCluster}, &c); err != nil {
+		t.Fatal(err)
+	}
+	c.Spec.Kubernetes.ExtraResources = []v1alpha1.ResourceRef{{Group: agentGVK.Group, Resource: "agents"}}
+	if err := f.c.Update(context.Background(), &c); err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	var calls atomic.Int32
+	url := clusterServerWith(t, func(args map[string]any) {
+		if args["apiVersion"] == agentGVK.GroupVersion().String() && args["kind"] == agentGVK.Kind {
+			calls.Add(1)
+			<-release
+		}
+	})
+	// After the server's start: cleanups run last first, so the hung
+	// handler returns before the server's Close waits for it.
+	t.Cleanup(func() { close(release) })
+	f.routes.Store("inv/"+connMap, mapServer(t, nil))
+	f.routes.Store("inv/"+connCluster, url)
+	begin := time.Now()
+	f.intendant(t, "inv", func(in *v1alpha1.TakeCareIntendant) {
+		in.Spec.Scope = v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{demoApps}}
+		in.Spec.Connectors = v1alpha1.IntendantConnectors{Map: []string{connMap}, Cluster: []string{connCluster}}
+	})
+	s := f.waitPhase(t, "inv", 1, v1alpha1.RunFailed)[0]
+	took := time.Since(begin)
+	if s.Status.Reason != failImportTime {
+		t.Fatalf("failed survey %+v", s.Status.RunStatus)
+	}
+	if calls.Load() == 0 {
+		t.Fatal("the survey failed before listing the Agents: the inventory's deadline was not what cut it")
+	}
+	if took >= time.Minute {
+		t.Errorf("the survey failed after %s, the client's own timeout: the inventory's deadline did not bite", took)
 	}
 }
