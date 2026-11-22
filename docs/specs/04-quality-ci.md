@@ -52,7 +52,7 @@ Go everywhere (current stable Go, kubebuilder v4 layout, controller-runtime), th
 
 The pinned chart archives are cached by the CI, keyed by the pins (`hack/versions.env` and the `Chart.lock` files); `make chart-deps` downloads only what is missing, a download retried three times.
 
-The controllers' envtest managers run as the operator's ServiceAccount, bound to the Roles and ClusterRoles the `takecare` chart renders, with the operator's own cache scoping (`internal/cachescope`); the tests' fixtures and assertions use the admin identity. A request the API server refuses to the operator fails the test, even when the controller retried it and went on. Every key of a chart's `values.yaml` has its row in the chart's README, with a description (`test/chart`).
+The controllers' envtest managers run as the operator's ServiceAccount, bound to the Roles and ClusterRoles the `takecare` chart renders, with the operator's own cache scoping (`internal/cachescope`); the tests' fixtures and assertions use the admin identity. A request the API server refuses to the operator fails the test, even when the controller retried it and went on. A manager starts only once the API server's authorizer grants the operator one rule of each rendered binding (SubjectAccessReviews as the operator): the RBAC authorizer reads Roles and bindings from informer caches, so rights just created may not be granted yet. Every key of a chart's `values.yaml` has its row in the chart's README, with a description (`test/chart`).
 
 The long runs keep a Mac awake with one `caffeinate` per chain, started by the outermost script and inherited by the nested ones (`hack/run-window.sh`); it cannot hold a closed lid on battery, which the power-log check reports.
 
