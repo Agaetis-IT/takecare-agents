@@ -73,19 +73,27 @@ func ChartCRDs(t *testing.T, demo bool) []*apiextensionsv1.CustomResourceDefinit
 // It fails, never skips, without the envtest binaries.
 func Start(t *testing.T) *rest.Config {
 	t.Helper()
-	return start(t, false)
+	_, cfg := start(t, false)
+	return cfg
 }
 
 // StartDemo is Start with the demo's CRDs.
 func StartDemo(t *testing.T) *rest.Config {
 	t.Helper()
-	return start(t, true)
+	_, cfg := start(t, true)
+	return cfg
 }
 
-func start(t *testing.T, demo bool) *rest.Config {
+func start(t *testing.T, demo bool) (*envtest.Environment, *rest.Config) {
 	t.Helper()
-	if os.Getenv("KUBEBUILDER_ASSETS") == "" {
+	assets := os.Getenv("KUBEBUILDER_ASSETS")
+	if assets == "" {
 		t.Fatal("KUBEBUILDER_ASSETS is not set: run `make test`, which installs the envtest binaries")
+	}
+	// go test runs each package in its own directory: a relative path
+	// would resolve differently per package.
+	if !filepath.IsAbs(assets) {
+		t.Fatalf("KUBEBUILDER_ASSETS must be an absolute path, got %q", assets)
 	}
 	// The Gateway API CRDs are not in the chart: the hook job installs the
 	// bundle embedded in the operator, so the tests take it from there.
@@ -105,5 +113,5 @@ func start(t *testing.T, demo bool) *rest.Config {
 		t.Fatalf("start envtest: %v", err)
 	}
 	t.Cleanup(func() { _ = env.Stop() })
-	return cfg
+	return env, cfg
 }

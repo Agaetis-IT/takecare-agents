@@ -16,7 +16,6 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -27,8 +26,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
-	"sigs.k8s.io/controller-runtime/pkg/config"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/engine"
@@ -146,21 +143,18 @@ type workerFixture struct {
 // so that records can be prepared before (the resume cases).
 func startWorker(t *testing.T, scripts map[string][]poll) *workerFixture {
 	t.Helper()
-	restCfg := testenv.Start(t)
+	env := testenv.StartOperator(t)
 	scheme := runtime.NewScheme()
 	for _, add := range []func(*runtime.Scheme) error{clientgoscheme.AddToScheme, v1alpha1.AddToScheme} {
 		if err := add(scheme); err != nil {
 			t.Fatal(err)
 		}
 	}
-	c, err := client.New(restCfg, client.Options{Scheme: scheme})
+	c, err := client.New(env.Admin, client.Options{Scheme: scheme})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if err := c.Create(ctx, &corev1.Namespace{Name: ns}); err != nil {
-		t.Fatal(err)
-	}
 	p := &v1alpha1.TakeCarePlatform{Name: "main"}
 	p.Spec.Models = []v1alpha1.ModelSpec{{Name: "default", Provider: "openai-compatible", Model: "gpt-x", BaseURL: "https://x/v1", APIKeySecretRef: v1alpha1.SecretKeyRef{Name: "k", Key: "k"}}}
 	p.Spec.Gateway.GatewayRef = &v1alpha1.ObjectRef{Name: "agentgateway-proxy"}
@@ -186,7 +180,7 @@ func startWorker(t *testing.T, scripts map[string][]poll) *workerFixture {
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(f.spans))
 	f.start = func() {
 		skip := true
-		mgr, err := ctrl.NewManager(restCfg, ctrl.Options{Scheme: scheme, Metrics: metricsserver.Options{BindAddress: "0"}, Controller: config.Controller{SkipNameValidation: &skip}})
+		mgr, err := ctrl.NewManager(env.Operator, operatorOptions(scheme, &skip))
 		if err != nil {
 			t.Fatal(err)
 		}

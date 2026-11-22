@@ -20,17 +20,10 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	discoveryv1 "k8s.io/api/discovery/v1"
-	networkingv1 "k8s.io/api/networking/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -41,6 +34,7 @@ import (
 
 	takecarev1alpha1 "github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/alerts"
+	"github.com/agaetis-it/takecare-agents/internal/cachescope"
 	"github.com/agaetis-it/takecare-agents/internal/controller/connector"
 	"github.com/agaetis-it/takecare-agents/internal/controller/demo"
 	"github.com/agaetis-it/takecare-agents/internal/controller/intendant"
@@ -52,7 +46,6 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/gatewayapi"
 	"github.com/agaetis-it/takecare-agents/internal/httpclient"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
-	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/runs"
 	"github.com/agaetis-it/takecare-agents/internal/telemetry"
 	"github.com/agaetis-it/takecare-agents/internal/usage"
@@ -415,8 +408,7 @@ func newScheme() (*runtime.Scheme, error) {
 // managerOptions translates the command-line configuration into manager options.
 //
 // The cache is scoped per kind to the namespaces the operator's Roles cover
-// (spec 02 §3): nothing namespaced is listed or watched cluster-wide, and
-// Secrets are cached in the operator namespace only.
+// (package cachescope, shared with the envtest managers).
 func managerOptions(cfg config, scheme *runtime.Scheme) ctrl.Options {
 	var tlsOpts []func(*tls.Config)
 	if !cfg.enableHTTP2 {
@@ -430,42 +422,9 @@ func managerOptions(cfg config, scheme *runtime.Scheme) ctrl.Options {
 	if cfg.secureMetrics {
 		metrics.FilterProvider = filters.WithAuthenticationAndAuthorization
 	}
-	operatorNS := map[string]cache.Config{cfg.operatorNamespace: {}}
-	engineNS := map[string]cache.Config{cfg.engineNamespace: {}}
-	byObject := map[client.Object]cache.ByObject{
-		&corev1.Secret{}:                          {Namespaces: operatorNS},
-		&corev1.ConfigMap{}:                       {Namespaces: engineNS},
-		&corev1.Service{}:                         {Namespaces: operatorNS},
-		&networkingv1.NetworkPolicy{}:             {Namespaces: engineNS},
-		&appsv1.Deployment{}:                      {Namespaces: operatorNS},
-		&discoveryv1.EndpointSlice{}:              {Namespaces: operatorNS},
-		&takecarev1alpha1.TakeCareConnector{}:     {Namespaces: operatorNS},
-		&takecarev1alpha1.TakeCareDoc{}:           {Namespaces: operatorNS},
-		&takecarev1alpha1.TakeCareInvestigation{}: {Namespaces: operatorNS},
-		&takecarev1alpha1.TakeCareDemo{}:          {Namespaces: operatorNS},
-		&takecarev1alpha1.TakeCareIntendant{}:     {Namespaces: operatorNS},
-		&takecarev1alpha1.TakeCareSurvey{}:        {Namespaces: operatorNS},
-	}
-	// Third-party kinds, each once: two controllers may name the same.
-	seen := map[schema.GroupVersionKind]bool{}
-	scope := func(gvks []schema.GroupVersionKind, namespaces map[string]cache.Config) {
-		for _, gvk := range gvks {
-			if seen[gvk] {
-				continue
-			}
-			seen[gvk] = true
-			u := &unstructured.Unstructured{}
-			u.SetGroupVersionKind(gvk)
-			byObject[u] = cache.ByObject{Namespaces: namespaces}
-		}
-	}
-	scope(platform.OperatorNamespaceKinds(), operatorNS)
-	scope(routes.Kinds(), operatorNS)
-	scope((&kagent0103.Models{}).OwnedTypes(), engineNS)
-	scope((&kagent0103.Agents{}).AgentTypes(), engineNS)
 	return ctrl.Options{
 		Scheme:                 scheme,
-		Cache:                  cache.Options{ByObject: byObject},
+		Cache:                  cachescope.Options(cfg.operatorNamespace, cfg.engineNamespace, platform.OperatorNamespaceKinds()),
 		Metrics:                metrics,
 		HealthProbeBindAddress: cfg.probeAddr,
 		LeaderElection:         cfg.leaderElection,

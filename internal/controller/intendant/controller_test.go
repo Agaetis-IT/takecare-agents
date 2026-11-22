@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -30,6 +29,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/cachescope"
+	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
 	"github.com/agaetis-it/takecare-agents/internal/engine/kagent0103"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
 	"github.com/agaetis-it/takecare-agents/internal/routes"
@@ -115,7 +116,8 @@ type fixture struct {
 	surveysSeen map[string][2][]string
 	c           client.Client
 	clock       *clock
-	cfg         *rest.Config
+	cfg         *rest.Config // admin: the fixtures and assertions
+	operator    *rest.Config // the operator's ServiceAccount: the manager
 	scheme      *runtime.Scheme
 	stop        context.CancelFunc
 	// runner, when set, runs the survey queue and runner too, their routes
@@ -170,7 +172,8 @@ func startRunner(t *testing.T) *fixture { return startWith(t, true) }
 
 func startWith(t *testing.T, runner bool, opts ...func(*fixture)) *fixture {
 	t.Helper()
-	cfg := testenv.Start(t)
+	env := testenv.StartOperator(t)
+	cfg := env.Admin
 	scheme := runtime.NewScheme()
 	for _, add := range []func(*runtime.Scheme) error{clientgoscheme.AddToScheme, v1alpha1.AddToScheme} {
 		if err := add(scheme); err != nil {
@@ -181,17 +184,12 @@ func startWith(t *testing.T, runner bool, opts ...func(*fixture)) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, n := range []string{ns, engineNS} {
-		if err := c.Create(context.Background(), &corev1.Namespace{Name: n}); err != nil {
-			t.Fatal(err)
-		}
-	}
 	metrics, err := NewSurveyMetrics(prometheus.NewRegistry())
 	if err != nil {
 		t.Fatal(err)
 	}
 	f := &fixture{
-		c: c, clock: &clock{now: testStart}, cfg: cfg, scheme: scheme, runner: runner,
+		c: c, clock: &clock{now: testStart}, cfg: cfg, operator: env.Operator, scheme: scheme, runner: runner,
 		spans: tracetest.NewInMemoryExporter(), metrics: metrics,
 		runs: &fakeRuns{}, passClock: &offsetClock{base: testStart, t0: time.Now()}, poster: &fakePoster{},
 	}
@@ -216,7 +214,10 @@ func (f *fixture) usage(*v1alpha1.TakeCarePlatform) usage.Source {
 func (f *fixture) startManager(t *testing.T) {
 	t.Helper()
 	skip := true
-	mgr, err := ctrl.NewManager(f.cfg, ctrl.Options{Scheme: f.scheme, Metrics: metricsserver.Options{BindAddress: "0"}, Controller: config.Controller{SkipNameValidation: &skip}})
+	mgr, err := ctrl.NewManager(f.operator, ctrl.Options{
+		Scheme: f.scheme, Cache: cachescope.Options(ns, engineNS, platform.OperatorNamespaceKinds()),
+		Metrics: metricsserver.Options{BindAddress: "0"}, Controller: config.Controller{SkipNameValidation: &skip},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +233,7 @@ func (f *fixture) startManager(t *testing.T) {
 	if f.runner {
 		queue := runs.NewQueue(16)
 		runner := &Runner{
-			Client: mgr.GetClient(), Reader: scopedReader{mgr.GetAPIReader()}, Queue: queue, GateRetry: 100 * time.Millisecond,
+			Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: queue, GateRetry: 100 * time.Millisecond,
 			Caller: &mcp.Client{HTTP: &http.Client{Timeout: time.Minute}}, Canary: &f.canary, Now: f.passClock.Now, Metrics: f.metrics,
 			Runs: f.runs, EngineKind: kagent0103.Kind, EngineNamespace: engineNS, Usage: f.usage, PassTimeout: passTimeout, PassInterval: 50 * time.Millisecond, PassClock: f.passClock,
 			Tracer: sdktrace.NewTracerProvider(sdktrace.WithSyncer(f.spans)).Tracer("test"),
@@ -245,7 +246,7 @@ func (f *fixture) startManager(t *testing.T) {
 			},
 		}
 		// The backstop as the operator wires it, on the runner's clock.
-		if err := (&SurveyQueuer{Client: mgr.GetClient(), Reader: scopedReader{mgr.GetAPIReader()}, Queue: queue, Recorder: mgr.GetEventRecorder("test"),
+		if err := (&SurveyQueuer{Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: queue, Recorder: mgr.GetEventRecorder("test"),
 			Runs: runner, PassTimeout: passTimeout, Now: f.passClock.Now}).SetupWithManager(mgr); err != nil {
 			t.Fatal(err)
 		}
@@ -572,23 +573,4 @@ func TestRoutesPruned(t *testing.T) {
 		_, ok := f.policy(t, "pruned", connMetrics)
 		return !ok
 	})
-}
-
-// scopedReader is the runner's API reader in the tests: a List of a
-// namespaced kind without a namespace fails, as it does under the
-// operator's namespaced Role on a cluster (envtest runs as admin). Only
-// the cluster-scoped kinds may be listed at the cluster scope.
-type scopedReader struct{ client.Reader }
-
-func (r scopedReader) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
-	o := &client.ListOptions{}
-	o.ApplyOptions(opts)
-	switch list.(type) {
-	case *v1alpha1.TakeCarePlatformList, *v1alpha1.TakeCareRangerList:
-	default:
-		if o.Namespace == "" {
-			return fmt.Errorf("list %T at the cluster scope: the operator's Role is namespaced", list)
-		}
-	}
-	return r.Reader.List(ctx, list, opts...)
 }
