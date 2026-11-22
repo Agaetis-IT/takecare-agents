@@ -52,6 +52,10 @@ Go everywhere (current stable Go, kubebuilder v4 layout, controller-runtime), th
 
 The pinned chart archives are cached by the CI, keyed by the pins (`hack/versions.env` and the `Chart.lock` files); `make chart-deps` downloads only what is missing, a download retried three times.
 
+The controllers' envtest managers run as the operator's ServiceAccount, bound to the Roles and ClusterRoles the `takecare` chart renders, with the operator's own cache scoping (`internal/cachescope`); the tests' fixtures and assertions use the admin identity. A request the API server refuses to the operator fails the test, even when the controller retried it and went on. Every key of a chart's `values.yaml` has its row in the chart's README, with a description (`test/chart`).
+
+The long runs keep a Mac awake with one `caffeinate` per chain, started by the outermost script and inherited by the nested ones (`hack/run-window.sh`); it cannot hold a closed lid on battery, which the power-log check reports.
+
 The end-to-end run (`make e2e`) needs about 5 GB of Docker memory, more than the demo: two Docs' agents, the fakes and the workload-cluster package of the cluster `east` (measured at 4.2 GiB at the end of a run on 2026-11-08).
 
 ### The read-only guard

@@ -24,12 +24,13 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/cachescope"
+	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
 	"github.com/agaetis-it/takecare-agents/internal/mcp"
 	"github.com/agaetis-it/takecare-agents/internal/mcp/mcptest"
 	"github.com/agaetis-it/takecare-agents/internal/testenv"
@@ -92,7 +93,8 @@ type harness struct {
 
 func start(t *testing.T, srv *mcptest.Server, opts ...func(*Reconciler)) *harness {
 	t.Helper()
-	cfg := testenv.Start(t)
+	env := testenv.StartOperator(t)
+	cfg := env.Admin
 	scheme := runtime.NewScheme()
 	for _, add := range []func(*runtime.Scheme) error{clientgoscheme.AddToScheme, apiextensionsv1.AddToScheme, v1alpha1.AddToScheme} {
 		if err := add(scheme); err != nil {
@@ -100,10 +102,11 @@ func start(t *testing.T, srv *mcptest.Server, opts ...func(*Reconciler)) *harnes
 		}
 	}
 	skip := true
-	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+	// The operator's identity and cache: its Roles authorize every request.
+	mgr, err := ctrl.NewManager(env.Operator, ctrl.Options{
 		Scheme:     scheme,
 		Metrics:    metricsserver.Options{BindAddress: "0"},
-		Cache:      cache.Options{ByObject: map[client.Object]cache.ByObject{&corev1.Secret{}: {Namespaces: map[string]cache.Config{operatorNS: {}}}}},
+		Cache:      cachescope.Options(operatorNS, testenv.EngineNamespace, platform.OperatorNamespaceKinds()),
 		Controller: config.Controller{SkipNameValidation: &skip},
 	})
 	if err != nil {
@@ -131,9 +134,7 @@ func start(t *testing.T, srv *mcptest.Server, opts ...func(*Reconciler)) *harnes
 		t.Fatal(err)
 	}
 	h.c, h.ctx = c, ctx
-	for _, ns := range []string{operatorNS, appNS} {
-		h.must(c.Create(ctx, &corev1.Namespace{Name: ns}))
-	}
+	h.must(c.Create(ctx, &corev1.Namespace{Name: appNS}))
 	return h
 }
 

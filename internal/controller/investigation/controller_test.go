@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -21,6 +20,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/cachescope"
+	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
 	"github.com/agaetis-it/takecare-agents/internal/runs"
 	"github.com/agaetis-it/takecare-agents/internal/testenv"
 )
@@ -30,7 +31,7 @@ const ns = "takecare-system"
 func manager(t *testing.T, cfg *ctrlConfig, queue *runs.Queue) context.CancelFunc {
 	t.Helper()
 	skip := true
-	mgr, err := ctrl.NewManager(cfg.rest, ctrl.Options{Scheme: cfg.scheme, Metrics: metricsserver.Options{BindAddress: "0"}, Controller: config.Controller{SkipNameValidation: &skip}})
+	mgr, err := ctrl.NewManager(cfg.operator, operatorOptions(cfg.scheme, &skip))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,8 +48,17 @@ func manager(t *testing.T, cfg *ctrlConfig, queue *runs.Queue) context.CancelFun
 }
 
 type ctrlConfig struct {
-	rest   *rest.Config
-	scheme *runtime.Scheme
+	operator *rest.Config
+	scheme   *runtime.Scheme
+}
+
+// operatorOptions are the manager's options as the operator's: its cache
+// scoped as cmd/operator scopes it, under the operator's Roles.
+func operatorOptions(scheme *runtime.Scheme, skipNameValidation *bool) ctrl.Options {
+	return ctrl.Options{
+		Scheme: scheme, Cache: cachescope.Options(testenv.OperatorNamespace, testenv.EngineNamespace, platform.OperatorNamespaceKinds()),
+		Metrics: metricsserver.Options{BindAddress: "0"}, Controller: config.Controller{SkipNameValidation: skipNameValidation},
+	}
 }
 
 func phaseOf(t *testing.T, c client.Client, name string) v1alpha1.RunPhase {
@@ -107,21 +117,18 @@ func create(t *testing.T, c client.Client, name string) {
 // Queued records.
 func TestAdmission(t *testing.T) {
 	t.Parallel()
-	restCfg := testenv.Start(t)
+	env := testenv.StartOperator(t)
 	scheme := runtime.NewScheme()
 	for _, add := range []func(*runtime.Scheme) error{clientgoscheme.AddToScheme, v1alpha1.AddToScheme} {
 		if err := add(scheme); err != nil {
 			t.Fatal(err)
 		}
 	}
-	c, err := client.New(restCfg, client.Options{Scheme: scheme})
+	c, err := client.New(env.Admin, client.Options{Scheme: scheme})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Create(context.Background(), &corev1.Namespace{Name: ns}); err != nil {
-		t.Fatal(err)
-	}
-	cfg := &ctrlConfig{rest: restCfg, scheme: scheme}
+	cfg := &ctrlConfig{operator: env.Operator, scheme: scheme}
 
 	queue := runs.NewQueue(2)
 	stop := manager(t, cfg, queue)

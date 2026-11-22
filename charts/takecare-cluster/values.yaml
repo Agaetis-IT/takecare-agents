@@ -31,6 +31,8 @@ service:
   type: LoadBalancer
   # -- The port of the front's mTLS endpoint.
   port: 8443
+  # -- Annotations of the front's Service, for example for a cloud load
+  # balancer.
   annotations: {}
 
 apiServer:
@@ -43,23 +45,29 @@ networkPolicies:
   enabled: true
 
 mcpServer:
+  # -- The kubernetes MCP server's image, pinned by digest.
   image: quay.io/containers/kubernetes_mcp_server:v0.0.67@sha256:e47f6ccc5347e1ea6be495d8d9ab55ac8a995fe87800fb984fa770cebe14ad44 # pin: KUBERNETES_MCP_SERVER_IMAGE
+  # -- Requests and limits of the MCP server container.
   resources:
     requests: { cpu: 20m, memory: 64Mi }
     limits: { memory: 256Mi }
 
 front:
   image:
+    # -- The registry of the front's image.
     registry: ghcr.io/agaetis-it
+    # -- The repository of the front's image.
     repository: takecare-agents-mcp-front
     # -- Empty: the chart's appVersion.
     tag: ""
+    # -- The front's image pull policy.
     pullPolicy: IfNotPresent
   # -- The plain-HTTP port of /healthz and /readyz for the kubelet, whose
   # probes present no client certificate; never in the Service.
   probePort: 8081
   # -- How long /guardz serves a verdict before checking again.
   guardInterval: 10m
+  # -- Requests and limits of the front container.
   resources:
     requests: { cpu: 10m, memory: 32Mi }
     limits: { memory: 128Mi }
@@ -74,4 +82,5 @@ alerting:
 global:
   # -- Replaces the registry of every image (a mirror).
   imageRegistry: ""
+  # -- Pull Secrets, in the release namespace, for every image of this chart.
   imagePullSecrets: []

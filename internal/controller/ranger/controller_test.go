@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -29,6 +28,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/cachescope"
+	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
 	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/testenv"
 )
@@ -49,7 +50,7 @@ func start(t *testing.T) *harness { t.Helper(); return startWith(t, nil) }
 
 func startWith(t *testing.T, alerts *Alerts) *harness {
 	t.Helper()
-	cfg := testenv.Start(t)
+	env := testenv.StartOperator(t)
 	scheme := runtime.NewScheme()
 	for _, add := range []func(*runtime.Scheme) error{clientgoscheme.AddToScheme, v1alpha1.AddToScheme} {
 		if err := add(scheme); err != nil {
@@ -57,7 +58,10 @@ func startWith(t *testing.T, alerts *Alerts) *harness {
 		}
 	}
 	skip := true
-	mgr, err := ctrl.NewManager(cfg, ctrl.Options{Scheme: scheme, Metrics: metricsserver.Options{BindAddress: "0"}, Controller: config.Controller{SkipNameValidation: &skip}})
+	mgr, err := ctrl.NewManager(env.Operator, ctrl.Options{
+		Scheme: scheme, Cache: cachescope.Options(operatorNS, testenv.EngineNamespace, platform.OperatorNamespaceKinds()),
+		Metrics: metricsserver.Options{BindAddress: "0"}, Controller: config.Controller{SkipNameValidation: &skip},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,12 +76,11 @@ func startWith(t *testing.T, alerts *Alerts) *harness {
 			t.Errorf("manager stopped: %v", err)
 		}
 	}()
-	c, err := client.New(cfg, client.Options{Scheme: scheme})
+	c, err := client.New(env.Admin, client.Options{Scheme: scheme})
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := &harness{t: t, c: c, ctx: ctx}
-	h.must(c.Create(ctx, &corev1.Namespace{Name: operatorNS}))
 	gw := &unstructured.Unstructured{}
 	gw.SetGroupVersionKind(schema.GroupVersionKind{Group: "gateway.networking.k8s.io", Version: "v1", Kind: "Gateway"})
 	gw.SetName(gatewayNm)

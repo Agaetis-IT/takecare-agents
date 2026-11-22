@@ -24,13 +24,14 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	sigsyaml "sigs.k8s.io/yaml"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/cachescope"
+	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
 	"github.com/agaetis-it/takecare-agents/internal/demoapp"
 	"github.com/agaetis-it/takecare-agents/internal/testenv"
 )
@@ -50,11 +51,13 @@ type fixture struct {
 	ctx context.Context
 }
 
-// start runs the controller on a manager whose cache, like the operator's,
-// covers the release namespace only: the scenery is read outside it.
+// start runs the controller as the operator: its identity under the demo
+// profile's Roles, its cache scoped as cmd/operator scopes it (the release
+// namespace; the scenery is read outside it).
 func start(t *testing.T, rules RulesFunc) *fixture {
 	t.Helper()
-	cfg := testenv.StartDemo(t)
+	env := testenv.StartDemoOperator(t)
+	cfg := env.Admin
 	scheme := runtime.NewScheme()
 	for _, add := range []func(*runtime.Scheme) error{clientgoscheme.AddToScheme, v1alpha1.AddToScheme} {
 		if err := add(scheme); err != nil {
@@ -65,15 +68,13 @@ func start(t *testing.T, rules RulesFunc) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, n := range []string{ns, appNS, platNS, "elsewhere"} {
-		if err := c.Create(context.Background(), &corev1.Namespace{Name: n}); err != nil {
-			t.Fatal(err)
-		}
+	if err := c.Create(context.Background(), &corev1.Namespace{Name: "elsewhere"}); err != nil {
+		t.Fatal(err)
 	}
 	skip := true
-	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+	mgr, err := ctrl.NewManager(env.Operator, ctrl.Options{
 		Scheme: scheme, Metrics: metricsserver.Options{BindAddress: "0"},
-		Cache:      cache.Options{DefaultNamespaces: map[string]cache.Config{ns: {}}},
+		Cache:      cachescope.Options(ns, testenv.EngineNamespace, platform.OperatorNamespaceKinds()),
 		Controller: config.Controller{SkipNameValidation: &skip},
 	})
 	if err != nil {
