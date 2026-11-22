@@ -148,12 +148,7 @@ func (f *fixture) engineReady(t *testing.T, name string, want metav1.ConditionSt
 // A1: a burst of registrations gives one survey, once they have held for
 // the quiet period; before it, none.
 func TestRegistrationBurstGivesOneSurvey(t *testing.T) {
-	// Serial, not t.Parallel: this test moves the fixture's clock to fixed
-	// times, and under the parallel load a late reconcile can record
-	// registrationsSince or a transition at the frozen time, so the
-	// survey is never due before the wait ends (1 in 20 on main at the
-	// runner's shape). fix/intendant-level-tests-clock makes it move the
-	// clock relative to what the operator wrote, and brings it back.
+	t.Parallel()
 	f := startWith(t, false, withWaits(time.Minute, 0))
 	f.ready(t, "burst", nil)
 	f.waitSurveys(t, "burst", 1)
@@ -200,12 +195,7 @@ func TestFailedSurveysDoNotRepeat(t *testing.T) {
 // skipped again, nothing more until the agent goes not ready and ready
 // again.
 func TestOwedPassOnce(t *testing.T) {
-	// Serial, not t.Parallel: this test moves the fixture's clock to fixed
-	// times, and under the parallel load a late reconcile can record
-	// registrationsSince or a transition at the frozen time, so the
-	// survey is never due before the wait ends (1 in 20 on main at the
-	// runner's shape). fix/intendant-level-tests-clock makes it move the
-	// clock relative to what the operator wrote, and brings it back.
+	t.Parallel()
 	f := start(t)
 	f.ready(t, "owed", nil)
 	f.waitSurveys(t, "owed", 1)
@@ -242,12 +232,7 @@ func TestOwedPassOnce(t *testing.T) {
 // An agent that flaps gives no survey per flap: its readiness must hold
 // for the quiet period first.
 func TestFlappingAgentGivesNoStorm(t *testing.T) {
-	// Serial, not t.Parallel: this test moves the fixture's clock to fixed
-	// times, and under the parallel load a late reconcile can record
-	// registrationsSince or a transition at the frozen time, so the
-	// survey is never due before the wait ends (1 in 20 on main at the
-	// runner's shape). fix/intendant-level-tests-clock makes it move the
-	// clock relative to what the operator wrote, and brings it back.
+	t.Parallel()
 	f := startWith(t, false, withWaits(time.Minute, 0))
 	f.ready(t, "flap", nil)
 	f.waitSurveys(t, "flap", 1)
@@ -270,12 +255,7 @@ func TestFlappingAgentGivesNoStorm(t *testing.T) {
 // registrationsSince is in status: a restart does not restart the quiet
 // period.
 func TestQuietPeriodSurvivesRestart(t *testing.T) {
-	// Serial, not t.Parallel: this test moves the fixture's clock to fixed
-	// times, and under the parallel load a late reconcile can record
-	// registrationsSince or a transition at the frozen time, so the
-	// survey is never due before the wait ends (1 in 20 on main at the
-	// runner's shape). fix/intendant-level-tests-clock makes it move the
-	// clock relative to what the operator wrote, and brings it back.
+	t.Parallel()
 	f := startWith(t, false, withWaits(time.Minute, 0))
 	f.ready(t, "since", nil)
 	f.waitSurveys(t, "since", 1)
@@ -296,12 +276,7 @@ func TestQuietPeriodSurvivesRestart(t *testing.T) {
 // A3: the first survey waits for an expected agent, and says so; past the
 // wait it runs with its import only.
 func TestFirstSurveyWaitsForTheAgent(t *testing.T) {
-	// Serial, not t.Parallel: this test moves the fixture's clock to fixed
-	// times, and under the parallel load a late reconcile can record
-	// registrationsSince or a transition at the frozen time, so the
-	// survey is never due before the wait ends (1 in 20 on main at the
-	// runner's shape). fix/intendant-level-tests-clock makes it move the
-	// clock relative to what the operator wrote, and brings it back.
+	t.Parallel()
 	f := startWith(t, false, withWaits(0, 10*time.Minute))
 	f.ready(t, "patient", nil)
 	in := f.wait(t, "patient", func(in *v1alpha1.TakeCareIntendant) bool { return in.Status.PendingTrigger != "" })
