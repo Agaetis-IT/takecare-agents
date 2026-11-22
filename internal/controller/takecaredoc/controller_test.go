@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,6 +28,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/cachescope"
+	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
 	"github.com/agaetis-it/takecare-agents/internal/engine/kagent0103"
 	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/testenv"
@@ -89,7 +90,8 @@ type fixture struct {
 
 func start(t *testing.T) *fixture {
 	t.Helper()
-	cfg := testenv.Start(t)
+	env := testenv.StartOperator(t)
+	cfg := env.Admin
 	scheme := runtime.NewScheme()
 	for _, add := range []func(*runtime.Scheme) error{clientgoscheme.AddToScheme, v1alpha1.AddToScheme} {
 		if err := add(scheme); err != nil {
@@ -100,15 +102,12 @@ func start(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
-	for _, n := range []string{ns, engineNS} {
-		if err := c.Create(ctx, &corev1.Namespace{Name: n}); err != nil {
-			t.Fatal(err)
-		}
-	}
 	f := &fixture{c: c, cfg: cfg, clock: &clock{now: time.Now()}, maps: &mapCaller{}}
 	skip := true
-	mgr, err := ctrl.NewManager(cfg, ctrl.Options{Scheme: scheme, Metrics: metricsserver.Options{BindAddress: "0"}, Controller: config.Controller{SkipNameValidation: &skip}})
+	mgr, err := ctrl.NewManager(env.Operator, ctrl.Options{
+		Scheme: scheme, Cache: cachescope.Options(ns, engineNS, platform.OperatorNamespaceKinds()),
+		Metrics: metricsserver.Options{BindAddress: "0"}, Controller: config.Controller{SkipNameValidation: &skip},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

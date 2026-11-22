@@ -92,9 +92,13 @@ TEST_TIMEOUT ?= 20m
 test: setup-envtest chart-deps ## Run unit, golden, envtest and chart tests.
 	hack/power-window-test.sh
 	@# setup-envtest installs its binaries read-only: writable, a worktree's bin/ can be removed.
-	"$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" >/dev/null && chmod -R u+w "$(LOCALBIN)/k8s"
-	KUBEBUILDER_ASSETS="$$("$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
-	HELM="$(HELM)" $(HELM_ENV) go test ./... -coverprofile cover.out -timeout $(TEST_TIMEOUT)
+	"$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(abspath $(LOCALBIN))" >/dev/null && chmod -R u+w "$(LOCALBIN)/k8s"
+	@# The path is captured on its own, so that a failed setup-envtest stops
+	@# here, and absolute: go test runs each package in its own directory.
+	assets="$$("$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(abspath $(LOCALBIN))" -p path)" \
+		|| { echo "setup-envtest gave no envtest path" >&2; exit 1; }; \
+	case "$$assets" in /*) ;; *) echo "envtest path is not absolute: $$assets" >&2; exit 1 ;; esac; \
+	KUBEBUILDER_ASSETS="$$assets" HELM="$(HELM)" $(HELM_ENV) go test ./... -coverprofile cover.out -timeout $(TEST_TIMEOUT)
 
 ##@ Charts
 

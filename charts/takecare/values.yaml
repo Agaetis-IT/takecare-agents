@@ -2,8 +2,9 @@
 # Defaults are production defaults; values-prod.yaml is the commented template
 # a customer fills, values-demo.yaml is complete (ADR 0002, spec 01).
 #
-# Install in the namespace takecare-system: the kagent RBAC restriction below
-# names it (rbac.namespaces), as ADR 0007 requires.
+# Install in the namespace takecare-system: the kagent values below name it
+# (the gateway URL in kagent.controller.a2aBaseUrl and kagent.providers), and
+# the chart refuses any other release namespace.
 
 global:
   # -- Registry prefix for every image of this chart and of the hook job of
@@ -11,6 +12,7 @@ global:
   # image's own registry. Third-party subcharts take their own registry
   # values (agentgateway.image.registry, kagent.registry).
   imageRegistry: ""
+  # -- Pull Secrets, in the release namespace, for every image of this chart.
   imagePullSecrets: []
   # -- Corporate egress proxy, for the model provider and external MCP servers.
   # Applied to the operator; the gateway and kagent take theirs through their
@@ -29,6 +31,7 @@ global:
     key: ca.crt
 
 operator:
+  # -- The operator image; its tag empty: the chart's appVersion.
   image:
     registry: ghcr.io/agaetis-it
     repository: takecare-agents-operator
@@ -42,6 +45,7 @@ operator:
   # Prometheus: one scrape interval of the gateway's metrics (spec 02 §5).
   # The diagnosis is published once, with its usage, after this wait.
   usageScrapeWait: 30s
+  # -- Requests and limits of the operator container.
   resources:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { memory: 512Mi }
@@ -50,15 +54,20 @@ operator:
   metrics:
     # -- Serve /metrics over HTTPS behind Kubernetes authentication.
     secure: true
+    # -- The port of /metrics.
     port: 8443
+  # -- Scheduling of the operator pods.
   nodeSelector: {}
+  # -- Scheduling of the operator pods.
   tolerations: []
+  # -- Scheduling of the operator pods.
   affinity: {}
 
 # -- The TakeCarePlatform, cluster-scoped singleton named main, rendered from
 # this block (spec 01). Secrets it references live in the release namespace.
 # @default -- see the keys below
 platform:
+  # -- Render the TakeCarePlatform main; false: you create it yourself.
   create: true
   # -- At least one model, reached through the gateway with the key of the named
   # Secret; the first one is the default (ADR 0004). Prices are decimal
@@ -86,9 +95,12 @@ platform:
     otlp:
       # -- OTLP endpoint for traces; empty: no export (a production gap).
       endpoint: ""
+      # -- grpc or http.
       protocol: grpc
     # -- Prompts, tool arguments and answers in traces: off by default (ADR 0006).
     captureContent: false
+    # -- Trace sampling in parts per thousand: 0 samples nothing, 1000 every
+    # trace.
     samplingPerMille: 1000
 
 # -- The Ranger (spec 09), cluster-scoped singleton named main: the same
@@ -97,6 +109,7 @@ platform:
 # Practitioner the gateway masks, refuses secret shapes and applies the caps.
 # @default -- see the keys below
 ranger:
+  # -- Render the TakeCareRanger main; false: you create it yourself.
   create: true
   # -- Apprentice (audit only), Practitioner (mask, filter, cap) or Expert
   # (the Practitioner's Markers and the extra ones; the identity per agent
@@ -202,7 +215,9 @@ addons:
   # -- containers/kubernetes-mcp-server, read-only, core toolset.
   # @default -- see the keys below
   kubernetes:
+    # -- Deploy the kubernetes add-on and its connector.
     enabled: false
+    # -- The server's image, pinned by digest.
     image: quay.io/containers/kubernetes_mcp_server:v0.0.67@sha256:e47f6ccc5347e1ea6be495d8d9ab55ac8a995fe87800fb984fa770cebe14ad44 # pin: KUBERNETES_MCP_SERVER_IMAGE
     # -- The namespaces the server may read (get, list, watch): workloads,
     # events, logs. The connector's scope; a role's scope must be inside it.
@@ -220,13 +235,16 @@ addons:
     # -- Tool overrides (spec 05): a class, a content mark, or both, by name;
     # recorded in the connector's status.
     tools: []
+    # -- Requests and limits of the server container.
     resources:
       requests: { cpu: 20m, memory: 64Mi }
       limits: { memory: 256Mi }
   # -- giantswarm/mcp-prometheus, read-only by design.
   # @default -- see the keys below
   prometheus:
+    # -- Deploy the prometheus add-on and its connector.
     enabled: false
+    # -- The server's image, pinned by digest.
     image: gsoci.azurecr.io/giantswarm/mcp-prometheus:0.11.11@sha256:66ad2ff739eefed93ce0b90ed06d9c0fd4ef9ad38a417f57843b683c4c5df18e # pin: MCP_PROMETHEUS_IMAGE
     # -- The Prometheus the server queries.
     url: ""
@@ -243,7 +261,9 @@ addons:
       #  port: 4317
     # -- Tools whose result carries payload (ADR 0014): none, metric values are state.
     contentTools: []
+    # -- Tool overrides (spec 05), as for the kubernetes add-on.
     tools: []
+    # -- Requests and limits of the server container.
     resources:
       requests: { cpu: 10m, memory: 32Mi }
       limits: { memory: 128Mi }
@@ -252,12 +272,14 @@ addons:
   # reportSlack and reportLog at most.
   # @default -- see the keys below
   report:
+    # -- The report server's image; its tag empty: the chart's appVersion.
     image:
       registry: ghcr.io/agaetis-it
       repository: takecare-agents-mcp-report-slack
       # Empty: the chart's appVersion.
       tag: ""
       pullPolicy: IfNotPresent
+    # -- Requests and limits of the report server container.
     resources:
       requests: { cpu: 10m, memory: 32Mi }
       limits: { memory: 128Mi }
@@ -266,11 +288,16 @@ addons:
   # makes the pod not ready and the connector Reachable=False.
   # @default -- see the keys below
   reportSlack:
+    # -- Deploy the report server with the Slack adapter and the connector
+    # report.
     enabled: false
+    # -- Slack's Web API base URL.
     apiURL: https://slack.com/api
+    # -- The Secret, in the release namespace, and the key of the bot token.
     tokenSecret:
       name: takecare-slack
       key: token
+    # -- How often auth.test checks the token.
     authInterval: 30m
     # -- Destinations the connector and the server agree on. Prefer channel IDs
     # (C0123...) to names: a renamed channel breaks a target by name.
@@ -300,7 +327,9 @@ addons:
   # `takecare-demo-corpus-<name>` (key `data.json`). Requires demo.enabled.
   # @default -- see the keys below
   demoCorpus:
+    # -- Deploy the demo's corpus servers and connectors.
     enabled: false
+    # -- The corpus server's image; its tag empty: the chart's appVersion.
     image:
       registry: ghcr.io/agaetis-it
       repository: takecare-agents-mcp-corpus
@@ -316,6 +345,7 @@ addons:
       - { name: deployments, type: changes, domain: Deployment log of the continuous delivery pipeline }
       - { name: vendor, type: knowledge, domain: Status bulletins of the cloud vendor (AWS) }
       - { name: support, type: tickets, domain: Business support tickets raised by customers }
+    # -- Requests and limits of the corpus server container.
     resources:
       requests: { cpu: 10m, memory: 32Mi }
       limits: { memory: 128Mi }
@@ -323,13 +353,16 @@ addons:
   # tools over the customer's Map, read from their Git. One connector `map`.
   # @default -- see the keys below
   map:
+    # -- Deploy the Map server and the connector map.
     enabled: false
+    # -- The Map server's image; its tag empty: the chart's appVersion.
     image:
       registry: ghcr.io/agaetis-it
       repository: takecare-agents-mcp-map
       # Empty: the chart's appVersion.
       tag: ""
       pullPolicy: IfNotPresent
+    # -- Requests and limits of the Map server container.
     resources:
       requests: { cpu: 10m, memory: 32Mi }
       limits: { memory: 128Mi }
@@ -478,23 +511,29 @@ kagent:
 # deployed by the TakeCareDemo controller (spec 03).
 # @default -- see the keys below
 demo:
+  # -- The demo profile: Prometheus, Alertmanager, the OpenTelemetry Collector
+  # and Jaeger, the demo's operator rights and namespaces.
   enabled: false
   # -- The scenery's namespaces, created by the chart: the add-ons' Roles and
   # the operator's demo Roles are rendered into them. They must match the
   # TakeCareDemo's appNamespace and platformNamespace (its defaults).
   appNamespace: demo-apps
+  # -- The namespace of the demo's DBProxy (ACK), created by the chart.
   platformNamespace: ack-system
   # -- The demo application, billing-api, deployed by the TakeCareDemo
   # controller.
   # @default -- see the keys below
   app:
+    # -- The demo application's image; its tag empty: the chart's appVersion.
     image:
       registry: ghcr.io/agaetis-it
       repository: takecare-agents-demo-app
       # Empty: the chart's appVersion.
       tag: ""
   jaeger:
+    # -- Jaeger, the demo's trace backend, at its pinned version.
     image: jaegertracing/jaeger:2.22.0 # pin: JAEGER_IMAGE
+    # -- Requests and limits of the Jaeger container.
     resources:
       requests: { cpu: 50m, memory: 128Mi }
       limits: { memory: 512Mi }

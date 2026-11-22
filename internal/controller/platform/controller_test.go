@@ -23,12 +23,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/cachescope"
 	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/testenv"
 )
@@ -62,22 +62,19 @@ type harness struct {
 
 func start(t *testing.T) *harness {
 	t.Helper()
-	cfg := testenv.Start(t)
+	env := testenv.StartOperator(t)
 	scheme := runtime.NewScheme()
 	for _, add := range []func(*runtime.Scheme) error{clientgoscheme.AddToScheme, v1alpha1.AddToScheme} {
 		if err := add(scheme); err != nil {
 			t.Fatal(err)
 		}
 	}
-	byObject := map[client.Object]cache.ByObject{
-		&corev1.Secret{}:  {Namespaces: map[string]cache.Config{operatorNS: {}}},
-		&corev1.Service{}: {Namespaces: map[string]cache.Config{operatorNS: {}}},
-	}
 	skip := true
-	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+	// The operator's identity and cache: its Roles authorize every request.
+	mgr, err := ctrl.NewManager(env.Operator, ctrl.Options{
 		Scheme:  scheme,
 		Metrics: metricsserver.Options{BindAddress: "0"},
-		Cache:   cache.Options{ByObject: byObject},
+		Cache:   cachescope.Options(operatorNS, engineNS, OperatorNamespaceKinds()),
 		// One manager per test in this process.
 		Controller: config.Controller{SkipNameValidation: &skip},
 	})
@@ -105,15 +102,11 @@ func start(t *testing.T) *harness {
 		}
 	}()
 	t.Cleanup(cancel)
-	c, err := client.New(cfg, client.Options{Scheme: scheme})
+	c, err := client.New(env.Admin, client.Options{Scheme: scheme})
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &harness{t: t, c: c, ctx: ctx, cancel: cancel, promMode: promMode, promURL: prom.URL}
-	for _, ns := range []string{operatorNS, engineNS} {
-		h.must(c.Create(ctx, &corev1.Namespace{Name: ns}))
-	}
-	return h
+	return &harness{t: t, c: c, ctx: ctx, cancel: cancel, promMode: promMode, promURL: prom.URL}
 }
 
 func (h *harness) must(err error) {
