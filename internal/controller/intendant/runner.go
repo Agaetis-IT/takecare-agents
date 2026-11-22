@@ -651,7 +651,8 @@ func (w *Runner) survey(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alph
 	var out v1alpha1.TakeCareSurveyStatus
 	var none discovery.Result
 	// The import's own deadline (spec 10 §4): half the pass timeout from
-	// this run's take-up, the Map's read included. Not from
+	// this run's take-up. It cuts the import's calls; the Map's read and
+	// the canary run under ctx and only count against it. Not from
 	// status.startedAt: a resumed survey keeps its first start, and its
 	// import runs again.
 	importBy := time.Now().Add(w.importShare())

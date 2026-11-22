@@ -30,9 +30,9 @@ const (
 	// the Map's schema (mapserver.ValidateEntry); it is not proposed.
 	reasonInvalidEntry = "the import's proposal for this entry does not pass the Map's schema: not proposed"
 	reasonUnrecognized = "unrecognized %s output"
-	// reasonNoLabels: a listing whose items carry no Labels column (a later
-	// server release may drop it, A6). Its objects are kept; no service is
-	// proposed from their labels.
+	// reasonNoLabels: a listing whose items carry no Labels key (see
+	// parseList). Its objects are kept; no service is proposed from their
+	// labels.
 	reasonNoLabels    = "the %s listing through %s gave no labels: no service is proposed from app.kubernetes.io/part-of or app.kubernetes.io/name"
 	reasonNoNamespace = "the namespace does not exist"
 )
