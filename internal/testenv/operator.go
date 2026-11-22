@@ -133,12 +133,14 @@ const reviewTimeout = 10 * time.Second
 
 // waitForRights blocks until the API server's authorizer grants the
 // operator one rule of each binding the chart renders. The RBAC authorizer
-// reads Roles and bindings from informer caches (kube-apiserver
+// reads Roles and bindings from informer caches (kube-apiserver v1.37.0
 // pkg/kubeapiserver/authorizer/config.go, rbac.New over the listers), so a
 // binding just created may not be seen yet: a manager started at once could
-// be refused a List its Roles grant, and fail the test, under load. A rule
-// of a binding is granted only once both the binding and its role are in
-// the caches, and the role's other rules come with it.
+// be refused a List its Roles grant. That this lag caused the refusals of
+// the intendant package's one failed run was not reproduced; the wait
+// rules the lag out all the same. A rule of a binding is granted
+// only once both the binding and its role are in the caches, and the
+// role's other rules come with it.
 func waitForRights(t *testing.T, c client.Client, rbac []*unstructured.Unstructured) {
 	t.Helper()
 	if err := awaitRights(context.Background(), c, rightChecks(t, rbac), rightsTimeout); err != nil {
