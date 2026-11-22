@@ -34,8 +34,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      # The replay's inputs. The list of changed files is read first, so a
-      # failed diff fails the job instead of passing it with nothing replayed.
+      # The replay's inputs (hack/guard-corpus-paths.sh, which fails when it
+      # cannot tell instead of passing with nothing replayed).
       - id: paths
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
@@ -45,11 +45,10 @@ jobs:
             echo replay=true >>"$GITHUB_OUTPUT"
             exit 0
           fi
-          changed="$(git diff --name-only "$BASE" HEAD)"
-          if grep -qE '^(internal/ranger|internal/controller/ranger|test/guardcorpus)/|^(hack/versions\.env|\.github/workflows/guard-corpus\.yaml)$' <<<"$changed"; then
-            echo replay=true >>"$GITHUB_OUTPUT"
-          else
-            echo "no pattern, rendering, corpus or pin changed: nothing to replay" | tee -a "$GITHUB_STEP_SUMMARY"
+          out="$(hack/guard-corpus-paths.sh "$BASE" HEAD)"
+          echo "$out" >>"$GITHUB_OUTPUT"
+          if [[ "$out" == replay=false ]]; then
+            echo "no pattern, rendering, corpus or pin changed: nothing to replay" >>"$GITHUB_STEP_SUMMARY"
           fi
       - if: steps.paths.outputs.replay == 'true'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
