@@ -107,15 +107,22 @@ Mirroring every image and installing without Internet access is tracked in issue
 |-----|------|---------|-------------|
 | addons | object | see the keys below | Add-ons: MCP servers packaged with TakeCare (spec 05, ADR 0008). Enabling one deploys the server, its read-only RBAC and its TakeCareConnector. |
 | addons.demoCorpus | object | see the keys below | The demo's corpus, DEMO ONLY (spec 03, spec 05): one read-only MCP server and one TakeCareConnector per source, over a corpus the TakeCareDemo controller writes into the ConfigMap `takecare-demo-corpus-<name>` (key `data.json`). Requires demo.enabled. |
+| addons.demoCorpus.enabled | bool | `false` | Deploy the demo's corpus servers and connectors. |
+| addons.demoCorpus.image | object | `{"pullPolicy":"IfNotPresent","registry":"ghcr.io/agaetis-it","repository":"takecare-agents-mcp-corpus","tag":""}` | The corpus server's image; its tag empty: the chart's appVersion. |
+| addons.demoCorpus.resources | object | `{"limits":{"memory":"128Mi"},"requests":{"cpu":"10m","memory":"32Mi"}}` | Requests and limits of the corpus server container. |
 | addons.demoCorpus.sources | list | `[{"domain":"Post-mortems of incidents resolved by the SRE team","name":"incidents","type":"knowledge"},{"domain":"Operational runbooks of the SRE team","name":"runbooks","type":"knowledge"},{"domain":"Deployment log of the continuous delivery pipeline","name":"deployments","type":"changes"},{"domain":"Status bulletins of the cloud vendor (AWS)","name":"vendor","type":"knowledge"},{"domain":"Business support tickets raised by customers","name":"support","type":"tickets"}]` | The sources: the name prefixes the tools (`<name>_search`, `<name>_get`, `<name>_recent`) and names the connector; domain describes the source in the tools' descriptions. |
 | addons.kubernetes | object | see the keys below | containers/kubernetes-mcp-server, read-only, core toolset. |
 | addons.kubernetes.contentTools | list | `["pods_log"]` | Tools whose result carries payload (ADR 0014): a role reads them only when it lists them in spec.contentTools. |
+| addons.kubernetes.enabled | bool | `false` | Deploy the kubernetes add-on and its connector. |
 | addons.kubernetes.extraResources | list | `[]` | Resources beyond the defaults, for example custom resources. ConfigMaps are read only when listed here: customers keep credentials in them. Secrets and pod exec/attach/portforward are refused by the API. |
+| addons.kubernetes.image | string | `"quay.io/containers/kubernetes_mcp_server:v0.0.67@sha256:e47f6ccc5347e1ea6be495d8d9ab55ac8a995fe87800fb984fa770cebe14ad44"` | The server's image, pinned by digest. |
 | addons.kubernetes.namespaces | list | `[]` | The namespaces the server may read (get, list, watch): workloads, events, logs. The connector's scope; a role's scope must be inside it. |
+| addons.kubernetes.resources | object | `{"limits":{"memory":"256Mi"},"requests":{"cpu":"20m","memory":"64Mi"}}` | Requests and limits of the server container. |
 | addons.kubernetes.tools | list | `[]` | Tool overrides (spec 05): a class, a content mark, or both, by name; recorded in the connector's status. |
 | addons.map | object | see the keys below | The Map (spec 08, ADR 0015): our takecare-agents-mcp-map, five read tools over the customer's Map, read from their Git. One connector `map`. |
 | addons.map.demo | bool | `false` | DEMO ONLY: serve the chart's demo Map from a ConfigMap instead of Git. Requires demo.enabled. |
 | addons.map.egress | object | `{"excludedCIDRs":["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16","169.254.0.0/16"],"proxy":null}` | Egress to the Git host, like reportSlack.egress: DNS, then TCP 443 (and 22 for an SSH URL) outside the cluster, or the proxy pods only. |
+| addons.map.enabled | bool | `false` | Deploy the Map server and the connector map. |
 | addons.map.git | object | `{"credentialSecret":{"key":"token","name":""},"credentialUsername":"x-access-token","knownHostsConfigMap":{"key":"known_hosts","name":""},"path":".","pollInterval":"60s","ref":"main","sshKeySecret":{"key":"id_ed25519","name":""},"url":""}` | The repository holding the Map: one branch, read-only, polled. |
 | addons.map.git.credentialSecret | object | `{"key":"token","name":""}` | An HTTPS token, mounted from this Secret (never inline). Exclusive with sshKeySecret. |
 | addons.map.git.credentialUsername | string | `"x-access-token"` | The username sent with the token; GitLab wants oauth2. |
@@ -123,16 +130,28 @@ Mirroring every image and installing without Internet access is tracked in issue
 | addons.map.git.path | string | `"."` | The directory of the repository holding map/. |
 | addons.map.git.sshKeySecret | object | `{"key":"id_ed25519","name":""}` | Or an SSH deploy key, mounted from this Secret... |
 | addons.map.git.url | string | `""` | REQUIRED unless demo: https://... or ssh://git@... (or git@host:path). |
+| addons.map.image | object | `{"pullPolicy":"IfNotPresent","registry":"ghcr.io/agaetis-it","repository":"takecare-agents-mcp-map","tag":""}` | The Map server's image; its tag empty: the chart's appVersion. |
+| addons.map.resources | object | `{"limits":{"memory":"128Mi"},"requests":{"cpu":"10m","memory":"32Mi"}}` | Requests and limits of the Map server container. |
 | addons.prometheus | object | see the keys below | giantswarm/mcp-prometheus, read-only by design. |
 | addons.prometheus.contentTools | list | `[]` | Tools whose result carries payload (ADR 0014): none, metric values are state. |
 | addons.prometheus.egress | object | `{"namespace":"","otlp":null,"podSelector":{},"port":9090}` | Its egress, limited to that Prometheus (every tool accepts a caller's prometheus_url: the limit keeps a model from reaching anything else). |
 | addons.prometheus.egress.otlp | string | `nil` | The collector the server sends its own spans to, when OTLP is set. |
+| addons.prometheus.enabled | bool | `false` | Deploy the prometheus add-on and its connector. |
+| addons.prometheus.image | string | `"gsoci.azurecr.io/giantswarm/mcp-prometheus:0.11.11@sha256:66ad2ff739eefed93ce0b90ed06d9c0fd4ef9ad38a417f57843b683c4c5df18e"` | The server's image, pinned by digest. |
+| addons.prometheus.resources | object | `{"limits":{"memory":"128Mi"},"requests":{"cpu":"10m","memory":"32Mi"}}` | Requests and limits of the server container. |
+| addons.prometheus.tools | list | `[]` | Tool overrides (spec 05), as for the kubernetes add-on. |
 | addons.prometheus.url | string | `""` | The Prometheus the server queries. |
 | addons.report | object | see the keys below | Our report server, takecare-agents-mcp-report-slack: one tool, post_message, that the operator alone calls to publish (spec 05). One of reportSlack and reportLog at most. |
+| addons.report.image | object | `{"pullPolicy":"IfNotPresent","registry":"ghcr.io/agaetis-it","repository":"takecare-agents-mcp-report-slack","tag":""}` | The report server's image; its tag empty: the chart's appVersion. |
+| addons.report.resources | object | `{"limits":{"memory":"128Mi"},"requests":{"cpu":"10m","memory":"32Mi"}}` | Requests and limits of the report server container. |
 | addons.reportLog | object | `{"destinations":[{"name":"on-call","target":"log"},{"name":"review","target":"log"}],"enabled":false}` | Log adapter, DEMO ONLY: the diagnosis of a real incident would go to the customer's log aggregation. The platform reports it as a production gap. |
 | addons.reportSlack | object | see the keys below | Slack adapter: chat.postMessage with a bot token mounted from a Secret, checked by auth.test at startup and every authInterval. A revoked token makes the pod not ready and the connector Reachable=False. |
+| addons.reportSlack.apiURL | string | `"https://slack.com/api"` | Slack's Web API base URL. |
+| addons.reportSlack.authInterval | string | `"30m"` | How often auth.test checks the token. |
 | addons.reportSlack.destinations | list | `[]` | Destinations the connector and the server agree on. Prefer channel IDs (C0123...) to names: a renamed channel breaks a target by name. |
 | addons.reportSlack.egress | object | `{"excludedCIDRs":["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16","169.254.0.0/16"],"proxy":null}` | Egress of the server. A NetworkPolicy cannot name a host such as slack.com: by default, DNS plus TCP 443 to any address outside the cluster (the private ranges below excluded); with a proxy, the proxy pods only. |
+| addons.reportSlack.enabled | bool | `false` | Deploy the report server with the Slack adapter and the connector report. |
+| addons.reportSlack.tokenSecret | object | `{"key":"token","name":"takecare-slack"}` | The Secret, in the release namespace, and the key of the bot token. |
 | agentgateway | object | see values.yaml (agentgateway chart values) | agentgateway v1.6.0 (ADR 0002). The chart installs the controller; the proxy pods are created from the Gateway above. |
 | agentgateway.agentgatewayModels | object | `{"enabled":false}` | Gateway-attached models (AgentgatewayModel): off, each role routes to its model's backend (spec 01). |
 | agentgateway.monitoring | object | `{"enabled":false}` | PodMonitor and ServiceMonitor for Prometheus Operator; set when it is installed (gateway metrics are what usage and cost come from). |
@@ -141,11 +160,16 @@ Mirroring every image and installing without Internet access is tracked in issue
 | alerting.existingSecret | string | `""` | Secret in the release namespace whose key `token` is the webhook's bearer token. Empty: the chart generates takecare-alerting once and keeps it (Helm lookup). Set it with helm template or a GitOps tool (Argo CD, Flux), where a lookup sees nothing and every sync would change the token. |
 | demo | object | see the keys below | Demo profile (values-demo.yaml): Prometheus with the demo alerting rules, Alertmanager, an OpenTelemetry Collector and Jaeger. The scenery itself is deployed by the TakeCareDemo controller (spec 03). |
 | demo.app | object | see the keys below | The demo application, billing-api, deployed by the TakeCareDemo controller. |
+| demo.app.image | object | `{"registry":"ghcr.io/agaetis-it","repository":"takecare-agents-demo-app","tag":""}` | The demo application's image; its tag empty: the chart's appVersion. |
 | demo.appNamespace | string | `"demo-apps"` | The scenery's namespaces, created by the chart: the add-ons' Roles and the operator's demo Roles are rendered into them. They must match the TakeCareDemo's appNamespace and platformNamespace (its defaults). |
+| demo.enabled | bool | `false` | The demo profile: Prometheus, Alertmanager, the OpenTelemetry Collector and Jaeger, the demo's operator rights and namespaces. |
+| demo.jaeger.image | string | `"jaegertracing/jaeger:2.22.0"` | Jaeger, the demo's trace backend, at its pinned version. |
+| demo.jaeger.resources | object | `{"limits":{"memory":"512Mi"},"requests":{"cpu":"50m","memory":"128Mi"}}` | Requests and limits of the Jaeger container. |
+| demo.platformNamespace | string | `"ack-system"` | The namespace of the demo's DBProxy (ACK), created by the chart. |
 | gateway | object | `{"className":"agentgateway","create":true,"name":"agentgateway-proxy","port":80}` | The Gateway API Gateway served by agentgateway, in the release namespace. Every model, MCP and A2A call goes through it (ADR 0004, 0008, 0009). Its listener lets routes attach from the release namespace only (from: Same, spec 01). With create false the Gateway is yours: its listener must let the release namespace's routes attach, and should not use from: All. |
 | global.caBundle | object | `{"configMapName":"","key":"ca.crt","secretName":""}` | Internal CA to trust for TLS to the provider, MCP servers and Slack: a ConfigMap or a Secret in the release namespace holding a PEM bundle. The gateway trusts it too for a customer's MCP server by `https` url, in place of the system's roots. |
 | global.egressProxy | object | `{"httpProxy":"","httpsProxy":"","noProxy":""}` | Corporate egress proxy, for the model provider and external MCP servers. Applied to the operator; the gateway and kagent take theirs through their own values (agentgateway.controller.extraEnv, kagent.controller.env). |
-| global.imagePullSecrets | list | `[]` |  |
+| global.imagePullSecrets | list | `[]` | Pull Secrets, in the release namespace, for every image of this chart. |
 | global.imageRegistry | string | `""` | Registry prefix for every image of this chart and of the hook job of takecare-crds, for customer-internal registries (ADR 0002). Empty: each image's own registry. Third-party subcharts take their own registry values (agentgateway.image.registry, kagent.registry). |
 | investigations.retention | string | `"168h"` | How long an ended investigation (Completed, Failed, TimedOut, Dropped) is kept before the operator deletes it. Queued and Running ones are never deleted. |
 | kagent | object | see values.yaml (kagent chart values; rbac.namespaces is an ADR 0007 requirement) | kagent 0.10.3, the agent engine (ADR 0007). Installed in its own namespace, created by this chart, with the installation requirements of ADR 0007. |
@@ -161,30 +185,29 @@ Mirroring every image and installing without Internet access is tracked in issue
 | networkPolicies | object | `{"enabled":true,"gatewayMetricsPort":15020,"metricsScrapers":[]}` | Restrict traffic between the operator, the gateway, kagent and the MCP servers. ADR 0007 requires the kagent controller to be reachable only through the gateway; the MCP servers admit the gateway and the operator only (ADR 0008); the gateway admits the operator, the engine namespace and the metrics scrapers below. This needs a CNI that enforces NetworkPolicies: the platform reports their presence, not their enforcement. |
 | networkPolicies.gatewayMetricsPort | int | `15020` | The gateway's metrics port (agentgateway's proxy). |
 | networkPolicies.metricsScrapers | list | `[]` | Who may scrape the gateway's metrics port (usage and cost): the customer's Prometheus. Each entry selects pods by namespace and labels. |
-| operator.affinity | object | `{}` |  |
+| operator.affinity | object | `{}` | Scheduling of the operator pods. |
 | operator.extraArgs | list | `[]` | Extra arguments for the operator binary, for example ["--zap-log-level=debug"]. |
-| operator.image.pullPolicy | string | `"IfNotPresent"` |  |
-| operator.image.registry | string | `"ghcr.io/agaetis-it"` |  |
-| operator.image.repository | string | `"takecare-agents-operator"` |  |
-| operator.image.tag | string | `""` |  |
-| operator.metrics.port | int | `8443` |  |
+| operator.image | object | `{"pullPolicy":"IfNotPresent","registry":"ghcr.io/agaetis-it","repository":"takecare-agents-operator","tag":""}` | The operator image; its tag empty: the chart's appVersion. |
+| operator.metrics.port | int | `8443` | The port of /metrics. |
 | operator.metrics.secure | bool | `true` | Serve /metrics over HTTPS behind Kubernetes authentication. |
-| operator.nodeSelector | object | `{}` |  |
+| operator.nodeSelector | object | `{}` | Scheduling of the operator pods. |
 | operator.replicas | int | `2` | Two replicas with leader election in production; the demo runs one and the platform reports it as a production gap (spec 01). |
-| operator.resources.limits.memory | string | `"512Mi"` |  |
-| operator.resources.requests.cpu | string | `"50m"` |  |
-| operator.resources.requests.memory | string | `"128Mi"` |  |
-| operator.tolerations | list | `[]` |  |
+| operator.resources | object | `{"limits":{"memory":"512Mi"},"requests":{"cpu":"50m","memory":"128Mi"}}` | Requests and limits of the operator container. |
+| operator.tolerations | list | `[]` | Scheduling of the operator pods. |
 | operator.usageScrapeWait | string | `"30s"` | How long after an investigation ends its usage is read from Prometheus: one scrape interval of the gateway's metrics (spec 02 §5). The diagnosis is published once, with its usage, after this wait. |
 | platform | object | see the keys below | The TakeCarePlatform, cluster-scoped singleton named main, rendered from this block (spec 01). Secrets it references live in the release namespace. |
+| platform.create | bool | `true` | Render the TakeCarePlatform main; false: you create it yourself. |
 | platform.engine.namespace | string | `"kagent"` | Where the engine runs and where the operator writes what it generates for it. Must equal kagent.namespaceOverride below: the operator's Roles are rendered for that namespace, and the chart refuses to render if they differ. |
 | platform.gateway.gatewayRef | object | `{"name":"","namespace":""}` | The Gateway served by agentgateway. Empty name: the one this chart creates (gateway.name) in the release namespace. A Gateway elsewhere is refused by the operator (Ready=False, GatewayOutsideOperatorNamespace): the models it generates must sit next to the provider key Secret, which it never copies to another namespace. |
 | platform.models | list | `[]` | At least one model, reached through the gateway with the key of the named Secret; the first one is the default (ADR 0004). Prices are decimal strings per million tokens, for the estimated cost only. |
 | platform.observability.captureContent | bool | `false` | Prompts, tool arguments and answers in traces: off by default (ADR 0006). |
 | platform.observability.metrics.prometheusURL | string | `""` | A Prometheus that scrapes the gateway: usage and cost (spec 01). |
 | platform.observability.otlp.endpoint | string | `""` | OTLP endpoint for traces; empty: no export (a production gap). |
+| platform.observability.otlp.protocol | string | `"grpc"` | grpc or http. |
+| platform.observability.samplingPerMille | int | `1000` | Trace sampling in parts per thousand: 0 samples nothing, 1000 every trace. |
 | ranger | object | see the keys below | The Ranger (spec 09), cluster-scoped singleton named main: the same rules for every agent through the gateway, rendered as gateway policies by level. Apprentice watches and blocks nothing (the guards audit); from Practitioner the gateway masks, refuses secret shapes and applies the caps. |
 | ranger.caps | object | `{}` | Budgets and limits: `gateway: {tokensPerHour, requestsPerMinute, burst}`, `models: [{name, tokensPerHour, ...}]`. Empty: no cap until you set one. A model's cap applies to every role's route to that model (the Doc's and the Intendant's), each route counted on its own. The gateway's budget is repeated on each capped route and counted there alone, so it is not a ceiling on the gateway's total traffic (spec 09 §4). The budgets are soft: the gateway counts the tokens of the answer. A request limit on the gateway counts every request (MCP and A2A calls included). |
+| ranger.create | bool | `true` | Render the TakeCareRanger main; false: you create it yourself. |
 | ranger.extra | object | `{}` | Expert only: the extra Markers (`webhook`, `sourceCIDRs`, `expressions`). The chart refuses them below Expert, as the API does. |
 | ranger.filtering.patterns | list | `[]` | Your own patterns, as `{name, regex}`: a match refuses the request, in what a tool returns too; they are never used as masks. |
 | ranger.filtering.shipped | bool | `true` | The shipped secret shapes (private keys, cloud access keys, API tokens of common services): a match refuses the request; in what a tool returns, a shape is masked whole and the call goes on (spec 09 §4). |

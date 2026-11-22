@@ -54,12 +54,12 @@ Then the [`takecare`](../takecare/README.md) chart.
 | agentgateway | object | `{"enabled":true}` | agentgateway CRDs (agentgateway.dev), from the upstream chart. |
 | demo | object | `{"enabled":false}` | Demo profile only: the ACK DBProxy CRD, a piece of scenery the Doc reads (spec 03). No ACK controller is installed. |
 | gatewayAPI | object | `{"install":"auto","job":{"activeDeadlineSeconds":300,"backoffLimit":2,"resources":{"limits":{"memory":"128Mi"},"requests":{"cpu":"50m","memory":"64Mi"}}}}` | Upstream Gateway API CRDs, standard channel, applied server-side by a hook job (pre-install, pre-upgrade) from the copy embedded in the operator binary: no Internet access needed. Many clusters already have these CRDs (Istio, Cilium, Envoy Gateway), so the job compares bundle versions:   auto   : install the missing CRDs, keep the ones at the bundle's version            or newer, fail when some are older or of unknown origin   always : apply the bundle and take ownership of the CRDs, whatever is            there; on CRDs from the experimental channel this installs the            standard channel over them and removes the fields that channel            adds, which a gateway implementation on the cluster may rely on   never  : do nothing (the CRDs are managed outside TakeCare) |
-| gatewayAPI.job | object | `{"activeDeadlineSeconds":300,"backoffLimit":2,"resources":{"limits":{"memory":"128Mi"},"requests":{"cpu":"50m","memory":"64Mi"}}}` | Rights of the hook's ServiceAccount: create on CRDs cannot be narrowed by name, get and patch are limited to the Gateway API CRDs. |
-| global.imagePullSecrets | list | `[]` |  |
+| gatewayAPI.job | object | `{"activeDeadlineSeconds":300,"backoffLimit":2,"resources":{"limits":{"memory":"128Mi"},"requests":{"cpu":"50m","memory":"64Mi"}}}` | The hook job's retries, deadline and resources. Its ServiceAccount's rights: create on CRDs cannot be narrowed by name, get and patch are limited to the Gateway API CRDs. |
+| global.imagePullSecrets | list | `[]` | Pull Secrets, in the release namespace, for the hook job's image. |
 | global.imageRegistry | string | `""` | Registry prefix for every image this chart pulls, for customer-internal registries (ADR 0002). Empty: the registry of each image below. |
 | image | object | `{"pullPolicy":"IfNotPresent","registry":"ghcr.io/agaetis-it","repository":"takecare-agents-operator","tag":""}` | The operator image runs the Gateway API hook job (gatewayAPI below). |
 | kagent | object | `{"enabled":true}` | kagent CRDs (kagent.dev), from the upstream chart. kmcp is not used by TakeCare (every MCP server is a connector behind the gateway, ADR 0008). |
-| kagent-crds.kmcp.enabled | bool | `false` |  |
-| kagent-crds.substrate.enabled | bool | `false` |  |
+| kagent-crds.kmcp.enabled | bool | `false` | kmcp's CRDs: off. |
+| kagent-crds.substrate.enabled | bool | `false` | substrate's CRDs: off. |
 
 Decisions behind this chart: [ADR 0002](../../docs/adr/0002-dependencies-installed-by-the-chart.md).

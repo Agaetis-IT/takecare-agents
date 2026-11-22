@@ -35,22 +35,18 @@ The workload-cluster package of TakeCare Agents ([ADR 0016](../../docs/adr/0016-
 | cluster.name | string | `""` | REQUIRED: the name the administration cluster registers this cluster under (a DNS label), printed in the connector manifest. |
 | cluster.namespaces | list | `[]` | REQUIRED, at least one: the namespaces the ServiceAccount may read (get, list, watch): workloads, events, logs. |
 | front.guardInterval | string | `"10m"` | How long /guardz serves a verdict before checking again. |
-| front.image.pullPolicy | string | `"IfNotPresent"` |  |
-| front.image.registry | string | `"ghcr.io/agaetis-it"` |  |
-| front.image.repository | string | `"takecare-agents-mcp-front"` |  |
+| front.image.pullPolicy | string | `"IfNotPresent"` | The front's image pull policy. |
+| front.image.registry | string | `"ghcr.io/agaetis-it"` | The registry of the front's image. |
+| front.image.repository | string | `"takecare-agents-mcp-front"` | The repository of the front's image. |
 | front.image.tag | string | `""` | Empty: the chart's appVersion. |
 | front.probePort | int | `8081` | The plain-HTTP port of /healthz and /readyz for the kubelet, whose probes present no client certificate; never in the Service. |
-| front.resources.limits.memory | string | `"128Mi"` |  |
-| front.resources.requests.cpu | string | `"10m"` |  |
-| front.resources.requests.memory | string | `"32Mi"` |  |
-| global.imagePullSecrets | list | `[]` |  |
+| front.resources | object | `{"limits":{"memory":"128Mi"},"requests":{"cpu":"10m","memory":"32Mi"}}` | Requests and limits of the front container. |
+| global.imagePullSecrets | list | `[]` | Pull Secrets, in the release namespace, for every image of this chart. |
 | global.imageRegistry | string | `""` | Replaces the registry of every image (a mirror). |
-| mcpServer.image | string | `"quay.io/containers/kubernetes_mcp_server:v0.0.67@sha256:e47f6ccc5347e1ea6be495d8d9ab55ac8a995fe87800fb984fa770cebe14ad44"` |  |
-| mcpServer.resources.limits.memory | string | `"256Mi"` |  |
-| mcpServer.resources.requests.cpu | string | `"20m"` |  |
-| mcpServer.resources.requests.memory | string | `"64Mi"` |  |
+| mcpServer.image | string | `"quay.io/containers/kubernetes_mcp_server:v0.0.67@sha256:e47f6ccc5347e1ea6be495d8d9ab55ac8a995fe87800fb984fa770cebe14ad44"` | The kubernetes MCP server's image, pinned by digest. |
+| mcpServer.resources | object | `{"limits":{"memory":"256Mi"},"requests":{"cpu":"20m","memory":"64Mi"}}` | Requests and limits of the MCP server container. |
 | networkPolicies.enabled | bool | `true` | Ingress to the front's port only, egress to DNS and the API server. |
-| service.annotations | object | `{}` |  |
+| service.annotations | object | `{}` | Annotations of the front's Service, for example for a cloud load balancer. |
 | service.port | int | `8443` | The port of the front's mTLS endpoint. |
 | service.type | string | `"LoadBalancer"` | LoadBalancer, or ClusterIP behind the customer's ingress in TLS passthrough (no Ingress is rendered). |
 | tls.clientCASecretName | string | `""` | REQUIRED: the Secret holding ca.crt, the CA bundle the administration cluster's client certificate must chain to. |
