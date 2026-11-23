@@ -63,10 +63,13 @@ jobs:
       - run: make chart-package RELEASE_VERSION=0.0.0-dryrun
       - run: make sbom-test
       # The release reads the pushed images; with nothing pushed, the dry run
-      # reads the operator's binary built as the image builds it.
+      # reads the operator's binary built as the image builds it. No Go cache:
+      # a tag runs this workflow too, and a cache restored there is a
+      # poisoning path (zizmor's cache-poisoning audit).
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: false
       - name: the SBOM of a built binary
         run: |
           set -euo pipefail
