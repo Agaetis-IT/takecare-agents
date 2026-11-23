@@ -441,7 +441,12 @@ func TestAddonRBACIsReadOnly(t *testing.T) {
 // nothing on kagent Agents.
 func TestAddonSandboxAgentsOptIn(t *testing.T) {
 	values := filepath.Join(t.TempDir(), "sandboxagents.yaml")
-	optIn := "addons:\n  kubernetes:\n    extraResources:\n      - group: kagent.dev\n        resource: sandboxagents\n"
+	// A list replaces the profile's: its own entries are kept, as the
+	// e2e's values do.
+	optIn := "addons:\n  kubernetes:\n    extraResources:\n" +
+		"      - group: rds.services.k8s.aws\n        resource: dbproxies\n" +
+		"      - resource: configmaps\n" +
+		"      - group: kagent.dev\n        resource: sandboxagents\n"
 	if err := os.WriteFile(values, []byte(optIn), 0o600); err != nil {
 		t.Fatal(err)
 	}
