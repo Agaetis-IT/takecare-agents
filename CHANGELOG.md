@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Each release attaches an SPDX 2.3 SBOM per image and architecture (twelve files, `takecare-agents-<image>-x.y.z-linux-<arch>.spdx.json`), read from the published image: the Go modules compiled into the binary and the base image's Debian packages. They are covered by the release's attestation (`gh release verify-asset`) and never committed.
 - The Intendant's inventory lists the kagent `SandboxAgent`s in its scope, as items of kind `Agent`, through a `kubernetes` connector whose add-on has the new opt-in `{group: kagent.dev, resource: sandboxagents}` in `extraResources` (get, list and watch in the declared namespaces), separate from the `agents` one and off by default. Without it, the inventory layer says "sandbox agents in scope cannot be listed: the kubernetes add-on has no kagent.dev sandboxagents rule", so a survey of an installation without the opt-in has one more not-seen line, and a Practitioner digest counts it. An `Agent` and a `SandboxAgent` of the same name in one namespace make one item (spec 10 §8). The default RBAC and the `agents` opt-in are unchanged.
 - `takecare_surveys_total{result}` counts the surveys that ended, once each: `completed`, `failed`, or `abandoned` when the operator ended a survey whose end was never written (spec 10 §10).
 - A survey the operator creates records the settled registrations it saw (`spec.registrationSet`, at most 200 entries).

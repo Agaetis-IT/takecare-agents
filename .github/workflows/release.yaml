@@ -3,11 +3,13 @@
 
 # The release (spec 04), on a tag v<SemVer> pushed by a maintainer
 # (docs/release.md): the six images for amd64 and arm64, the three charts as
-# OCI artifacts, and the GitHub release with the tag's CHANGELOG section. A
+# OCI artifacts, and the GitHub release with the tag's CHANGELOG section and
+# one SBOM per image and architecture (never committed). A
 # prerelease tag (v0.1.0-rc.1) runs the same chain, marked prerelease.
 # Nothing published is ever replaced: a version already in the registry
 # stops the release. On pull requests, a dry run packages and lints the
-# charts and reads the Unreleased notes, with no login and no push.
+# charts, reads the Unreleased notes and writes the SBOM of a built binary,
+# with no login and no push.
 name: release
 
 on:
@@ -18,6 +20,10 @@ on:
       - .github/workflows/release.yaml
       - hack/release-notes.sh
       - hack/release-notes-test.sh
+      - hack/sbom.sh
+      - hack/sbom-test.sh
+      - hack/testdata/sbom-image.spdx.json
+      - hack/versions.env
       - hack/testdata/changelog.md
       - charts/**
       - CHANGELOG.md
@@ -32,7 +38,7 @@ concurrency:
 
 jobs:
   dry-run:
-    name: release dry run (charts packaged and linted, notes read)
+    name: release dry run (charts packaged and linted, notes read, SBOM written)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     steps:
@@ -55,6 +61,23 @@ jobs:
           echo "neither Unreleased nor the latest section of CHANGELOG.md has an entry" >&2
           exit 1
       - run: make chart-package RELEASE_VERSION=0.0.0-dryrun
+      - run: make sbom-test
+      # The release reads the pushed images; with nothing pushed, the dry run
+      # reads the operator's binary built as the image builds it. No Go cache:
+      # a tag runs this workflow too, and a cache restored there is a
+      # poisoning path (zizmor's cache-poisoning audit).
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: the SBOM of a built binary
+        run: |
+          set -euo pipefail
+          make syft
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o bin/operator-dryrun ./cmd/operator
+          hack/sbom.sh scan file:bin/operator-dryrun takecare-agents-operator 0.0.0-dryrun linux/amd64 bin/sbom/dryrun.spdx.json
+          ls -l bin/sbom/dryrun.spdx.json
+          jq -r '.packages[0:5][] | [.name, .versionInfo] | @tsv' bin/sbom/dryrun.spdx.json
 
   release:
     name: publish the release
@@ -138,6 +161,10 @@ jobs:
           for chart in takecare-crds takecare takecare-cluster; do
             absent "chart ${chart}" "bin/helm-${HELM_VERSION}" show chart "oci://${REGISTRY}/charts/${chart}" --version "$VERSION"
           done
+      # syft is fetched (and its checksum checked) before anything is pushed,
+      # so a failed download stops the release with nothing published.
+      - name: syft
+        run: make syft
       - name: images (amd64 + arm64)
         run: make docker-buildx PUSH=true VERSION="$VERSION"
       - name: charts
@@ -148,6 +175,25 @@ jobs:
           for chart in takecare-crds takecare takecare-cluster; do
             "bin/helm-${HELM_VERSION}" push "bin/charts/${chart}-${VERSION}.tgz" "oci://${REGISTRY}/charts"
           done
+      # One SBOM per image and architecture (SPDX 2.3 JSON), read from the
+      # images just pushed, by digest: the binary's Go modules and the base's
+      # Debian packages. Attached to the release below, never committed. An
+      # empty SBOM stops the release before the release page exists.
+      - name: SBOMs
+        run: |
+          set -euo pipefail
+          source hack/versions.env
+          mkdir -p bin/sbom
+          for image in operator mcp-report-slack demo-app mcp-corpus mcp-map mcp-front; do
+            ref="${REGISTRY}/takecare-agents-${image}:${VERSION}"
+            digest="$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' | jq -er .digest)"
+            for platform in ${IMAGE_PLATFORMS//,/ }; do
+              hack/sbom.sh scan "registry:${REGISTRY}/takecare-agents-${image}@${digest}" \
+                "takecare-agents-${image}" "$VERSION" "$platform" \
+                "bin/sbom/takecare-agents-${image}-${VERSION}-${platform//\//-}.spdx.json"
+            done
+          done
+          test "$(find bin/sbom -name '*.spdx.json' | wc -l)" -eq 12
       - name: GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -164,9 +210,10 @@ jobs:
             for chart in takecare-crds takecare takecare-cluster; do
               printf -- "- \`oci://%s/charts/%s --version %s\`\n" "$REGISTRY" "$chart" "$VERSION"
             done
+            printf '\nSBOMs (SPDX 2.3 JSON, one per image and architecture), attached below.\n'
           } >"$RUNNER_TEMP/release.md"
           prerelease=()
           [[ "$VERSION" == *-* ]] && prerelease=(--prerelease)
           gh release create "$TAG" "${prerelease[@]}" --verify-tag --title "TakeCare Agents ${VERSION}" \
             --notes-file "$RUNNER_TEMP/release.md" "bin/charts/takecare-crds-${VERSION}.tgz" "bin/charts/takecare-${VERSION}.tgz" \
-            "bin/charts/takecare-cluster-${VERSION}.tgz"
+            "bin/charts/takecare-cluster-${VERSION}.tgz" bin/sbom/*.spdx.json

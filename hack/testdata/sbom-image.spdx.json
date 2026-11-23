@@ -1,0 +1,39 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "takecare-agents-operator",
+  "packages": [
+    {
+      "name": "github.com/agaetis-it/takecare-agents",
+      "SPDXID": "SPDXRef-Package-go-module-main",
+      "versionInfo": "v0.0.0",
+      "externalRefs": [{ "referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:golang/github.com/agaetis-it/takecare-agents@v0.0.0" }]
+    },
+    {
+      "name": "stdlib",
+      "SPDXID": "SPDXRef-Package-go-module-stdlib",
+      "versionInfo": "go1.27.1",
+      "externalRefs": [{ "referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:golang/stdlib@1.27.1" }]
+    },
+    {
+      "name": "base-files",
+      "SPDXID": "SPDXRef-Package-deb-base-files",
+      "versionInfo": "12.4+deb12u15",
+      "externalRefs": [{ "referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:deb/debian/base-files@12.4%2Bdeb12u15?arch=arm64&distro=debian-12.15" }]
+    },
+    {
+      "name": "tzdata",
+      "SPDXID": "SPDXRef-Package-deb-tzdata",
+      "versionInfo": "2026b-0+deb12u1",
+      "externalRefs": [{ "referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:deb/debian/tzdata@2026b-0%2Bdeb12u1?arch=all&distro=debian-12.15" }]
+    },
+    {
+      "name": "takecare-agents-operator",
+      "SPDXID": "SPDXRef-DocumentRoot-Image-takecare-agents-operator",
+      "versionInfo": "0.0.0",
+      "externalRefs": [{ "referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:oci/takecare-agents-operator@sha256%3A00?arch=arm64&tag=0.0.0" }],
+      "primaryPackagePurpose": "CONTAINER"
+    }
+  ]
+}

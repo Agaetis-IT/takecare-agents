@@ -29,6 +29,7 @@ SETUP_ENVTEST ?= $(LOCALBIN)/setup-envtest-$(SETUP_ENVTEST_VERSION)
 GO_LICENSES ?= $(LOCALBIN)/go-licenses-$(GO_LICENSES_VERSION)
 HELM ?= $(LOCALBIN)/helm-$(HELM_VERSION)
 KUBECONFORM ?= $(LOCALBIN)/kubeconform-$(KUBECONFORM_VERSION)
+SYFT ?= $(LOCALBIN)/syft-$(SYFT_VERSION)
 # Host platform, for the binaries downloaded from GitHub releases.
 HOST_OS := $(shell go env GOOS)
 HOST_ARCH := $(shell go env GOARCH)
@@ -206,6 +207,10 @@ power-window-test: ## Check hack/power-window.sh (did the machine sleep during a
 release-notes-test: ## Check hack/release-notes.sh against its fixture.
 	hack/release-notes-test.sh
 
+.PHONY: sbom-test
+sbom-test: ## Check that hack/sbom.sh refuses an empty, Go-less or wrong-architecture SBOM.
+	hack/sbom-test.sh
+
 .PHONY: site-deploy-test
 site-deploy-test: ## Check which runs publish the site (hack/site-deploy.sh): a final tag on main, or by hand from main or such a tag.
 	hack/site-deploy-test.sh
@@ -367,6 +372,7 @@ setup-envtest: $(SETUP_ENVTEST)
 go-licenses: $(GO_LICENSES)
 helm: $(HELM)
 kubeconform: $(KUBECONFORM)
+syft: $(SYFT)
 
 $(CONTROLLER_GEN):
 	$(call go-install-tool,$@,sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_TOOLS_VERSION))
@@ -397,3 +403,8 @@ $(KUBECONFORM):
 	hack/fetch-tool.sh kubeconform $(KUBECONFORM_VERSION) \
 		"https://github.com/yannh/kubeconform/releases/download/$(KUBECONFORM_VERSION)/kubeconform-$(HOST_OS)-$(HOST_ARCH).tar.gz" \
 		"$(KUBECONFORM_SHA256_$(HOST_KEY))" "kubeconform" "$@"
+
+$(SYFT):
+	hack/fetch-tool.sh syft $(SYFT_VERSION) \
+		"https://github.com/anchore/syft/releases/download/$(SYFT_VERSION)/syft_$(SYFT_VERSION:v%=%)_$(HOST_OS)_$(HOST_ARCH).tar.gz" \
+		"$(SYFT_SHA256_$(HOST_KEY))" "syft" "$@"
