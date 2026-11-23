@@ -66,7 +66,7 @@ func TestCallRuleCanary(t *testing.T) {
 		{"refused by the route's tool list", func(w http.ResponseWriter) bool {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":2,"error":{"code":-32602,"message":"Unknown tool: get_rules"}}`))
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":2,"error":{"code":-32602,"message":"unknown resource"}}`))
 			return true
 		}, mcp.CanaryClosed, http.StatusBadRequest},
 		{"a 400 of another kind", func(w http.ResponseWriter) bool { http.Error(w, "bad", http.StatusBadRequest); return true },

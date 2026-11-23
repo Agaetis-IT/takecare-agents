@@ -258,14 +258,15 @@ mcp_diagnose() {
 }
 
 # mcp_unknown_tool NAMESPACE POD URL TOOL [ARGS]: succeeds when the gateway
-# refuses the tool as off the route's allow-list (JSON-RPC -32602, "Unknown
-# tool"), within 20 s: a policy just changed applies a few seconds after it
-# is written, so the tool may still answer for a moment.
+# refuses the tool as off the route's allow-list (JSON-RPC -32602, "unknown
+# resource": since agentgateway 1.7 a denied tool reads like a missing one),
+# within 20 s: a policy just changed applies a few seconds after it is
+# written, so the tool may still answer for a moment.
 mcp_unknown_tool() {
   local _ out
   for _ in $(seq 10); do
     out="$(mcp_call "$@")"
-    if grep -q '"code":-32602' <<<"$out" && grep -q 'Unknown tool' <<<"$out" && ! grep -q '"result"' <<<"$out"; then
+    if grep -q '"code":-32602' <<<"$out" && grep -q '"message":"unknown resource"' <<<"$out" && ! grep -q '"result"' <<<"$out"; then
       return 0
     fi
     sleep 2
@@ -982,7 +983,7 @@ EOF
   # which a Gateway-level Override cannot drop; the forged call with the
   # survey's own arguments is refused by name (400, -32602), and a survey
   # under the Override sees its canary refused by the tool list.
-  check "the route closed: a forged get_rules with the survey's arguments is refused by the tool list (Unknown tool)" \
+  check "the route closed: a forged get_rules with the survey's arguments is refused by the tool list (unknown resource)" \
     mcp_unknown_tool kagent smoke-a2a "${iroute}/prometheus" get_rules '{"type":"alert","exclude_alerts":true}'
   check "the Intendant has a MetricsRouteClosed Warning event" \
     bash -c "kubectl -n ${NS} get events --field-selector reason=MetricsRouteClosed,type=Warning,involvedObject.name=smoke-intendant -o name | grep -q ."

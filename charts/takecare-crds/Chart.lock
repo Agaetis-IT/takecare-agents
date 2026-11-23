@@ -1,9 +1,9 @@
 dependencies:
 - name: agentgateway-crds
   repository: oci://cr.agentgateway.dev/charts
-  version: v1.6.0
+  version: v1.7.0
 - name: kagent-crds
   repository: oci://ghcr.io/kagent-dev/kagent/helm
   version: 0.10.6
-digest: sha256:a364ac30e61ef3e650de9e206c78e9df4a882e6118b9683423e92b270bb35b9a
-generated: "2026-11-23T20:57:09.467791+01:00"
+digest: sha256:cbacad76fc834b3c5403623c7af527900bf6d0977f324335b51483af54bb977d
+generated: "2026-11-23T23:29:03.794134+01:00"
