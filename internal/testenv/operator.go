@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -16,9 +17,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	authorizationv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -32,6 +36,9 @@ const (
 	EngineNamespace   = "kagent"
 	operatorUser      = "system:serviceaccount:" + OperatorNamespace + ":takecare-operator"
 )
+
+// operatorGroups are the groups a ServiceAccount token carries.
+var operatorGroups = []string{"system:serviceaccounts", "system:serviceaccounts:" + OperatorNamespace, "system:authenticated"}
 
 // Env is an API server with the product's CRDs and two identities: Admin
 // for the tests' fixtures and assertions, Operator for the managers under
@@ -79,17 +86,7 @@ func startOperator(t *testing.T, demo bool, onRefusals func([]string)) Env {
 	}
 	ctx := context.Background()
 	rbac := chartRBAC(t, demo)
-	namespaces := []string{OperatorNamespace, EngineNamespace}
-	for _, obj := range rbac {
-		if ns := obj.GetNamespace(); ns != "" && !slices.Contains(namespaces, ns) {
-			namespaces = append(namespaces, ns)
-		}
-	}
-	for _, ns := range namespaces {
-		if err := c.Create(ctx, &corev1.Namespace{Name: ns}); err != nil {
-			t.Fatalf("create namespace %s: %v", ns, err)
-		}
-	}
+	createNamespaces(t, c, rbac)
 	for _, obj := range rbac {
 		if err := c.Create(ctx, obj); err != nil {
 			t.Fatalf("create %s %s: %v", obj.GetKind(), obj.GetName(), err)
@@ -97,16 +94,157 @@ func startOperator(t *testing.T, demo bool, onRefusals func([]string)) Env {
 	}
 	user, err := env.AddUser(envtest.User{
 		Name:   operatorUser,
-		Groups: []string{"system:serviceaccounts", "system:serviceaccounts:" + OperatorNamespace, "system:authenticated"},
+		Groups: operatorGroups,
 	}, &rest.Config{QPS: admin.QPS, Burst: admin.Burst})
 	if err != nil {
 		t.Fatalf("add the operator's user: %v", err)
 	}
+	waitForRights(t, c, rbac)
 	operator := user.Config()
 	refusals := &refusals{}
 	operator.Wrap(func(rt http.RoundTripper) http.RoundTripper { return refusals.watch(rt) })
 	t.Cleanup(func() { onRefusals(refusals.list()) })
 	return Env{Admin: admin, Operator: operator}
+}
+
+// createNamespaces creates the operator and engine namespaces, and every
+// namespace the rendered RBAC names.
+func createNamespaces(t *testing.T, c client.Client, rbac []*unstructured.Unstructured) {
+	t.Helper()
+	namespaces := []string{OperatorNamespace, EngineNamespace}
+	for _, obj := range rbac {
+		if ns := obj.GetNamespace(); ns != "" && !slices.Contains(namespaces, ns) {
+			namespaces = append(namespaces, ns)
+		}
+	}
+	for _, ns := range namespaces {
+		if err := c.Create(context.Background(), &corev1.Namespace{Name: ns}); err != nil {
+			t.Fatalf("create namespace %s: %v", ns, err)
+		}
+	}
+}
+
+// rightsTimeout bounds the wait for the authorizer to see the operator's
+// RBAC: seconds under load, never more.
+const rightsTimeout = 30 * time.Second
+
+// reviewTimeout bounds one SubjectAccessReview.
+const reviewTimeout = 10 * time.Second
+
+// waitForRights blocks until the API server's authorizer grants the
+// operator one rule of each binding the chart renders. The RBAC authorizer
+// reads Roles and bindings from informer caches (kube-apiserver v1.37.0
+// pkg/kubeapiserver/authorizer/config.go, rbac.New over the listers), so a
+// binding just created may not be seen yet: a manager started at once could
+// be refused a List its Roles grant. That this lag caused the refusals of
+// the intendant package's one failed run was not reproduced; the wait
+// rules the lag out all the same. A rule of a binding is granted
+// only once both the binding and its role are in the caches, and the
+// role's other rules come with it.
+func waitForRights(t *testing.T, c client.Client, rbac []*unstructured.Unstructured) {
+	t.Helper()
+	if err := awaitRights(context.Background(), c, rightChecks(t, rbac), rightsTimeout); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// awaitRights asks the authorizer, through SubjectAccessReviews as the
+// operator, until it grants every check or the timeout passes. It grants
+// nothing.
+func awaitRights(ctx context.Context, c client.Client, checks []rightCheck, timeout time.Duration) error {
+	var pending []string
+	// Each pass runs whole, on the caller's context: cut at the deadline,
+	// its reviews would report the deadline instead of the authorizer.
+	err := wait.PollUntilContextTimeout(ctx, 50*time.Millisecond, timeout, true, func(context.Context) (bool, error) {
+		pending = pending[:0]
+		for _, ch := range checks {
+			sar := &authorizationv1.SubjectAccessReview{Spec: authorizationv1.SubjectAccessReviewSpec{
+				User:                  operatorUser,
+				Groups:                operatorGroups,
+				ResourceAttributes:    ch.resource,
+				NonResourceAttributes: ch.nonResource,
+			}}
+			// A failed review is retried: the client's first request
+			// discovers the API, which a loaded server may answer late.
+			rctx, cancel := context.WithTimeout(ctx, reviewTimeout)
+			err := c.Create(rctx, sar)
+			cancel()
+			if err != nil {
+				pending = append(pending, fmt.Sprintf("%s (review failed: %v)", ch.name, err))
+				continue
+			}
+			if !sar.Status.Allowed {
+				pending = append(pending, ch.name)
+			}
+		}
+		return len(pending) == 0, nil
+	})
+	if err != nil {
+		return fmt.Errorf("the authorizer did not grant the operator its Roles within %s (%w); not granted: %s", timeout, err, strings.Join(pending, "; "))
+	}
+	return nil
+}
+
+// rightCheck is one access the operator's RBAC grants, named for errors.
+type rightCheck struct {
+	name        string
+	resource    *authorizationv1.ResourceAttributes
+	nonResource *authorizationv1.NonResourceAttributes
+}
+
+// rightChecks takes, for each binding, the first rule of the role it binds,
+// in the binding's namespace.
+func rightChecks(t *testing.T, rbac []*unstructured.Unstructured) []rightCheck {
+	t.Helper()
+	roles := map[string]*unstructured.Unstructured{}
+	for _, o := range rbac {
+		if k := o.GetKind(); k == "Role" || k == "ClusterRole" {
+			roles[k+"/"+o.GetNamespace()+"/"+o.GetName()] = o
+		}
+	}
+	var checks []rightCheck
+	for _, b := range rbac {
+		if k := b.GetKind(); k != "RoleBinding" && k != "ClusterRoleBinding" {
+			continue
+		}
+		kind, _, _ := unstructured.NestedString(b.Object, "roleRef", "kind")
+		name, _, _ := unstructured.NestedString(b.Object, "roleRef", "name")
+		ns := b.GetNamespace()
+		key := kind + "/" + ns + "/" + name
+		if kind == "ClusterRole" {
+			key = kind + "//" + name
+		}
+		role, ok := roles[key]
+		if !ok {
+			t.Fatalf("%s %s/%s binds %s, which the rendered RBAC lacks", b.GetKind(), ns, b.GetName(), key)
+		}
+		rules, _, _ := unstructured.NestedSlice(role.Object, "rules")
+		if len(rules) == 0 {
+			t.Fatalf("%s binds %s, which has no rule", b.GetName(), key)
+		}
+		rule, _ := rules[0].(map[string]any)
+		first := func(field string) string {
+			s, _, _ := unstructured.NestedStringSlice(rule, field)
+			if len(s) == 0 {
+				return ""
+			}
+			return s[0]
+		}
+		ch := rightCheck{name: fmt.Sprintf("%s %s/%s: %s", b.GetKind(), ns, b.GetName(), first("verbs"))}
+		if path := first("nonResourceURLs"); path != "" {
+			ch.name += " " + path
+			ch.nonResource = &authorizationv1.NonResourceAttributes{Path: path, Verb: first("verbs")}
+		} else {
+			resource, sub, _ := strings.Cut(first("resources"), "/")
+			ch.name += " " + first("resources")
+			ch.resource = &authorizationv1.ResourceAttributes{
+				Namespace: ns, Verb: first("verbs"), Group: first("apiGroups"),
+				Resource: resource, Subresource: sub, Name: first("resourceNames"),
+			}
+		}
+		checks = append(checks, ch)
+	}
+	return checks
 }
 
 // refusals records the requests answered 403: a controller that retries a
