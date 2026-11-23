@@ -161,6 +161,10 @@ jobs:
           for chart in takecare-crds takecare takecare-cluster; do
             absent "chart ${chart}" "bin/helm-${HELM_VERSION}" show chart "oci://${REGISTRY}/charts/${chart}" --version "$VERSION"
           done
+      # syft is fetched (and its checksum checked) before anything is pushed,
+      # so a failed download stops the release with nothing published.
+      - name: syft
+        run: make syft
       - name: images (amd64 + arm64)
         run: make docker-buildx PUSH=true VERSION="$VERSION"
       - name: charts
@@ -179,7 +183,6 @@ jobs:
         run: |
           set -euo pipefail
           source hack/versions.env
-          make syft
           mkdir -p bin/sbom
           for image in operator mcp-report-slack demo-app mcp-corpus mcp-map mcp-front; do
             ref="${REGISTRY}/takecare-agents-${image}:${VERSION}"
