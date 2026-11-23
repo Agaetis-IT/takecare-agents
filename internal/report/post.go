@@ -23,7 +23,8 @@ import (
 )
 
 // Retries after the first attempt, and the first wait between two; it
-// doubles. The total wait is 2+4+8 = 14 s, plus each call's own timeout.
+// doubles. The total wait is 2+4+8 = 14 s, plus each call's own timeout,
+// unless the server asks for a longer Retry-After.
 const (
 	Retries = 3
 	Backoff = 2 * time.Second
@@ -43,8 +44,10 @@ type Message struct {
 	Key    string
 }
 
-// maxWait bounds one wait a rate limit asks for: the caller's own bound
-// ends the publication before.
+// maxWait caps one wait a rate limit asks for, so that an absurd
+// Retry-After does not hold a publication; Slack's are seconds to a
+// minute. A wait longer than the time left before the caller's deadline
+// is not waited at all: Post fails at once.
 const maxWait = 5 * time.Minute
 
 // PermanentError is a refusal a retry cannot change: the server said so.
@@ -61,8 +64,10 @@ func (e *PermanentError) Error() string {
 // is retried Retries times, waiting backoff (Backoff when zero) and
 // doubling, or the server's Retry-After when longer. A refusal the server
 // marks not retryable (a channel not found, a revoked token…) is not
-// retried: Post returns a *PermanentError. after waits on the caller's
-// clock.
+// retried: Post returns a *PermanentError. When ctx ends during a wait,
+// or the next wait would outlast ctx's deadline, Post returns at once an
+// error wrapping ctx's error and naming the last attempt's. after waits on
+// the caller's clock.
 func Post(ctx context.Context, c client.Reader, p Poster, after func(time.Duration) <-chan time.Time, backoff time.Duration,
 	ns, name, destination string, m Message) error {
 	var conn v1alpha1.TakeCareConnector
@@ -91,10 +96,15 @@ func Post(ctx context.Context, c client.Reader, p Poster, after func(time.Durati
 	wait := time.Duration(0)
 	for attempt := 0; attempt <= Retries; attempt++ {
 		if attempt > 0 {
+			d := max(backoff, wait)
+			if dl, ok := ctx.Deadline(); ok && time.Until(dl) < d {
+				return fmt.Errorf("publish to %s: the next attempt in %s would come after the deadline: %w; last attempt: %w",
+					destination, d, context.DeadlineExceeded, last)
+			}
 			select {
 			case <-ctx.Done():
-				return fmt.Errorf("publish: %w", ctx.Err())
-			case <-after(max(backoff, wait)):
+				return fmt.Errorf("publish to %s stopped while waiting to retry: %w; last attempt: %w", destination, ctx.Err(), last)
+			case <-after(d):
 			}
 			backoff *= 2
 		}

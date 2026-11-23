@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -35,6 +36,8 @@ type fakePoster struct {
 	// refuse, when set, is the error of a refusal the server marks not
 	// retryable.
 	refuse string
+	// limit, when set, is a rate limit's Retry-After in seconds.
+	limit int
 }
 
 func (p *fakePoster) Call(_ context.Context, ep mcp.Endpoint, tool string, args map[string]any) (mcp.Result, error) {
@@ -47,6 +50,10 @@ func (p *fakePoster) Call(_ context.Context, ep mcp.Endpoint, tool string, args 
 	p.urls = append(p.urls, ep.URL)
 	if p.fail {
 		return mcp.Result{}, errors.New("connection refused")
+	}
+	if p.limit > 0 {
+		return mcp.Result{IsError: true, Text: fmt.Sprintf("chat.postMessage: rate limited by Slack (ratelimited), retry after %d s", p.limit),
+			Structured: json.RawMessage(fmt.Sprintf(`{"error":"ratelimited","retry":true,"retryAfterSeconds":%d}`, p.limit))}, nil
 	}
 	if p.refuse != "" {
 		return mcp.Result{IsError: true, Text: "chat.postMessage: " + p.refuse + " (permanent: a retry gets the same answer)",
@@ -293,6 +300,24 @@ func TestPublicationPermanentRefusal(t *testing.T) {
 	f.investigationAt(t, "doc-refused", v1alpha1.LevelPractitioner, false)
 	inv := f.waitPublished(t, "doc-refused")
 	if p := inv.Status.Published; p.OK || !strings.Contains(p.Reason, "not retried") || !strings.Contains(p.Reason, "channel_not_found") {
+		t.Errorf("published = %+v", p)
+	}
+	if got := len(poster.destinations()); got != 1 {
+		t.Errorf("%d attempts, want 1", got)
+	}
+}
+
+// A rate limit whose Retry-After outlasts the publication's bound ends it
+// at once, freeing the slot: the record names the rate limit.
+func TestPublicationRateLimitPastBound(t *testing.T) {
+	t.Parallel()
+	poster := &fakePoster{limit: 120}
+	f, _ := publishing(t, &fakeUsage{}, poster, v1alpha1.ReportDestinations{Practitioner: onCall})
+	f.accounting.PublishTimeout = time.Minute
+	f.start()
+	f.investigationAt(t, "doc-limited", v1alpha1.LevelPractitioner, false)
+	inv := f.waitPublished(t, "doc-limited")
+	if p := inv.Status.Published; p.OK || !strings.Contains(p.Reason, "ratelimited") || !strings.Contains(p.Reason, "deadline") {
 		t.Errorf("published = %+v", p)
 	}
 	if got := len(poster.destinations()); got != 1 {

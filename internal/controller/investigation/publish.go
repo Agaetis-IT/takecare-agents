@@ -69,6 +69,9 @@ type Accounting struct {
 	// Backoff is the first wait between two publication attempts; it
 	// doubles. report.Backoff when zero.
 	Backoff time.Duration
+	// PublishTimeout bounds one diagnosis' publication (publishTimeout
+	// when zero).
+	PublishTimeout time.Duration
 	// Duration observes alert accepted to diagnosis published
 	// (takecare_investigation_duration_seconds).
 	Duration *prometheus.HistogramVec
@@ -193,8 +196,9 @@ func (w *Worker) pricing(ctx context.Context, d *v1alpha1.TakeCareDoc) *v1alpha1
 
 // publish posts a completed investigation's diagnosis through the Doc's
 // report connector, to the destination its level gives (spec 02 §4); the
-// model never decides where or whether. Three retries with backoff; the
-// outcome goes to status.published, a final failure to a warning event. A
+// model never decides where or whether. Three retries with backoff, or
+// the server's Retry-After, within publishTimeout, which bounds how long
+// the publication holds the investigation's slot; the outcome goes to status.published, a final failure to a warning event. A
 // record kept in status only says so in status.published too, so that a
 // record without it is one the operator still has to publish (resume).
 func (w *Worker) publish(ctx context.Context, inv *v1alpha1.TakeCareInvestigation, d *v1alpha1.TakeCareDoc, span trace.Span, sent map[string]bool) {
@@ -222,7 +226,9 @@ func (w *Worker) publish(ctx context.Context, inv *v1alpha1.TakeCareInvestigatio
 	}
 	pub := doc.NewPublication(inv, w.clock().Now(), reason, sent)
 	result := v1alpha1.Publication{Connector: d.Spec.Connectors.Report, Destination: destination}
-	err := w.post(ctx, d, destination, pub, publicationKey(inv))
+	pctx, cancel := context.WithTimeout(ctx, w.publishTimeout())
+	err := w.post(pctx, d, destination, pub, publicationKey(inv))
+	cancel()
 	if err != nil && ctx.Err() != nil {
 		return // the operator stops: the next leader publishes (resume)
 	}
@@ -244,6 +250,20 @@ func (w *Worker) publish(ctx context.Context, inv *v1alpha1.TakeCareInvestigatio
 	if w.Accounting.Duration != nil {
 		w.Accounting.Duration.WithLabelValues(doc.Kind).Observe(w.clock().Now().Sub(inv.CreationTimestamp.Time).Seconds())
 	}
+}
+
+// publishTimeout bounds one diagnosis' publication, and so how long it
+// holds its investigation's slot: report.Post's four attempts of at most
+// 30 s each (the MCP client's timeout) and its 2+4+8 s of backoff, 134 s,
+// fit in it. A rate limit's Retry-After that would outlast it ends the
+// publication at once, as a failure naming the rate limit.
+const publishTimeout = 3 * time.Minute
+
+func (w *Worker) publishTimeout() time.Duration {
+	if w.Accounting.PublishTimeout > 0 {
+		return w.Accounting.PublishTimeout
+	}
+	return publishTimeout
 }
 
 // post calls post_message through the Doc's report connector.

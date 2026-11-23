@@ -13,7 +13,7 @@ import (
 
 // How long and how many idempotency keys the server remembers. The
 // operator retries one publication within minutes (report.Post's four
-// attempts within its caller's bound: 3 minutes for a digest), and a
+// attempts within its caller's bound: 3 minutes), and a
 // restarted operator publishes what its predecessor left at its start:
 // an hour covers both with a wide margin. The count bounds the memory; at
 // Slack's pace of about one message per second per channel, a thousand
@@ -42,6 +42,14 @@ type flight struct {
 // delivers; one that succeeded is remembered for ttl, and its key
 // returns its result without delivering again. A repeated key that
 // arrives while the first delivery runs waits for it.
+//
+// A delivery in progress holds its key from its start: it counts in the
+// bound and in the expiry like a remembered one. When max is reached, the
+// oldest key is forgotten, in progress or not: a delivery that outlives
+// its key still ends and answers the calls already waiting on it, and a
+// later call with that key delivers again (at least once). The bound and
+// the TTL are far above what one server's deliveries in progress reach
+// (each lasts at most its timeout), so this does not happen in practice.
 type recent struct {
 	ttl time.Duration
 	max int

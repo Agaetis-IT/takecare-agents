@@ -203,7 +203,7 @@ The Doc has no RBAC of its own: it reads the cluster through its `cluster` conne
   - context line: time since the alert, model calls, tokens, estimated cost, trace ID;
   - when alerts of the same incident were folded into the investigation after its run started, one line says so: `2 other alerts of the same incident, not passed to the investigation: PodNotReady, …`, so that the on-call reader is not left wondering about an alert they saw;
   - at the `Apprentice` level, a banner: `Apprentice: shadow diagnosis, no one was paged by TakeCare.`
-- Failures are retried 3 times with backoff, or the report server's `Retry-After` when longer, with the investigation's identity as the idempotency key so that a retry never posts twice (spec 05, "Publishing once"); a refusal the server marks not retryable (a channel not found, a revoked token) is not retried. A final failure is recorded (`published: { ok: false, reason }`, naming Slack's error) and as a warning event.
+- Failures are retried 3 times with backoff, or the report server's `Retry-After` when longer, within 3 minutes, which bound how long the publication holds the investigation's slot; a `Retry-After` that would end past that bound ends the publication at once. Every attempt carries the investigation's identity as the idempotency key, so that a retry does not post again what the report server already delivered (spec 05, "Publishing once", says when it still can). A refusal the server marks not retryable (a channel not found, a revoked token) is not retried. A final failure is recorded (`published: { ok: false, reason }`, naming Slack's error) and as a warning event.
 
 ### 5. Cost and usage
 

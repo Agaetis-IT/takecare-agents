@@ -85,36 +85,61 @@ func TestPostPacesAndStops(t *testing.T) {
 		waits     []time.Duration
 		calls     int
 		permanent bool
+		// timeout bounds the publication when set; cut ends it during
+		// its first wait. ended is the context error Post must wrap.
+		timeout time.Duration
+		cut     bool
+		ended   error
 	}{
 		{"a rate limit waits its Retry-After", []mcp.Result{
 			refusal(reportslack.Outcome{Error: "ratelimited", Retry: true, RetryAfterSeconds: 30}, "rate limited"),
 			{Text: "posted"},
-		}, []time.Duration{30 * time.Second}, 2, false},
+		}, []time.Duration{30 * time.Second}, 2, false, 0, false, nil},
 		{"a short Retry-After keeps the backoff", []mcp.Result{
 			refusal(reportslack.Outcome{Error: "ratelimited", Retry: true, RetryAfterSeconds: 1}, "rate limited"),
 			refusal(reportslack.Outcome{Error: "internal_error", Retry: true}, "chat.postMessage: internal_error"),
 			{Text: "posted"},
-		}, []time.Duration{2 * time.Second, 4 * time.Second}, 3, false},
+		}, []time.Duration{2 * time.Second, 4 * time.Second}, 3, false, 0, false, nil},
 		{"a permanent error is not retried", []mcp.Result{
 			refusal(reportslack.Outcome{Error: "channel_not_found"}, "chat.postMessage: channel_not_found (permanent: a retry gets the same answer)"),
-		}, nil, 1, true},
+		}, nil, 1, true, 0, false, nil},
 		{"a server without outcome is retried", []mcp.Result{
 			{IsError: true, Text: refusedText},
 			{IsError: true, Text: refusedText},
 			{IsError: true, Text: refusedText},
 			{IsError: true, Text: refusedText},
-		}, []time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second}, 4, false},
+		}, []time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second}, 4, false, 0, false, nil},
+		{"a Retry-After past the deadline ends at once", []mcp.Result{
+			refusal(reportslack.Outcome{Error: "ratelimited", Retry: true, RetryAfterSeconds: 120}, "chat.postMessage: rate limited by Slack (ratelimited), retry after 120 s"),
+		}, nil, 1, false, time.Minute, false, context.DeadlineExceeded},
+		{"a Retry-After past the cap waits the cap", []mcp.Result{
+			refusal(reportslack.Outcome{Error: "ratelimited", Retry: true, RetryAfterSeconds: 3600}, "chat.postMessage: rate limited by Slack (ratelimited), retry after 3600 s"),
+			{Text: "posted"},
+		}, []time.Duration{5 * time.Minute}, 2, false, 6 * time.Minute, false, nil},
+		{"the caller stopping during a wait ends it", []mcp.Result{
+			refusal(reportslack.Outcome{Error: "ratelimited", Retry: true, RetryAfterSeconds: 30}, "chat.postMessage: rate limited by Slack (ratelimited), retry after 30 s"),
+		}, []time.Duration{30 * time.Second}, 1, false, 0, true, context.Canceled},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			p := &scripted{results: c.results}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			if c.timeout > 0 {
+				ctx, cancel = context.WithTimeout(ctx, c.timeout)
+				defer cancel()
+			}
 			var waits []time.Duration
 			after := func(d time.Duration) <-chan time.Time {
 				waits = append(waits, d)
 				ch := make(chan time.Time, 1)
+				if c.cut {
+					cancel() // the operator stops during the wait
+					return ch
+				}
 				ch <- time.Time{}
 				return ch
 			}
-			err := report.Post(t.Context(), reader(t), p, after, 0, ns, "report", onCall, m)
+			err := report.Post(ctx, reader(t), p, after, 0, ns, "report", onCall, m)
 			if len(p.calls) != c.calls || !slices.Equal(waits, c.waits) {
 				t.Errorf("%d calls, waits %v; want %d, %v", len(p.calls), waits, c.calls, c.waits)
 			}
@@ -129,6 +154,9 @@ func TestPostPacesAndStops(t *testing.T) {
 			}
 			if perm != nil && !strings.Contains(perm.Error(), "channel_not_found") {
 				t.Errorf("the error does not name Slack's: %v", perm)
+			}
+			if c.ended != nil && (!errors.Is(err, c.ended) || !strings.Contains(err.Error(), "ratelimited")) {
+				t.Errorf("error %v; want it to wrap %v and name the last attempt's ratelimited", err, c.ended)
 			}
 		})
 	}

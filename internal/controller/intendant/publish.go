@@ -25,9 +25,12 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/report"
 )
 
-// publishTimeout bounds one digest's publication: report.Post's four
-// attempts of at most 30 s each (the MCP client's timeout) and its 2+4+8 s
-// of waits between them, 134 s, within 3 minutes.
+// publishTimeout bounds one digest's publication, counted from its
+// Intendant's digest lock: report.Post's four attempts of at most 30 s
+// each (the MCP client's timeout) and its 2+4+8 s of backoff, 134 s, fit
+// in it. A rate limit's Retry-After that would outlast it ends the
+// publication at once, as a failure naming the rate limit; the operator
+// stopping ends it without a record, for the next leader to publish.
 const publishTimeout = 3 * time.Minute
 
 // Why a digest is not posted, in status.published.reason.

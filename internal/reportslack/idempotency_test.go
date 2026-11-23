@@ -38,7 +38,7 @@ func (f *fakeSlack) count() int {
 
 // The 2026-11-17 reproduction: Slack takes 1 s to answer, the caller's
 // deadline is 300 ms. The call fails, yet Slack received the message; the
-// operator retries after its 2 s backoff. Without the key Slack got the
+// operator retries after its backoff, once the delivery has ended. Without the key Slack got the
 // message twice; with it, once, and the retry gets the first result.
 func TestTimedOutPostIsPostedOnce(t *testing.T) {
 	f := start(t, ModeSlack)
@@ -48,7 +48,9 @@ func TestTimedOutPostIsPostedOnce(t *testing.T) {
 	if _, err := f.call(onCall, runKey, 300*time.Millisecond); err == nil {
 		t.Fatal("the first call ended within its deadline: the reproduction does not hold")
 	}
-	time.Sleep(2 * time.Second) // report.Backoff
+	// The operator retries after its backoff; the delivery has ended by
+	// then. Wait for that end rather than for the backoff.
+	f.waitDelivered(runKey + "\n" + onCall)
 	res, err := f.call(onCall, runKey, 10*time.Second)
 	if err != nil || res.IsError || !strings.Contains(res.Text, "posted to on-call (C0ONCALL1)") {
 		t.Fatalf("the retry = %+v, %v; want the first post's result", res, err)
@@ -121,4 +123,25 @@ func TestLogModeKey(t *testing.T) {
 	if n := strings.Count(f.logs.String(), `"msg":"message"`); n != 1 {
 		t.Errorf("%d messages logged, want 1:\n%s", n, f.logs.String())
 	}
+}
+
+// waitDelivered waits until the delivery of the remembered key has ended.
+func (f *fixture) waitDelivered(key string) {
+	f.t.Helper()
+	r := f.server.recent
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		r.mu.Lock()
+		fl, ok := r.flights[key]
+		r.mu.Unlock()
+		if ok {
+			select {
+			case <-fl.done:
+				return
+			default:
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	f.t.Fatalf("the delivery of %q did not end", key)
 }
