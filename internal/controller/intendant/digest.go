@@ -51,8 +51,10 @@ type Digest struct {
 	Keys []string
 	More int
 	// NotSeen and BlindSpots count the survey's not-seen lines and blind
-	// spots.
+	// spots; NotSeenBy counts the not-seen lines by layer, in the
+	// status's order, as "<layer> <n>".
 	NotSeen, BlindSpots int
+	NotSeenBy           []string
 }
 
 // NewDigest builds the digest of a completed survey: the counts by action
@@ -69,7 +71,10 @@ func NewDigest(s *v1alpha1.TakeCareSurvey, all []v1alpha1.Proposal) Digest {
 		d.Add, d.Update, d.Remove = int(c.Add), int(c.Update), int(c.Remove)
 	}
 	for _, l := range s.Status.Layers {
-		d.NotSeen += len(l.NotSeen)
+		if n := len(l.NotSeen); n > 0 {
+			d.NotSeen += n
+			d.NotSeenBy = append(d.NotSeenBy, safe(safeName, l.Name)+" "+strconv.Itoa(n))
+		}
 	}
 	for _, p := range all {
 		if p.Source == v1alpha1.ProposalFromAgent {
@@ -102,13 +107,22 @@ func action(a v1alpha1.ProposalAction) string {
 // Total is the number of proposals.
 func (d Digest) Total() int { return d.Add + d.Update + d.Remove }
 
+// header names the Intendant, unless its name only repeats the kind (the
+// chart's "intendant", Kind) or is too long for the header, whose count stays.
 func (d Digest) header() string {
-	h := fmt.Sprintf("Intendant %s: %d proposals to review", d.Intendant, d.Total())
-	if len(h) > headerLimit {
-		// A long name: the count stays, the name is cut (ASCII only).
-		h = fmt.Sprintf("Intendant: %d proposals to review", d.Total())
+	count := plural(d.Total(), "proposal") + " to review"
+	h := "Intendant " + d.Intendant + ": " + count
+	if d.Intendant == Kind || len(h) > headerLimit {
+		h = "Intendant: " + count
 	}
 	return h
+}
+
+func plural(n int, word string) string {
+	if n == 1 {
+		return "1 " + word
+	}
+	return strconv.Itoa(n) + " " + word + "s"
 }
 
 func (d Digest) counts() string {
@@ -123,9 +137,15 @@ func (d Digest) keys() string {
 	return s
 }
 
+// context says what the survey read: the parts of the ground it could
+// not read, by layer, and where to see which and why.
 func (d Digest) context() string {
-	return fmt.Sprintf("Survey %s against the Map at %s · %d not seen · %d blind spots · kubectl -n %s get takecaresurvey %s · the full set: ConfigMap %s",
-		d.Survey, d.Revision, d.NotSeen, d.BlindSpots, d.Namespace, d.Survey, d.ConfigMap)
+	seen := "the whole ground read"
+	if d.NotSeen > 0 {
+		seen = plural(d.NotSeen, "part") + " of the ground not read (" + strings.Join(d.NotSeenBy, ", ") + ")"
+	}
+	return fmt.Sprintf("Survey %s against the Map at %s · %s · %s · which and why: kubectl -n %s get takecaresurvey %s -o yaml · the full set: ConfigMap %s",
+		d.Survey, d.Revision, seen, plural(d.BlindSpots, "blind spot"), d.Namespace, d.Survey, d.ConfigMap)
 }
 
 // Message renders the digest for the report connector: Block Kit blocks
@@ -133,11 +153,14 @@ func (d Digest) context() string {
 func (d Digest) Message() report.Message {
 	const kType, kText = "type", "text"
 	text := func(kind, s string) map[string]any { return map[string]any{kType: kind, kText: s} }
+	// verbatim: Slack links no URL, channel name or mention it did not
+	// get as markup (docs.slack.dev, text object).
+	mrkdwn := func(s string) map[string]any { return map[string]any{kType: "mrkdwn", kText: s, "verbatim": true} }
 	blocks := []any{
 		map[string]any{kType: "header", kText: text("plain_text", d.header())},
-		map[string]any{kType: "section", kText: text("mrkdwn", d.counts())},
-		map[string]any{kType: "section", kText: text("mrkdwn", "```\n"+d.keys()+"\n```")},
-		map[string]any{kType: "context", "elements": []any{text("mrkdwn", d.context())}},
+		map[string]any{kType: "section", kText: mrkdwn(d.counts())},
+		map[string]any{kType: "section", kText: mrkdwn("```\n" + d.keys() + "\n```")},
+		map[string]any{kType: "context", "elements": []any{mrkdwn(d.context())}},
 	}
 	return report.Message{Blocks: blocks, Text: d.header() + "\n" + d.counts() + "\n" + d.keys() + "\n" + d.context() + "\n"}
 }

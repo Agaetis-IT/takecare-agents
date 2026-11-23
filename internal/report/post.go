@@ -23,7 +23,8 @@ import (
 )
 
 // Retries after the first attempt, and the first wait between two; it
-// doubles. The total wait is 2+4+8 = 14 s, plus each call's own timeout.
+// doubles. The total wait is 2+4+8 = 14 s, plus each call's own timeout,
+// unless the server asks for a longer Retry-After.
 const (
 	Retries = 3
 	Backoff = 2 * time.Second
@@ -34,16 +35,39 @@ type Poster interface {
 	Call(ctx context.Context, ep mcp.Endpoint, tool string, args map[string]any) (mcp.Result, error)
 }
 
-// Message is what is posted: Block Kit blocks and their fallback text.
+// Message is what is posted: Block Kit blocks and their fallback text,
+// and the publication's identity, sent as the tool's idempotency key on
+// every attempt so that the server posts it once (spec 05).
 type Message struct {
 	Blocks []any
 	Text   string
+	Key    string
+}
+
+// maxWait caps one wait a rate limit asks for, so that an absurd
+// Retry-After does not hold a publication; Slack's are seconds to a
+// minute. A wait longer than the time left before the caller's deadline
+// is not waited at all: Post fails at once.
+const maxWait = 5 * time.Minute
+
+// PermanentError is a refusal a retry cannot change: the server said so.
+type PermanentError struct {
+	Destination, Reason string
+}
+
+func (e *PermanentError) Error() string {
+	return fmt.Sprintf("publish to %s: refused, not retried: %s", e.Destination, e.Reason)
 }
 
 // Post calls post_message on the report connector named name in namespace
-// ns, to destination; a failed attempt is retried Retries times, waiting
-// backoff (Backoff when zero) and doubling. after waits on the caller's
-// clock.
+// ns, to destination, with m.Key as its idempotency key; a failed attempt
+// is retried Retries times, waiting backoff (Backoff when zero) and
+// doubling, or the server's Retry-After when longer. A refusal the server
+// marks not retryable (a channel not found, a revoked token…) is not
+// retried: Post returns a *PermanentError. When ctx ends during a wait,
+// or the next wait would outlast ctx's deadline, Post returns at once an
+// error wrapping ctx's error and naming the last attempt's. after waits on
+// the caller's clock.
 func Post(ctx context.Context, c client.Reader, p Poster, after func(time.Duration) <-chan time.Time, backoff time.Duration,
 	ns, name, destination string, m Message) error {
 	var conn v1alpha1.TakeCareConnector
@@ -62,28 +86,60 @@ func Post(ctx context.Context, c client.Reader, p Poster, after func(time.Durati
 		return fmt.Errorf("render the message: %w", err)
 	}
 	args := map[string]any{"destination": destination, "blocks": json.RawMessage(blocks), "text": m.Text}
+	if m.Key != "" {
+		args[reportslack.FieldKey] = m.Key
+	}
 	if backoff <= 0 {
 		backoff = Backoff
 	}
 	var last error
+	wait := time.Duration(0)
 	for attempt := 0; attempt <= Retries; attempt++ {
 		if attempt > 0 {
+			d := max(backoff, wait)
+			if dl, ok := ctx.Deadline(); ok && time.Until(dl) < d {
+				return fmt.Errorf("publish to %s: the next attempt in %s would come after the deadline: %w; last attempt: %w",
+					destination, d, context.DeadlineExceeded, last)
+			}
 			select {
 			case <-ctx.Done():
-				return fmt.Errorf("publish: %w", ctx.Err())
-			case <-after(backoff):
+				return fmt.Errorf("publish to %s stopped while waiting to retry: %w; last attempt: %w", destination, ctx.Err(), last)
+			case <-after(d):
 			}
 			backoff *= 2
 		}
 		res, err := p.Call(ctx, ep, reportslack.ToolName, args)
 		switch {
 		case err != nil:
-			last = err
+			last, wait = err, 0
 		case res.IsError:
+			o, known := outcome(res)
+			if known && !o.Retry {
+				return &PermanentError{Destination: destination, Reason: res.Text}
+			}
 			last = fmt.Errorf("the report server refused the message: %s", res.Text)
+			wait = min(time.Duration(o.RetryAfterSeconds)*time.Second, maxWait)
 		default:
 			return nil
 		}
 	}
 	return fmt.Errorf("publish to %s after %d attempts: %w", destination, Retries+1, last)
+}
+
+// outcome reads a failed call's structured outcome; known is false for a
+// server that sends none (before the outcome, or not ours), whose
+// failures are all retried.
+func outcome(res mcp.Result) (o reportslack.Outcome, known bool) {
+	if len(res.Structured) == 0 {
+		return o, false
+	}
+	var raw struct {
+		Error             string `json:"error"`
+		Retry             *bool  `json:"retry"`
+		RetryAfterSeconds int    `json:"retryAfterSeconds"`
+	}
+	if json.Unmarshal(res.Structured, &raw) != nil || raw.Retry == nil {
+		return o, false
+	}
+	return reportslack.Outcome{Error: raw.Error, Retry: *raw.Retry, RetryAfterSeconds: max(raw.RetryAfterSeconds, 0)}, true
 }

@@ -25,9 +25,12 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/report"
 )
 
-// publishTimeout bounds one digest's publication: report.Post's four
-// attempts of at most 30 s each (the MCP client's timeout) and its 2+4+8 s
-// of waits between them, 134 s, within 3 minutes.
+// publishTimeout bounds one digest's publication, counted from its
+// Intendant's digest lock: report.Post's four attempts of at most 30 s
+// each (the MCP client's timeout) and its 2+4+8 s of backoff, 134 s, fit
+// in it. A rate limit's Retry-After that would outlast it ends the
+// publication at once, as a failure naming the rate limit; the operator
+// stopping ends it without a record, for the next leader to publish.
 const publishTimeout = 3 * time.Minute
 
 // Why a digest is not posted, in status.published.reason.
@@ -171,11 +174,15 @@ func (w *Runner) post(ctx context.Context, s *v1alpha1.TakeCareSurvey) (v1alpha1
 		return result, nil
 	}
 	d := NewDigest(s, all)
+	m := d.Message()
+	// The survey's identity, the same on every attempt and after a
+	// restart: the report server posts it once.
+	m.Key = "survey/" + string(s.UID)
 	after := w.After
 	if after == nil {
 		after = time.After
 	}
-	if err := report.Post(ctx, w.Client, w.Poster, after, w.Backoff, s.Namespace, in.Spec.Connectors.Report, dest, d.Message()); err != nil {
+	if err := report.Post(ctx, w.Client, w.Poster, after, w.Backoff, s.Namespace, in.Spec.Connectors.Report, dest, m); err != nil {
 		result.Reason = err.Error()
 		return result, nil
 	}
@@ -248,8 +255,8 @@ func (w *Runner) allProposals(ctx context.Context, s *v1alpha1.TakeCareSurvey) [
 
 // resumePublish publishes what a stopped operator left Completed and not
 // yet published: in one goroutine, one survey after another, oldest
-// first, so that a long stop gives neither a fan-out of goroutines nor a
-// burst of digests at once.
+// first, resumePace apart, so that a long stop gives neither a fan-out of
+// goroutines nor a burst of digests at once.
 func (w *Runner) resumePublish(ctx context.Context) {
 	if w.Poster == nil {
 		return
@@ -277,8 +284,19 @@ func (w *Runner) resumePublish(ctx context.Context) {
 		}
 		return strings.Compare(a.Name, b.Name)
 	})
+	after := w.After
+	if after == nil {
+		after = time.After
+	}
 	w.wg.Go(func() {
 		for i := range pending {
+			if i > 0 {
+				select {
+				case <-ctx.Done():
+					return
+				case <-after(resumePace):
+				}
+			}
 			if ctx.Err() != nil {
 				return
 			}
@@ -286,3 +304,9 @@ func (w *Runner) resumePublish(ctx context.Context) {
 		}
 	})
 }
+
+// resumePace is the wait between two digests published after a restart:
+// Slack takes about one message per second per channel, beyond short
+// bursts (docs.slack.dev, rate limits), and the digests of one Intendant
+// go to the same channel.
+const resumePace = time.Second

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -125,6 +126,9 @@ func TestDigestPublished(t *testing.T) {
 	if len(calls) != 1 || calls[0]["destination"] != onCall || !strings.Contains(calls[0]["text"].(string), "proposals to review") {
 		t.Fatalf("posted %v", calls)
 	}
+	if k := calls[0]["idempotencyKey"]; k != "survey/"+string(s.UID) {
+		t.Errorf("posted with key %v, want the survey's identity", k)
+	}
 	for _, p := range s.Status.Proposals {
 		if strings.Contains(calls[0]["text"].(string), p.Entry) {
 			t.Errorf("the digest holds the entry of %s", p.Key)
@@ -213,6 +217,14 @@ func TestDigestResumedInOrder(t *testing.T) {
 	f.waitPhase(t, "order", 2, v1alpha1.RunCompleted)
 	f.mapRevision(t, "rev-3")
 	resumed := f.waitPhase(t, "order", 3, v1alpha1.RunCompleted)
+	// The resumed digests are paced: count the waits of resumePace.
+	var paces atomic.Int32
+	f.after = func(d time.Duration) <-chan time.Time {
+		if d == resumePace {
+			paces.Add(1)
+		}
+		return time.After(d)
+	}
 	f.restart(t) // the three held posts are cut, nothing recorded
 	f.poster.mu.Lock()
 	f.poster.most = 0
@@ -266,6 +278,9 @@ func TestDigestResumedInOrder(t *testing.T) {
 	defer f.poster.mu.Unlock()
 	if f.poster.most != 1 {
 		t.Errorf("%d digests posted at once after the restart, want one at a time", f.poster.most)
+	}
+	if n := int(paces.Load()); n < len(resumed)-1 {
+		t.Errorf("%d waits of %s between %d resumed digests, want %d", n, resumePace, len(resumed), len(resumed)-1)
 	}
 }
 

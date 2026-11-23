@@ -263,7 +263,8 @@ type Result struct {
 	// Text is the concatenated text content.
 	Text string
 	// Structured is the call's structuredContent, as the server sent it.
-	// Only the Intendant's import reads it; report and map calls ignore it.
+	// The Intendant's import reads it, and report.Post a failed post's
+	// outcome (retryable or not, Retry-After); map calls ignore it.
 	Structured json.RawMessage
 }
 
