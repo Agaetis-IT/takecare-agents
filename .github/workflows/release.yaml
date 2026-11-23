@@ -77,7 +77,7 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o bin/operator-dryrun ./cmd/operator
           hack/sbom.sh scan file:bin/operator-dryrun takecare-agents-operator 0.0.0-dryrun linux/amd64 bin/sbom/dryrun.spdx.json
           ls -l bin/sbom/dryrun.spdx.json
-          jq -r '.packages[] | [.name, .versionInfo] | @tsv' bin/sbom/dryrun.spdx.json | head -5
+          jq -r '.packages[0:5][] | [.name, .versionInfo] | @tsv' bin/sbom/dryrun.spdx.json
 
   release:
     name: publish the release
