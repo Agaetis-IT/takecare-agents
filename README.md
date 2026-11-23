@@ -109,7 +109,7 @@ The same product on a local k3d cluster, with the `billing-api` scenery and the 
 export TAKECARE_MODEL_API_KEY=...   # or in a .env file (git-ignored), never written to the repository
 make demo-up DEMO_IMAGES=build      # k3d cluster, TakeCare with the demo profile, the scenery and the Doc
 make demo-incident                  # triggers the failure and prints the expected alert window (about 2 min 30 later)
-make demo-verdict                   # waits for the Doc's diagnosis and prints it with its usage
+make demo-verdict                   # waits for the Doc's diagnosis and its usage (read 30 s after the end), prints both
 make demo-screens                   # Prometheus, Alertmanager and Jaeger on localhost; demo-screens-stop
 make demo-reset                     # puts the scenery back in shape, ready for another incident
 make demo-down                      # deletes the cluster and the demo's working files

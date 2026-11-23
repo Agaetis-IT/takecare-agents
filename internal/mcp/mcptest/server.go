@@ -43,7 +43,7 @@ type Server struct {
 }
 
 // Start runs the server until the test ends.
-func Start(t *testing.T, tools ...ToolSpec) *Server {
+func Start(t testing.TB, tools ...ToolSpec) *Server {
 	t.Helper()
 	s := &Server{Calls: map[string]*atomic.Int32{}}
 	s.LastAuthorization.Store("")
