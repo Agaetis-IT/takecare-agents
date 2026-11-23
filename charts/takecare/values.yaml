@@ -224,11 +224,18 @@ addons:
     namespaces: []
     # -- Resources beyond the defaults, for example custom resources. ConfigMaps
     # are read only when listed here: customers keep credentials in them.
-    # Secrets and pod exec/attach/portforward are refused by the API.
+    # Secrets and pod exec/attach/portforward are refused by the API. The
+    # Intendant's inventory lists kagent Agents only with `{group: kagent.dev,
+    # resource: agents}`, and kagent SandboxAgents only with the separate
+    # `{group: kagent.dev, resource: sandboxagents}` (spec 10 §8).
     extraResources: []
     #  - group: rds.services.k8s.aws
     #    resource: dbproxies
     #  - resource: configmaps
+    #  - group: kagent.dev
+    #    resource: agents
+    #  - group: kagent.dev
+    #    resource: sandboxagents
     # -- Tools whose result carries payload (ADR 0014): a role reads them only
     # when it lists them in spec.contentTools.
     contentTools: [pods_log]

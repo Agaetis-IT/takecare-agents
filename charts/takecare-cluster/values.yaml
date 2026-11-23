@@ -11,7 +11,10 @@ cluster:
   # -- Resources beyond the defaults, as {group, resource}, for example
   # custom resources. ConfigMaps are read only when listed here: customers
   # keep credentials in them. Secrets, pods/exec, pods/attach,
-  # pods/portforward, serviceaccounts/token and wildcards are refused.
+  # pods/portforward, serviceaccounts/token and wildcards are refused. The
+  # Intendant's inventory lists kagent Agents only with `{group: kagent.dev,
+  # resource: agents}`, and kagent SandboxAgents only with the separate
+  # `{group: kagent.dev, resource: sandboxagents}` (spec 10 §8).
   extraResources: []
 
 tls:

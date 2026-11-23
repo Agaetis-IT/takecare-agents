@@ -110,11 +110,11 @@ func ownedConfigMap(o owner) *corev1.ConfigMap {
 		UID: types.UID(strings.ToLower(o.kind) + "-" + o.name),
 	}
 	ref.Controller, ref.BlockOwnerDeletion = new(true), new(true)
-	return &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
+	return &corev1.ConfigMap{
 		Namespace:       OperatorNamespace,
 		GenerateName:    "owned-",
 		OwnerReferences: []metav1.OwnerReference{ref},
-	}}
+	}
 }
 
 // stripFinalizerRules takes finalizerRules out of the operator's Roles,
