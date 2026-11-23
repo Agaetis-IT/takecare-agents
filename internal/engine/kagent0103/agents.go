@@ -36,7 +36,7 @@ const (
 	keyDescription = "description"
 )
 
-// Names and values kagent 0.10.3 and the chart agree on.
+// Names and values kagent 0.10.6 and the chart agree on.
 const (
 	// agentLabel marks every object of one agent, for pruning and deletion.
 	agentLabel = "takecare.agaetis.fr/agent"
@@ -52,14 +52,14 @@ const (
 	mcpTimeout = "30s"
 )
 
-// ErrEmptyAllowList refuses a tool server without tools. On kagent 0.10.3 an
+// ErrEmptyAllowList refuses a tool server without tools. On kagent 0.10.6 an
 // empty toolNames gives the agent every tool of the server, read in the
 // sources pinned by ADR 0007:
 //
-//  1. kagent v0.10.3, go/core/internal/controller/translator/agent/adk_api_translator.go,
+//  1. kagent v0.10.6, go/core/internal/controller/translator/agent/adk_api_translator.go,
 //     translateRemoteMCPServerTarget: toolNames is copied into the agent's
 //     config as "tools", a field marked omitempty (go/api/adk/types.go);
-//  2. kagent v0.10.3, python/packages/kagent-adk/src/kagent/adk/types.py:
+//  2. kagent v0.10.6, python/packages/kagent-adk/src/kagent/adk/types.py:
 //     "tools" defaults to an empty list and is passed as tool_filter to the
 //     MCP toolset;
 //  3. google-adk 1.38.0 (pinned by kagent's uv.lock),
@@ -82,7 +82,7 @@ type Agents struct {
 
 var _ engine.Agents = (*Agents)(nil)
 
-// Engine is the kagent 0.10.3 implementation of the whole boundary.
+// Engine is the kagent 0.10.6 implementation of the whole boundary.
 type Engine struct {
 	Models
 	Agents
@@ -100,8 +100,9 @@ func (*Agents) AgentTypes() []schema.GroupVersionKind {
 // Endpoint implements engine.Agents: kagent serves every agent's A2A on its
 // controller, at /api/a2a/<namespace>/<agent>.
 //
-// What the controller serves below that path, read in kagent v0.10.3 and
-// checked on a cluster: go/core/internal/httpserver/server.go routes the
+// What the controller serves below that path, read in kagent v0.10.6
+// (checked on a cluster at 0.10.3; these files are unchanged since):
+// go/core/internal/httpserver/server.go routes the
 // prefix /api/a2a/{namespace}/{name} to the A2A mux, which picks the
 // agent's handler by namespace and name (a2a_handler_mux.go, ServeHTTP).
 // That handler (SetAgentHandler) serves the agent card when the path ends
@@ -109,7 +110,7 @@ func (*Agents) AgentTypes() []schema.GroupVersionKind {
 // agent's A2A JSON-RPC endpoint, whatever the rest of the path: an
 // invented sub-path is the agent's own endpoint (a GET answers JSON-RPC
 // -32600, invalid request). Nothing else lives below an agent's path on
-// 0.10.3; the smoke pins that answer so that a version that serves more
+// 0.10.6; the smoke pins that answer so that a version that serves more
 // there is noticed.
 func (*Agents) Endpoint(namespace, name string) engine.Endpoint {
 	return engine.Endpoint{

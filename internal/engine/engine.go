@@ -203,7 +203,7 @@ const (
 	// CancelDone: the engine stopped the run.
 	CancelDone CancelResult = "canceled"
 	// CancelUnsupported: the engine cannot stop a run; it goes on to its
-	// end and its result is discarded (kagent 0.10.3's python runtime).
+	// end and its result is discarded (kagent 0.10.6's python runtime).
 	CancelUnsupported CancelResult = "unsupported"
 	// CancelFinished: the run had already ended.
 	CancelFinished CancelResult = "finished"

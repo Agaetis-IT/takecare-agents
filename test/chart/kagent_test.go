@@ -49,7 +49,7 @@ func TestKagentSessionRetention(t *testing.T) {
 
 // The prod profile takes kagent's database URL as a file (urlFile) and
 // refuses an inline url, alone or beside urlFile, with the steps to follow
-// and never the value: kagent 0.10.3 logs its configuration at each start.
+// and never the value: kagent 0.10.6 logs its configuration at each start.
 // The demo's bundled PostgreSQL sets no url and renders.
 func TestKagentDatabaseURLFile(t *testing.T) {
 	const inline = "postgres://takecare:not-a-real-password@db.example.invalid:5432/kagent" //nolint:gosec // a refused placeholder, never rendered

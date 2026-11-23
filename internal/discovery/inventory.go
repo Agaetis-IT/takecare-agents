@@ -21,7 +21,7 @@ const (
 )
 
 // The kagent kinds in the Intendant's scope, listed through the
-// kubernetes connector as resources_list names them (kagent v0.10.3, whose
+// kubernetes connector as resources_list names them (kagent v0.10.6, whose
 // CRD chart serves SandboxAgent at v1alpha2 only).
 const (
 	agentAPIVersion  = "kagent.dev/v1alpha2"

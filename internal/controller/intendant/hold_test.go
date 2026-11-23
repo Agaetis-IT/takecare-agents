@@ -79,7 +79,7 @@ func pending(in *v1alpha1.TakeCareIntendant) bool {
 }
 
 // A new rendering of the agent waits while a survey of the Intendant is
-// Running (kagent 0.10.3 rolls the agent's pod on any change, and the pass's
+// Running (kagent 0.10.6 rolls the agent's pod on any change, and the pass's
 // task goes with it), at most until the survey's pass timeout; the last
 // rendering asked for is applied at the end. A Queued survey does not hold
 // it (spec 10 §5).

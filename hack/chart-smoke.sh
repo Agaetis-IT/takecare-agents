@@ -673,7 +673,7 @@ EOF
   local code=(kubectl -n kagent exec smoke-a2a -- curl -s -o /dev/null -m 10 -w '%{http_code}')
   check "through the A2A route, the agent's card answers (200)" \
     test "$("${code[@]}" "${gw}/api/a2a/kagent/${agent}/.well-known/agent-card.json")" = "200"
-  # Below the agent's path the route is a prefix: on kagent 0.10.3 only the
+  # Below the agent's path the route is a prefix: on kagent 0.10.6 only the
   # card and the agent's own A2A endpoint live there (every other sub-path
   # is that endpoint). Pinned, so that a version serving more is noticed.
   check "below the agent's path, an invented sub-path is the agent's A2A endpoint (JSON-RPC -32600)" \

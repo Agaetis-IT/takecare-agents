@@ -199,7 +199,7 @@ func TestContentCapture(t *testing.T) {
 }
 
 // assertAllowLists fails when any tool reference of an Agent lacks
-// toolNames: on kagent 0.10.3 that would give every tool of the server
+// toolNames: on kagent 0.10.6 that would give every tool of the server
 // (see ErrEmptyAllowList).
 func assertAllowLists(t *testing.T, agent *unstructured.Unstructured) {
 	t.Helper()

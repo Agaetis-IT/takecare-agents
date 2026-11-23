@@ -419,7 +419,7 @@ agentgateway:
   monitoring:
     enabled: false
 
-# -- kagent 0.10.3, the agent engine (ADR 0007). Installed in its own namespace,
+# -- kagent 0.10.6, the agent engine (ADR 0007). Installed in its own namespace,
 # created by this chart, with the installation requirements of ADR 0007.
 # @default -- see values.yaml (kagent chart values; rbac.namespaces is an ADR 0007 requirement)
 kagent:
@@ -439,7 +439,9 @@ kagent:
       # the gateway (A2A). `unsecure` relies on the NetworkPolicy above and on
       # rbac.namespaces: do not rely on the controller's own access control
       # (ADR 0007). `trusted-proxy` makes the controller answer 401 to any
-      # call without a bearer JWT, which it does not verify (`kagent#2968`).
+      # call without a bearer JWT, whose signature and expiry it does not
+      # verify (kagent v0.10.6, go/core/internal/httpserver/auth/proxy_authn.go;
+      # `kagent#2971` documents the network isolation it requires).
       # It stays off until the agent pods' callbacks are verified under it
       # (PR 4): a default that breaks investigations is worse than a written
       # gap.

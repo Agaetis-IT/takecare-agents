@@ -306,7 +306,7 @@ func (r *Reconciler) registrations(ctx context.Context, in *v1alpha1.TakeCareInt
 }
 
 // settled says whether the engine's status has caught up with the object's
-// generation: status.observedGeneration (kagent 0.10.3's Agent), else any
+// generation: status.observedGeneration (kagent 0.10.6's Agent), else any
 // condition's observedGeneration (its RemoteMCPServer). An object whose
 // status carries neither cannot tell, and counts as it is.
 func settled(o *unstructured.Unstructured) bool {

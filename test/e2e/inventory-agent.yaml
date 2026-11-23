@@ -5,7 +5,7 @@
 # listed through the kubernetes connector whatever its state. It stays
 # inert because kagent does not watch demo-apps: the chart gives kagent
 # Roles in its own namespace only (kagent.rbac.namespaces: [kagent]), from
-# which kagent v0.10.3 derives WATCH_NAMESPACES. The rest is a second
+# which kagent v0.10.6 derives WATCH_NAMESPACES. The rest is a second
 # guard: a BYO agent with no replica (deployment.replicas is passed through
 # as is), and an image under the reserved .invalid domain, never pulled.
 apiVersion: kagent.dev/v1alpha2
