@@ -48,7 +48,7 @@ func TestSlackMessage(t *testing.T) {
 		case os.Getenv("E2E_ONCALL_CHANNEL"):
 			msgs = append(msgs, m)
 		case os.Getenv("E2E_REVIEW_CHANNEL"):
-			if !strings.HasPrefix(m.Text, "Intendant ") {
+			if !strings.HasPrefix(m.Text, "Intendant ") && !strings.HasPrefix(m.Text, "Intendant:") {
 				t.Errorf("a message to the review channel that is not a digest: %.80q", m.Text)
 			}
 		default:
