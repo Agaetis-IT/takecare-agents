@@ -86,6 +86,25 @@ func RuleGroupAllowed(name string) bool {
 	return ruleGroup.MatchString(name)
 }
 
+// ProtocolRevision is the MCP revision the operator declares to every
+// server (https://modelcontextprotocol.io/specification/versioning): the
+// last one with the initialize handshake, which every server TakeCare pins
+// serves (the Map, report and corpus servers and kubernetes-mcp-server
+// v0.0.67 on go-sdk v1.8.0, mcp-prometheus 0.11.11 on mcp-go v1.2.1, and
+// agentgateway v1.6.0 on the canary's path). Left empty, go-sdk would
+// declare its own latest (2026-07-28 at v1.8.0, the stateless revision)
+// and fall back to a revision of its choice, so that an SDK bump would
+// change the protocol spoken to every server. A server on an older
+// revision answers with its own, which the client accepts when go-sdk
+// knows it.
+//
+// Known limit: each call opens its own session, so it pays the handshake
+// every time: initialize, the client's GET stream, the initialized
+// notification, then the call (four requests, a fifth to close on a
+// stateful server). Calls are rare (discovery, a publication, a survey's
+// import), so sessions are not reused per endpoint.
+const ProtocolRevision = "2025-11-25"
+
 // Endpoint is a connector's server as the operator reaches it.
 type Endpoint struct {
 	// URL of the MCP endpoint (Streamable HTTP).
@@ -288,7 +307,8 @@ func (c *Client) connect(ctx context.Context, ep Endpoint) (*sdk.ClientSession, 
 		httpClient = withHeaders(httpClient, ep.Headers)
 	}
 	client := sdk.NewClient(&sdk.Implementation{Name: "takecare-operator", Version: "1"}, nil)
-	session, err := client.Connect(ctx, &sdk.StreamableClientTransport{Endpoint: ep.URL, HTTPClient: httpClient}, nil)
+	session, err := client.Connect(ctx, &sdk.StreamableClientTransport{Endpoint: ep.URL, HTTPClient: httpClient},
+		&sdk.ClientSessionOptions{ProtocolVersion: ProtocolRevision})
 	if err != nil {
 		return nil, fmt.Errorf("connect to %s: %w", ep.URL, err)
 	}

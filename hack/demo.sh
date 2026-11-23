@@ -30,6 +30,9 @@ export HELM_REPOSITORY_CONFIG="${PWD}/bin/helm/repositories.yaml" HELM_REPOSITOR
 # Intendant's agent pass included (measured on k3d, docker stats every 5 s;
 # ADR 0017 §6).
 MIN_DOCKER_MEMORY=$((5 * 1024 * 1024 * 1024))
+# How long demo-verdict waits for an ended investigation's usage: the
+# operator reads it one scrape wait (30 s) after the end, then publishes.
+USAGE_WAIT_SECONDS="${USAGE_WAIT_SECONDS:-120}"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -235,6 +238,16 @@ verdict() {
     sleep 5
   done
   [[ -n "$inv" ]] || die "no ended investigation in 10 minutes: kubectl -n ${NS} get takecareinvestigations"
+  # The operator reads the usage one scrape wait after the end
+  # (operator.usageScrapeWait, 30 s by default), then publishes: the record
+  # is printed once its UsageAttributed condition is set, measured or not.
+  local attributed=""
+  log "waiting for the usage of ${inv} (the operator reads it one scrape wait after the end)"
+  for _ in $(seq "$((USAGE_WAIT_SECONDS / 5))"); do
+    attributed="$(kubectl -n "$NS" get takecareinvestigation "$inv" -o jsonpath='{.status.conditions[?(@.type=="UsageAttributed")].status}')"
+    [[ -n "$attributed" ]] && break
+    sleep 5
+  done
   kubectl -n "$NS" get takecareinvestigation "$inv" -o jsonpath='investigation {.metadata.name}: {.status.phase} {.status.reason}
 alert: {.spec.alert.name} on {.spec.alert.service}
 trace: {.status.traceID}
@@ -242,11 +255,17 @@ published: {.status.published}
 
 {.status.diagnosis}
 '
-  if [[ -n "$(kubectl -n "$NS" get takecareinvestigation "$inv" -o jsonpath='{.status.usage.inputTokens}')" ]]; then
-    kubectl -n "$NS" get takecareinvestigation "$inv" -o jsonpath='usage: {.status.usage.inputTokens} input tokens, {.status.usage.outputTokens} output, {.status.usage.estimatedCost}{"\n"}'
-  else
-    echo "usage: not measured"
-  fi
+  case "$attributed" in
+    True)
+      kubectl -n "$NS" get takecareinvestigation "$inv" -o jsonpath='usage: {.status.usage.inputTokens} input tokens, {.status.usage.outputTokens} output, {.status.usage.estimatedCost}{"\n"}'
+      ;;
+    False)
+      kubectl -n "$NS" get takecareinvestigation "$inv" -o jsonpath='usage: not measured: {.status.conditions[?(@.type=="UsageAttributed")].message}{"\n"}'
+      ;;
+    *)
+      echo "usage: not recorded ${USAGE_WAIT_SECONDS} s after the end (kubectl -n ${NS} get takecareinvestigation ${inv} -o yaml)"
+      ;;
+  esac
 }
 
 screens() {
