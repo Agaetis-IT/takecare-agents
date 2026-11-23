@@ -56,7 +56,7 @@ func (w *Runner) ownItems(ctx context.Context, in *v1alpha1.TakeCareIntendant) (
 }
 
 // givenTools counts the tools a kagent Agent is given, by the tool types
-// of kagent v0.10.3's Agent CRD (spec.declarative.tools[].type): an
+// of kagent v0.10.6's Agent CRD (spec.declarative.tools[].type): an
 // McpServer gives the toolNames it lists, an Agent (another agent used as
 // a tool) gives one. An McpServer with no toolNames gives every tool of its
 // server, which the Agent does not say: it counts none.

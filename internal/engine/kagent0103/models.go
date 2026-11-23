@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
 // SPDX-License-Identifier: Apache-2.0
 
-// Package kagent0103 implements the engine boundary for kagent 0.10.3
+// Package kagent0103 implements the engine boundary for kagent 0.10.6
 // (ADR 0007). It writes kagent objects as unstructured content with the
 // field names validated by spike 001, without kagent's Go module (its API
 // moves before 1.0 and its dependency tree is heavy), and asks the API
@@ -26,7 +26,7 @@ import (
 // Kind is the engine's name in the records it runs (EngineRun.Kind).
 const Kind = "kagent"
 
-// The kagent API group and version of 0.10.3.
+// The kagent API group and version of 0.10.6.
 const (
 	kagentGroup   = "kagent.dev"
 	kagentVersion = "v1alpha2"

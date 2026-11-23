@@ -212,11 +212,11 @@ func TestSurveysCountedOnce(t *testing.T) {
 	})
 }
 
-// An agent's given tools count both tool types of kagent v0.10.3: an
+// An agent's given tools count both tool types of kagent v0.10.6: an
 // McpServer's toolNames, and one for another agent used as a tool (N6).
 func TestGivenToolsCountsBothTypes(t *testing.T) {
 	t.Parallel()
-	// The tools as kagent v0.10.3's Agent CRD writes them; the McpServer
+	// The tools as kagent v0.10.6's Agent CRD writes them; the McpServer
 	// without toolNames gives its server's every tool, which is not said.
 	o := &unstructured.Unstructured{}
 	if err := o.UnmarshalJSON([]byte(`{"apiVersion": "kagent.dev/v1alpha2", "kind": "Agent", "spec": {"declarative": {"tools": [

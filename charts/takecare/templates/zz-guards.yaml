@@ -63,7 +63,7 @@ reverse path order, so this file, last by name, is evaluated first.
 {{- fail "addons.reportSlack.destinations is REQUIRED: the destinations the Doc publishes to (channel IDs)" }}
 {{- end }}
 {{- /*
-kagent v0.10.3 writes its configuration to its log at each start, the
+kagent v0.10.6 writes its configuration to its log at each start, the
 database URL with its credential included (go/core/pkg/app/app.go l.394):
 the URL is given as a file, never inline. The value is never printed here.
 */ -}}

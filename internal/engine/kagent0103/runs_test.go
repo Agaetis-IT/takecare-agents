@@ -24,14 +24,14 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/ranger"
 )
 
-// fakeA2A is an A2A JSON-RPC server answering as kagent 0.10.3 does, with
+// fakeA2A is an A2A JSON-RPC server answering as kagent 0.10.6 does, with
 // the wire format observed on a cluster. It plays one way a task ends.
 type fakeA2A struct {
 	t *testing.T
 	// ending is how the task ends: completed, completed-empty,
 	// failed-after-answer, failed, lost, never.
 	ending string
-	// cancel is the answer to CancelTask: unsupported (0.10.3's python
+	// cancel is the answer to CancelTask: unsupported (0.10.6's python
 	// runtime), not-cancelable, done.
 	cancel string
 	// cutReads makes the first reads of the task cut the connection.
@@ -233,7 +233,7 @@ func TestStartSendsThroughTheRouteWithoutTheCard(t *testing.T) {
 	}
 }
 
-// The ends of a task seen on kagent 0.10.3.
+// The ends of a task seen on kagent 0.10.6.
 // questionMarker opens the questions the fake agent asks: no result may
 // carry it.
 const questionMarker = "QUESTION-MARKER-7f3a"

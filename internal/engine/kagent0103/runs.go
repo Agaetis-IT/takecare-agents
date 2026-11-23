@@ -25,7 +25,7 @@ import (
 // the gateway (ADR 0006); kagent's agents forward it to their tools.
 const conversationHeader = "x-conversation-id"
 
-// cancelUnsupported is how kagent 0.10.3's python runtime answers a
+// cancelUnsupported is how kagent 0.10.6's python runtime answers a
 // cancellation (JSON-RPC -32603): python/packages/kagent-adk/src/kagent/adk/
 // _agent_executor.py, A2aAgentExecutor.cancel raises
 // NotImplementedError("Cancellation is not supported"). Checked on a
@@ -33,9 +33,9 @@ const conversationHeader = "x-conversation-id"
 //
 // a2a-go maps -32603 to a2a.ErrInternalError, not to
 // a2a.ErrUnsupportedOperation (-32004; internal/jsonrpc/jsonrpc.go in
-// v2.6.0): on 0.10.3 only this string match recognizes the refusal. Cancel
+// v2.6.0): on 0.10.6 only this string match recognizes the refusal. Cancel
 // keeps both: the sentinel for an engine that answers per the A2A
-// specification, the string for kagent 0.10.3. Do not drop the string
+// specification, the string for kagent 0.10.6. Do not drop the string
 // match as redundant.
 const cancelUnsupported = "Cancellation is not supported"
 
@@ -47,7 +47,7 @@ const cancelUnsupported = "Cancellation is not supported"
 // EngineReady. The client is created from that URL (NewFromEndpoints) and
 // never fetches a card.
 //
-// Runs are sent non-blocking (returnImmediately): kagent 0.10.3 passes the
+// Runs are sent non-blocking (returnImmediately): kagent 0.10.6 passes the
 // request through to the agent, which answers at once with the task
 // SUBMITTED and its ID (checked on a cluster), so that the caller records
 // the ID before following the task with GetTask.
@@ -190,7 +190,7 @@ func outcome(t *a2a.Task) engine.Result {
 	switch t.Status.State {
 	case a2a.TaskStateCompleted:
 		// kagent puts the answer in the artifacts; a completed status
-		// carries no message (kagent-adk 0.10.3, _agent_executor.py).
+		// carries no message (kagent-adk 0.10.6, _agent_executor.py).
 		if strings.TrimSpace(answer) == "" && t.Status.Message != nil {
 			answer = partsText(t.Status.Message.Parts)
 		}
@@ -217,7 +217,7 @@ func outcome(t *a2a.Task) engine.Result {
 // A failed task's status message is kagent's str(exception) or an ADK
 // error message: a model provider's error carries its whole response body
 // ("Error code: 401 - {…}"), which can quote the conversation, and a tool
-// server's error its own text (kagent-adk 0.10.3, _agent_executor.py,
+// server's error its own text (kagent-adk 0.10.6, _agent_executor.py,
 // converters/event_converter.py). None of it is kept: only kagent's error
 // code, when it is one (kagent_error_code: API_ERROR, SAFETY, MAX_TOKENS…),
 // and the HTTP status a provider error opens with.

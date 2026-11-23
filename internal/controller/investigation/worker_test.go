@@ -422,7 +422,7 @@ func TestRunEndings(t *testing.T) {
 }
 
 // A task that never ends is canceled at the engine's share of the timeout;
-// kagent 0.10.3 refuses, which the reason says (no new API field).
+// kagent 0.10.6 refuses, which the reason says (no new API field).
 func TestRunTimedOut(t *testing.T) {
 	t.Parallel()
 	f := startWorker(t, nil)

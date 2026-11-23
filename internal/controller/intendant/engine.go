@@ -121,7 +121,7 @@ func (r *Reconciler) removeEngine(ctx context.Context, in *v1alpha1.TakeCareInte
 
 // holdAgent says whether a new rendering of the agent must wait: the
 // engine holds another rendering and a survey of the Intendant is Running
-// before its deadline. kagent 0.10.3 rolls the agent's Deployment on any
+// before its deadline. kagent 0.10.6 rolls the agent's Deployment on any
 // change of its rendering (the pod template's config-hash), and the old
 // pod takes the pass's task with it (spec 10 §5). EngineReady stays True,
 // with RenderPending naming the survey and the deadline; the reconcile

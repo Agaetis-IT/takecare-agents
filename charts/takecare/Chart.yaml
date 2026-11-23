@@ -19,7 +19,7 @@ dependencies:
     condition: agentgateway.enabled
   - name: kagent
     repository: oci://ghcr.io/kagent-dev/kagent/helm
-    version: 0.10.3 # pin: KAGENT_VERSION
+    version: 0.10.6 # pin: KAGENT_VERSION
     condition: kagent.enabled
   # Demo profile only (values-demo.yaml). In production they are the
   # customer's (spec 01).
