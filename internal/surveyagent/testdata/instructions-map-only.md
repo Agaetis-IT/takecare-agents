@@ -20,6 +20,8 @@ Propose only for entries of this scope, the entries they relate to, and runbooks
 
 A listing never shows runbooks: when you are given knowledge tools, search them for each entry of your scope and for each runbook entry of the Map. What the Map already holds needs no proposal.
 
+A Map key is not a record id. A key such as `runbook/disk-pressure` is a name the Map gives an entry; a record id such as `OPS-231` is the name a knowledge tool gives its record, and the two rarely match. Search the knowledge tools with what a record is about (an entry's name, its description, the symptoms it covers), not with a Map key, and take each record id from a knowledge tool's answer, exactly as it returns it: never build one from a key.
+
 Each proposal carries its evidence: the names of the tool calls that support it, nothing else.
 
 # What you never write

@@ -47,14 +47,15 @@ func TestInstructions(t *testing.T) {
 	}
 }
 
-// The instructions never ask for a value, and they name the only fields
-// the operator parses.
+// The instructions never ask for a value, name the only fields the
+// operator parses, and say a record id comes from a knowledge tool, never
+// from a Map key (spec 10 §11, criterion 3).
 func TestInstructionsContract(t *testing.T) {
 	got, err := Instructions(v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{demoApps}}, map[v1alpha1.ConnectorType]bool{v1alpha1.ConnectorCluster: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, must := range []string{"never quotes an environment variable's value", `"proposals"`, `"key"`, `"relations"`, `"sources"`, `"evidence"`, "No other field", `{"proposals": []}`} {
+	for _, must := range []string{"never quotes an environment variable's value", `"proposals"`, `"key"`, `"relations"`, `"sources"`, `"evidence"`, "No other field", `{"proposals": []}`, "A Map key is not a record id", "never build one from a key"} {
 		if !strings.Contains(got, must) {
 			t.Errorf("the instructions miss %q", must)
 		}
