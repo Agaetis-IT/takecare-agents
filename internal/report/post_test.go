@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -69,6 +70,17 @@ func (s *scripted) Call(_ context.Context, _ mcp.Endpoint, _ string, args map[st
 	return r, nil
 }
 
+// rateLimited is Slack's error for a rate limit; posted, a success.
+const rateLimited = "ratelimited"
+
+var posted = mcp.Result{Text: "posted"}
+
+// limited is the report server's answer to Slack's rate limit.
+func limited(seconds int) mcp.Result {
+	return refusal(reportslack.Outcome{Error: rateLimited, Retry: true, RetryAfterSeconds: seconds},
+		fmt.Sprintf("chat.postMessage: rate limited by Slack (%s), retry after %d s", rateLimited, seconds))
+}
+
 func refusal(o reportslack.Outcome, text string) mcp.Result {
 	raw, _ := json.Marshal(o)
 	return mcp.Result{IsError: true, Text: text, Structured: raw}
@@ -92,13 +104,13 @@ func TestPostPacesAndStops(t *testing.T) {
 		ended   error
 	}{
 		{"a rate limit waits its Retry-After", []mcp.Result{
-			refusal(reportslack.Outcome{Error: "ratelimited", Retry: true, RetryAfterSeconds: 30}, "rate limited"),
-			{Text: "posted"},
+			limited(30),
+			posted,
 		}, []time.Duration{30 * time.Second}, 2, false, 0, false, nil},
 		{"a short Retry-After keeps the backoff", []mcp.Result{
-			refusal(reportslack.Outcome{Error: "ratelimited", Retry: true, RetryAfterSeconds: 1}, "rate limited"),
+			limited(1),
 			refusal(reportslack.Outcome{Error: "internal_error", Retry: true}, "chat.postMessage: internal_error"),
-			{Text: "posted"},
+			posted,
 		}, []time.Duration{2 * time.Second, 4 * time.Second}, 3, false, 0, false, nil},
 		{"a permanent error is not retried", []mcp.Result{
 			refusal(reportslack.Outcome{Error: "channel_not_found"}, "chat.postMessage: channel_not_found (permanent: a retry gets the same answer)"),
@@ -110,14 +122,14 @@ func TestPostPacesAndStops(t *testing.T) {
 			{IsError: true, Text: refusedText},
 		}, []time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second}, 4, false, 0, false, nil},
 		{"a Retry-After past the deadline ends at once", []mcp.Result{
-			refusal(reportslack.Outcome{Error: "ratelimited", Retry: true, RetryAfterSeconds: 120}, "chat.postMessage: rate limited by Slack (ratelimited), retry after 120 s"),
+			limited(120),
 		}, nil, 1, false, time.Minute, false, context.DeadlineExceeded},
 		{"a Retry-After past the cap waits the cap", []mcp.Result{
-			refusal(reportslack.Outcome{Error: "ratelimited", Retry: true, RetryAfterSeconds: 3600}, "chat.postMessage: rate limited by Slack (ratelimited), retry after 3600 s"),
-			{Text: "posted"},
+			limited(3600),
+			posted,
 		}, []time.Duration{5 * time.Minute}, 2, false, 6 * time.Minute, false, nil},
 		{"the caller stopping during a wait ends it", []mcp.Result{
-			refusal(reportslack.Outcome{Error: "ratelimited", Retry: true, RetryAfterSeconds: 30}, "chat.postMessage: rate limited by Slack (ratelimited), retry after 30 s"),
+			limited(30),
 		}, []time.Duration{30 * time.Second}, 1, false, 0, true, context.Canceled},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -155,7 +167,7 @@ func TestPostPacesAndStops(t *testing.T) {
 			if perm != nil && !strings.Contains(perm.Error(), "channel_not_found") {
 				t.Errorf("the error does not name Slack's: %v", perm)
 			}
-			if c.ended != nil && (!errors.Is(err, c.ended) || !strings.Contains(err.Error(), "ratelimited")) {
+			if c.ended != nil && (!errors.Is(err, c.ended) || !strings.Contains(err.Error(), rateLimited)) {
 				t.Errorf("error %v; want it to wrap %v and name the last attempt's ratelimited", err, c.ended)
 			}
 		})
