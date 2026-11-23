@@ -15,7 +15,7 @@ One decision per file, numbered, never rewritten: a decision that changes gives 
 | [0009](0009-agents-talk-over-a2a.md) | Agents talk over A2A; hand-offs are published findings | Accepted |
 | [0010](0010-kagent-1-0-line.md) | The agent engine targets the kagent 1.0 line, pinned at v1.0.0-alpha14 | Proposed |
 | [0011](0011-separate-administration-cluster.md) | TakeCare runs on a separate administration cluster; connectors stay with the data | Accepted |
-| [0012](0012-public-repository-of-record.md) | The public repository is the source of truth; a private workspace holds what does not ship | Proposed |
+| [0012](0012-public-repository-of-record.md) | The public repository is the source of truth; a private workspace holds what does not ship | Accepted |
 | [0013](0013-level-names-apprentice-practitioner-expert.md) | The levels are Apprentice, Practitioner and Expert, in the API too | Accepted |
 | [0014](0014-ready-when-the-ground-is-covered.md) | A role is ready when its ground is covered, not when mandatory access types are bound | Accepted |
 | [0015](0015-map-connector-and-alert-format.md) | The Map is a connector; alerts are one internal format keyed by Map entity | Accepted |
