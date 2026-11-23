@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Proposed |
+| Status | Accepted |
 | Date | 2026-11-03 |
 | Relates to | spec 04 (CI, e2e, bench, release), `docs/release.md`, `docs/licensing.md` |
 
