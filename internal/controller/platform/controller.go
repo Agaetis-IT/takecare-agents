@@ -134,10 +134,15 @@ func OperatorNamespaceKinds() []schema.GroupVersionKind {
 // (its RBAC markers live with it). The dummy key Secret is read by name
 // through the API reader, outside the cache: no list or watch on Secrets
 // in the engine namespace. The markers are a package-level comment:
-// controller-gen ignores RBAC markers attached to a type.
+// controller-gen ignores RBAC markers attached to a type. The platform owns
+// its gateway objects with blockOwnerDeletion set, which the
+// OwnerReferencesPermissionEnforcement admission plugin (on in OpenShift)
+// allows only with update on its finalizers: a ClusterRole rule, the
+// platform being cluster-scoped, limited to the one name CEL allows.
 //
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareplatforms,verbs=get;list;watch
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareplatforms/status,verbs=update
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareplatforms/finalizers,resourceNames=main,verbs=update
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch,namespace=takecare-system
 // +kubebuilder:rbac:groups="",resources=services,verbs=list;watch,namespace=takecare-system

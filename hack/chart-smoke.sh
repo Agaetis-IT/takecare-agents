@@ -1116,6 +1116,29 @@ EOF
     kubectl auth can-i patch takecaresurveys.takecare.agaetis.fr --subresource=status -n "$NS" --as="$op"
   check "the operator can patch a survey (it sets a hand-made survey's owner)" \
     kubectl auth can-i patch takecaresurveys.takecare.agaetis.fr -n "$NS" --as="$op"
+  # The owners' finalizers, which the OwnerReferencesPermissionEnforcement
+  # admission plugin (OpenShift) asks for an owner reference that blocks
+  # the owner's deletion: granted for the platform's and the Ranger's name
+  # main and in the release namespace only. A refusal is the answer "no",
+  # never an error.
+  check "the operator can update the platform main's finalizers" \
+    kubectl auth can-i update takecareplatforms.takecare.agaetis.fr/main --subresource=finalizers --as="$op"
+  check "the operator can update the Ranger main's finalizers" \
+    kubectl auth can-i update takecarerangers.takecare.agaetis.fr/main --subresource=finalizers --as="$op"
+  check "the operator can update a connector's finalizers in ${NS}" \
+    kubectl auth can-i update takecareconnectors.takecare.agaetis.fr --subresource=finalizers -n "$NS" --as="$op"
+  check "the operator can update a survey's finalizers in ${NS}" \
+    kubectl auth can-i update takecaresurveys.takecare.agaetis.fr --subresource=finalizers -n "$NS" --as="$op"
+  check "the operator cannot update the finalizers of a platform named other" \
+    test "$(kubectl auth can-i update takecareplatforms.takecare.agaetis.fr/other --subresource=finalizers --as="$op")" = no
+  check "the operator cannot update a connector's finalizers in default" \
+    test "$(kubectl auth can-i update takecareconnectors.takecare.agaetis.fr --subresource=finalizers -n default --as="$op")" = no
+  check "the operator cannot update the platform main itself" \
+    test "$(kubectl auth can-i update takecareplatforms.takecare.agaetis.fr/main --as="$op")" = no
+  check "the operator cannot list kagent SandboxAgents in kagent" \
+    test "$(kubectl auth can-i list sandboxagents.kagent.dev -n kagent --as="$op")" = no
+  check "without the opt-in, the kubernetes add-on cannot list kagent SandboxAgents in demo-apps" \
+    test "$(kubectl auth can-i list sandboxagents.kagent.dev -n demo-apps --as="system:serviceaccount:${NS}:takecare-addon-kubernetes")" = no
   assert_checks "$CHECKS_EXPECTED"
 }
 
@@ -1449,13 +1472,13 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=193 install ;;
-  upgrade) CHECKS_EXPECTED=193 upgrade ;;
+  install) CHECKS_EXPECTED=202 install ;;
+  upgrade) CHECKS_EXPECTED=202 upgrade ;;
   status) status ;;
   mask-test) mask_test ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=5 cluster_chart ;;
   url) CHECKS_EXPECTED=8 url_connector ;;
-  all) mask_test; up; CHECKS_EXPECTED=193 install; CHECKS_EXPECTED=193 upgrade; CHECKS_EXPECTED=8 url_connector; CHECKS_EXPECTED=5 cluster_chart ;;
+  all) mask_test; up; CHECKS_EXPECTED=202 install; CHECKS_EXPECTED=202 upgrade; CHECKS_EXPECTED=8 url_connector; CHECKS_EXPECTED=5 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|url|cluster|status|mask-test|down|all]"; exit 2 ;;
 esac

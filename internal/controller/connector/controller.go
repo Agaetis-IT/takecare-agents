@@ -103,10 +103,14 @@ type Lister interface {
 // Deployments, Secrets of url connectors, the generated backends) plus the
 // cluster-scoped reads the checks need: SubjectAccessReviews (no right on
 // the customer's resources: the API answers whether the add-on's
-// ServiceAccount may act) and CRD metadata (definitions, not data).
+// ServiceAccount may act) and CRD metadata (definitions, not data). A
+// connector owns its backend with blockOwnerDeletion set, which the
+// OwnerReferencesPermissionEnforcement admission plugin (on in OpenShift)
+// allows only with update on the connector's finalizers.
 //
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareconnectors,verbs=get;list;watch,namespace=takecare-system
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareconnectors/status,verbs=update,namespace=takecare-system
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareconnectors/finalizers,verbs=update,namespace=takecare-system
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;patch,namespace=takecare-system
 // +kubebuilder:rbac:groups=discovery.k8s.io,resources=endpointslices,verbs=list;watch,namespace=takecare-system
 // +kubebuilder:rbac:groups=authorization.k8s.io,resources=subjectaccessreviews,verbs=create

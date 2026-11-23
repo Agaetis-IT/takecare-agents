@@ -109,6 +109,9 @@ type Ground struct {
 	// Agents says the connector may list kagent Agents: its add-on has the
 	// opt-in read rule on kagent.dev agents (spec 10 §8).
 	Agents bool
+	// SandboxAgents says the connector may list kagent SandboxAgents: its
+	// add-on has the separate opt-in read rule on kagent.dev sandboxagents.
+	SandboxAgents bool
 }
 
 // Metrics is the metrics connector whose rules tool lists the alerting

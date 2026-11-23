@@ -200,8 +200,8 @@ func TestSurveyRuns(t *testing.T) {
 
 // checkInventory checks a survey's inventory (spec 10 §8): the connectors
 // from the cache with their tools, the engine's Agents, and, the cluster
-// connector having no kagent.dev rule, the line saying the Agents in scope
-// are not listed; its layer only counts.
+// connector having no kagent.dev rule, the lines saying the Agents and the
+// SandboxAgents in scope are not listed; its layer only counts.
 func (f *fixture) checkInventory(t *testing.T, s *v1alpha1.TakeCareSurvey) {
 	t.Helper()
 	inv := s.Status.Inventory
@@ -242,8 +242,9 @@ func (f *fixture) checkInventory(t *testing.T, s *v1alpha1.TakeCareSurvey) {
 			layer = &s.Status.Layers[i]
 		}
 	}
-	if layer == nil || int(layer.Seen) != len(inv.Items) || layer.Matched != 0 || layer.Proposed != 0 ||
-		len(layer.NotSeen) != 1 || layer.NotSeen[0].Reason != "agents in scope cannot be listed: the kubernetes add-on has no kagent.dev rule" {
+	if layer == nil || int(layer.Seen) != len(inv.Items) || layer.Matched != 0 || layer.Proposed != 0 || len(layer.NotSeen) != 2 ||
+		layer.NotSeen[0].Reason != "agents in scope cannot be listed: the kubernetes add-on has no kagent.dev rule" ||
+		layer.NotSeen[1].Reason != "sandbox agents in scope cannot be listed: the kubernetes add-on has no kagent.dev sandboxagents rule" {
 		t.Errorf("inventory layer %+v", layer)
 	}
 }

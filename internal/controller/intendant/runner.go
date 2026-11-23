@@ -898,20 +898,21 @@ func (w *Runner) grounds(ctx context.Context, in *v1alpha1.TakeCareIntendant, id
 			}
 		}
 		if len(nss) > 0 {
-			grounds = append(grounds, discovery.Ground{Connector: b.name, Cluster: cluster, Endpoint: b.ep, Namespaces: nss, Agents: readsAgents(b.conn)})
+			grounds = append(grounds, discovery.Ground{Connector: b.name, Cluster: cluster, Endpoint: b.ep, Namespaces: nss, Agents: reads(b.conn, "agents"), SandboxAgents: reads(b.conn, "sandboxagents")})
 		}
 	}
 	return grounds, res.BlindSpots, nil
 }
 
 // parsePlace reads the namespace of a kubernetes source.
-// readsAgents says whether a cluster connector's add-on may list kagent
-// Agents: its opt-in read rule on kagent.dev agents (spec 10 §8).
-func readsAgents(c *v1alpha1.TakeCareConnector) bool {
+// reads says whether a cluster connector's add-on may list a kagent kind:
+// its opt-in read rule on kagent.dev agents, or the separate one on
+// sandboxagents (spec 10 §8).
+func reads(c *v1alpha1.TakeCareConnector, resource string) bool {
 	if c.Spec.Kubernetes == nil {
 		return false
 	}
-	return slices.Contains(c.Spec.Kubernetes.ExtraResources, v1alpha1.ResourceRef{Group: "kagent.dev", Resource: "agents"})
+	return slices.Contains(c.Spec.Kubernetes.ExtraResources, v1alpha1.ResourceRef{Group: "kagent.dev", Resource: resource})
 }
 
 func parsePlace(ref string) (coverage.Place, bool) {

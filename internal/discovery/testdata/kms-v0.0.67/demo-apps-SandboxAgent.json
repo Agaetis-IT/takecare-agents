@@ -1,0 +1,21 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "NAMESPACE   APIVERSION            KIND           NAME          READY   ACCEPTED   LABELS\ndemo-apps   kagent.dev/v1alpha2   SandboxAgent   e2e-sandbox                      <none>\n"
+    }
+  ],
+  "structuredContent": {
+    "items": [
+      {
+        "Accepted": null,
+        "Labels": "<none>",
+        "Name": "e2e-sandbox",
+        "Namespace": "demo-apps",
+        "Ready": null,
+        "apiVersion": "kagent.dev/v1alpha2",
+        "kind": "SandboxAgent"
+      }
+    ]
+  }
+}

@@ -436,6 +436,28 @@ func TestAddonRBACIsReadOnly(t *testing.T) {
 	}
 }
 
+// The separate opt-in on kagent SandboxAgents (spec 10 §8) renders its
+// own rule, exactly get, list and watch, under the same guard, and
+// nothing on kagent Agents.
+func TestAddonSandboxAgentsOptIn(t *testing.T) {
+	values := filepath.Join(t.TempDir(), "sandboxagents.yaml")
+	// A list replaces the profile's: its own entries are kept, as the
+	// e2e's values do.
+	optIn := "addons:\n  kubernetes:\n    extraResources:\n" +
+		"      - group: rds.services.k8s.aws\n        resource: dbproxies\n" +
+		"      - resource: configmaps\n" +
+		"      - group: kagent.dev\n        resource: sandboxagents\n"
+	if err := os.WriteFile(values, []byte(optIn), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	objs := render(t, releaseName, append(profileArgs("demo"), "-f", values)...)
+	checkAddonRBAC(t, objs)
+	want := &rbacv1.PolicyRule{APIGroups: []string{"kagent.dev"}, Resources: []string{"sandboxagents"}, Verbs: []string{verbGet, verbList, verbWatch}}
+	if diff := cmp.Diff(want, kagentAgentsRule(t, objs)); diff != "" {
+		t.Errorf("the opt-in's rule on kagent SandboxAgents (-want +got):\n%s", diff)
+	}
+}
+
 // kagentAgentsRule is the kubernetes add-on's rule on kagent.dev in its
 // Role in demo-apps, nil when it has none.
 func kagentAgentsRule(t *testing.T, objs []*unstructured.Unstructured) *rbacv1.PolicyRule {
