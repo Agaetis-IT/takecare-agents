@@ -22,8 +22,12 @@ import (
 
 // The operator writes a survey's proposals ConfigMap in its own namespace,
 // and reads it there through the API reader: ConfigMaps are not cached in
-// the operator's namespace, so no list or watch is needed.
+// the operator's namespace, so no list or watch is needed. The survey owns
+// the ConfigMap with blockOwnerDeletion set, which the
+// OwnerReferencesPermissionEnforcement admission plugin (on in OpenShift)
+// allows only with update on the survey's finalizers.
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;create;delete,namespace=takecare-system
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecaresurveys/finalizers,verbs=update,namespace=takecare-system
 
 const surveyKind = "TakeCareSurvey"
 

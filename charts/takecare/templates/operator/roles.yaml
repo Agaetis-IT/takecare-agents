@@ -35,6 +35,15 @@ rules:
   - watch
 - apiGroups:
   - takecare.agaetis.fr
+  resourceNames:
+  - main
+  resources:
+  - takecareplatforms/finalizers
+  - takecarerangers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - takecare.agaetis.fr
   resources:
   - takecareplatforms/status
   verbs:
@@ -199,9 +208,11 @@ rules:
 - apiGroups:
   - takecare.agaetis.fr
   resources:
+  - takecareconnectors/finalizers
   - takecareconnectors/status
   - takecaredocs/finalizers
   - takecareintendants/finalizers
+  - takecaresurveys/finalizers
   verbs:
   - update
 - apiGroups:

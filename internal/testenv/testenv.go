@@ -69,6 +69,9 @@ func ChartCRDs(t *testing.T, demo bool) []*apiextensionsv1.CustomResourceDefinit
 	return crds
 }
 
+// ownerReferencesPlugin is the admission plugin every test API server runs.
+const ownerReferencesPlugin = "OwnerReferencesPermissionEnforcement"
+
 // Start runs an API server with the product's CRDs and stops it with the test.
 // It fails, never skips, without the envtest binaries.
 func Start(t *testing.T) *rest.Config {
@@ -105,6 +108,11 @@ func start(t *testing.T, demo bool) (*envtest.Environment, *rest.Config) {
 		CRDs:                  append(ChartCRDs(t, demo), bundle.CRDs...),
 		ErrorIfCRDPathMissing: true,
 	}
+	// OwnerReferencesPermissionEnforcement is on in OpenShift, off in
+	// envtest's defaults: an owner reference with blockOwnerDeletion then
+	// needs update on the owner's finalizers, which the operator's Roles
+	// must grant (kube-apiserver v1.37.0 plugin/pkg/admission/gc).
+	env.ControlPlane.GetAPIServer().Configure().Append("enable-admission-plugins", ownerReferencesPlugin)
 	// One of the run's slots for as long as the server lives: cleanups run
 	// last-registered first, so the server stops before its slot frees.
 	t.Cleanup(acquireSlot(t))

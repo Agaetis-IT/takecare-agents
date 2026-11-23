@@ -79,6 +79,14 @@ func failOnRefusals(t *testing.T) func([]string) {
 // as the test ends.
 func startOperator(t *testing.T, demo bool, onRefusals func([]string)) Env {
 	t.Helper()
+	return startOperatorWith(t, demo, onRefusals, nil)
+}
+
+// startOperatorWith is startOperator with each rendered RBAC object passed
+// to edit, when set, before it is created: a test takes a rule away to
+// show what it grants.
+func startOperatorWith(t *testing.T, demo bool, onRefusals func([]string), edit func(*unstructured.Unstructured)) Env {
+	t.Helper()
 	env, admin := start(t, demo)
 	c, err := client.New(admin, client.Options{})
 	if err != nil {
@@ -88,6 +96,9 @@ func startOperator(t *testing.T, demo bool, onRefusals func([]string)) Env {
 	rbac := chartRBAC(t, demo)
 	createNamespaces(t, c, rbac)
 	for _, obj := range rbac {
+		if edit != nil {
+			edit(obj)
+		}
 		if err := c.Create(ctx, obj); err != nil {
 			t.Fatalf("create %s %s: %v", obj.GetKind(), obj.GetName(), err)
 		}
