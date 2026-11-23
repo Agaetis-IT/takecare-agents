@@ -222,7 +222,7 @@ func (w *Worker) publish(ctx context.Context, inv *v1alpha1.TakeCareInvestigatio
 	}
 	pub := doc.NewPublication(inv, w.clock().Now(), reason, sent)
 	result := v1alpha1.Publication{Connector: d.Spec.Connectors.Report, Destination: destination}
-	err := w.post(ctx, d, destination, pub)
+	err := w.post(ctx, d, destination, pub, publicationKey(inv))
 	if err != nil && ctx.Err() != nil {
 		return // the operator stops: the next leader publishes (resume)
 	}
@@ -247,7 +247,14 @@ func (w *Worker) publish(ctx context.Context, inv *v1alpha1.TakeCareInvestigatio
 }
 
 // post calls post_message through the Doc's report connector.
-func (w *Worker) post(ctx context.Context, d *v1alpha1.TakeCareDoc, destination string, pub doc.Publication) error {
+func (w *Worker) post(ctx context.Context, d *v1alpha1.TakeCareDoc, destination string, pub doc.Publication, key string) error {
 	return report.Post(ctx, w.Client, w.Accounting.Poster, w.clock().After, w.Accounting.Backoff,
-		d.Namespace, d.Spec.Connectors.Report, destination, report.Message{Blocks: pub.Blocks(), Text: pub.Text()})
+		d.Namespace, d.Spec.Connectors.Report, destination, report.Message{Blocks: pub.Blocks(), Text: pub.Text(), Key: key})
+}
+
+// publicationKey is an investigation's identity as the report server's
+// idempotency key: the same on every attempt and after a restart of the
+// operator, another for each investigation.
+func publicationKey(inv *v1alpha1.TakeCareInvestigation) string {
+	return "investigation/" + string(inv.UID)
 }

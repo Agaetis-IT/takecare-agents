@@ -140,10 +140,14 @@ func (p Publication) notes() []string {
 // Blocks renders the message as Slack Block Kit.
 func (p Publication) Blocks() []any {
 	text := func(kind, s string) map[string]any { return map[string]any{keyType: kind, keyText: s} }
+	// verbatim: Slack links no URL, channel name or mention it did not
+	// get as markup, written by the model or carried by a name
+	// (docs.slack.dev, text object); markup characters are escaped.
+	mrkdwnText := func(s string) map[string]any { return map[string]any{keyType: "mrkdwn", keyText: s, "verbatim": true} }
 	var blocks []any
 	blocks = append(blocks, map[string]any{keyType: "header", keyText: text("plain_text", p.header())})
 	if p.Apprentice {
-		blocks = append(blocks, map[string]any{keyType: "context", "elements": []any{text("mrkdwn", ":warning: *"+ApprenticeBanner+"*")}})
+		blocks = append(blocks, map[string]any{keyType: "context", "elements": []any{mrkdwnText(":warning: *" + ApprenticeBanner + "*")}})
 	}
 	body := mrkdwn(p.Diagnosis)
 	if len(body) > sectionLimit {
@@ -158,12 +162,13 @@ func (p Publication) Blocks() []any {
 		}
 		body = body[:cut] + "…"
 	}
-	blocks = append(blocks, map[string]any{keyType: "section", keyText: text("mrkdwn", body)})
+	blocks = append(blocks, map[string]any{keyType: "section", keyText: mrkdwnText(body)})
 	notes := p.notes()
 	elements := make([]any, 0, 1+len(notes))
-	elements = append(elements, text("mrkdwn", p.context()))
+	elements = append(elements, mrkdwnText(mrkdwnEscape.Replace(p.context())))
 	for _, n := range notes {
-		elements = append(elements, text("mrkdwn", n))
+		// An alert's name comes from Alertmanager, not from TakeCare.
+		elements = append(elements, mrkdwnText(mrkdwnEscape.Replace(n)))
 	}
 	blocks = append(blocks, map[string]any{keyType: "context", "elements": elements})
 	return blocks

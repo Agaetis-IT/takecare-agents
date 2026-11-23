@@ -5,6 +5,7 @@ package reportslack
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"io"
@@ -29,18 +30,25 @@ type fakeSlack struct {
 	mu  sync.Mutex
 	// authMode: ok | invalid_auth | 500 | 429
 	authMode string
-	// postMode: ok | invalid_auth | channel_not_found | 500 | 429xN (N times then ok)
+	// postMode: ok | invalid_auth | channel_not_found | error:<code> | 500 | 429 (rateLeft times, then ok)
 	postMode   string
 	rateLeft   int
 	validToken string
 	posts      []map[string]any
+	retryAfter string
 	authCalls  atomic.Int32
+	// postDelay delays every chat.postMessage answer, after the post is
+	// recorded: Slack received it, its answer is late.
+	postDelay atomic.Int64
 }
 
 func newFakeSlack(t *testing.T) *fakeSlack {
 	t.Helper()
 	f := &fakeSlack{authMode: "ok", postMode: "ok", validToken: "xoxb-valid"} //nolint:gosec // a fake token for a fake Slack
 	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/chat.postMessage" {
+			defer time.Sleep(time.Duration(f.postDelay.Load()))
+		}
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
@@ -65,12 +73,14 @@ func newFakeSlack(t *testing.T) *fakeSlack {
 				w.WriteHeader(http.StatusInternalServerError)
 			case strings.HasPrefix(f.postMode, "429") && f.rateLeft > 0:
 				f.rateLeft--
-				w.Header().Set("Retry-After", "1")
+				w.Header().Set("Retry-After", cmp.Or(f.retryAfter, "1"))
 				w.WriteHeader(http.StatusTooManyRequests)
 			case token != f.validToken:
 				_, _ = w.Write([]byte(`{"ok":false,"error":"invalid_auth"}`))
-			case f.postMode == "channel_not_found":
+			case f.postMode == notFound:
 				_, _ = w.Write([]byte(`{"ok":false,"error":"channel_not_found"}`))
+			case strings.HasPrefix(f.postMode, "error:"):
+				_, _ = w.Write([]byte(`{"ok":false,"error":"` + strings.TrimPrefix(f.postMode, "error:") + `"}`))
 			default:
 				var p map[string]any
 				_ = json.Unmarshal(body, &p)
@@ -121,7 +131,7 @@ func start(t *testing.T, mode Mode) *fixture {
 	logs := &bytes.Buffer{}
 	s, err := New(Config{
 		Mode: mode, APIURL: slack.srv.URL, TokenFile: filepath.Join(dir, "token"),
-		Destinations: map[string]string{"on-call": "C0ONCALL1", "review": "#takecare-review"},
+		Destinations: map[string]string{onCall: "C0ONCALL1", "review": "#takecare-review"},
 		AuthInterval: 200 * time.Millisecond, HTTP: &http.Client{Timeout: 2 * time.Second},
 		Logger: slog.New(slog.NewJSONHandler(logs, nil)),
 	})
@@ -167,12 +177,18 @@ func (f *fixture) post(destination string, blocks string) mcp.Result {
 	if err := json.Unmarshal([]byte(blocks), &raw); err != nil {
 		f.t.Fatal(err)
 	}
-	res, err := f.client.Call(context.Background(), f.ep, ToolName, map[string]any{"destination": destination, "blocks": raw, "text": "Doc · HighErrorRate on billing-api"})
+	res, err := f.client.Call(context.Background(), f.ep, ToolName, map[string]any{"destination": destination, "blocks": raw, "text": fallbackText})
 	if err != nil {
 		f.t.Fatal(err)
 	}
 	return res
 }
+
+const (
+	onCall       = "on-call"
+	fallbackText = "Doc · HighErrorRate on billing-api"
+	notFound     = "channel_not_found"
+)
 
 const blocks = `[{"type":"section","text":{"type":"mrkdwn","text":"The proxy closes idle connections after 600 s."}}]`
 
@@ -182,12 +198,12 @@ func TestSlackModePostsToKnownDestinationsOnly(t *testing.T) {
 	if code := f.readyz(); code != http.StatusOK {
 		t.Fatalf("readyz = %d", code)
 	}
-	res := f.post("on-call", blocks)
+	res := f.post(onCall, blocks)
 	if res.IsError || !strings.Contains(res.Text, "posted to on-call (C0ONCALL1)") {
 		t.Fatalf("post = %+v", res)
 	}
 	p := f.slack.lastPost()
-	if p["channel"] != "C0ONCALL1" || p["text"] != "Doc · HighErrorRate on billing-api" {
+	if p["channel"] != "C0ONCALL1" || p["text"] != fallbackText {
 		t.Errorf("Slack received %v", p)
 	}
 	if bl, ok := p["blocks"].([]any); !ok || len(bl) != 1 {
@@ -196,7 +212,7 @@ func TestSlackModePostsToKnownDestinationsOnly(t *testing.T) {
 	if res := f.post("everyone", blocks); !res.IsError || !strings.Contains(res.Text, "unknown destination") {
 		t.Errorf("an unknown destination must be refused: %+v", res)
 	}
-	if res := f.post("on-call", `[]`); !res.IsError {
+	if res := f.post(onCall, `[]`); !res.IsError {
 		t.Error("empty blocks must be refused")
 	}
 	if res := f.post("review", blocks); res.IsError || f.slack.lastPost()["channel"] != "#takecare-review" {
@@ -236,7 +252,7 @@ func TestReadinessFollowsTheToken(t *testing.T) {
 			t.Fatal(err)
 		}
 		f.waitReady(true)
-		if res := f.post("on-call", blocks); res.IsError {
+		if res := f.post(onCall, blocks); res.IsError {
 			t.Errorf("a post with the new token fails: %s", res.Text)
 		}
 	})
@@ -246,7 +262,7 @@ func TestReadinessFollowsTheToken(t *testing.T) {
 		f.slack.validToken = "xoxb-rotated-elsewhere"
 		f.slack.mu.Unlock()
 		before := f.slack.authCalls.Load()
-		res := f.post("on-call", blocks)
+		res := f.post(onCall, blocks)
 		if !res.IsError || !strings.Contains(res.Text, "invalid_auth") {
 			t.Fatalf("post = %+v", res)
 		}
@@ -273,7 +289,7 @@ func TestStartupRetriesAnInconclusiveCheck(t *testing.T) {
 	}
 	s, err := New(Config{
 		Mode: ModeSlack, APIURL: slack.srv.URL, TokenFile: filepath.Join(dir, "token"),
-		Destinations: map[string]string{"on-call": "C0STARTUP"},
+		Destinations: map[string]string{onCall: "C0STARTUP"},
 		AuthInterval: time.Hour, StartRetry: 50 * time.Millisecond, HTTP: &http.Client{Timeout: 2 * time.Second},
 		Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)),
 	})
@@ -300,26 +316,75 @@ func TestStartupRetriesAnInconclusiveCheck(t *testing.T) {
 	}
 }
 
-func TestRateLimitsAreRetriedThenReported(t *testing.T) {
+// A rate limit is answered at once, with Slack's Retry-After, for the
+// operator to pace: the server does not wait it out past the operator's
+// call (spec 05). Slack's errors are named, and say whether a retry may
+// change them.
+func TestSlackErrorsAreNamed(t *testing.T) {
 	f := start(t, ModeSlack)
 	f.waitReady(true)
-	f.slack.set("ok", "429", 1) // one 429 with Retry-After 1 s, then ok
+	f.slack.set("ok", "429", 1)
+	f.slack.mu.Lock()
+	f.slack.retryAfter = "30"
+	f.slack.mu.Unlock()
 	started := time.Now()
-	if res := f.post("on-call", blocks); res.IsError {
-		t.Fatalf("a single 429 must be retried: %s", res.Text)
+	res := f.post(onCall, blocks)
+	if took := time.Since(started); took > 5*time.Second {
+		t.Errorf("the rate limit was waited out in the handler: %s", took)
 	}
-	if time.Since(started) < time.Second {
-		t.Error("Retry-After was not honored")
+	if !res.IsError || !strings.Contains(res.Text, "rate limited by Slack (ratelimited), retry after 30 s") {
+		t.Errorf("a 429 = %+v", res)
 	}
-	f.slack.set("ok", "429", 10)
-	res := f.post("on-call", blocks)
-	if !res.IsError || !strings.Contains(res.Text, "giving up after 3 attempts") {
-		t.Errorf("persistent 429 = %+v", res)
+	if got := outcomeOf(t, res); got != (Outcome{Error: "ratelimited", Retry: true, RetryAfterSeconds: 30}) {
+		t.Errorf("outcome of a 429 = %+v", got)
 	}
-	f.slack.set("ok", "channel_not_found", 0)
-	if res := f.post("on-call", blocks); !res.IsError || !strings.Contains(res.Text, "channel_not_found") {
-		t.Errorf("a Slack error is reported as is: %+v", res)
+	if res := f.post(onCall, blocks); res.IsError {
+		t.Errorf("the next call posts: %s", res.Text)
 	}
+	for _, c := range []struct {
+		mode string
+		want Outcome
+	}{
+		{notFound, Outcome{Error: notFound}},
+		{"error:not_in_channel", Outcome{Error: "not_in_channel"}},
+		{"error:is_archived", Outcome{Error: "is_archived"}},
+		{"error:rate_limited", Outcome{Error: "rate_limited", Retry: true, RetryAfterSeconds: 5}},
+		{"error:internal_error", Outcome{Error: "internal_error", Retry: true}},
+		{"error:service_unavailable", Outcome{Error: "service_unavailable", Retry: true}},
+		{"500", Outcome{Error: "no_answer", Retry: true}},
+	} {
+		f.slack.set("ok", c.mode, 0)
+		res := f.post(onCall, blocks)
+		if !res.IsError || !strings.Contains(res.Text, c.want.Error) && c.want.Error != "no_answer" {
+			t.Errorf("%s: %+v", c.mode, res)
+		}
+		if got := outcomeOf(t, res); got != c.want {
+			t.Errorf("%s: outcome %+v, want %+v", c.mode, got, c.want)
+		}
+		if strings.Contains(res.Text, "xoxb") {
+			t.Errorf("%s: the token in the answer: %s", c.mode, res.Text)
+		}
+	}
+	f.slack.set("ok", "ok", 0)
+	if got := outcomeOf(t, f.post("everyone", blocks)); got != (Outcome{Error: "unknown_destination"}) {
+		t.Errorf("an unknown destination: outcome %+v", got)
+	}
+	// Nothing posted without a token: a retry is safe.
+	if err := os.Remove(filepath.Join(f.tokenDir, "token")); err != nil {
+		t.Fatal(err)
+	}
+	if got := outcomeOf(t, f.post(onCall, blocks)); got != (Outcome{Error: "token_file", Retry: true}) {
+		t.Errorf("an unreadable token file: outcome %+v", got)
+	}
+}
+
+func outcomeOf(t *testing.T, res mcp.Result) Outcome {
+	t.Helper()
+	var o Outcome
+	if err := json.Unmarshal(res.Structured, &o); err != nil {
+		t.Fatalf("structured content %q: %v", res.Structured, err)
+	}
+	return o
 }
 
 func TestLogModeWritesTheMessage(t *testing.T) {
@@ -327,7 +392,7 @@ func TestLogModeWritesTheMessage(t *testing.T) {
 	if code := f.readyz(); code != http.StatusOK {
 		t.Fatalf("log mode is ready at once, readyz = %d", code)
 	}
-	res := f.post("on-call", blocks)
+	res := f.post(onCall, blocks)
 	if res.IsError || !strings.Contains(res.Text, "logged for destination on-call") {
 		t.Fatalf("post = %+v", res)
 	}
