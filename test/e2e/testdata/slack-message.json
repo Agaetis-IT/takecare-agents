@@ -10,7 +10,8 @@
     {
       "text": {
         "text": "*Observations*\n• Pod `billing-api-5bb7c966cf-x2fbp` logs repeatedly report `WARN db connection reset by peer, retrying (pool acquire ...)`.\n• Deployment `billing-api` sets `DB_POOL_IDLE_TIMEOUT_SECONDS` to `900`, whereas DBProxy `billing-db-proxy` sets `spec.idleClientTimeout` to `600`.\n• Runbook `RB-014` dictates the application pool must recycle idle connections before the shortest intermediate network timeout.\n\n*Ruled-out leads*\n• Memory exhaustion was ruled out because heap usage is at 41% (212 MB / 512 MB) and connection wait times drive the pressure.\n• Pod crash or restarts were ruled out because the pod status is `Running` with zero restarts.\n\n*Root cause*\nThe database connection pool idle timeout (900s) exceeds RDS DBProxy's idle client timeout (600s), causing the proxy to close idle connections.\n\n*Recommended action*\nTeam Platform should update `DB_POOL_IDLE_TIMEOUT_SECONDS` in Deployment `billing-api` below 600s (e.g., 300s) or raise `spec.idleClientTimeout` on `billing-db-proxy`.",
-        "type": "mrkdwn"
+        "type": "mrkdwn",
+        "verbatim": true
       },
       "type": "section"
     },
@@ -18,7 +19,8 @@
       "elements": [
         {
           "text": "<n>s after the alert · <n> model calls · <n>,<n> tokens · <n> USD · trace <trace>",
-          "type": "mrkdwn"
+          "type": "mrkdwn",
+          "verbatim": true
         }
       ],
       "type": "context"

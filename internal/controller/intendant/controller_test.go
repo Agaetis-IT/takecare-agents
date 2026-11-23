@@ -140,6 +140,9 @@ type fixture struct {
 	// when set, bounds each from its lock.
 	poster         *fakePoster
 	publishTimeout time.Duration
+	// after, when set, is the runner's clock for its waits (time.After
+	// otherwise).
+	after func(time.Duration) <-chan time.Time
 	// canary is the gateway's answer to the call rule's canary (refused
 	// unless a test says otherwise), canaries the canaries sent.
 	canary fakeCanary
@@ -237,7 +240,7 @@ func (f *fixture) startManager(t *testing.T) {
 			Caller: &mcp.Client{HTTP: &http.Client{Timeout: time.Minute}}, Canary: &f.canary, Now: f.passClock.Now, Metrics: f.metrics,
 			Runs: f.runs, EngineKind: kagent0103.Kind, EngineNamespace: engineNS, Usage: f.usage, PassTimeout: passTimeout, PassInterval: 50 * time.Millisecond, PassClock: f.passClock,
 			Tracer: sdktrace.NewTracerProvider(sdktrace.WithSyncer(f.spans)).Tracer("test"),
-			Poster: f.poster, Backoff: time.Millisecond, Recorder: mgr.GetEventRecorder("test"), PublishTimeout: f.publishTimeout,
+			Poster: f.poster, Backoff: time.Millisecond, Recorder: mgr.GetEventRecorder("test"), PublishTimeout: f.publishTimeout, After: f.after,
 			AgentKinds: (&kagent0103.Agents{}).AgentTypes(),
 			Route: func(_ string, role routes.Role, connector string) string {
 				u, _ := f.routes.Load(role.Name + "/" + connector)

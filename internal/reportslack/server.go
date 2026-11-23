@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package reportslack is TakeCare's report MCP server (spec 05, ADR 0008):
-// one tool, post_message(destination, blocks), that the operator alone calls
-// to publish a diagnosis. It posts to Slack's Web API (chat.postMessage)
-// with a token read from a file, checks that token with auth.test at
-// startup and periodically, and exposes the result as its readiness: a
-// revoked token makes the pod not ready, which the connector's status
-// reports. It reads nothing from the workspace. A log mode, for a demo
-// without Slack, writes the message to its log instead.
+// one tool, post_message(destination, blocks, idempotencyKey), that the
+// operator alone calls to publish a diagnosis or a digest, once per key.
+// It posts to Slack's Web API (chat.postMessage) with a token read from a
+// file, checks that token with auth.test at startup and periodically,
+// and exposes the result as its readiness: a revoked token makes the pod
+// not ready, which the connector's status reports. It reads nothing from
+// the workspace. A log mode, for a demo without Slack, writes the message
+// to its log instead.
 package reportslack
 
 import (
@@ -48,11 +49,42 @@ const (
 	// while the token has had no verdict yet: a network not ready at the
 	// pod's start must not keep it not ready for a whole interval.
 	DefaultStartRetry = 10 * time.Second
-	maxPostAttempts   = 3
-	maxRetryAfter     = 30 * time.Second
-	ToolName          = "post_message"
-	fieldBlocks       = "blocks"
+	// DefaultDeliveryTimeout bounds one keyed delivery, which outlives
+	// the call that started it: the HTTP client's own timeout, 15 s in
+	// production, comes first.
+	DefaultDeliveryTimeout = 20 * time.Second
+	// defaultRetryAfter is the wait a rate limit without a Retry-After
+	// header asks for.
+	defaultRetryAfter = 5 * time.Second
+	// maxRetryAfterSeconds bounds the Retry-After passed on: the
+	// operator's own bound ends its waits long before.
+	maxRetryAfterSeconds = 600
+	ToolName             = "post_message"
+	fieldBlocks          = "blocks"
+	// FieldKey is the tool's idempotency key argument.
+	FieldKey = "idempotencyKey"
 )
+
+// transientErrors are the chat.postMessage errors worth a retry
+// (docs.slack.dev, chat.postMessage): a rate limit, which says when, and
+// Slack's own transient failures. Every other error Slack answers is the
+// same on a retry (channel_not_found, not_in_channel, is_archived,
+// invalid_blocks, missing_scope, an authentication error…): it is
+// returned as not retryable. A timeout or a 5xx, with no answer, is
+// retryable.
+var transientErrors = []string{
+	"ratelimited", "rate_limited", "message_limit_exceeded", "internal_error", "fatal_error",
+	"service_unavailable", "request_timeout", "team_added_to_org", "org_login_required",
+}
+
+// Outcome is the structured content of a failed post_message: Slack's
+// error code (or the server's own reason), whether a retry may succeed,
+// and how long to wait first. The operator paces and stops by it.
+type Outcome struct {
+	Error             string `json:"error"`
+	Retry             bool   `json:"retry"`
+	RetryAfterSeconds int    `json:"retryAfterSeconds,omitempty"`
+}
 
 // authErrors are the Slack errors that mean the token is no longer good:
 // only these make the server not ready. A 5xx, a timeout or a 429 keeps the
@@ -73,8 +105,16 @@ type Config struct {
 	Destinations map[string]string
 	AuthInterval time.Duration
 	StartRetry   time.Duration
-	HTTP         *http.Client
-	Logger       *slog.Logger
+	// KeyTTL and MaxKeys bound the idempotency keys remembered
+	// (DefaultKeyTTL, DefaultMaxKeys when zero); DeliveryTimeout bounds
+	// a keyed delivery (DefaultDeliveryTimeout when zero).
+	KeyTTL          time.Duration
+	MaxKeys         int
+	DeliveryTimeout time.Duration
+	// Now is the clock of the keys' expiry (time.Now when nil).
+	Now    func() time.Time
+	HTTP   *http.Client
+	Logger *slog.Logger
 }
 
 // Server is the report MCP server.
@@ -88,6 +128,7 @@ type Server struct {
 	authMu    sync.Mutex
 	authState string
 	kick      chan struct{}
+	recent    *recent
 }
 
 // New builds the server; it is not ready until the first auth.test passes
@@ -117,7 +158,19 @@ func New(cfg Config) (*Server, error) {
 	if len(cfg.Destinations) == 0 {
 		return nil, errors.New("at least one destination is required")
 	}
-	s := &Server{cfg: cfg, kick: make(chan struct{}, 1), authState: "not checked yet"}
+	if cfg.KeyTTL == 0 {
+		cfg.KeyTTL = DefaultKeyTTL
+	}
+	if cfg.MaxKeys == 0 {
+		cfg.MaxKeys = DefaultMaxKeys
+	}
+	if cfg.DeliveryTimeout == 0 {
+		cfg.DeliveryTimeout = DefaultDeliveryTimeout
+	}
+	if cfg.Now == nil {
+		cfg.Now = time.Now
+	}
+	s := &Server{cfg: cfg, kick: make(chan struct{}, 1), authState: "not checked yet", recent: newRecent(cfg.KeyTTL, cfg.MaxKeys, cfg.Now)}
 	s.mcp = sdk.NewServer(&sdk.Implementation{Name: "takecare-mcp-report-slack", Version: "1"}, nil)
 	s.mcp.AddTool(&sdk.Tool{
 		Name:        ToolName,
@@ -241,60 +294,90 @@ type postArgs struct {
 	Destination string          `json:"destination"`
 	Blocks      json.RawMessage `json:"blocks"`
 	Text        string          `json:"text"`
+	Key         string          `json:"idempotencyKey"`
 }
 
+// postMessage checks the arguments, then delivers the message once per
+// idempotency key: a repeated key gets the first successful delivery's
+// result and posts nothing (spec 05). A call without a key delivers.
 func (s *Server) postMessage(ctx context.Context, req *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
 	var args postArgs
 	if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
-		return toolError("arguments: " + err.Error()), nil
+		return refused("invalid_arguments", "arguments: "+err.Error()), nil
 	}
 	target, ok := s.cfg.Destinations[args.Destination]
 	if !ok {
-		return toolError(fmt.Sprintf("unknown destination %q: the server posts only to the destinations declared on its connector", args.Destination)), nil
+		return refused("unknown_destination", fmt.Sprintf("unknown destination %q: the server posts only to the destinations declared on its connector", args.Destination)), nil
 	}
 	var blocks []any
 	if err := json.Unmarshal(args.Blocks, &blocks); err != nil || len(blocks) == 0 {
-		return toolError("blocks must be a non-empty JSON array of Block Kit blocks"), nil
+		return refused("invalid_blocks", "blocks must be a non-empty JSON array of Block Kit blocks"), nil
 	}
+	if len(args.Key) > maxKeyLength {
+		return refused("invalid_arguments", fmt.Sprintf("%s longer than %d bytes", FieldKey, maxKeyLength)), nil
+	}
+	deliver := func(ctx context.Context) (*sdk.CallToolResult, bool) {
+		return s.deliver(ctx, args, target, blocks)
+	}
+	if args.Key == "" {
+		res, _ := deliver(ctx)
+		return res, nil
+	}
+	// The destination is part of the key: the same run sent elsewhere is
+	// another message.
+	res, replayed := s.recent.do(ctx, args.Key+"\n"+args.Destination, s.cfg.DeliveryTimeout, deliver)
+	if replayed {
+		s.cfg.Logger.Info("repeated key: the first result, not posted again", "destination", args.Destination, "key", args.Key)
+	}
+	return res, nil
+}
+
+// deliver posts or logs the message, once; it reports whether it was
+// delivered.
+func (s *Server) deliver(ctx context.Context, args postArgs, target string, blocks []any) (*sdk.CallToolResult, bool) {
 	if s.cfg.Mode == ModeLog {
 		s.cfg.Logger.Info("message", "destination", args.Destination, "target", target, "text", args.Text, fieldBlocks, string(args.Blocks))
-		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: fmt.Sprintf("logged for destination %s (%s)", args.Destination, target)}}}, nil
+		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: fmt.Sprintf("logged for destination %s (%s)", args.Destination, target)}}}, true
 	}
 	token, err := s.token()
 	if err != nil {
-		return toolError("token file: " + err.Error()), nil
+		// Nothing was posted: a retry is safe, and a mounted Secret
+		// being replaced may be read again.
+		return failed(Outcome{Error: "token_file", Retry: true}, "token file: "+err.Error()), false
 	}
 	payload := map[string]any{"channel": target, fieldBlocks: blocks}
 	if args.Text != "" {
 		payload["text"] = args.Text
 	}
-	var last string
-	for attempt := 1; attempt <= maxPostAttempts; attempt++ {
-		resp, err := s.slackCall(ctx, token, "chat.postMessage", payload)
-		switch {
-		case err != nil:
-			return toolError("chat.postMessage: " + err.Error()), nil
-		case resp.OK:
-			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: fmt.Sprintf("posted to %s (%s), ts %s", args.Destination, target, resp.TS)}}}, nil
-		case resp.RateLimited:
-			last = fmt.Sprintf("rate limited (attempt %d/%d)", attempt, maxPostAttempts)
-			select {
-			case <-ctx.Done():
-				return toolError("chat.postMessage: " + ctx.Err().Error()), nil
-			case <-time.After(resp.RetryAfter):
-			}
-		case slices.Contains(authErrors, resp.Error):
-			s.setAuth(false, "chat.postMessage: "+resp.Error)
-			select {
-			case s.kick <- struct{}{}:
-			default:
-			}
-			return toolError("chat.postMessage: " + resp.Error + " (the token is not accepted; the server is not ready until a valid token is mounted)"), nil
-		default:
-			return toolError("chat.postMessage: " + resp.Error), nil
+	// One attempt: the operator retries, with the same key, and paces by
+	// the rate limit this answers at once. Waiting out a Retry-After here
+	// would outlast the operator's call (spec 05).
+	resp, err := s.slackCall(ctx, token, "chat.postMessage", payload)
+	switch {
+	case err != nil:
+		return failed(Outcome{Error: "no_answer", Retry: true}, "chat.postMessage: "+err.Error()), false
+	case resp.OK:
+		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: fmt.Sprintf("posted to %s (%s), ts %s", args.Destination, target, resp.TS)}}}, true
+	case resp.RateLimited || resp.Error == "rate_limited" || resp.Error == "message_limit_exceeded":
+		wait := resp.RetryAfter
+		if wait <= 0 {
+			wait = defaultRetryAfter
 		}
+		secs := int((wait + time.Second - 1) / time.Second)
+		return failed(Outcome{Error: resp.Error, Retry: true, RetryAfterSeconds: secs},
+			fmt.Sprintf("chat.postMessage: rate limited by Slack (%s), retry after %d s", resp.Error, secs)), false
+	case slices.Contains(authErrors, resp.Error):
+		s.setAuth(false, "chat.postMessage: "+resp.Error)
+		select {
+		case s.kick <- struct{}{}:
+		default:
+		}
+		return refused(resp.Error, "chat.postMessage: "+resp.Error+" (the token is not accepted; the server is not ready until a valid token is mounted)"), false
+	case slices.Contains(transientErrors, resp.Error):
+		return failed(Outcome{Error: resp.Error, Retry: true}, "chat.postMessage: "+resp.Error), false
+	default:
+		return refused(resp.Error, "chat.postMessage: "+resp.Error+" (permanent: a retry gets the same answer)"), false
 	}
-	return toolError("chat.postMessage: giving up after " + strconv.Itoa(maxPostAttempts) + " attempts, " + last), nil
 }
 
 // inputSchema is post_message's JSON schema.
@@ -308,6 +391,7 @@ func inputSchema() map[string]any {
 			"destination": prop("string", "A destination name declared on the report connector."),
 			fieldBlocks:   prop("array", "Slack Block Kit blocks."),
 			"text":        prop("string", "Fallback text for notifications."),
+			FieldKey:      prop("string", "The publication's identity, the same on every retry: a repeated key returns the first delivery's result and posts nothing. At most 128 bytes."),
 		},
 		"required": []any{"destination", fieldBlocks},
 	}
@@ -315,6 +399,18 @@ func inputSchema() map[string]any {
 
 func toolError(msg string) *sdk.CallToolResult {
 	return &sdk.CallToolResult{IsError: true, Content: []sdk.Content{&sdk.TextContent{Text: msg}}}
+}
+
+// failed is a failure with its outcome as structured content.
+func failed(o Outcome, msg string) *sdk.CallToolResult {
+	res := toolError(msg)
+	res.StructuredContent = o
+	return res
+}
+
+// refused is a failure a retry cannot change.
+func refused(code, msg string) *sdk.CallToolResult {
+	return failed(Outcome{Error: code}, msg)
 }
 
 // slackResponse is what the Web API answers.
@@ -347,9 +443,9 @@ func (s *Server) slackCall(ctx context.Context, token, method string, payload ma
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusTooManyRequests {
-		wait := 5 * time.Second
+		wait := defaultRetryAfter
 		if v, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && v > 0 {
-			wait = min(time.Duration(v)*time.Second, maxRetryAfter)
+			wait = time.Duration(min(v, maxRetryAfterSeconds)) * time.Second
 		}
 		return &slackResponse{RateLimited: true, RetryAfter: wait, Error: "ratelimited"}, nil
 	}

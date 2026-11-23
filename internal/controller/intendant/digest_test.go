@@ -159,3 +159,48 @@ func TestDigestDestination(t *testing.T) {
 		}
 	}
 }
+
+// The header names the Intendant unless its name only repeats the kind;
+// the context says which layers were not read, and where to see why.
+func TestDigestWording(t *testing.T) {
+	s, ps := digestSurvey()
+	for _, c := range []struct {
+		name, header string
+	}{
+		{"intendant", "Intendant: 3 proposals to review"},
+		{"platform", "Intendant platform: 3 proposals to review"},
+		{"Bad*Name", "Intendant ?: 3 proposals to review"},
+	} {
+		s.Spec.IntendantRef.Name = c.name
+		if h := NewDigest(s, ps).header(); h != c.header {
+			t.Errorf("%s: header %q, want %q", c.name, h, c.header)
+		}
+	}
+	s.Status.ProposalCounts = &v1alpha1.ProposalCounts{Add: 1, Total: 1}
+	if h := NewDigest(s, ps).header(); !strings.HasSuffix(h, ": 1 proposal to review") {
+		t.Errorf("one proposal: %q", h)
+	}
+	s.Status.Layers = []v1alpha1.SurveyLayer{
+		{Name: "network", NotSeen: []v1alpha1.NotSeen{{Ref: "demo-apps/HTTPRoute", Reason: "forbidden"}}},
+		{Name: "compute"},
+		{Name: "identity", NotSeen: []v1alpha1.NotSeen{{Ref: "a", Reason: "r"}, {Ref: "b", Reason: "r"}}},
+	}
+	s.Status.BlindSpots = []v1alpha1.BlindSpot{{}}
+	ctx := NewDigest(s, ps).context()
+	for _, want := range []string{"3 parts of the ground not read (network 1, identity 2)", "1 blind spot ·", "which and why: kubectl -n takecare-system get takecaresurvey e2e-first -o yaml"} {
+		if !strings.Contains(ctx, want) {
+			t.Errorf("context %q lacks %q", ctx, want)
+		}
+	}
+	s.Status.Layers = nil
+	if ctx := NewDigest(s, ps).context(); !strings.Contains(ctx, "the whole ground read") {
+		t.Errorf("nothing unread: %q", ctx)
+	}
+	raw, err := json.Marshal(NewDigest(s, ps).Message().Blocks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, v := strings.Count(string(raw), `"type":"mrkdwn"`), strings.Count(string(raw), `"verbatim":true`); n == 0 || n != v {
+		t.Errorf("%d mrkdwn texts, %d verbatim", n, v)
+	}
+}

@@ -4,6 +4,7 @@
 package doc
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -173,5 +174,25 @@ func TestDestination(t *testing.T) {
 				t.Errorf("Destination = %q, %t", got, ok)
 			}
 		})
+	}
+}
+
+// An alert's name comes from Alertmanager: in mrkdwn its markup is
+// escaped, and every mrkdwn text is verbatim, so that Slack makes no
+// mention or link of it (docs.slack.dev, text object).
+func TestBlocksNamesCannotInject(t *testing.T) {
+	p := Publication{Alert: "a", Service: "b", Diagnosis: "ok @here", Later: []string{"<!channel> & <https://x.example|go>"}}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(p.Blocks()); err != nil {
+		t.Fatal(err)
+	}
+	got := buf.String()
+	if strings.Contains(got, "<!channel>") || !strings.Contains(got, `&lt;!channel&gt; &amp; &lt;https://x.example|go&gt;`) {
+		t.Errorf("the alert's name is not escaped: %s", got)
+	}
+	if n, v := strings.Count(got, `"type":"mrkdwn"`), strings.Count(got, `"verbatim":true`); n == 0 || n != v {
+		t.Errorf("%d mrkdwn texts, %d verbatim", n, v)
 	}
 }

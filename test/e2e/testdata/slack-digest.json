@@ -2,7 +2,7 @@
   "blocks": [
     {
       "text": {
-        "text": "Intendant intendant: 3 proposals to review",
+        "text": "Intendant: 3 proposals to review",
         "type": "plain_text"
       },
       "type": "header"
@@ -10,26 +10,29 @@
     {
       "text": {
         "text": "Add 1 · Update 2 · Remove 0 · from the import 2, from the agent 1",
-        "type": "mrkdwn"
+        "type": "mrkdwn",
+        "verbatim": true
       },
       "type": "section"
     },
     {
       "text": {
         "text": "```\nAdd network/billing-api\nUpdate service/billing-api\nUpdate runbook/proxy-timeout\n```",
-        "type": "mrkdwn"
+        "type": "mrkdwn",
+        "verbatim": true
       },
       "type": "section"
     },
     {
       "elements": [
         {
-          "text": "Survey <survey> against the Map at 470725dee572 · 2 not seen · 0 blind spots · kubectl -n takecare-system get takecaresurvey <survey> · the full set: ConfigMap survey-<survey>-proposals",
-          "type": "mrkdwn"
+          "text": "Survey <survey> against the Map at 470725dee572 · 2 parts of the ground not read (network 1, inventory 1) · 0 blind spots · which and why: kubectl -n takecare-system get takecaresurvey <survey> -o yaml · the full set: ConfigMap survey-<survey>-proposals",
+          "type": "mrkdwn",
+          "verbatim": true
         }
       ],
       "type": "context"
     }
   ],
-  "text": "Intendant intendant: 3 proposals to review\nAdd 1 · Update 2 · Remove 0 · from the import 2, from the agent 1\nAdd network/billing-api\nUpdate service/billing-api\nUpdate runbook/proxy-timeout\nSurvey <survey> against the Map at 470725dee572 · 2 not seen · 0 blind spots · kubectl -n takecare-system get takecaresurvey <survey> · the full set: ConfigMap survey-<survey>-proposals\n"
+  "text": "Intendant: 3 proposals to review\nAdd 1 · Update 2 · Remove 0 · from the import 2, from the agent 1\nAdd network/billing-api\nUpdate service/billing-api\nUpdate runbook/proxy-timeout\nSurvey <survey> against the Map at 470725dee572 · 2 parts of the ground not read (network 1, inventory 1) · 0 blind spots · which and why: kubectl -n takecare-system get takecaresurvey <survey> -o yaml · the full set: ConfigMap survey-<survey>-proposals\n"
 }
