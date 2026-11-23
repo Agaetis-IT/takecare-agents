@@ -100,8 +100,9 @@ func (*Agents) AgentTypes() []schema.GroupVersionKind {
 // Endpoint implements engine.Agents: kagent serves every agent's A2A on its
 // controller, at /api/a2a/<namespace>/<agent>.
 //
-// What the controller serves below that path, read in kagent v0.10.6 and
-// checked on a cluster: go/core/internal/httpserver/server.go routes the
+// What the controller serves below that path, read in kagent v0.10.6
+// (checked on a cluster at 0.10.3; these files are unchanged since):
+// go/core/internal/httpserver/server.go routes the
 // prefix /api/a2a/{namespace}/{name} to the A2A mux, which picks the
 // agent's handler by namespace and name (a2a_handler_mux.go, ServeHTTP).
 // That handler (SetAgentHandler) serves the agent card when the path ends

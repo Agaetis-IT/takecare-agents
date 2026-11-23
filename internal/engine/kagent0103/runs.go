@@ -49,7 +49,8 @@ const cancelUnsupported = "Cancellation is not supported"
 //
 // Runs are sent non-blocking (returnImmediately): kagent 0.10.6 passes the
 // request through to the agent, which answers at once with the task
-// SUBMITTED and its ID (checked on a cluster), so that the caller records
+// SUBMITTED and its ID (checked on a cluster at 0.10.3; the code path is
+// unchanged in 0.10.6), so that the caller records
 // the ID before following the task with GetTask.
 type Runs struct {
 	// HTTP is the shared client for A2A calls; its timeout bounds one call.
