@@ -403,7 +403,7 @@ addons:
 # Subcharts. Keys below are the upstream charts' own values.
 # ---------------------------------------------------------------------------
 
-# -- agentgateway v1.6.0 (ADR 0002). The chart installs the controller; the
+# -- agentgateway v1.7.0 (ADR 0002). The chart installs the controller; the
 # proxy pods are created from the Gateway above.
 # @default -- see values.yaml (agentgateway chart values)
 agentgateway:

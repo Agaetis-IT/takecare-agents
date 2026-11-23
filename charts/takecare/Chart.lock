@@ -1,7 +1,7 @@
 dependencies:
 - name: agentgateway
   repository: oci://cr.agentgateway.dev/charts
-  version: v1.6.0
+  version: v1.7.0
 - name: kagent
   repository: oci://ghcr.io/kagent-dev/kagent/helm
   version: 0.10.6
@@ -11,5 +11,5 @@ dependencies:
 - name: opentelemetry-collector
   repository: https://open-telemetry.github.io/opentelemetry-helm-charts
   version: 0.176.0
-digest: sha256:12f2704472098a5ea7429a4ff1a68075e5faa5b62afcb20088cafd5f0b9b5ce4
-generated: "2026-11-23T20:57:12.962151+01:00"
+digest: sha256:924ffbafafdd6ee194978821a442c85e7e1c4bd7bb8046b49716af60784def23
+generated: "2026-11-23T23:29:20.247298+01:00"

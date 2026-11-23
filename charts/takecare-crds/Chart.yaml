@@ -15,7 +15,7 @@ dependencies:
   # (the marker after each version names the key); CI fails on drift.
   - name: agentgateway-crds
     repository: oci://cr.agentgateway.dev/charts
-    version: v1.6.0 # pin: AGENTGATEWAY_VERSION
+    version: v1.7.0 # pin: AGENTGATEWAY_VERSION
     condition: agentgateway.enabled
   - name: kagent-crds
     repository: oci://ghcr.io/kagent-dev/kagent/helm
