@@ -54,7 +54,7 @@ Reads the cluster (§6) and shows, for the operator's namespace (`--namespace`, 
 
 - the `TakeCarePlatform`: its conditions;
 - each role (`TakeCareDoc`, `TakeCareIntendant`, `TakeCareRanger`): its level, `Ready` with its reason and message, its other conditions that are not `True`, its blind spots with their reasons;
-- each `TakeCareConnector`: `Ready`, its tools counted by class (`read`, `content`, `act`), its Map revision for a `map` connector;
+- each `TakeCareConnector`: `Ready`, its tools counted by class (`read`, `propose`, `act`) and, separately, the number marked `content` (ADR 0014 §5), its Map revision for a `map` connector;
 - the five newest `TakeCareSurvey` and `TakeCareInvestigation` records: phase, trigger, age, and the reason of one that did not complete.
 
 It prints what the API returned, in the API's words: it does not compute a readiness of its own. Exit code 1 when the platform, a role or a connector is not `Ready`, so that a script can wait on it. `--output json` is a stable shape, versioned by a `schemaVersion` field.
@@ -78,10 +78,10 @@ EOF
 
 ### 3.4 `takecare review`
 
-Turns a survey's proposals into Map files (spec 08 §4, spec 10 §7). Inputs: the survey (`--survey <name>`, the newest `Completed` survey of the Intendant by default), the Map directory (`--map-dir`, `map` by default, §5).
+Turns a survey's proposals into Map files (spec 08 §4, spec 10 §7). Inputs: the survey (`--survey <name>`; by default the newest `Completed` survey of the Intendant given by `--intendant`, the only one in the namespace by default, the flag being required with several, as for `discover`), the Map directory (`--map-dir`, `map` by default, §5).
 
 1. It reads the survey. A survey that is not `Completed` is refused with its phase and reason (exit 2).
-2. It reads the full set from the ConfigMap that `status.proposalsConfigMap` names. When it cannot read it (no right, or deleted), it works on the first 20 proposals of the status and says how many it did not read; it never guesses the rest.
+2. It reads the full set from the ConfigMap that `status.proposalsConfigMap` names. When it cannot read it (no right, or deleted), it works on the proposals the status holds and says how many it did not read; it never guesses the rest.
 3. It hides the proposals already decided in `.takecare/review.yaml` (§5) whose entry has not changed since, unless `--all` is given.
 4. One screen per proposal: its id, action, key, source, evidence (the tool names, spec 10 §5), and the diff between the local file and the proposal's entry. When the survey's Map revision is not the local checkout's `HEAD` of the Map directory, the screen says so, and the diff is against the local file, which is what the pull request changes.
 5. The person picks, for each: **accept**, **accept and mark validated** (`status: validated`, `lastValidated` today), **skip**, or **later** (not recorded).
@@ -111,7 +111,7 @@ Factual questions about the ground only: what is there, where, and who owns it. 
 
 | Id | Question | Why |
 |---|---|---|
-| `cluster.name` | The cluster's name, as a DNS label, or empty for a single-cluster install | Names the cluster in namespaces and sources (ADR 0016 §5) |
+| `cluster.name` | The cluster's name, as a DNS label, or empty for a single-cluster install | Names the cluster in namespaces and sources (ADR 0016, decision 5) |
 | `operator.namespace` | The namespace the operator runs in | Where the roles and connectors are created |
 | `environments` | The namespaces that hold the applications, one environment each | `environment/*` entries and the roles' scope |
 | `teams` | The teams that own them, with the namespaces of each | `team/*` entries and `owner` |
@@ -126,7 +126,7 @@ Factual questions about the ground only: what is there, where, and who owns it. 
 | `map.secret` | The Secret that holds the Map's read-only deploy key or token, as `<namespace>/<name>` | Named in the connector, never read |
 | `knowledge` | A runbook source served over MCP, or none | The Intendant's `knowledge` connectors |
 
-The set and its texts are public content: they are checked with the repository's offer grep at every change (spec 04), and they never name a step of a service offer or who runs it.
+The set and its texts are factual and reviewed like code with every change.
 
 ### 4.2 Question files
 
@@ -207,7 +207,7 @@ Rights the user needs, documented here and in the command's how-to; the charts s
 |---|---|
 | `status` | `get`, `list` on `takecareplatforms`, `takecaredocs`, `takecareintendants`, `takecarerangers`, `takecareconnectors`, `takecaresurveys`, `takecareinvestigations` (`takecare.agaetis.fr`) |
 | `discover` | `get`, `list` on `takecareintendants`, `takecaresurveys`, `takecareconnectors` |
-| `review` | `get`, `list` on `takecaresurveys`; `get` on `configmaps` in the operator's namespace, for the full set |
+| `review` | `get`, `list` on `takecareintendants`, `takecaresurveys`; `get` on `configmaps` in the operator's namespace, for the full set |
 | `init`, `validate`, `version` | none |
 
 Kubernetes' built-in `view` ClusterRole covers the ConfigMap read but not these kinds: the chart does not aggregate them into it. A team gives the rights with a Role or ClusterRole of its own, for example:
@@ -253,7 +253,6 @@ None sent anywhere. Logs go to standard error, off by default, `--verbose` to tu
 - **Git**: on a temporary repository, the branch and commit are made with the configured identity; a dirty path stops the run; a refusing hook leaves the files staged and exits 2; no remote is touched.
 - **Screens**: Bubble Tea models tested by messages (`Update`, `View`) without a terminal; a few flows with the experimental `teatest` package, kept few.
 - **e2e (CI)**: after the existing Intendant check, `takecare status --output json` reports the Doc and the Intendant Ready, and `takecare review --accept all --no-commit --map-dir <tmp>` writes files that `takecare validate` accepts. No new cluster.
-- **Offer grep** on every shipped question text and template (spec 04).
 
 ## 11. Acceptance criteria
 
@@ -288,3 +287,4 @@ T2 comes before T1 because `review` replaces the most used hand procedure. The s
 2. A `takecare-reader` ClusterRole shipped by the chart, aggregated to `view`: a change to generated RBAC, not in this spec.
 3. A kubectl plugin name (`kubectl-takecare`) and a krew index entry.
 4. Per-role questions for later roles (Kiné, Mécano) come with their specs, as question files beside the built-in set.
+5. `review` handles a survey's proposals for the Map only. Whether it also shows a Kiné's reviews and their actions (spec 11 §2 and §6 leave that to this command, later) is decided with the Kiné's lots.
