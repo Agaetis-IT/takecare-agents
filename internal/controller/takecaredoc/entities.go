@@ -127,6 +127,9 @@ func (r *Reconciler) entry(ctx context.Context, ep mcp.Endpoint, key v1alpha1.En
 		if src, ok := mapschema.ParseKubernetes(s["kubernetes"]); ok && s["kubernetes"] != "" {
 			info.Places = append(info.Places, coverage.Place{Cluster: src.Cluster, Namespace: v1alpha1.Namespace(src.Namespace)})
 		}
+		if _, ok := mapschema.ParseAzure(s["azure"]); ok {
+			info.Azure = append(info.Azure, s["azure"])
+		}
 	}
 	return info
 }

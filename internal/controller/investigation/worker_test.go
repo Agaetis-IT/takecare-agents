@@ -500,22 +500,28 @@ func TestSuspendedDocRunsNothing(t *testing.T) {
 }
 
 // A bound connector that is not ready degrades the run, in status and on
-// the trace (issue #10).
+// the trace (issue #10), a cloud connector (ADR 0021) as the others.
 func TestRunDegraded(t *testing.T) {
 	t.Parallel()
+	const cloudConn = "azure"
 	f := startWorker(t, map[string][]poll{task1: {completed}})
 	f.doc(t, true, func(d *v1alpha1.TakeCareDoc) {
-		d.Spec.Connectors = v1alpha1.DocConnectors{Cluster: []string{k8sConn}, Metrics: []string{promConn}}
+		d.Spec.Connectors = v1alpha1.DocConnectors{Cluster: []string{k8sConn}, Metrics: []string{promConn}, Cloud: []string{cloudConn}}
 	})
-	for _, name := range []string{k8sConn, promConn} {
+	for _, name := range []string{k8sConn, promConn, cloudConn} {
 		c := &v1alpha1.TakeCareConnector{Name: name, Namespace: ns}
 		c.Spec.Types = []v1alpha1.ConnectorType{v1alpha1.ConnectorMetrics}
+		if name == cloudConn {
+			c.Spec.Types = []v1alpha1.ConnectorType{v1alpha1.ConnectorCloud}
+			c.Spec.Reach = &v1alpha1.Reach{Azure: &v1alpha1.AzureReach{TenantID: "00000000-0000-0000-0000-000000000000",
+				Subscriptions: []v1alpha1.AzureSubscription{{ID: "11111111-1111-1111-1111-111111111111"}}}}
+		}
 		c.Spec.MCP.Addon = name
 		if err := f.c.Create(context.Background(), c); err != nil {
 			t.Fatal(err)
 		}
 		ready := metav1.ConditionTrue
-		if name == promConn {
+		if name != k8sConn {
 			ready = metav1.ConditionFalse
 		}
 		meta.SetStatusCondition(&c.Status.Conditions, metav1.Condition{Type: v1alpha1.ConditionReady, Status: ready, Reason: testReason, LastTransitionTime: metav1.Now()})
@@ -526,10 +532,10 @@ func TestRunDegraded(t *testing.T) {
 	f.start()
 	f.investigation(t, "doc-degraded", nil)
 	inv := f.waitPhase(t, "doc-degraded", v1alpha1.PhaseCompleted)
-	if inv.Status.Degraded == nil || strings.Join(inv.Status.Degraded.Connectors, ",") != promConn {
+	if inv.Status.Degraded == nil || strings.Join(inv.Status.Degraded.Connectors, ",") != cloudConn+","+promConn {
 		t.Fatalf("degraded = %+v", inv.Status.Degraded)
 	}
-	if got := attrs(f.rootSpan(t, inv.Status.TraceID))[semconv.DegradedConnectors]; got != `["prometheus"]` {
+	if got := attrs(f.rootSpan(t, inv.Status.TraceID))[semconv.DegradedConnectors]; got != `["azure","prometheus"]` {
 		t.Errorf("span attribute %s = %q", semconv.DegradedConnectors, got)
 	}
 }

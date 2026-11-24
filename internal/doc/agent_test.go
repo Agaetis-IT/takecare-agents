@@ -34,6 +34,10 @@ func TestInstructions(t *testing.T) {
 		{"instructions-named-clusters.md", []string{"east/" + string(shopNS), "west/" + string(shopNS)}, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster, v1alpha1.ConnectorMetrics}, []string{
 			"The namespace `west/payments` (environment/west.payments): no connector reads it.",
 		}},
+		// ADR 0021: a cloud connector, and a blind spot naming an azure resource.
+		{"instructions-cloud.md", []string{string(shopNS)}, []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster, v1alpha1.ConnectorCloud, v1alpha1.ConnectorMap}, []string{
+			"The entity `compute/vm-billing`: its azure resource `/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-billing/providers/Microsoft.Compute/virtualMachines/vm-billing`: no connector reads it.",
+		}},
 	} {
 		t.Run(tc.golden, func(t *testing.T) {
 			types := map[v1alpha1.ConnectorType]bool{}

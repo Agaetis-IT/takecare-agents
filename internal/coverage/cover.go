@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
 // SPDX-License-Identifier: Apache-2.0
 
-// Package coverage decides what of a role's scope its cluster connectors
-// read (ADR 0014 §1-2, spec 08 §7): the namespaces of the scope, on every
-// cluster the connectors read (ADR 0016 §5), and the scope's entities
-// through the namespaces of their kubernetes sources in the Map. What
-// nothing reads is a blind spot, with its reason. The Doc and the
-// Intendant share this rule.
+// Package coverage decides what of a role's scope its cluster and cloud
+// connectors read (ADR 0014 §1-2, spec 08 §7): the namespaces of the scope,
+// on every cluster the connectors read (ADR 0016 §5), and the scope's
+// entities through the namespaces of their kubernetes sources and the
+// scopes of their azure sources in the Map (ADR 0021 §6). What nothing
+// reads is a blind spot, with its reason. The Doc and the Intendant share
+// this rule.
 package coverage
 
 import (
@@ -14,6 +15,7 @@ import (
 	"slices"
 	"strings"
 
+	mapschema "github.com/agaetis-it/takecare-agents/api/map"
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 )
 
@@ -51,6 +53,37 @@ type Declared struct {
 	Namespaces []v1alpha1.Namespace
 }
 
+// Reach is a bound cloud connector and the azure scopes it declares
+// (ADR 0021 §5).
+type Reach struct {
+	Connector string
+	Azure     *v1alpha1.AzureReach
+}
+
+// Holds says whether the reach holds an azure scope: its subscription is
+// listed and, when that subscription lists resource groups, its group is
+// one of them; a resource outside any group needs the whole subscription.
+// Every comparison folds case.
+func (r Reach) Holds(s mapschema.AzureScope) bool {
+	if r.Azure == nil {
+		return false
+	}
+	for _, sub := range r.Azure.Subscriptions {
+		if strings.ToLower(sub.ID) != s.Subscription {
+			continue
+		}
+		if len(sub.ResourceGroups) == 0 {
+			return true
+		}
+		if s.ResourceGroup != "" && slices.ContainsFunc(sub.ResourceGroups, func(g v1alpha1.ResourceGroupName) bool {
+			return strings.ToLower(string(g)) == s.ResourceGroup
+		}) {
+			return true
+		}
+	}
+	return false
+}
+
 // Entry is what the Map says of one key.
 type Entry struct {
 	Found     bool
@@ -58,6 +91,8 @@ type Entry struct {
 	// Places are the namespaces of the entry's kubernetes sources, each on
 	// its cluster (ADR 0016 §5).
 	Places []Place
+	// Azure are the entry's azure sources, ARM IDs that ParseAzure reads.
+	Azure []string
 	// Err is set when the Map did not answer.
 	Err string
 }
@@ -131,6 +166,22 @@ func Unread(declared []Declared, p Place) (v1alpha1.BlindSpotReason, string) {
 			by = append(by, dc.Connector)
 		}
 	}
+	return unreadBy(by)
+}
+
+// UnreadAzure says why an azure scope nothing given reads is not read, as
+// Unread does for a namespace.
+func UnreadAzure(reaches []Reach, s mapschema.AzureScope) (v1alpha1.BlindSpotReason, string) {
+	var by []string
+	for _, r := range reaches {
+		if r.Holds(s) && !slices.Contains(by, r.Connector) {
+			by = append(by, r.Connector)
+		}
+	}
+	return unreadBy(by)
+}
+
+func unreadBy(by []string) (v1alpha1.BlindSpotReason, string) {
 	if len(by) == 0 {
 		return v1alpha1.BlindSpotNoAccess, "no connector reads it"
 	}
@@ -140,11 +191,12 @@ func Unread(declared []Declared, p Place) (v1alpha1.BlindSpotReason, string) {
 // Cover decides what of the scope the given connectors read. A namespace
 // of the scope names no cluster: it is wanted on every cluster the declared
 // connectors read (ADR 0016 §5). An entity is read when one of its Map
-// sources is in a readable namespace; environment/<ns> when the namespace
+// sources is in a readable namespace, or held by the reach of a given cloud
+// connector; environment/<ns> when the namespace
 // is readable; team, observability, runbook and external are never blind
 // spots. entries are the Map's answers for the scope's entities that have
 // state on a ground; problem, when set, says why the Map could not be asked.
-func Cover(scope v1alpha1.Scope, declared []Declared, given map[string]bool, entries map[v1alpha1.EntityKey]Entry, problem MapProblem) Result {
+func Cover(scope v1alpha1.Scope, declared []Declared, reaches []Reach, given map[string]bool, entries map[v1alpha1.EntityKey]Entry, problem MapProblem) Result {
 	var res Result
 	readable := map[Place]bool{}
 	for _, dc := range declared {
@@ -185,14 +237,24 @@ func Cover(scope v1alpha1.Scope, declared []Declared, given map[string]bool, ent
 		case problem.Why != "":
 			spot(k, problem.Reason, problem.Why)
 		default:
-			res.Covered += coverEntry(k, entries[k], declared, readable, spot)
+			res.Covered += coverEntry(k, entries[k], declared, reaches, given, readable, spot)
 		}
 	}
 	slices.SortFunc(res.BlindSpots, func(x, y v1alpha1.BlindSpot) int { return strings.Compare(string(x.Entity), string(y.Entity)) })
 	return res
 }
 
-func coverEntry(k v1alpha1.EntityKey, info Entry, declared []Declared, readable map[Place]bool, spot func(v1alpha1.EntityKey, v1alpha1.BlindSpotReason, string)) int {
+func coverEntry(k v1alpha1.EntityKey, info Entry, declared []Declared, reaches []Reach, given map[string]bool, readable map[Place]bool, spot func(v1alpha1.EntityKey, v1alpha1.BlindSpotReason, string)) int {
+	var scopes []mapschema.AzureScope
+	var ids []string
+	for _, id := range info.Azure {
+		if s, ok := mapschema.ParseAzure(id); ok {
+			scopes, ids = append(scopes, s), append(ids, id)
+		}
+	}
+	held := func(s mapschema.AzureScope) bool {
+		return slices.ContainsFunc(reaches, func(r Reach) bool { return given[r.Connector] && r.Holds(s) })
+	}
 	switch {
 	case info.Err != "":
 		spot(k, v1alpha1.BlindSpotConnectorNotReady, "the Map did not answer: "+info.Err)
@@ -200,13 +262,16 @@ func coverEntry(k v1alpha1.EntityKey, info Entry, declared []Declared, readable 
 		spot(k, v1alpha1.BlindSpotNotInMap, "not in the Map")
 	case !info.Validated:
 		spot(k, v1alpha1.BlindSpotNotValidated, "proposed in the Map, not validated")
-	case len(info.Places) == 0:
-		spot(k, v1alpha1.BlindSpotNoAccess, "no kubernetes source in the Map, so no connector reads it")
-	case slices.ContainsFunc(info.Places, func(p Place) bool { return readable[p] }):
+	case len(info.Places) == 0 && len(scopes) == 0:
+		spot(k, v1alpha1.BlindSpotNoAccess, "no kubernetes or azure source in the Map, so no connector reads it")
+	case slices.ContainsFunc(info.Places, func(p Place) bool { return readable[p] }), slices.ContainsFunc(scopes, held):
 		return 1
-	default:
+	case len(info.Places) > 0:
 		reason, why := Unread(declared, info.Places[0])
 		spot(k, reason, fmt.Sprintf("its namespace `%s`: %s", info.Places[0], why))
+	default:
+		reason, why := UnreadAzure(reaches, scopes[0])
+		spot(k, reason, fmt.Sprintf("its azure resource `%s`: %s", ids[0], why))
 	}
 	return 0
 }
