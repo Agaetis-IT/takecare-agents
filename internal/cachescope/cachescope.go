@@ -43,6 +43,8 @@ func Options(operatorNS, engineNS string, gatewayKinds []schema.GroupVersionKind
 		&takecarev1alpha1.TakeCareDemo{}:          {Namespaces: operator},
 		&takecarev1alpha1.TakeCareIntendant{}:     {Namespaces: operator},
 		&takecarev1alpha1.TakeCareSurvey{}:        {Namespaces: operator},
+		&takecarev1alpha1.TakeCareKine{}:          {Namespaces: operator},
+		&takecarev1alpha1.TakeCareReview{}:        {Namespaces: operator},
 	}
 	// Third-party kinds, each once: two controllers may name the same.
 	seen := map[schema.GroupVersionKind]bool{}
