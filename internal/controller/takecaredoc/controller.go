@@ -589,8 +589,9 @@ type findings struct {
 	unknown               bool
 	problems, unavailable []string
 	// declared are the bound cluster connectors and their namespaces, in
-	// binding order.
+	// binding order; reaches the bound cloud connectors and their reach.
 	declared []coverage.Declared
+	reaches  []coverage.Reach
 	seen     map[string]bool
 	// entities are the Map's answers for scope.entities; mapProblem says,
 	// when set, why the Map could not be asked.
@@ -619,6 +620,7 @@ func typedNames(d *v1alpha1.TakeCareDoc) []struct {
 		{v1alpha1.ConnectorKnowledge, d.Spec.Connectors.Knowledge},
 		{v1alpha1.ConnectorChanges, d.Spec.Connectors.Changes},
 		{v1alpha1.ConnectorTickets, d.Spec.Connectors.Tickets},
+		{v1alpha1.ConnectorCloud, d.Spec.Connectors.Cloud},
 		{v1alpha1.ConnectorMap, d.Spec.Connectors.Map},
 	}
 }
@@ -674,6 +676,9 @@ func (r *Reconciler) inspect(ctx context.Context, d *v1alpha1.TakeCareDoc, t v1a
 	}
 	if t == v1alpha1.ConnectorCluster && c.Spec.Kubernetes != nil {
 		f.declared = append(f.declared, coverage.Declared{Connector: name, Cluster: connector.ClusterOf(c), Namespaces: c.Spec.Kubernetes.Namespaces})
+	}
+	if t == v1alpha1.ConnectorCloud && c.Spec.Reach != nil {
+		f.reaches = append(f.reaches, coverage.Reach{Connector: name, Azure: c.Spec.Reach.Azure})
 	}
 	if f.seen[name] {
 		if slices.ContainsFunc(b.rendered, func(x boundConnector) bool { return x.name == name }) {
@@ -745,7 +750,7 @@ func (b *binding) cover(d *v1alpha1.TakeCareDoc, f findings) int {
 	for k, info := range f.entities {
 		entries[k] = info.Entry
 	}
-	res := coverage.Cover(d.Spec.Scope, f.declared, given, entries, f.mapProblem)
+	res := coverage.Cover(d.Spec.Scope, f.declared, f.reaches, given, entries, f.mapProblem)
 	for _, p := range res.Readable {
 		b.readable = append(b.readable, p.String())
 	}

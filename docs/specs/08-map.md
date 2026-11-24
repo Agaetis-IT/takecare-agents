@@ -4,7 +4,7 @@
 |---|---|
 | Status | Proposed |
 | Date | 2026-11-05 |
-| Related decisions | ADR 0008, 0014, 0015; specs 02, 05, 06 (§5 invariant 4, §11), 07 (§01 Intendant), 10 |
+| Related decisions | ADR 0008, 0014, 0015; specs 02, 05, 06 (§5 invariant 4, §11), 07 (§01 Intendant), 10, 13 |
 
 ## 1. Purpose
 
@@ -116,17 +116,21 @@ The server also answers **`GET /resolve`** for the operator's alert intake (spec
 
 ## 6. Who writes
 
-Never an agent. The Intendant's survey (spec 10) proposes entries in its record's status, the deterministic import's and the agent's alike (spec 06 §5, invariant 4); a human turns them into a pull request with `takecare review` and merges it. A validated entry that the import no longer sees is not marked: it keeps its `lastSeen`, and the survey proposes its removal.
+Never an agent. The Intendant's survey (spec 10) proposes entries in its record's status, the deterministic import's and the agent's alike (spec 06 §5, invariant 4); a human turns them into a pull request with `takecare review` (spec 13 §3.4), which writes the accepted entries as files and commits them on a local branch, and merges it. `takecare review` never writes into a cluster and never pushes: the person pushes and opens the pull request with their own tools. A validated entry that the import no longer sees is not marked: it keeps its `lastSeen`, and the survey proposes its removal.
 
 ## 7. What the Map is used for
 
 - **Scope by entities** (ADR 0014 §4).
 - **Routing and the incident key** (ADR 0015 §4 and §5). The intake resolves a firing alert to an entry with `/resolve` (§5): among the `validated` entries, those with a `kubernetes` source `[<cluster>/]<namespace>/<Kind>/<name>` on the alert's cluster (`/resolve`'s `cluster` parameter, empty for the unnamed cluster) and in its namespace whose `<name>` is the alert's workload or, when none is, its `service` label; one candidate is a hit; with several, the one whose `alertedBy` lists the alert's name is the hit; anything else is a miss, `none` without a candidate, `ambiguous` with several left. A `proposed` entry never resolves. The demo's `HighErrorRate` on `billing-api` resolves to `service/billing-api`: `compute/billing-api` has the same source, the service's `alertedBy` decides.
-- **Readiness by coverage** (ADR 0014 §1). A role's `scope.entities` are read through its Map connector's `entry` tool. An entity is checked when its type has state on a ground: `service`, `compute`, `datastore`, `storage`, `network`, `identity`. It is covered when it is `validated` and one of its `sources` is `kubernetes: [<cluster>/]<namespace>/...` in a namespace that a cluster connector of that cluster, given to the role, reads. Otherwise it is a blind spot:
+- **Readiness by coverage** (ADR 0014 §1). A role's `scope.entities` are read through its Map connector's `entry` tool. An entity is checked when its type has state on a ground: `service`, `compute`, `datastore`, `storage`, `network`, `identity`. It is covered when it is `validated` and one of its `sources` is read:
+  - `kubernetes: [<cluster>/]<namespace>/...` in a namespace that a cluster connector of that cluster, given to the role, reads;
+  - `azure: <ARM ID>`, `/subscriptions/<id>[/resourceGroups/<name>][/providers/...]`, whose subscription is in the reach of a cloud connector given to the role and, when that subscription lists resource groups, whose group is one of them (ADR 0021 §6). A resource outside any group is held only by a whole-subscription reach. Every comparison folds case; an extension resource keeps its first resource group; an ID with an empty segment (a doubled or trailing slash) or another shape is not read as a source.
+
+  Otherwise it is a blind spot:
   - `NotInMap`: the key is not in the Map;
   - `NotValidated`: the entry is `proposed`;
-  - `NoAccess`: no `kubernetes` source among its sources (until other access types exist);
-  - the namespace's own reason, when its namespace is not read.
+  - `NoAccess`: neither a `kubernetes` nor an `azure` source among its sources;
+  - the reason of its first unread source: its namespace's, or for an `azure` source, `NoAccess` when no bound cloud connector's reach holds it and `ConnectorNotReady` when the ones that do are not given.
 
   `environment/<namespace>` is covered when the namespace is read. `team`, `observability`, `runbook` and `external` are never blind spots: there is nothing to read on a ground. When the Map connector is not given to the role (not discovered, no read tool), every checked entity is `ConnectorNotReady` and the role is `Degraded`, not blocked: its namespaces may still cover the ground. The operator caches the answers per connector and Map revision (`status.mapRevision`, which the connector controller reads from the add-on's `/statusz`): a new revision re-reconciles the role, and a customer's own Map server, which has no revision, is asked at every reconcile with a three-second timeout. The lookups stop at the first server error: the remaining entities carry that error.
 - **Replay**, with `map_at` and the `history` connector (step 2).

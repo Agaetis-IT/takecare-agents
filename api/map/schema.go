@@ -8,6 +8,7 @@ package mapschema
 
 import (
 	_ "embed"
+	"slices"
 	"strings"
 )
 
@@ -39,4 +40,35 @@ func ParseKubernetes(ref string) (Source, bool) {
 		return Source{Cluster: p[0], Namespace: p[1], Kind: p[2], Name: p[3]}, true
 	}
 	return Source{}, false
+}
+
+// AzureScope is where an azure source sits (ADR 0021 §6): its subscription
+// and, unless it sits outside any, its resource group, both lower-cased
+// since Azure compares them regardless of case.
+type AzureScope struct {
+	Subscription, ResourceGroup string
+}
+
+// ParseAzure reads an ARM ID, /subscriptions/<id>[/resourceGroups/<name>]
+// [/providers/<namespace>/<type>/<name>...], into its scope. After the
+// provider namespace come type and name pairs; an extension resource nested
+// under another (a second providers segment) keeps the first resource
+// group. An empty segment (a doubled or trailing slash) or any other shape
+// is not a source.
+func ParseAzure(id string) (AzureScope, bool) {
+	p := strings.Split(id, "/")
+	if len(p) < 3 || p[0] != "" || !strings.EqualFold(p[1], "subscriptions") || slices.Contains(p[1:], "") {
+		return AzureScope{}, false
+	}
+	s := AzureScope{Subscription: strings.ToLower(p[2])}
+	rest := p[3:]
+	if len(rest) >= 2 && strings.EqualFold(rest[0], "resourceGroups") {
+		s.ResourceGroup = strings.ToLower(rest[1])
+		rest = rest[2:]
+	}
+	// providers, a namespace, then at least one type and name pair.
+	if len(rest) == 0 || strings.EqualFold(rest[0], "providers") && len(rest) >= 4 && len(rest)%2 == 0 {
+		return s, true
+	}
+	return AzureScope{}, false
 }
