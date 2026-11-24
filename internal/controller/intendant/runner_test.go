@@ -355,7 +355,7 @@ func TestEntityScope(t *testing.T) {
 
 // What of an entity scope nothing reads is a blind spot, with the reason
 // the coverage rule gives: a source in a namespace no connector declares,
-// a proposed entry, an entry with no kubernetes source.
+// a proposed entry, an entry with neither kubernetes nor azure source.
 func TestEntityBlindSpots(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -381,7 +381,7 @@ func TestEntityBlindSpots(t *testing.T) {
 	}{
 		"network/billing-db-proxy": {v1alpha1.BlindSpotNoAccess, "its namespace `ack-system`: no connector reads it"},
 		"service/notifications":    {v1alpha1.BlindSpotNotValidated, "proposed in the Map"},
-		"service/payments":         {v1alpha1.BlindSpotNoAccess, "no kubernetes source"},
+		"service/payments":         {v1alpha1.BlindSpotNoAccess, "no kubernetes or azure source"},
 	}
 	if len(st.BlindSpots) != len(want) {
 		t.Fatalf("blind spots %+v", st.BlindSpots)

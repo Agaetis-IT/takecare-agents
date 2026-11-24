@@ -21,7 +21,7 @@ metadata:
   name: kubernetes
   namespace: takecare-system
 spec:
-  types: [cluster, logs]        # one or more of: cluster | metrics | logs | knowledge | changes | tickets | report | map
+  types: [cluster, logs]        # one or more of: cluster | metrics | logs | knowledge | changes | tickets | report | map | cloud
   description: Kubernetes state, events and pod logs (read-only)
   mcp:
     addon: kubernetes           # an add-on deployed by the chart, or:
@@ -146,6 +146,32 @@ spec:
 - **Namespaces**: the cluster's name qualifies its namespaces in a Doc's coverage and overlap (spec 02, ADR 0016 §5).
 - **One name, one cluster**: two connectors with the same `cluster.name` leave the later one (creation time, then name) `Ready=False`, reason `ClusterNameTaken`, naming the earlier one.
 - **Egress**: the main chart restricts neither the operator's egress nor the gateway's; a customer's own egress policy on the administration cluster must admit the fronts' addresses and port.
+
+## Cloud connectors
+
+A ground without Kubernetes is read by a connector of type `cloud` (ADR 0014 §3, ADR 0021). Its server runs in the administration cluster, as an add-on next to the Map; agents reach it only through the gateway and their own route, with the allow-list enforced there (ADR 0008). Nothing enters the ground: the server's pod has egress only, to the provider's endpoints (DNS and TCP 443, or the configured proxy), set by a NetworkPolicy like the Map's. The authorization decision stays at the data, made by the provider's own control plane. No add-on ships yet; this section fixes the API and the rules the add-on will follow.
+
+```yaml
+spec:
+  types: [cloud]
+  mcp:
+    url: https://cloud-mcp.example.internal/mcp
+  reach:
+    azure:
+      tenantID: 00000000-0000-0000-0000-000000000000
+      subscriptions:
+        - id: 11111111-1111-1111-1111-111111111111      # the whole subscription
+        - id: 22222222-2222-2222-2222-222222222222
+          resourceGroups: [rg-billing, rg-shared]          # only these groups
+```
+
+- **Reach**: `spec.reach` is required on a `cloud` connector and refused on any other; `reach.azure` is required inside it, the only provider so far. `tenantID` and each subscription `id` are GUIDs. `subscriptions` takes 1 to 64 entries, unique regardless of case. `resourceGroups` is optional: left out, the reach is the whole subscription; written, it takes 1 to 32 names, unique regardless of case, each 1 to 90 characters of Unicode letters and digits (`Lu`, `Ll`, `Lt`, `Lm`, `Lo`, `Nd`), `_`, `-`, `.`, `(` and `)`, not ending with a period (Azure's naming rule). The API stores what was written; coverage folds case (spec 08 §7). No sovereign-cloud field and no management group.
+- **Why 32 groups**: the case-folded uniqueness rule compares every pair of groups, and the API server counts that cost once for each of the 64 subscriptions. With 64 groups the estimated cost of the rule is 2.9 times the budget of one CEL rule (Kubernetes 1.37), and the CRD does not install. 32 groups fit. A reach that needs more groups in one subscription takes the whole subscription, or a second connector.
+- **Identity**: one identity per connector; agents given the same connector share it. One connector per agent gives per-agent attribution in the provider's own logs, or a narrower reach for one agent (ADR 0021 §2).
+- **Credential**: Microsoft Entra workload identity federation from the server's ServiceAccount token, the default: nothing long-lived is stored. When the administration cluster's issuer cannot be reachable by Entra, a client certificate of an app registration, its key in a Secret, a stated exception to ADR 0011 §2 with a short validity and its rotation documented. A client secret is never accepted (ADR 0021 §3).
+- **Role**: the built-in Reader at exactly the scopes of the reach, nothing else; never Monitoring Reader. Reader can read logs and resource settings, so the content boundary is the server's tool list: no log-query tool, and a tool whose result carries payload is marked `content` (ADR 0021 §4, ADR 0014 §5).
+- **Guard**: the server serves `/guardz`, read into `ReadOnlyGuard` as for a remote cluster. For each scope of the reach it lists the identity's role assignments (`assignedTo`, groups included) and their definitions, and for a resource group also reads `Microsoft.Authorization/permissions`. Any data action, write, delete or `*/action` outside the add-on's reviewed list violates it; a scope the identity cannot read is `RBACMissing`; no answer, or an answer that did not check every scope, is `GuardUnavailable` and the connector is not `Ready`. What the guard does not prove (reads outside the reach, Lighthouse delegations, log content) is written in the add-on's documentation (ADR 0021 §7).
+- **Roles**: a Doc binds cloud connectors in `spec.connectors.cloud` (at most 16). They are given to its agent like any slot, and their reaches cover the scope's entities through their `azure` sources (spec 08 §7).
 
 ## Status
 

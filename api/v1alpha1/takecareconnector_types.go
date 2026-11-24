@@ -16,7 +16,7 @@ const MaxConnectorName = 63
 const MessageConnectorName = "a connector's name is at most 63 characters unless its only type is report: its gateway backend carries the name as a label"
 
 // ConnectorType says what a connector gives access to (ADR 0008).
-// +kubebuilder:validation:Enum=cluster;metrics;logs;knowledge;changes;tickets;report;map
+// +kubebuilder:validation:Enum=cluster;metrics;logs;knowledge;changes;tickets;report;map;cloud
 type ConnectorType string
 
 // Connector types.
@@ -30,6 +30,9 @@ const (
 	ConnectorReport    ConnectorType = "report"
 	// ConnectorMap is the Map (spec 08); its tools are read only.
 	ConnectorMap ConnectorType = "map"
+	// ConnectorCloud reads a ground without Kubernetes through its
+	// provider's control plane, within spec.reach (ADR 0021).
+	ConnectorCloud ConnectorType = "cloud"
 )
 
 // ToolClass classifies an MCP tool.
@@ -49,6 +52,8 @@ const (
 // +kubebuilder:validation:XValidation:rule="!has(self.report) || 'report' in self.types",message="spec.report is only valid for a connector of type report"
 // +kubebuilder:validation:XValidation:rule="!('cluster' in self.types) || has(self.kubernetes)",message="a connector of type cluster must declare spec.kubernetes"
 // +kubebuilder:validation:XValidation:rule="!has(self.kubernetes) || 'cluster' in self.types",message="spec.kubernetes is only valid for a connector of type cluster"
+// +kubebuilder:validation:XValidation:rule="!('cloud' in self.types) || has(self.reach)",message="a connector of type cloud must declare spec.reach"
+// +kubebuilder:validation:XValidation:rule="!has(self.reach) || 'cloud' in self.types",message="spec.reach is only valid for a connector of type cloud"
 // +kubebuilder:validation:XValidation:rule="!has(self.cluster) || (has(self.mcp.url) && !has(self.mcp.addon) && self.mcp.url.startsWith('https://') && 'cluster' in self.types)",message="cluster needs an https mcp.url, no addon, and the cluster type"
 type TakeCareConnectorSpec struct {
 	// +kubebuilder:validation:MinItems=1
@@ -68,6 +73,11 @@ type TakeCareConnectorSpec struct {
 	// mcp.url only, reached with mTLS.
 	// +optional
 	Cluster *ClusterSpec `json:"cluster,omitempty"`
+
+	// What of a ground without Kubernetes the connector reads. Type cloud
+	// only (ADR 0021 §5).
+	// +optional
+	Reach *Reach `json:"reach,omitempty"`
 
 	// Overrides of the default tool classification.
 	// +listType=map
@@ -109,6 +119,60 @@ type HeaderFrom struct {
 	Name         string       `json:"name"`
 	SecretKeyRef SecretKeyRef `json:"secretKeyRef"`
 }
+
+// Reach is what of a ground without Kubernetes a cloud connector reads
+// (ADR 0018 §1), one block per provider; azure is the only one.
+type Reach struct {
+	// +required
+	Azure *AzureReach `json:"azure"`
+}
+
+// AzureReach is a list of subscriptions of one tenant, each whole or
+// narrowed to resource groups (ADR 0021 §5). Azure compares IDs and names
+// regardless of case, so do the uniqueness rules and coverage; the API
+// stores what was written.
+type AzureReach struct {
+	// The Microsoft Entra tenant, a GUID.
+	// +kubebuilder:validation:MaxLength=36
+	// +kubebuilder:validation:Pattern=`^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$`
+	TenantID string `json:"tenantID"`
+
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=64
+	// +kubebuilder:validation:XValidation:rule="self.all(s, self.exists_one(t, t.id.lowerAscii() == s.id.lowerAscii()))",message="subscription IDs are unique regardless of case"
+	// +listType=map
+	// +listMapKey=id
+	Subscriptions []AzureSubscription `json:"subscriptions"`
+}
+
+// AzureSubscription is a subscription of the reach: the whole of it, or
+// only the listed resource groups.
+type AzureSubscription struct {
+	// The subscription ID, a GUID.
+	// +kubebuilder:validation:MaxLength=36
+	// +kubebuilder:validation:Pattern=`^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$`
+	ID string `json:"id"`
+
+	// Only these resource groups; unset, the whole subscription. At most
+	// 32: the case-folded uniqueness rule is quadratic in the groups and
+	// counted for each of the 64 subscriptions, and 64 groups exceed the API
+	// server's CEL cost budget for one rule (2.9 times over, Kubernetes
+	// 1.37), so the CRD would not install.
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=32
+	// +kubebuilder:validation:XValidation:rule="self.all(g, self.exists_one(h, h.lowerAscii() == g.lowerAscii()))",message="resource group names are unique regardless of case"
+	// +listType=set
+	// +optional
+	ResourceGroups []ResourceGroupName `json:"resourceGroups,omitempty"`
+}
+
+// ResourceGroupName is an Azure resource group name: 1 to 90 characters,
+// letters and digits in the Unicode sense (Char.IsLetterOrDigit: Lu, Ll,
+// Lt, Lm, Lo, Nd), underscores, hyphens, periods and parentheses, not
+// ending with a period.
+// +kubebuilder:validation:MaxLength=90
+// +kubebuilder:validation:Pattern=`^[-_.()\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nd}]{0,89}[-_()\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nd}]$`
+type ResourceGroupName string
 
 // ClusterSpec names a workload cluster and the TLS material that reaches
 // its front, from Secrets in the connector's namespace.

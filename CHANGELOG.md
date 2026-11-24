@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- API: a connector type `cloud` for a ground without Kubernetes, with `spec.reach.azure`: a tenant and its subscriptions, each whole or narrowed to resource groups (ADR 0021). The API checks the IDs, Azure's resource group naming rule and uniqueness regardless of case; it takes up to 64 subscriptions and 32 groups per subscription. A Doc binds such connectors in `spec.connectors.cloud`, and an entity with an `azure` source in the Map is covered when a given connector's reach holds it. No add-on serves the type yet.
+
+### Changed
+
+- A blind spot for an entity with no source a connector can read now says "no kubernetes or azure source in the Map", instead of "no kubernetes source".
+
 ### Fixed
 
 - When a role's connector, model or A2A route is removed, the operator deletes the gateway route before its policies and backend. Until now it deleted the policies first, which left a short window where the gateway served the route without its allow-list or argument rule.

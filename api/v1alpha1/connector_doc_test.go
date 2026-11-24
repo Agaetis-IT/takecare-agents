@@ -5,9 +5,13 @@ package v1alpha1_test
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
@@ -42,6 +46,121 @@ func reportConnector() *v1alpha1.TakeCareConnector {
 			},
 		},
 	}
+}
+
+const (
+	subA     = "1111aaaa-1111-1111-1111-111111111111"
+	subB     = "2222bbbb-2222-2222-2222-222222222222"
+	tenantID = "00000000-0000-0000-0000-000000000000"
+	wantRG   = "resourceGroups"
+)
+
+func cloudConnector() *v1alpha1.TakeCareConnector {
+	return &v1alpha1.TakeCareConnector{
+		Name: uniqueName("azure"), Namespace: testNamespace,
+		Spec: v1alpha1.TakeCareConnectorSpec{
+			Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorCloud},
+			MCP:   v1alpha1.MCPSpec{URL: "https://cloud-mcp.example.internal/mcp"},
+			Reach: &v1alpha1.Reach{Azure: &v1alpha1.AzureReach{
+				TenantID: tenantID,
+				Subscriptions: []v1alpha1.AzureSubscription{
+					{ID: subA},
+					{ID: subB, ResourceGroups: []v1alpha1.ResourceGroupName{"rg-billing", "rg-shared"}},
+				},
+			}},
+		},
+	}
+}
+
+// groupsOf sets the resource groups of the cloud connector's second
+// subscription.
+func groupsOf(names ...v1alpha1.ResourceGroupName) func(*v1alpha1.TakeCareConnector) {
+	return func(c *v1alpha1.TakeCareConnector) { c.Spec.Reach.Azure.Subscriptions[1].ResourceGroups = names }
+}
+
+// TestAzureReachValidation: the reach of a cloud connector (ADR 0021 §5),
+// the resource group pattern checked by the API server's own regexp
+// engine, Unicode classes included.
+func TestAzureReachValidation(t *testing.T) {
+	subs := func(n int) []v1alpha1.AzureSubscription {
+		out := make([]v1alpha1.AzureSubscription, n)
+		for i := range out {
+			out[i].ID = fmt.Sprintf("%08x-0000-0000-0000-000000000000", i)
+		}
+		return out
+	}
+	rgs := func(n int) []v1alpha1.ResourceGroupName {
+		out := make([]v1alpha1.ResourceGroupName, n)
+		for i := range out {
+			out[i] = v1alpha1.ResourceGroupName(fmt.Sprintf("rg-%d", i))
+		}
+		return out
+	}
+	tests := []struct {
+		name   string
+		mutate func(*v1alpha1.TakeCareConnector)
+		want   string
+	}{
+		{"cloud connector", func(*v1alpha1.TakeCareConnector) {}, ""},
+		{"cloud connector with another type", func(c *v1alpha1.TakeCareConnector) {
+			c.Spec.Types = append(c.Spec.Types, v1alpha1.ConnectorMetrics)
+		}, ""},
+		{"cloud without reach", func(c *v1alpha1.TakeCareConnector) { c.Spec.Reach = nil }, "must declare spec.reach"},
+		{"reach without the cloud type", func(c *v1alpha1.TakeCareConnector) {
+			c.Spec.Types = []v1alpha1.ConnectorType{v1alpha1.ConnectorMetrics}
+		}, "only valid for a connector of type cloud"},
+		{"reach without azure", func(c *v1alpha1.TakeCareConnector) { c.Spec.Reach.Azure = nil }, "reach.azure"},
+		{"tenant not a GUID", func(c *v1alpha1.TakeCareConnector) { c.Spec.Reach.Azure.TenantID = "contoso.onmicrosoft.com" }, "tenantID"},
+		{"no subscription", func(c *v1alpha1.TakeCareConnector) { c.Spec.Reach.Azure.Subscriptions = nil }, "subscriptions"},
+		{"subscription not a GUID", func(c *v1alpha1.TakeCareConnector) { c.Spec.Reach.Azure.Subscriptions[0].ID = "sub-shop" }, "id"},
+		{"subscription twice", func(c *v1alpha1.TakeCareConnector) { c.Spec.Reach.Azure.Subscriptions[1].ID = subA }, wantDuplicate},
+		{"subscription twice in another case", func(c *v1alpha1.TakeCareConnector) {
+			c.Spec.Reach.Azure.Subscriptions[1].ID = strings.ToUpper(subA)
+		}, "unique regardless of case"},
+		{"64 subscriptions", func(c *v1alpha1.TakeCareConnector) { c.Spec.Reach.Azure.Subscriptions = subs(64) }, ""},
+		{"65 subscriptions", func(c *v1alpha1.TakeCareConnector) { c.Spec.Reach.Azure.Subscriptions = subs(65) }, "subscriptions"},
+		{"32 resource groups", groupsOf(rgs(32)...), ""},
+		{"33 resource groups", groupsOf(rgs(33)...), wantRG},
+		{"resource group twice in another case", groupsOf("rg-billing", "RG-Billing"), "unique regardless of case"},
+		{"resource group names Azure allows", groupsOf("rg_shop.eu-1", "(rg)", "rg-café", "グループ", "rg-٣", "-"), ""},
+		{"resource group of 90 characters", groupsOf(v1alpha1.ResourceGroupName(strings.Repeat("é", 90))), ""},
+		{"resource group of 91 characters", groupsOf(v1alpha1.ResourceGroupName(strings.Repeat("r", 91))), wantRG},
+		{"resource group ending with a period", groupsOf("rg-shop."), wantRG},
+		{"resource group with a space", groupsOf("rg shop"), wantRG},
+		{"resource group with a slash", groupsOf("rg/shop"), wantRG},
+		{"resource group with a symbol", groupsOf("rg+shop"), wantRG},
+		{"empty resource group", groupsOf(""), wantRG},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := cloudConnector()
+			tt.mutate(c)
+			checkError(t, create(t, c), tt.want)
+		})
+	}
+}
+
+// TestAzureReachRefusesAnEmptyGroupList: resourceGroups: [] does not mean
+// the whole subscription, which is written by leaving the field out. Go's
+// omitempty drops an empty list, so the object is sent as written.
+func TestAzureReachRefusesAnEmptyGroupList(t *testing.T) {
+	c := cloudConnector()
+	c.Spec.Reach.Azure.Subscriptions[1].ResourceGroups = nil
+	raw, err := runtime.DefaultUnstructuredConverter.ToUnstructured(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := &unstructured.Unstructured{Object: raw}
+	u.SetGroupVersionKind(v1alpha1.GroupVersion.WithKind("TakeCareConnector"))
+	subs, _, err := unstructured.NestedSlice(u.Object, "spec", "reach", "azure", "subscriptions")
+	if err != nil || len(subs) != 2 {
+		t.Fatalf("subscriptions %v: %v", subs, err)
+	}
+	subs[1].(map[string]any)[wantRG] = []any{}
+	if err := unstructured.SetNestedSlice(u.Object, subs, "spec", "reach", "azure", "subscriptions"); err != nil {
+		t.Fatal(err)
+	}
+	checkError(t, create(t, u), wantRG)
 }
 
 func TestConnectorValidation(t *testing.T) {
