@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The Kiné's API (spec 11), ahead of its controller: the kinds `TakeCareKine` (short name `tckine`) and `TakeCareReview` (`tcreview`), with their CRDs in the `takecare-crds` chart. A Kiné needs exactly one `history` connector; its name is at most 49 characters and a review's at most 63, refused at creation. A review's spec is immutable and its status bounded (20 actions, a 4 KiB problem statement, a 16 KiB post-mortem draft). Nothing creates or runs a review yet.
+- The connector type `history`, for TakeCare's own investigations and reviews (spec 11 §4). Its server comes with the next lot.
+- The operator's rights on the Kiné's kinds in `takecare-system`, decided by the product owner: `get`, `list`, `watch` and `update` on `takecarekines`, `update` on `takecarekines/finalizers`, `create`, `delete`, `get`, `list`, `patch` and `watch` on `takecarereviews`, and `patch` on both kinds' `status`.
+
 ### Fixed
 
 - When a role's connector, model or A2A route is removed, the operator deletes the gateway route before its policies and backend. Until now it deleted the policies first, which left a short window where the gateway served the route without its allow-list or argument rule.

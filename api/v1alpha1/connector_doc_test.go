@@ -37,7 +37,7 @@ func reportConnector() *v1alpha1.TakeCareConnector {
 				Adapter: "slack",
 				Destinations: []v1alpha1.Destination{
 					{Name: destOnCall, Target: "#on-call"},
-					{Name: "review", Target: "#takecare-review"},
+					{Name: destReview, Target: "#takecare-review"},
 				},
 			},
 		},
@@ -168,10 +168,10 @@ func docFixture() *v1alpha1.TakeCareDoc {
 			Connectors: v1alpha1.DocConnectors{
 				Cluster:   []string{addonKubernetes},
 				Metrics:   []string{connPrometheus},
-				Knowledge: []string{"incidents", "runbooks", "vendor"},
+				Knowledge: []string{"incidents", connRunbooks, "vendor"},
 				Report:    connReport,
 			},
-			Report: v1alpha1.ReportDestinations{Apprentice: "review", Practitioner: destOnCall},
+			Report: v1alpha1.ReportDestinations{Apprentice: destReview, Practitioner: destOnCall},
 			Alerts: v1alpha1.AlertsSpec{Matchers: []v1alpha1.AlertMatcher{{Name: "severity", Value: critical}}},
 		},
 	}
@@ -192,7 +192,7 @@ func TestDocValidation(t *testing.T) {
 		{"suspended", func(d *v1alpha1.TakeCareDoc) { d.Spec.Suspend = true }, ""},
 		{caseUnknownLevel, func(d *v1alpha1.TakeCareDoc) { d.Spec.Level = badLevel }, wantLevel},
 		{"the old value trial is rejected", func(d *v1alpha1.TakeCareDoc) { d.Spec.Level = "trial" }, wantLevel},
-		{"empty scope", func(d *v1alpha1.TakeCareDoc) { d.Spec.Scope.Namespaces = nil }, "at least one selector"},
+		{caseEmptyScope, func(d *v1alpha1.TakeCareDoc) { d.Spec.Scope.Namespaces = nil }, wantSelector},
 		{"entities without namespaces: routed by entity", func(d *v1alpha1.TakeCareDoc) {
 			d.Spec.Scope = v1alpha1.Scope{Entities: []v1alpha1.EntityKey{entityBilling}}
 		}, ""},

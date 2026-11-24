@@ -288,6 +288,7 @@ spec:
                   - tickets
                   - report
                   - map
+                  - history
                   type: string
                 minItems: 1
                 type: array
