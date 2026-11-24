@@ -38,6 +38,7 @@ spec:
     knowledge: [incidents, runbooks, vendor]
     changes: [deployments]
     tickets: [support]
+    cloud: [azure]               # cloud connectors (spec 05, ADR 0021): a ground without Kubernetes, read within their reach
     map: [map]                   # the Map connector (spec 08): one per scope, its five read tools given at every level
     report: report               # the report connector (Slack adapter, or log in a demo without Slack)
   report:

@@ -1,0 +1,35 @@
+Namespace takecare-system
+
+PLATFORM
+  main
+    Ready True (Ready)
+    ProductionReady False (Gaps): 2 advisory gaps
+
+ROLES
+  TakeCareDoc doc, level Practitioner: True (Ready)
+    Degraded True (BlindSpots): 1 entity not covered
+    blind spot service/billing-api: NotValidated: the entry is proposed
+  TakeCareIntendant intendant, level Apprentice: False (ConnectorsNotReady): map is not Ready
+    ConnectorsReady False (NotReady): map
+  TakeCareRanger main, level Apprentice: True (Ready)
+
+CONNECTORS
+  NAME        TYPES         READY                                    READ  PROPOSE  ACT  CONTENT  MAP REVISION
+  kubernetes  cluster,logs  True (Ready)                             3     0        1    1        -
+  map         map           False (Unreachable): connection refused  0     1        0    0        4f9c2e1
+  report      report        no Ready condition                       0     0        0    0        -
+
+SURVEYS (newest 5)
+  NAME         PHASE      TRIGGER   AGE  REASON
+  intendant-0  Completed  Schedule  24h  -
+  intendant-1  Completed  Schedule  2d   -
+  intendant-2  Completed  Schedule  3d   -
+  intendant-3  Completed  Schedule  4d   -
+  intendant-4  Completed  Schedule  5d   -
+
+INVESTIGATIONS (newest 5)
+  NAME                 PHASE      ALERT          AGE   REASON
+  doc-higherrorrate-1  Failed     HighErrorRate  3m    TimedOut
+  doc-higherrorrate-0  Completed  HighErrorRate  120m  -
+
+Not Ready: TakeCareIntendant/intendant, TakeCareConnector/map, TakeCareConnector/report

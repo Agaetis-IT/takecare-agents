@@ -79,6 +79,13 @@ type DocConnectors struct {
 	// +listType=set
 	// +optional
 	Tickets []string `json:"tickets,omitempty"`
+	// Cloud connectors (type cloud, ADR 0021): a ground without Kubernetes,
+	// read within each connector's spec.reach.
+	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:items:MaxLength=253
+	// +listType=set
+	// +optional
+	Cloud []string `json:"cloud,omitempty"`
 	// The Map connector (type map, spec 08): one Map per scope. Its read
 	// tools are given at every level, and it covers scope.entities.
 	// +kubebuilder:validation:MaxItems=1

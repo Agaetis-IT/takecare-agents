@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- The `takecare` command (spec 13), its first lot: `takecare status` shows the platform, each role with its level, readiness and blind spots, the connectors with their tools by class, and the newest surveys and investigations, in text or JSON; its exit code is 1 when something is not Ready, for scripts. `takecare version` prints the version and commit. The command only reads the cluster, with the user's own rights (get and list on the TakeCare kinds, listed in `docs/how-to/takecare-command.md`), and never writes into it or into the kubeconfig. Install it with `go install github.com/agaetis-it/takecare-agents/cmd/takecare@<version>`.
+- API: a connector type `cloud` for a ground without Kubernetes, with `spec.reach.azure`: a tenant and its subscriptions, each whole or narrowed to resource groups (ADR 0021). The API checks the IDs, Azure's resource group naming rule and uniqueness regardless of case; it takes up to 64 subscriptions and 32 groups per subscription. A Doc binds such connectors in `spec.connectors.cloud`, and an entity with an `azure` source in the Map is covered when a given connector's reach holds it. No add-on serves the type yet.
 - The Kiné's API (spec 11), ahead of its controller: the kinds `TakeCareKine` (short name `tckine`) and `TakeCareReview` (`tcreview`), with their CRDs in the `takecare-crds` chart. A Kiné needs exactly one `history` connector; its name is at most 49 characters and a review's at most 63, refused at creation. A review's spec is immutable and its status bounded (20 actions, a 4 KiB problem statement, a 16 KiB post-mortem draft). Nothing creates or runs a review yet.
 - The connector type `history`, for TakeCare's own investigations and reviews (spec 11 §4). Its server comes with the next lot.
 - The operator's rights on the Kiné's kinds in `takecare-system`, decided by the product owner: `get`, `list`, `watch` and `update` on `takecarekines`, `update` on `takecarekines/finalizers`, `create`, `delete`, `get`, `list`, `patch` and `watch` on `takecarereviews`, and `patch` on both kinds' `status`.
@@ -15,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- A blind spot for an entity with no source a connector can read now says "no kubernetes or azure source in the Map", instead of "no kubernetes source".
 - Ended investigations are kept 90 days by default (`investigations.retention: 2160h`) instead of 7, so that the Kiné can see recurrences. Two thousand investigations with their diagnoses weigh tens of MiB in etcd. The upgrade deletes nothing more than before.
 
 ### Fixed
