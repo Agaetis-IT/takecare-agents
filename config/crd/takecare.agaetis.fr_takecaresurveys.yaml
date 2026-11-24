@@ -71,12 +71,15 @@ spec:
               human for an on-demand survey, writes it once; it never changes.
             properties:
               intendantRef:
-                description: RoleRef names the role resource that owns an investigation.
+                description: |-
+                  RoleRef names the role resource that owns a record: an investigation,
+                  a survey or a review.
                 properties:
                   kind:
                     enum:
                     - TakeCareDoc
                     - TakeCareIntendant
+                    - TakeCareKine
                     type: string
                   name:
                     minLength: 1

@@ -940,8 +940,17 @@ func TestCRDChart(t *testing.T) {
 			other = append(other, c.GetName())
 		}
 	}
-	if len(takecare) != 8 {
-		t.Errorf("want the 8 TakeCare CRDs, got %v", takecare)
+	wantCRDs := []string{
+		"takecareconnectors", "takecaredemos", "takecaredocs", "takecareintendants",
+		"takecareinvestigations", "takecarekines", "takecareplatforms", "takecarerangers",
+		"takecarereviews", "takecaresurveys",
+	}
+	for i, n := range wantCRDs {
+		wantCRDs[i] = n + ".takecare.agaetis.fr"
+	}
+	slices.Sort(takecare)
+	if !slices.Equal(takecare, wantCRDs) {
+		t.Errorf("TakeCare CRDs: got %v, want %v", takecare, wantCRDs)
 	}
 	if slices.Contains(other, "dbproxies.rds.services.k8s.aws") {
 		t.Error("the demo CRD is rendered without demo.enabled")

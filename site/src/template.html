@@ -893,6 +893,30 @@ metadata:
 spec:
   intendantRef: { kind: TakeCareIntendant, name: intendant }
   trigger: OnDemand`},
+ {kind:"TakeCareKine", card:"kine", sub:"Le Kiné : son niveau, son périmètre, ses connecteurs (l'historique des enquêtes d'abord) et le rythme de sa revue périodique. Cette version livre la ressource seule : aucune revue ne tourne encore.", spec:"11-kine.md", yaml:`apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareKine
+metadata:
+  name: kine
+  namespace: takecare-system
+spec:
+  level: Apprentice
+  scope:
+    namespaces: [demo-apps]
+  connectors:
+    history: [history]
+    knowledge: [runbooks]
+    report: report
+  schedule: "0 6 * * 1"  # UTC
+  review:
+    lookback: 720h`},
+ {kind:"TakeCareReview", card:"kine", sub:"Une revue du Kiné, après un incident, à échéance ou à la demande : son statut portera le problème, ses récurrences et les actions correctives suivies. Cette version livre la ressource seule : rien ne la lance encore.", spec:"11-kine.md", yaml:`apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareReview
+metadata:
+  name: review-by-hand
+  namespace: takecare-system
+spec:
+  kineRef: { kind: TakeCareKine, name: kine }
+  trigger: OnDemand`},
  {kind:"TakeCareDemo", card:"terrain", sub:"Le Terrain d'entraînement de la démo : le décor billing-api et l'incident à rejouer.", spec:"03-demo.md", yaml:`apiVersion: takecare.agaetis.fr/v1alpha1
 kind: TakeCareDemo
 metadata:
@@ -912,7 +936,7 @@ status:
     - type: Ready
     - type: SceneryReady`}
 ];
-const PLANNED = ROLES.filter(r=>r.next).map(r=>[r.k,"TakeCare"+r.k[0].toUpperCase()+r.k.slice(1)]);
+const PLANNED = ROLES.filter(r=>r.next).map(r=>[r.k,"TakeCare"+r.k[0].toUpperCase()+r.k.slice(1)]).filter(([,kind])=>!KINDS.some(x=>x.kind===kind)); // a kind already in the Reference is not listed again
 const hl = y => esc(y).split("\n").map(l=>{ const m=l.match(/^(\s*-?\s*)([A-Za-z][\w.\/-]*)(:)(.*)$/); let s = m ? `${m[1]}<span class="yk">${m[2]}</span>${m[3]}${m[4]}` : l; return s.replace(/(#.*)$/,'<span class="yc">$1</span>'); }).join("\n");
 const KBYCARD = Object.fromEntries(KINDS.slice().reverse().map(x=>[x.card,x])); // the first kind of a card wins: the Intendant's sheet flips to TakeCareIntendant
 const flipCard = x => `<div class="flip" role="button" tabindex="0" aria-pressed="false" data-kind="${x.kind}" aria-label="Retourner la carte ${x.kind}">

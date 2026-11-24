@@ -31,9 +31,10 @@ type TakeCareInvestigationSpec struct {
 	Silent bool `json:"silent,omitempty"`
 }
 
-// RoleRef names the role resource that owns an investigation.
+// RoleRef names the role resource that owns a record: an investigation,
+// a survey or a review.
 type RoleRef struct {
-	// +kubebuilder:validation:Enum=TakeCareDoc;TakeCareIntendant
+	// +kubebuilder:validation:Enum=TakeCareDoc;TakeCareIntendant;TakeCareKine
 	Kind string `json:"kind"`
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
