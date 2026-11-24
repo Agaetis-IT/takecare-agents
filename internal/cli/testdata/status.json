@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "namespace": "takecare-system",
+  "notReady": [
+    "TakeCareIntendant/intendant",
+    "TakeCareConnector/map",
+    "TakeCareConnector/report"
+  ],
+  "platforms": [
+    {
+      "name": "main",
+      "conditions": [
+        {
+          "type": "Ready",
+          "status": "True",
+          "reason": "Ready"
+        },
+        {
+          "type": "ProductionReady",
+          "status": "False",
+          "reason": "Gaps",
+          "message": "2 advisory gaps"
+        }
+      ]
+    }
+  ],
+  "roles": [
+    {
+      "kind": "TakeCareDoc",
+      "name": "doc",
+      "level": "Practitioner",
+      "ready": {
+        "type": "Ready",
+        "status": "True",
+        "reason": "Ready"
+      },
+      "conditions": [
+        {
+          "type": "Degraded",
+          "status": "True",
+          "reason": "BlindSpots",
+          "message": "1 entity not covered"
+        }
+      ],
+      "blindSpots": [
+        {
+          "entity": "service/billing-api",
+          "reason": "NotValidated",
+          "message": "the entry is proposed"
+        }
+      ]
+    },
+    {
+      "kind": "TakeCareIntendant",
+      "name": "intendant",
+      "level": "Apprentice",
+      "ready": {
+        "type": "Ready",
+        "status": "False",
+        "reason": "ConnectorsNotReady",
+        "message": "map is not Ready"
+      },
+      "conditions": [
+        {
+          "type": "ConnectorsReady",
+          "status": "False",
+          "reason": "NotReady",
+          "message": "map"
+        }
+      ],
+      "blindSpots": []
+    },
+    {
+      "kind": "TakeCareRanger",
+      "name": "main",
+      "level": "Apprentice",
+      "ready": {
+        "type": "Ready",
+        "status": "True",
+        "reason": "Ready"
+      },
+      "conditions": [],
+      "blindSpots": []
+    }
+  ],
+  "connectors": [
+    {
+      "name": "kubernetes",
+      "types": [
+        "cluster",
+        "logs"
+      ],
+      "ready": {
+        "type": "Ready",
+        "status": "True",
+        "reason": "Ready"
+      },
+      "tools": {
+        "read": 3,
+        "propose": 0,
+        "act": 1,
+        "content": 1
+      }
+    },
+    {
+      "name": "map",
+      "types": [
+        "map"
+      ],
+      "ready": {
+        "type": "Ready",
+        "status": "False",
+        "reason": "Unreachable",
+        "message": "connection refused"
+      },
+      "tools": {
+        "read": 0,
+        "propose": 1,
+        "act": 0,
+        "content": 0
+      },
+      "mapRevision": "4f9c2e1"
+    },
+    {
+      "name": "report",
+      "types": [
+        "report"
+      ],
+      "ready": null,
+      "tools": {
+        "read": 0,
+        "propose": 0,
+        "act": 0,
+        "content": 0
+      }
+    }
+  ],
+  "surveys": [
+    {
+      "name": "intendant-0",
+      "phase": "Completed",
+      "trigger": "Schedule",
+      "created": "2026-11-23T12:00:00Z"
+    },
+    {
+      "name": "intendant-1",
+      "phase": "Completed",
+      "trigger": "Schedule",
+      "created": "2026-11-22T12:00:00Z"
+    },
+    {
+      "name": "intendant-2",
+      "phase": "Completed",
+      "trigger": "Schedule",
+      "created": "2026-11-21T12:00:00Z"
+    },
+    {
+      "name": "intendant-3",
+      "phase": "Completed",
+      "trigger": "Schedule",
+      "created": "2026-11-20T12:00:00Z"
+    },
+    {
+      "name": "intendant-4",
+      "phase": "Completed",
+      "trigger": "Schedule",
+      "created": "2026-11-19T12:00:00Z"
+    }
+  ],
+  "investigations": [
+    {
+      "name": "doc-higherrorrate-1",
+      "phase": "Failed",
+      "trigger": "HighErrorRate",
+      "created": "2026-11-24T11:57:00Z",
+      "reason": "TimedOut"
+    },
+    {
+      "name": "doc-higherrorrate-0",
+      "phase": "Completed",
+      "trigger": "HighErrorRate",
+      "created": "2026-11-24T10:00:00Z"
+    }
+  ]
+}
