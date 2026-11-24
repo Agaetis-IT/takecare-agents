@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - The `takecare` command (spec 13), its first lot: `takecare status` shows the platform, each role with its level, readiness and blind spots, the connectors with their tools by class, and the newest surveys and investigations, in text or JSON; its exit code is 1 when something is not Ready, for scripts. `takecare version` prints the version and commit. The command only reads the cluster, with the user's own rights (get and list on the TakeCare kinds, listed in `docs/how-to/takecare-command.md`), and never writes into it or into the kubeconfig. Install it with `go install github.com/agaetis-it/takecare-agents/cmd/takecare@<version>`.
+- `takecare review` turns a survey's proposals into Map files: one screen per proposal with its evidence and the diff against the local file, or `--accept <ids>|all` and `--skip <ids>` without a terminal. An Add writes the entry's file, an Update replaces it and keeps its `provenance`, `created` and `owner`, a Remove deletes it and the relations other entries declare to it. The whole result is checked with the Map server's checks before anything is written. The decisions are recorded in `.takecare/review.yaml`, so that a proposal decided once is shown again only when its entry changed. The files are committed on a local branch with your own `git`, identity and signing; nothing is pushed. It reads the cluster with get and list on the Intendants and surveys, and get on the survey's ConfigMap.
+- `takecare validate` checks a Map directory offline with the Map server's own checks and reports every fault at once, each with its file; its exit code is 1 when the Map does not validate, for a CI job on the Map's repository.
 
 ### Fixed
 

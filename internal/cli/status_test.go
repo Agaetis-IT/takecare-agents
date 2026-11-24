@@ -218,7 +218,7 @@ func TestUsageErrors(t *testing.T) {
 		{[]string{cmdStatus, flagOutput, "yaml"}, ExitError},
 		{[]string{cmdStatus, "extra"}, ExitError},
 		{[]string{cmdStatus, "--unknown"}, ExitError},
-		{[]string{cmdStatus, "--kubeconfig", "/nonexistent/kubeconfig"}, ExitError},
+		{[]string{cmdStatus, flagKubecfg, "/nonexistent/kubeconfig"}, ExitError},
 		{[]string{cmdVersion, flagOutput, "yaml"}, ExitError},
 	} {
 		var out, errOut bytes.Buffer

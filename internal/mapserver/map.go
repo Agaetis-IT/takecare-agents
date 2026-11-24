@@ -210,18 +210,35 @@ func Load(fsys fs.FS) (*Map, error) {
 	if err != nil {
 		return nil, err
 	}
+	m.Revision = Revision(files)
+	return m, nil
+}
+
+// Revision is the revision a directory's Map is served at: a hash of its
+// files, by path under map/.
+func Revision(files map[string][]byte) string {
 	h := sha256.New()
 	for _, p := range slices.Sorted(maps.Keys(files)) {
 		_, _ = fmt.Fprintf(h, "%s\x00%d\x00", p, len(files[p]))
 		_, _ = h.Write(files[p])
 	}
-	m.Revision = hex.EncodeToString(h.Sum(nil))[:12]
-	return m, nil
+	return hex.EncodeToString(h.Sum(nil))[:12]
 }
 
 // build checks a Map's files, by path under map/ (dotfiles already left
 // out), whatever they were read from: a directory or a Git tree.
 func build(files map[string][]byte) (*Map, error) {
+	m, errs := Check(files)
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
+	}
+	return m, nil
+}
+
+// Check checks a Map's files, by path under map/ (dotfiles left out), and
+// returns every fault, each naming its file; the Map is nil when there is
+// one. It is the check the Map server runs before serving a revision.
+func Check(files map[string][]byte) (*Map, []error) {
 	m := &Map{Entries: map[string]*Entry{}, out: map[string][]edge{}, in: map[string][]edge{}}
 	where := map[string]string{} // key -> its file
 	var errs []error
@@ -245,7 +262,7 @@ func build(files map[string][]byte) (*Map, error) {
 		errs = append(errs, entryRules(m.Entries[k], where[k])...)
 	}
 	if len(errs) > 0 {
-		return nil, errors.Join(errs...)
+		return nil, errs
 	}
 	return m, nil
 }

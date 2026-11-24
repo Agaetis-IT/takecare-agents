@@ -2,7 +2,7 @@
 
 `takecare` is the command-line tool for the people who set up and keep a TakeCare install ([spec 13](../specs/13-tui.md)). It reads the cluster and works on files in your Git working copy. **It never writes into a cluster**: it has no create, update, patch or delete call, no watch, no exec and no port-forward, and it never changes your kubeconfig.
 
-This page covers the commands shipped so far: `status` and `version`. `review`, `validate`, `init` and `discover` come with the next lots of spec 13.
+This page covers the commands shipped so far: `status`, `review`, `validate` and `version`. `init` and `discover` come with the next lots of spec 13.
 
 ## Install
 
@@ -25,7 +25,8 @@ It reads with your own rights. The charts ship no role for it: give the people w
 | Command | Rights |
 |---|---|
 | `status` | `get`, `list` on `takecareplatforms`, `takecaredocs`, `takecareintendants`, `takecarerangers`, `takecareconnectors`, `takecaresurveys`, `takecareinvestigations` (`takecare.agaetis.fr`) |
-| `version` | none |
+| `review` | `get`, `list` on `takecareintendants`, `takecaresurveys` (`takecare.agaetis.fr`); `get` on `configmaps` in the operator's namespace, for the survey's full set of proposals |
+| `validate`, `version` | none |
 
 Kubernetes' built-in `view` ClusterRole does not cover the TakeCare kinds. For example:
 
@@ -64,16 +65,46 @@ A script can wait for an install with the exit code:
 until takecare status >/dev/null; do sleep 10; done
 ```
 
+## `takecare review`
+
+Turns a survey's proposals into Map files, on a local branch of your Map's repository. [Reviewing the Intendant's proposals](review-proposals.md) walks through it.
+
+```bash
+takecare review                                   # the newest Completed survey, one screen per proposal
+takecare review --survey intendant-q6w6z --accept 7ea96a023f5377bf --skip c99d0a2b8b21007e
+takecare review --accept all --no-commit --map-dir /tmp/map
+```
+
+| Flag | Meaning |
+|---|---|
+| `--survey` | the survey; by default the newest `Completed` survey of the Intendant |
+| `--intendant` | the Intendant, required when the namespace holds several |
+| `--map-dir` | the Map directory, `map` by default |
+| `--state-dir` | where the review record is kept, `.takecare` by default |
+| `--accept <ids>\|all`, `--skip <ids>` | the decisions, without a terminal; a proposal neither accepted nor skipped is left for later |
+| `--mark-validated` | mark every accepted Add and Update `validated`, today |
+| `--all` | show the proposals already decided too |
+| `--branch`, `--no-commit` | the branch to commit on (`takecare/review-<survey>` by default), or no branch and no commit |
+
+## `takecare validate`
+
+Checks a Map directory offline, with the Map server's own checks: every file against `api/map/entry.schema.json`, the key against the file's place, every relation's target and types, the dates. It reports every fault at once, each with its file, and exits with 1 when there is one.
+
+```bash
+takecare validate --map-dir map
+takecare validate --output json
+```
+
 ## `takecare version`
 
 Prints the release version, the commit and the Go version the binary was built with. It reads no cluster. `--output json` prints the same as an object.
 
 ## Common flags and exit codes
 
-Every command takes `--output text|json`, `--no-color` and `--accessible`. `status` and `version` draw no screen and print no color, so the last two change nothing for them yet. Nothing prompts: every command runs without a terminal.
+Every command takes `--output text|json`, `--no-color` and `--accessible`. No command draws a full screen or prints color yet: `review` asks with line prompts, which suit a screen reader, so the last two change nothing yet. Only `review` prompts, and only on a terminal: without one, it reads `--accept` and `--skip`, and stops with exit code 2 when neither is given.
 
 | Code | Meaning |
 |---|---|
-| 0 | done; for `status`, the platform, every role and every connector `Ready` |
-| 1 | a finding: for `status`, something not `Ready` (or no platform at all) |
-| 2 | the command could not run: a usage error, or a kubeconfig or a list it could not read |
+| 0 | done; for `status`, the platform, every role and every connector `Ready`; for `validate`, a valid Map |
+| 1 | a finding: for `status`, something not `Ready` (or no platform at all); for `validate`, a fault in the files; for `review`, a result that does not validate (nothing is written) |
+| 2 | the command could not run: a usage error, a kubeconfig, a list or a file it could not read, a survey not `Completed`, a dirty working tree on the paths `review` writes, a refused commit |
