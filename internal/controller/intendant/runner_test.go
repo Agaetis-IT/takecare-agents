@@ -353,9 +353,14 @@ func TestEntityScope(t *testing.T) {
 	}
 }
 
+// azureVM is an ARM ID, the source of a Map entry on a ground without
+// Kubernetes.
+const azureVM = "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-shop/providers/Microsoft.Compute/virtualMachines/vm-web"
+
 // What of an entity scope nothing reads is a blind spot, with the reason
 // the coverage rule gives: a source in a namespace no connector declares,
-// a proposed entry, an entry with neither kubernetes nor azure source.
+// a proposed entry, an entry with neither kubernetes nor azure source, an
+// azure source no reach holds.
 func TestEntityBlindSpots(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -369,10 +374,18 @@ func TestEntityBlindSpots(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "map", "service", "payments.yaml"), []byte(payments), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// An azure source: the Intendant has no cloud connector, so nothing reads it.
+	if err := os.MkdirAll(filepath.Join(dir, "map", "compute"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	vm := "key: compute/vm-web\nprovenance: declared\nstatus: validated\ncreated: 2026-11-05\nsources:\n  - azure: " + azureVM + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "map", "compute", "vm-web.yaml"), []byte(vm), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	f := startRunner(t)
 	f.grounded(t)
 	f.surveyed(t, "blind", mapServerAt(t, dir, nil), func(in *v1alpha1.TakeCareIntendant) {
-		in.Spec.Scope = v1alpha1.Scope{Entities: []v1alpha1.EntityKey{billingService, "network/billing-db-proxy", "service/notifications", "service/payments"}}
+		in.Spec.Scope = v1alpha1.Scope{Entities: []v1alpha1.EntityKey{billingService, "network/billing-db-proxy", "service/notifications", "service/payments", "compute/vm-web"}}
 	})
 	st := f.waitPhase(t, "blind", 1, v1alpha1.RunCompleted)[0].Status
 	want := map[v1alpha1.EntityKey]struct {
@@ -382,6 +395,7 @@ func TestEntityBlindSpots(t *testing.T) {
 		"network/billing-db-proxy": {v1alpha1.BlindSpotNoAccess, "its namespace `ack-system`: no connector reads it"},
 		"service/notifications":    {v1alpha1.BlindSpotNotValidated, "proposed in the Map"},
 		"service/payments":         {v1alpha1.BlindSpotNoAccess, "no kubernetes or azure source"},
+		"compute/vm-web":           {v1alpha1.BlindSpotNoAccess, "its azure resource `" + azureVM + "`: no connector reads it"},
 	}
 	if len(st.BlindSpots) != len(want) {
 		t.Fatalf("blind spots %+v", st.BlindSpots)
