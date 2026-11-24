@@ -77,27 +77,32 @@ cluster() {
 # images prints the image tag the charts use: the release's by default
 # (pulled from the registry), or, with DEMO_IMAGES=build, one built from
 # this tree and imported into the cluster, tagged after the sources they
-# are built from, so that the same sources give the same tag.
+# are built from, so that the same sources give the same tag. It runs in a
+# command substitution, where bash turns set -e off: each step that can fail
+# dies on its own, or a failed build would go on to the install and fail
+# later on an image no node holds.
 images() {
   if [[ "${DEMO_IMAGES:-pull}" != build ]]; then
     return 0
   fi
   local tag ref node missing=() refs=()
   # What the images are built from, untracked files included.
-  tag="$(demo_tag)"
+  tag="$(demo_tag)" || die "cannot compute the images' tag"
   for ref in operator mcp-report-slack mcp-corpus mcp-map mcp-front demo-app; do
     refs+=("${IMAGE_REGISTRY}/takecare-agents-${ref}:${tag}")
   done
   # The stamp is a build cache only: a missing local image builds again.
   if [[ "$(cat "${STATE}/images" 2>/dev/null)" != "$tag" ]] || ! docker image inspect "${refs[@]}" >/dev/null 2>&1; then
     log "building the images (${tag})" >&2
-    make docker-build VERSION="$tag" LOCAL_LABELS="--label org.agaetis.takecare.local=true --label org.agaetis.takecare.hash=${tag#local-}" >/dev/null
+    make docker-build VERSION="$tag" LOCAL_LABELS="--label org.agaetis.takecare.local=true --label org.agaetis.takecare.hash=${tag#local-}" >/dev/null \
+      || die "make docker-build failed (${tag}): run it alone to see why"
     echo "$tag" >"${STATE}/images"
   fi
   # The import is decided by the nodes themselves, never by the stamp: a
   # cluster deleted with k3d and created again holds none of them.
   local nodes
-  nodes="$(docker ps --format '{{.Names}} {{.Label "k3d.role"}}' --filter "label=k3d.cluster=${CLUSTER}" | awk '$2 == "server" || $2 == "agent" {print $1}')"
+  nodes="$(docker ps --format '{{.Names}} {{.Label "k3d.role"}}' --filter "label=k3d.cluster=${CLUSTER}" | awk '$2 == "server" || $2 == "agent" {print $1}')" \
+    || die "cannot list the nodes of the k3d cluster ${CLUSTER}"
   # No node found is not "nothing missing": the install would wait on an
   # image no node holds.
   [[ -n "$nodes" ]] || die "no server or agent node of the k3d cluster ${CLUSTER} is running: cannot check its images"
@@ -111,7 +116,8 @@ images() {
   done
   if (( ${#missing[@]} > 0 )); then
     log "importing ${#missing[@]} image(s) the cluster's nodes do not hold (${tag})" >&2
-    k3d image import -c "$CLUSTER" "${missing[@]}" >/dev/null
+    k3d image import -c "$CLUSTER" "${missing[@]}" >/dev/null \
+      || die "k3d image import failed (${tag})"
   fi
   echo "$tag"
 }
