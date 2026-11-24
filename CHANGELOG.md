@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The `takecare` command (spec 13), its first lot: `takecare status` shows the platform, each role with its level, readiness and blind spots, the connectors with their tools by class, and the newest surveys and investigations, in text or JSON; its exit code is 1 when something is not Ready, for scripts. `takecare version` prints the version and commit. The command only reads the cluster, with the user's own rights (get and list on the TakeCare kinds, listed in `docs/how-to/takecare-command.md`), and never writes into it or into the kubeconfig. Install it with `go install github.com/agaetis-it/takecare-agents/cmd/takecare@<version>`.
+
 ### Fixed
 
 - When a role's connector, model or A2A route is removed, the operator deletes the gateway route before its policies and backend. Until now it deleted the policies first, which left a short window where the gateway served the route without its allow-list or argument rule.
