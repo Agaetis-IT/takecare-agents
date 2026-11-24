@@ -174,8 +174,8 @@ func TestReviewWriters(t *testing.T) {
 	if err := json.Unmarshal([]byte(run.stdout), &res); err != nil {
 		t.Fatalf("%v: %s", err, run.stdout)
 	}
-	want := Review{SchemaVersion: 1, Survey: surveyName, MapRevision: surveyRev,
-		Accepted: []string{idAddNetwork, idUpdBilling, idRemWorker}, Written: []string{fileNetwork, fileBilling}, Deleted: []string{fileWorker}}
+	want := wantReview()
+	want.Accepted, want.Written, want.Deleted = []string{idAddNetwork, idUpdBilling, idRemWorker}, []string{fileNetwork, fileBilling}, []string{fileWorker}
 	if diff := cmp.Diff(want, res); diff != "" {
 		t.Errorf("result (-want +got):\n%s", diff)
 	}
@@ -243,6 +243,13 @@ func TestReviewShowsChangedEntriesAgain(t *testing.T) {
 	}
 }
 
+// wantReview is the result of a review of the fixture survey that decided
+// nothing yet: every list empty, never null.
+func wantReview() Review {
+	return Review{SchemaVersion: 1, Survey: surveyName, MapRevision: surveyRev,
+		Accepted: []string{}, Validated: []string{}, Skipped: []string{}, Written: []string{}, Deleted: []string{}, Faults: []string{}}
+}
+
 func fixtureMapBytes() map[string][]byte {
 	out := map[string][]byte{}
 	for p, c := range fixtureMap {
@@ -267,6 +274,66 @@ func TestReviewInvalidResultWritesNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(state, reviewRecord)); !os.IsNotExist(err) {
 		t.Errorf("the review record was written: %v", err)
+	}
+
+	// The same with --output json: one object, the faults in it.
+	run = runReviewWith(t, reviewReader(t, objs...), "", flagAccept, idAddNetwork, flagNoCommit, flagMapDir, dir, flagStateDir, state, flagOutput, outputJSON)
+	var res Review
+	if err := json.Unmarshal([]byte(run.stdout), &res); err != nil || run.code != ExitFinding {
+		t.Fatalf("exit %d, %v: %s", run.code, err, run.stdout)
+	}
+	if len(res.Faults) == 0 || !strings.Contains(res.Faults[0], "environment/staging: no such entry") || len(res.Written) != 0 {
+		t.Errorf("faults %q, written %q", res.Faults, res.Written)
+	}
+}
+
+// With --output json, every path prints one object whose lists are [] when
+// empty; --mark-validated is recorded as validated, in a review record
+// meant to be committed (0644); a field a later operator adds to a
+// proposal is ignored.
+func TestReviewJSONAndRecord(t *testing.T) {
+	dir, state := t.TempDir(), t.TempDir()
+	writeTree(t, dir, fixtureMap)
+	objs := surveyObjects(v1alpha1.RunCompleted, true)
+	cm := objs[2].(*corev1.ConfigMap)
+	cm.Data[idAddNetwork] += "addedLater: a field this takecare does not know\n"
+	run := runReviewWith(t, reviewReader(t, objs...), "", flagAccept, idAddNetwork, "--skip", idUpdBilling+","+idRemWorker, "--mark-validated",
+		flagNoCommit, flagMapDir, dir, flagStateDir, state, flagOutput, outputJSON)
+	if run.code != ExitOK || strings.Contains(run.stdout, "null") {
+		t.Fatalf("exit %d, stdout %s, stderr %s; want 0 and no null", run.code, run.stdout, run.stderr)
+	}
+	record := filepath.Join(state, reviewRecord)
+	raw, err := os.ReadFile(record) //nolint:gosec // the test's own file
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st reviewState
+	if err := yaml.UnmarshalStrict(raw, &st); err != nil || len(st.Surveys) != 1 || len(st.Surveys[0].Proposals) != 3 {
+		t.Fatalf("review record %s: %v", raw, err)
+	}
+	if diff := cmp.Diff(decision{ID: idAddNetwork, Decision: decidedValidated, Digest: digest(&fixtureProposals()[0])}, st.Surveys[0].Proposals[1]); diff != "" {
+		t.Errorf("recorded (-want +got):\n%s", diff)
+	}
+	if fi, err := os.Stat(record); err != nil || fi.Mode().Perm() != 0o644 {
+		t.Errorf("the review record's mode: %v, %v; want 0644", fi.Mode().Perm(), err)
+	}
+
+	run = runReviewWith(t, reviewReader(t, objs...), "", flagAccept, acceptAll, flagNoCommit, flagMapDir, dir, flagStateDir, state, flagOutput, outputJSON)
+	want := wantReview()
+	want.Hidden = 3
+	var res Review
+	if err := json.Unmarshal([]byte(run.stdout), &res); err != nil || run.code != ExitOK {
+		t.Fatalf("nothing decided: exit %d, %v: %s", run.code, err, run.stdout)
+	}
+	if diff := cmp.Diff(want, res); diff != "" || strings.Contains(run.stdout, "null") {
+		t.Errorf("nothing decided (-want +got):\n%s\n%s", diff, run.stdout)
+	}
+}
+
+// The screens print what the cluster holds without its control characters.
+func TestPrintable(t *testing.T) {
+	if got := printable("a\x1b]0;title\x07b\n\tc\r"); got != "a]0;titleb\n\tc" {
+		t.Errorf("printable: %q", got)
 	}
 }
 
@@ -337,8 +404,9 @@ func TestReviewAsks(t *testing.T) {
 	if err := json.Unmarshal([]byte("{"+after), &res); err != nil {
 		t.Fatal(err)
 	}
-	if diff := cmp.Diff(Review{SchemaVersion: 1, Survey: surveyName, MapRevision: surveyRev,
-		Validated: []string{idAddNetwork}, Skipped: []string{idUpdBilling}, Written: []string{fileNetwork}}, res); diff != "" {
+	want := wantReview()
+	want.Validated, want.Skipped, want.Written = []string{idAddNetwork}, []string{idUpdBilling}, []string{fileNetwork}
+	if diff := cmp.Diff(want, res); diff != "" {
 		t.Errorf("result (-want +got):\n%s", diff)
 	}
 	var network mapserver.Entry
@@ -362,6 +430,7 @@ func TestDropRelations(t *testing.T) {
 		{"alertedBy names alerts", "key: a/b\nrelations:\n  alertedBy: [compute/old-worker]\n", "", false},
 		{"no relation to it", fixtureMap["map/team/payments.yaml"], "", false},
 		{"not YAML", "key: [", "", false},
+		{"a value reads relations", "kind: relations\nrelations:\n  dependsOn: [compute/old-worker]\n", "kind: relations\n", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			out, changed, err := dropRelations([]byte(tc.in), "compute/old-worker")

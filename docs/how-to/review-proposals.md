@@ -55,6 +55,8 @@ What each accepted proposal does:
 
 Once you have decided, `takecare review` checks the whole resulting Map with the Map server's checks. When it does not validate, it prints every fault and writes nothing (exit code 1). Otherwise it creates the branch `takecare/review-<survey>` (`--branch` to name it), writes the files and `.takecare/review.yaml`, and commits them with your own `git`: your identity, your signing and your hooks apply. It never pushes. Push the branch and open the pull request with your usual tools.
 
+Before the first screen, it checks that it runs in a git work tree and that the branch does not exist yet; otherwise it stops with exit code 2 and asks nothing. A second pass on the same survey, for the proposals left for later, takes `--branch` to name a new branch, for example `--branch takecare/review-intendant-q6w6z-2`, or runs once the first pass's branch is merged and deleted. `--no-commit` writes the files without git.
+
 `.takecare/review.yaml` records, per survey, the ids you accepted or skipped with a digest of each proposal. Commit it with the Map: the next `takecare review` hides the proposals already decided, and shows one again when its entry changed. `--all` shows them all.
 
 Without a terminal, for example in a script, pass the decisions:

@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -58,6 +59,8 @@ type Review struct {
 	Written   []string `json:"written"`
 	Deleted   []string `json:"deleted"`
 	Branch    string   `json:"branch,omitempty"`
+	// Faults are the resulting Map's, when it does not validate.
+	Faults []string `json:"faults"`
 }
 
 // flags registers review's flags.
@@ -116,7 +119,14 @@ func (a *app) runReview(ctx context.Context, r getLister, o *reviewOpts) int {
 	if err != nil {
 		return a.fail("review: %v", err)
 	}
-	res := Review{SchemaVersion: reviewSchemaVersion, Survey: s.Name, MapRevision: s.Status.MapRevision, NotRead: notRead}
+	res := Review{SchemaVersion: reviewSchemaVersion, Survey: s.Name, MapRevision: s.Status.MapRevision, NotRead: notRead,
+		Accepted: []string{}, Validated: []string{}, Skipped: []string{}, Written: []string{}, Deleted: []string{}, Faults: []string{}}
+	if !o.noCommit {
+		// Before any question, so that no answer is lost (spec 13 §7).
+		if res.Branch, err = branchReady(ctx, cmp.Or(o.branch, "takecare/review-"+s.Name)); err != nil {
+			return a.fail("review: %v", err)
+		}
+	}
 	var shown []*v1alpha1.Proposal
 	for _, p := range props {
 		if !o.all && state.decided(p) {
@@ -152,30 +162,66 @@ func (a *app) runReview(ctx context.Context, r getLister, o *reviewOpts) int {
 		if !ok {
 			continue
 		}
-		ds = append(ds, decision{ID: p.ID, Decision: c, Digest: digest(p)})
 		if c == decidedSkipped {
+			ds = append(ds, decision{ID: p.ID, Decision: c, Digest: digest(p)})
 			res.Skipped = append(res.Skipped, p.ID)
 			continue
 		}
 		validated := c == decidedValidated || o.markValidated && p.Action != v1alpha1.ProposalRemove
 		if validated {
+			c = decidedValidated
 			res.Validated = append(res.Validated, p.ID)
 		} else {
 			res.Accepted = append(res.Accepted, p.ID)
 		}
+		ds = append(ds, decision{ID: p.ID, Decision: c, Digest: digest(p)})
 		if err := apply(result, p, validated, today); err != nil {
 			return a.fail("review: %v", err)
 		}
 	}
 	if len(ds) == 0 {
-		_, _ = fmt.Fprintln(a.stdout, "nothing decided: no file written")
-		return ExitOK
+		res.Branch = ""
+		return a.printReview(o, &res, ExitOK, "nothing decided: no file written")
 	}
 	if f := faults(result); len(f) > 0 {
-		_, _ = fmt.Fprintf(a.stdout, "the resulting Map does not validate, nothing written:\n  %s\n", strings.Join(f, "\n  "))
-		return ExitFinding
+		res.Branch, res.Faults = "", f
+		return a.printReview(o, &res, ExitFinding, "the resulting Map does not validate, nothing written:\n  "+strings.Join(f, "\n  "))
 	}
 	return a.writeReview(ctx, o, s, state, ds, local, result, &res)
+}
+
+// printReview prints the result: the JSON object on every path with
+// --output json, the text otherwise.
+func (a *app) printReview(o *reviewOpts, res *Review, code int, text string) int {
+	if o.output == outputJSON {
+		if err := a.printJSON(res); err != nil {
+			return a.fail("review: %v", err)
+		}
+		return code
+	}
+	_, _ = fmt.Fprintln(a.stdout, text)
+	return code
+}
+
+// branchReady checks, before anything is asked or written, that the
+// current directory is in a git work tree and that the branch review is
+// to create does not exist yet.
+func branchReady(ctx context.Context, branch string) (string, error) {
+	if _, err := git(ctx, ".", "rev-parse", "--is-inside-work-tree"); err != nil {
+		return "", fmt.Errorf("not in a git work tree: run it from the Map's repository, or pass --no-commit: %w", err)
+	}
+	if _, err := git(ctx, ".", "check-ref-format", "--branch", branch); err != nil {
+		return "", fmt.Errorf("%q is not a branch name: %w", branch, err)
+	}
+	out, err := git(ctx, ".", "branch", "--list", branch)
+	if err != nil {
+		return "", err
+	}
+	if out != "" {
+		return "", fmt.Errorf("the branch %s exists already, nothing asked: pass --branch <name> for this pass, "+
+			"or merge that branch and run review again from it with --branch", branch)
+	}
+	return branch, nil
 }
 
 // writeReview writes the result and the review record, then makes the
@@ -201,7 +247,6 @@ func (a *app) writeReview(ctx context.Context, o *reviewOpts, s *v1alpha1.TakeCa
 		if len(d) > 0 {
 			return a.fail("review: the working tree has changes on the paths review writes, nothing written: %s", strings.Join(d, ", "))
 		}
-		res.Branch = cmp.Or(o.branch, "takecare/review-"+s.Name)
 		if _, err := git(ctx, ".", "switch", "--create", res.Branch); err != nil {
 			return a.fail("review: %v", err)
 		}
@@ -215,7 +260,7 @@ func (a *app) writeReview(ctx context.Context, o *reviewOpts, s *v1alpha1.TakeCa
 		err = os.MkdirAll(o.stateDir, 0o750)
 	}
 	if err == nil {
-		err = os.WriteFile(paths[0], raw, 0o600)
+		err = os.WriteFile(paths[0], raw, 0o644) //nolint:gosec // the review record, meant to be committed and read
 	}
 	if err != nil {
 		return a.fail("review: write the review record: %v", err)
@@ -228,18 +273,12 @@ func (a *app) writeReview(ctx context.Context, o *reviewOpts, s *v1alpha1.TakeCa
 			return a.fail("review: the files are written and staged: %v", err)
 		}
 	}
-	if o.output == outputJSON {
-		if err := a.printJSON(res); err != nil {
-			return a.fail("review: %v", err)
-		}
-		return ExitOK
-	}
-	_, _ = fmt.Fprintf(a.stdout, "accepted %d, validated %d, skipped %d; %d files written, %d deleted\n",
+	text := fmt.Sprintf("accepted %d, validated %d, skipped %d; %d files written, %d deleted",
 		len(res.Accepted), len(res.Validated), len(res.Skipped), len(res.Written), len(res.Deleted))
 	if res.Branch != "" {
-		_, _ = fmt.Fprintf(a.stdout, "committed on the branch %s; next: push it and open the pull request with your own tools\n", res.Branch)
+		text += fmt.Sprintf("\ncommitted on the branch %s; next: push it and open the pull request with your own tools", res.Branch)
 	}
-	return ExitOK
+	return a.printReview(o, res, ExitOK, text)
 }
 
 func commitMessage(s *v1alpha1.TakeCareSurvey, res *Review) string {
@@ -343,7 +382,7 @@ func (a *app) readProposals(ctx context.Context, r getLister, s *v1alpha1.TakeCa
 		}
 		for _, id := range slices.Sorted(maps.Keys(cm.Data)) {
 			var p v1alpha1.Proposal
-			if err := yaml.UnmarshalStrict([]byte(cm.Data[id]), &p); err != nil {
+			if err := yaml.Unmarshal([]byte(cm.Data[id]), &p); err != nil {
 				return nil, 0, fmt.Errorf("the ConfigMap %s: proposal %s: %w", name, id, err)
 			}
 			if p.ID != id {
@@ -428,7 +467,8 @@ func (a *app) ask(shown []*v1alpha1.Proposal, local map[string][]byte, today str
 			return nil, err
 		}
 		_, _ = fmt.Fprintf(a.stdout, "Proposal %d of %d: %s\n  action    %s\n  key       %s\n  source    %s\n  evidence  %s\n\n%s\n",
-			i+1, len(shown), p.ID, p.Action, p.Key, p.Source, cmp.Or(strings.Join(p.Evidence, ", "), "none"), d)
+			i+1, len(shown), printable(p.ID), p.Action, printable(string(p.Key)), p.Source,
+			printable(cmp.Or(strings.Join(p.Evidence, ", "), "none")), printable(d))
 		for {
 			_, _ = fmt.Fprint(a.stdout, "[a] accept  [v] accept and mark validated  [s] skip  [l] later  [q] stop, the rest later: ")
 			if !in.Scan() {
@@ -450,4 +490,15 @@ func (a *app) ask(shown []*v1alpha1.Proposal, local map[string][]byte, today str
 		}
 	}
 	return choices, nil
+}
+
+// printable drops the control characters, line breaks and tabs aside, of
+// what the cluster holds, before it is printed on a terminal.
+func printable(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r != '\n' && r != '\t' && unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, s)
 }

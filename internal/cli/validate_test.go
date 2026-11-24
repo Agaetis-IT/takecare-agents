@@ -167,3 +167,55 @@ func TestReviewGitRefusals(t *testing.T) {
 		}
 	})
 }
+
+// Spec 13 §3.4 step 5 and §7: the git preconditions hold before the first
+// screen. A second pass on the same survey, with the first pass's branch
+// there, stops with exit 2 naming --branch: no screen, nothing written.
+// So does a directory outside a git work tree.
+func TestReviewChecksGitBeforeAsking(t *testing.T) {
+	t.Run("second pass on the same survey", func(t *testing.T) {
+		gitRepo(t)
+		// The Remove comes first: accept it, leave the rest for later.
+		run := runReviewWith(t, reviewReader(t, surveyObjects(v1alpha1.RunCompleted, true)...), "a\nl\nl\n")
+		if run.code != ExitOK {
+			t.Fatalf("first pass: exit %d: %s %s", run.code, run.stdout, run.stderr)
+		}
+		head := mustGit(t, "rev-parse", "HEAD")
+		run = runReviewWith(t, reviewReader(t, surveyObjects(v1alpha1.RunCompleted, true)...), "a\na\n")
+		if run.code != ExitError || !strings.Contains(run.stderr, "--branch") || !strings.Contains(run.stderr, "takecare/review-"+surveyName) {
+			t.Fatalf("second pass: exit %d, stderr %q; want 2 naming the branch and --branch", run.code, run.stderr)
+		}
+		if strings.Contains(run.stdout, "Proposal") {
+			t.Errorf("a screen was printed: %s", run.stdout)
+		}
+		if got := mustGit(t, "rev-parse", "HEAD"); got != head {
+			t.Errorf("HEAD moved: %s, want %s", got, head)
+		}
+		if st := mustGit(t, "status", "--porcelain"); st != "" {
+			t.Errorf("something was written: %s", st)
+		}
+
+		// --branch names another branch for this pass: the Add accepted,
+		// the Update, which still names the removed entry, skipped.
+		run = runReviewWith(t, reviewReader(t, surveyObjects(v1alpha1.RunCompleted, true)...), "a\ns\n", "--branch", "takecare/review-second")
+		if run.code != ExitOK || mustGit(t, "branch", "--show-current") != "takecare/review-second" {
+			t.Errorf("with --branch: exit %d: %s %s", run.code, run.stdout, run.stderr)
+		}
+	})
+	t.Run("not a git work tree", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(dir))
+		writeTree(t, filepath.Join(dir, "map"), fixtureMap)
+		t.Chdir(dir)
+		run := runReviewWith(t, reviewReader(t, surveyObjects(v1alpha1.RunCompleted, true)...), "a\na\na\n")
+		if run.code != ExitError || !strings.Contains(run.stderr, "not in a git work tree") || !strings.Contains(run.stderr, "--no-commit") {
+			t.Fatalf("exit %d, stderr %q; want 2 naming --no-commit", run.code, run.stderr)
+		}
+		if strings.Contains(run.stdout, "Proposal") {
+			t.Errorf("a screen was printed: %s", run.stdout)
+		}
+		if diff := cmp.Diff(fixtureMapBytes(), readTree(t, "map")); diff != "" {
+			t.Errorf("the Map changed (-want +got):\n%s", diff)
+		}
+	})
+}

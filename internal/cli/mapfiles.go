@@ -93,8 +93,14 @@ func dropRelations(raw []byte, key string) ([]byte, bool, error) {
 		return raw, false, nil
 	}
 	root := doc.Content[0]
-	at := slices.IndexFunc(root.Content, func(n *yamlv3.Node) bool { return n.Value == "relations" })
-	if at < 0 || at%2 != 0 || at+1 >= len(root.Content) || root.Content[at+1].Kind != yamlv3.MappingNode {
+	at := -1 // a key, at an even index: a value may read relations too
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value == "relations" {
+			at = i
+			break
+		}
+	}
+	if at < 0 || root.Content[at+1].Kind != yamlv3.MappingNode {
 		return raw, false, nil
 	}
 	rel, changed := root.Content[at+1], false

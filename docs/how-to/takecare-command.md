@@ -84,7 +84,9 @@ takecare review --accept all --no-commit --map-dir /tmp/map
 | `--accept <ids>\|all`, `--skip <ids>` | the decisions, without a terminal; a proposal neither accepted nor skipped is left for later |
 | `--mark-validated` | mark every accepted Add and Update `validated`, today |
 | `--all` | show the proposals already decided too |
-| `--branch`, `--no-commit` | the branch to commit on (`takecare/review-<survey>` by default), or no branch and no commit |
+| `--branch`, `--no-commit` | the branch to create and commit on (`takecare/review-<survey>` by default; it must not exist yet), or no branch and no commit |
+
+With `--output json`, every run prints one object: the ids accepted, validated and skipped, the files written and deleted, the branch, and the faults when the resulting Map does not validate. An empty list prints as `[]`.
 
 ## `takecare validate`
 
