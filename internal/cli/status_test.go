@@ -22,7 +22,14 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/golden"
 )
 
-const testNS = "takecare-system"
+const (
+	testNS         = "takecare-system"
+	alertName      = "HighErrorRate"
+	reasonTimedOut = "TimedOut"
+	cmdStatus      = "status"
+	cmdVersion     = "version"
+	flagOutput     = "--output"
+)
 
 var testNow = time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
 
@@ -38,7 +45,8 @@ func meta(name, ns string, age time.Duration) metav1.ObjectMeta {
 // surveys, one more than status shows.
 func fixtures() []client.Object {
 	readyTrue := cond(v1alpha1.ConditionReady, metav1.ConditionTrue, "Ready", "")
-	objs := []client.Object{
+	objs := make([]client.Object, 0, 16)
+	objs = append(objs,
 		&v1alpha1.TakeCarePlatform{ObjectMeta: meta("main", "", time.Hour), Status: v1alpha1.TakeCarePlatformStatus{Conditions: []metav1.Condition{
 			readyTrue,
 			cond(v1alpha1.ConditionProductionReady, metav1.ConditionFalse, "Gaps", "2 advisory gaps"),
@@ -82,12 +90,12 @@ func fixtures() []client.Object {
 		&v1alpha1.TakeCareConnector{ObjectMeta: meta("report", testNS, time.Hour),
 			Spec: v1alpha1.TakeCareConnectorSpec{Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorReport}}},
 		&v1alpha1.TakeCareInvestigation{ObjectMeta: meta("doc-higherrorrate-1", testNS, 3*time.Minute),
-			Spec:   v1alpha1.TakeCareInvestigationSpec{Alert: v1alpha1.AlertRecord{Name: "HighErrorRate"}},
-			Status: v1alpha1.TakeCareInvestigationStatus{RunStatus: v1alpha1.RunStatus{Phase: v1alpha1.RunFailed, Reason: "TimedOut"}}},
+			Spec:   v1alpha1.TakeCareInvestigationSpec{Alert: v1alpha1.AlertRecord{Name: alertName}},
+			Status: v1alpha1.TakeCareInvestigationStatus{RunStatus: v1alpha1.RunStatus{Phase: v1alpha1.RunFailed, Reason: reasonTimedOut}}},
 		&v1alpha1.TakeCareInvestigation{ObjectMeta: meta("doc-higherrorrate-0", testNS, 2*time.Hour),
-			Spec:   v1alpha1.TakeCareInvestigationSpec{Alert: v1alpha1.AlertRecord{Name: "HighErrorRate"}},
+			Spec:   v1alpha1.TakeCareInvestigationSpec{Alert: v1alpha1.AlertRecord{Name: alertName}},
 			Status: v1alpha1.TakeCareInvestigationStatus{RunStatus: v1alpha1.RunStatus{Phase: v1alpha1.RunCompleted, Reason: "ignored once completed"}}},
-	}
+	)
 	for i := range 6 {
 		objs = append(objs, &v1alpha1.TakeCareSurvey{ObjectMeta: meta(fmt.Sprintf("intendant-%d", i), testNS, time.Duration(i+1)*24*time.Hour),
 			Spec:   v1alpha1.TakeCareSurveySpec{Trigger: v1alpha1.TriggerSchedule},
@@ -206,12 +214,12 @@ func TestUsageErrors(t *testing.T) {
 		{nil, ExitError},
 		{[]string{"apply"}, ExitError},
 		{[]string{"help"}, ExitOK},
-		{[]string{"status", "-h"}, ExitOK},
-		{[]string{"status", "--output", "yaml"}, ExitError},
-		{[]string{"status", "extra"}, ExitError},
-		{[]string{"status", "--unknown"}, ExitError},
-		{[]string{"status", "--kubeconfig", "/nonexistent/kubeconfig"}, ExitError},
-		{[]string{"version", "--output", "yaml"}, ExitError},
+		{[]string{cmdStatus, "-h"}, ExitOK},
+		{[]string{cmdStatus, flagOutput, "yaml"}, ExitError},
+		{[]string{cmdStatus, "extra"}, ExitError},
+		{[]string{cmdStatus, "--unknown"}, ExitError},
+		{[]string{cmdStatus, "--kubeconfig", "/nonexistent/kubeconfig"}, ExitError},
+		{[]string{cmdVersion, flagOutput, "yaml"}, ExitError},
 	} {
 		var out, errOut bytes.Buffer
 		a := &app{stdout: &out, stderr: &errOut, now: func() time.Time { return testNow }}

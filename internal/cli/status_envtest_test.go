@@ -35,7 +35,10 @@ var statusRights = []rbacv1.PolicyRule{{
 	Verbs: []string{"get", "list"},
 }}
 
-const readerUser = "takecare-reader"
+const (
+	readerUser = "takecare-reader"
+	readerRole = "takecare-reader"
+)
 
 // Spec 13 §6 and §10: status runs as a user holding only get and list on
 // the TakeCare kinds, which proves those rights are enough and that no
@@ -59,34 +62,34 @@ func TestStatusAsReader(t *testing.T) {
 			t.Fatalf("create %T %s: %v", obj, obj.GetName(), err)
 		}
 	}
-	mustCreate(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: testNS}})
-	mustCreate(&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: "takecare-reader"}, Rules: statusRights})
+	mustCreate(&corev1.Namespace{Name: testNS})
+	mustCreate(&rbacv1.ClusterRole{Name: readerRole, Rules: statusRights})
 	mustCreate(&rbacv1.ClusterRoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: "takecare-reader"},
-		RoleRef:    rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: "takecare-reader"},
-		Subjects:   []rbacv1.Subject{{APIGroup: rbacv1.GroupName, Kind: rbacv1.UserKind, Name: readerUser}},
+		Name:     readerRole,
+		RoleRef:  rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: readerRole},
+		Subjects: []rbacv1.Subject{{APIGroup: rbacv1.GroupName, Kind: rbacv1.UserKind, Name: readerUser}},
 	})
 
 	ready := func() []metav1.Condition {
 		return []metav1.Condition{{Type: v1alpha1.ConditionReady, Status: metav1.ConditionTrue, Reason: "Ready", LastTransitionTime: metav1.Now()}}
 	}
 	scope := v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{"apps"}}
-	platform := &v1alpha1.TakeCarePlatform{ObjectMeta: metav1.ObjectMeta{Name: "main"}, Spec: v1alpha1.TakeCarePlatformSpec{Models: []v1alpha1.ModelSpec{{
+	platform := &v1alpha1.TakeCarePlatform{Name: "main", Spec: v1alpha1.TakeCarePlatformSpec{Models: []v1alpha1.ModelSpec{{
 		Name: "default", BaseURL: "https://models.example/v1", Model: "m", APIKeySecretRef: v1alpha1.SecretKeyRef{Name: "model", Key: "apiKey"},
 	}}}}
-	doc := &v1alpha1.TakeCareDoc{ObjectMeta: metav1.ObjectMeta{Name: "doc", Namespace: testNS},
+	doc := &v1alpha1.TakeCareDoc{Name: "doc", Namespace: testNS,
 		Spec: v1alpha1.TakeCareDocSpec{RoleCommonSpec: v1alpha1.RoleCommonSpec{Scope: scope}}}
-	intendant := &v1alpha1.TakeCareIntendant{ObjectMeta: metav1.ObjectMeta{Name: "intendant", Namespace: testNS},
+	intendant := &v1alpha1.TakeCareIntendant{Name: "intendant", Namespace: testNS,
 		Spec: v1alpha1.TakeCareIntendantSpec{RoleCommonSpec: v1alpha1.RoleCommonSpec{Scope: scope}, Connectors: v1alpha1.IntendantConnectors{Map: []string{"map"}}}}
-	ranger := &v1alpha1.TakeCareRanger{ObjectMeta: metav1.ObjectMeta{Name: "main"}}
-	connector := &v1alpha1.TakeCareConnector{ObjectMeta: metav1.ObjectMeta{Name: "kubernetes", Namespace: testNS},
+	ranger := &v1alpha1.TakeCareRanger{Name: "main"}
+	connector := &v1alpha1.TakeCareConnector{Name: "kubernetes", Namespace: testNS,
 		Spec: v1alpha1.TakeCareConnectorSpec{Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, MCP: v1alpha1.MCPSpec{Addon: "kubernetes"},
 			Kubernetes: &v1alpha1.KubernetesSpec{Namespaces: []v1alpha1.Namespace{"apps"}}}}
-	survey := &v1alpha1.TakeCareSurvey{ObjectMeta: metav1.ObjectMeta{Name: "intendant-1", Namespace: testNS},
+	survey := &v1alpha1.TakeCareSurvey{Name: "intendant-1", Namespace: testNS,
 		Spec: v1alpha1.TakeCareSurveySpec{IntendantRef: v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareIntendant, Name: "intendant"}, Trigger: v1alpha1.TriggerOnDemand}}
-	investigation := &v1alpha1.TakeCareInvestigation{ObjectMeta: metav1.ObjectMeta{Name: "doc-1", Namespace: testNS},
+	investigation := &v1alpha1.TakeCareInvestigation{Name: "doc-1", Namespace: testNS,
 		Spec: v1alpha1.TakeCareInvestigationSpec{RoleRef: v1alpha1.RoleRef{Kind: "TakeCareDoc", Name: "doc"},
-			Alert: v1alpha1.AlertRecord{Name: "HighErrorRate"}, Level: v1alpha1.LevelApprentice}}
+			Alert: v1alpha1.AlertRecord{Name: alertName}, Level: v1alpha1.LevelApprentice}}
 	for _, obj := range []client.Object{platform, doc, intendant, ranger, connector, survey, investigation} {
 		mustCreate(obj)
 	}
@@ -98,7 +101,7 @@ func TestStatusAsReader(t *testing.T) {
 	connector.Status.Tools = []v1alpha1.ToolStatus{{Name: "list_pods", Class: v1alpha1.ToolRead, Source: v1alpha1.ToolSourceAnnotation}}
 	survey.Status.Phase = v1alpha1.RunCompleted
 	investigation.Status.Phase = v1alpha1.RunFailed
-	investigation.Status.Reason = "TimedOut"
+	investigation.Status.Reason = reasonTimedOut
 	for _, obj := range []client.Object{platform, doc, intendant, ranger, connector, survey, investigation} {
 		if err := admin.Status().Update(ctx, obj); err != nil {
 			t.Fatalf("status of %T %s: %v", obj, obj.GetName(), err)
@@ -115,7 +118,7 @@ func TestStatusAsReader(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &s); err != nil {
 		t.Fatalf("status --output json: %v\n%s", err, out)
 	}
-	var roles []string
+	roles := make([]string, 0, len(s.Roles))
 	for _, r := range s.Roles {
 		roles = append(roles, r.Kind+"/"+r.Name)
 	}
@@ -125,7 +128,7 @@ func TestStatusAsReader(t *testing.T) {
 	if len(s.Platforms) != 1 || len(s.Connectors) != 1 || s.Connectors[0].Tools.Read != 1 {
 		t.Errorf("platforms %+v, connectors %+v", s.Platforms, s.Connectors)
 	}
-	if len(s.Surveys) != 1 || len(s.Investigations) != 1 || s.Investigations[0].Reason != "TimedOut" {
+	if len(s.Surveys) != 1 || len(s.Investigations) != 1 || s.Investigations[0].Reason != reasonTimedOut {
 		t.Errorf("surveys %+v, investigations %+v", s.Surveys, s.Investigations)
 	}
 
@@ -172,7 +175,7 @@ func kubeconfigAs(t *testing.T, cfg *rest.Config, user string) string {
 func runStatus(ctx context.Context, kubeconfig string) (code int, stdout, stderr string) {
 	var out, errOut bytes.Buffer
 	a := &app{stdout: &out, stderr: &errOut, now: time.Now}
-	code = a.run(ctx, []string{"status", "--kubeconfig", kubeconfig, "--output", "json"})
+	code = a.run(ctx, []string{"status", "--kubeconfig", kubeconfig, flagOutput, outputJSON})
 	return code, out.String(), errOut.String()
 }
 

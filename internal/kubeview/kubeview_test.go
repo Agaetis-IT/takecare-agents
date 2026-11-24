@@ -17,12 +17,13 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
+const configMapPath = "/api/v1/namespaces/x/configmaps/y"
+
 // Spec 13 §6: the read-only client exposes get and list, nothing else.
 func TestReaderMethodSet(t *testing.T) {
-	var got []string
-	typ := reflect.TypeFor[*Reader]()
-	for i := range typ.NumMethod() {
-		got = append(got, typ.Method(i).Name)
+	var got []string //nolint:prealloc // filled by an iterator
+	for m := range reflect.TypeFor[*Reader]().Methods() {
+		got = append(got, m.Name)
 	}
 	slices.Sort(got)
 	if diff := cmp.Diff([]string{"Get", "List"}, got); diff != "" {
@@ -53,9 +54,9 @@ func TestGetOnly(t *testing.T) {
 		{http.MethodGet, "/apis/takecare.agaetis.fr/v1alpha1/takecaredocs?watch=true", false},
 		{http.MethodGet, "/apis/takecare.agaetis.fr/v1alpha1/takecaredocs?watch=1", false},
 		{http.MethodPost, "/apis/takecare.agaetis.fr/v1alpha1/namespaces/x/takecaresurveys", false},
-		{http.MethodPut, "/api/v1/namespaces/x/configmaps/y", false},
-		{http.MethodPatch, "/api/v1/namespaces/x/configmaps/y", false},
-		{http.MethodDelete, "/api/v1/namespaces/x/configmaps/y", false},
+		{http.MethodPut, configMapPath, false},
+		{http.MethodPatch, configMapPath, false},
+		{http.MethodDelete, configMapPath, false},
 		{http.MethodHead, "/api/v1", false},
 		{http.MethodOptions, "/api/v1", false},
 		{"CONNECT", "/api/v1/namespaces/x/pods/y/exec", false},
@@ -95,7 +96,7 @@ func TestLoad(t *testing.T) {
 	if err := clientcmd.WriteToFile(*cfg, path); err != nil {
 		t.Fatal(err)
 	}
-	before, err := os.ReadFile(path)
+	before, err := os.ReadFile(path) //nolint:gosec // the test's own temporary file
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +119,7 @@ func TestLoad(t *testing.T) {
 		t.Error("a missing explicit kubeconfig loaded")
 	}
 
-	after, err := os.ReadFile(path)
+	after, err := os.ReadFile(path) //nolint:gosec // the test's own temporary file
 	if err != nil {
 		t.Fatal(err)
 	}

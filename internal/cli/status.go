@@ -43,8 +43,8 @@ type Status struct {
 	Platforms      []Platform  `json:"platforms"`
 	Roles          []Role      `json:"roles"`
 	Connectors     []Connector `json:"connectors"`
-	Surveys        []RunRecord       `json:"surveys"`
-	Investigations []RunRecord       `json:"investigations"`
+	Surveys        []RunRecord `json:"surveys"`
+	Investigations []RunRecord `json:"investigations"`
 }
 
 // Condition is a condition as the API holds it.

@@ -8,17 +8,20 @@ import (
 	"encoding/json"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 )
 
+const devel = "(devel)"
+
 func TestBuildInfo(t *testing.T) {
 	settings := func(kv ...string) []debug.BuildSetting {
-		var s []debug.BuildSetting
-		for i := 0; i < len(kv); i += 2 {
-			s = append(s, debug.BuildSetting{Key: kv[i], Value: kv[i+1]})
+		s := make([]debug.BuildSetting, 0, len(kv)/2)
+		for pair := range slices.Chunk(kv, 2) {
+			s = append(s, debug.BuildSetting{Key: pair[0], Value: pair[1]})
 		}
 		return s
 	}
@@ -30,10 +33,10 @@ func TestBuildInfo(t *testing.T) {
 	}{
 		{"go install @version", "", &debug.BuildInfo{Main: debug.Module{Version: "v0.5.0"}, Settings: settings("vcs.revision", "abc123")},
 			BuildInfo{Version: "v0.5.0", Commit: "abc123"}},
-		{"release build: the linked version wins", "v0.5.1", &debug.BuildInfo{Main: debug.Module{Version: "(devel)"}, Settings: settings("vcs.revision", "abc123", "vcs.modified", "false")},
+		{"release build: the linked version wins", "v0.5.1", &debug.BuildInfo{Main: debug.Module{Version: devel}, Settings: settings("vcs.revision", "abc123", "vcs.modified", "false")},
 			BuildInfo{Version: "v0.5.1", Commit: "abc123"}},
-		{"modified tree", "", &debug.BuildInfo{Main: debug.Module{Version: "(devel)"}, Settings: settings("vcs.revision", "abc123", "vcs.modified", "true")},
-			BuildInfo{Version: "(devel)", Commit: "abc123-dirty"}},
+		{"modified tree", "", &debug.BuildInfo{Main: debug.Module{Version: devel}, Settings: settings("vcs.revision", "abc123", "vcs.modified", "true")},
+			BuildInfo{Version: devel, Commit: "abc123-dirty"}},
 		{"no build information", "", nil, BuildInfo{Version: "unknown", Commit: "unknown"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -54,7 +57,7 @@ func TestVersionCommand(t *testing.T) {
 	t.Setenv("KUBECONFIG", "/nonexistent/kubeconfig")
 	var out, errOut bytes.Buffer
 	a := &app{stdout: &out, stderr: &errOut}
-	if got := a.run(t.Context(), []string{"version", "--output", "json"}); got != ExitOK {
+	if got := a.run(t.Context(), []string{cmdVersion, flagOutput, outputJSON}); got != ExitOK {
 		t.Fatalf("exit %d, stderr %q", got, errOut.String())
 	}
 	var b BuildInfo
@@ -65,7 +68,7 @@ func TestVersionCommand(t *testing.T) {
 		t.Errorf("version --output json = %+v", b)
 	}
 	out.Reset()
-	if got := a.run(t.Context(), []string{"version", "--no-color", "--accessible"}); got != ExitOK {
+	if got := a.run(t.Context(), []string{cmdVersion, "--no-color", "--accessible"}); got != ExitOK {
 		t.Fatalf("exit %d, stderr %q", got, errOut.String())
 	}
 	if !strings.HasPrefix(out.String(), "takecare "+b.Version+"\n") {
