@@ -16,12 +16,13 @@ import (
 )
 
 const (
-	cloudShop = "azure"
-	cloudPay  = "azure-pay"
-	tenant    = "00000000-0000-0000-0000-000000000000"
-	subShop   = "11111111-1111-1111-1111-111111111111"
-	subPay    = "22222222-2222-2222-2222-222222222222"
-	vmBilling = "/subscriptions/" + subShop + "/resourceGroups/rg-billing/providers/Microsoft.Compute/virtualMachines/vm-billing"
+	cloudShop    = "azure"
+	cloudPay     = "azure-pay"
+	tenant       = "00000000-0000-0000-0000-000000000000"
+	subShop      = "11111111-1111-1111-1111-111111111111"
+	subPay       = "22222222-2222-2222-2222-222222222222"
+	vmBillingKey = v1alpha1.EntityKey("compute/vm-billing")
+	vmBilling    = "/subscriptions/" + subShop + "/resourceGroups/rg-billing/providers/Microsoft.Compute/virtualMachines/vm-billing"
 )
 
 // cloudConnector is a cloud connector whose reach is one subscription,
@@ -48,7 +49,7 @@ func TestCloudCoverage(t *testing.T) {
 	f := start(t)
 	f.maps.url.Store(startMap(t, map[string]string{
 		"compute/vm-web":     "provenance: declared\nstatus: validated\nsources:\n  - azure: /subscriptions/" + strings.ToUpper(subShop) + "/resourceGroups/RG-Shop/providers/Microsoft.Compute/virtualMachines/vm-web\n",
-		"compute/vm-billing": "provenance: declared\nstatus: validated\nsources:\n  - azure: " + vmBilling + "\n",
+		string(vmBillingKey): "provenance: declared\nstatus: validated\nsources:\n  - azure: " + vmBilling + "\n",
 		"datastore/sql-pay":  "provenance: declared\nstatus: validated\nsources:\n  - azure: /subscriptions/" + subPay + "/resourceGroups/rg-pay/providers/Microsoft.Sql/servers/sql-pay\n",
 	}))
 	f.platform(t)
@@ -58,7 +59,7 @@ func TestCloudCoverage(t *testing.T) {
 	f.setMapRevision(t, "rev1")
 	f.doc(t, "doc", func(d *v1alpha1.TakeCareDoc) {
 		d.Spec.Level = v1alpha1.LevelApprentice
-		d.Spec.Scope = v1alpha1.Scope{Entities: []v1alpha1.EntityKey{"compute/vm-web", "compute/vm-billing", "datastore/sql-pay"}}
+		d.Spec.Scope = v1alpha1.Scope{Entities: []v1alpha1.EntityKey{"compute/vm-web", vmBillingKey, "datastore/sql-pay"}}
 		d.Spec.Connectors = v1alpha1.DocConnectors{Cloud: []string{cloudShop, cloudPay}, Map: []string{mapConnector}}
 	})
 
@@ -68,7 +69,7 @@ func TestCloudCoverage(t *testing.T) {
 		return got == want, got + "; " + describe(f.getDoc(t, "doc"))
 	})
 	for _, s := range f.getDoc(t, "doc").Status.BlindSpots {
-		if s.Entity == "compute/vm-billing" && s.Message != "The entity `compute/vm-billing`: its azure resource `"+vmBilling+"`: no connector reads it." {
+		if s.Entity == vmBillingKey && s.Message != "The entity `compute/vm-billing`: its azure resource `"+vmBilling+"`: no connector reads it." {
 			t.Errorf("message %q", s.Message)
 		}
 	}
