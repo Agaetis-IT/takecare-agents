@@ -140,6 +140,7 @@ The demo caps each role's route to its model at 2,000,000 tokens an hour (`range
 | [`docs/specs/10-intendant.md`](docs/specs/10-intendant.md) | The Intendant: the survey, discovery through the connectors, proposals for the Map, the inventory of agents and connectors |
 | [`docs/specs/11-kine.md`](docs/specs/11-kine.md) | The Kiné (proposed, 0.5.0): reviews after each incident, recurrences and corrective actions tracked across reviews, the `history` connector |
 | [`docs/specs/13-tui.md`](docs/specs/13-tui.md) | The TUI: the `takecare` command (init, status, review, discover, validate), read-only on the cluster, files and a local commit in the user's Git |
+| [`docs/how-to/takecare-command.md`](docs/how-to/takecare-command.md) | The `takecare` command: install, the rights it reads with, `status` and `version` |
 | [`docs/spikes/001-kagent-doc-engine.md`](docs/spikes/001-kagent-doc-engine.md) | Spike 001: can kagent run the Doc as well as HolmesGPT? |
 | [`docs/specs/90-agent-output-localization.md`](docs/specs/90-agent-output-localization.md) | Localized agent output (deferred) |
 | [`docs/adr/`](docs/adr/) | Architecture decisions |
