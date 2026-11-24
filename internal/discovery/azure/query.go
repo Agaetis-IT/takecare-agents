@@ -161,6 +161,8 @@ const (
 	reasonOutside      = "%d rows outside the connector's reach or the mapped types were dropped"
 	reasonGroupName    = "the resource group name does not follow Azure's naming rule: not queried"
 	reasonKeyTaken     = "another entry holds this key: not proposed"
+	reasonNoGroup      = "no resource group visible in this subscription: not read, or empty; nothing in it is proposed for removal"
+	reasonGroupMissing = "the resource group was not returned: not read, or gone; nothing in it is proposed for removal"
 	reasonInvalidEntry = "the import's proposal for this entry does not pass the Map's schema: not proposed"
 )
 

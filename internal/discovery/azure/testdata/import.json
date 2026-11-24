@@ -150,7 +150,7 @@
       "key": "storage/old-exports",
       "entry": "created: \"2026-11-01\"\nkey: storage/old-exports\nprovenance: declared\nsources:\n- azure: /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-data/providers/Microsoft.Storage/storageAccounts/stexports\nstatus: validated\n",
       "evidence": [
-        "Resources"
+        "azure-prod/Resources"
       ],
       "source": "Import"
     }

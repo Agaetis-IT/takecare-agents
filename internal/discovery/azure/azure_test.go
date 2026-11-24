@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"sigs.k8s.io/yaml"
 
 	mapschema "github.com/agaetis-it/takecare-agents/api/map"
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
@@ -296,10 +297,11 @@ func TestPlan(t *testing.T) {
 		t.Errorf("subscriptions per resources request = %v, want [100 50 1]", sizes)
 	}
 	want := []string{
-		"environment c/subscriptions/" + sub2 + ": " + reasonGroupName,
-		"environment c/subscriptions/" + sub3 + ": " + reasonGroupName,
+		"environment c/subscriptions/" + sub2 + "/resourceGroups/bad'name: " + reasonGroupName,
+		"environment c/subscriptions/" + sub3 + "/resourceGroups/also bad: " + reasonGroupName,
 	}
-	if diff := cmp.Diff(want, notSeen(res)); diff != "" {
+	got := slices.DeleteFunc(notSeen(res), func(l string) bool { return !strings.HasSuffix(l, reasonGroupName) })
+	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("notSeen (-want +got):\n%s", diff)
 	}
 }
@@ -361,4 +363,179 @@ func TestArmType(t *testing.T) {
 
 func scopeOf(sub, rg string) mapschema.AzureScope {
 	return mapschema.AzureScope{Subscription: sub, ResourceGroup: rg}
+}
+
+// answer is a QueryResponse holding rows, one page.
+func answer(rows ...string) []byte {
+	return []byte(fmt.Sprintf(`{"count":%d,"data":[%s],"resultTruncated":"false"}`, len(rows), strings.Join(rows, ",")))
+}
+
+// groupRow is a resource group of sub1.
+func groupRow(name string) string {
+	return fmt.Sprintf(`{"id":"/subscriptions/%s/resourceGroups/%s","name":%q,"subscriptionId":%q}`, sub1, name, name, sub1)
+}
+
+// resourceRow is a resource of sub1, of a type at a path under its
+// provider, in a group by its ID, and in column by its resourceGroup
+// column.
+func resourceRow(idGroup, column, typ, path string) string {
+	return fmt.Sprintf(`{"id":"/subscriptions/%s/resourceGroups/%s/providers/%s","name":%q,"type":%q,"subscriptionId":%q,"resourceGroup":%q}`,
+		sub1, idGroup, path, path[strings.LastIndex(path, "/")+1:], strings.ToLower(typ), sub1, strings.ToLower(column))
+}
+
+const (
+	envShop = "environment/rg-shop"
+	vmType  = "Microsoft.Compute/virtualMachines"
+	sqlType = "Microsoft.Sql/servers/databases"
+)
+
+// survey imports one ground, sub1 whole or narrowed to groups, answered
+// with groups and resources rows.
+func survey(t *testing.T, narrowed []v1alpha1.ResourceGroupName, groups, resources []string, entries ...mapserver.Entry) discovery.Result {
+	t.Helper()
+	f := &fake{answer: func(req Request) ([]byte, error) {
+		if isResources(req) {
+			return answer(resources...), nil
+		}
+		return answer(groups...), nil
+	}}
+	ground := Ground{Connector: "c", Reach: v1alpha1.AzureReach{Subscriptions: []v1alpha1.AzureSubscription{{ID: sub1, ResourceGroups: narrowed}}}}
+	res, err := Import(context.Background(), f, []Ground{ground}, entries, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res
+}
+
+func proposals(res discovery.Result, action v1alpha1.ProposalAction) []string {
+	var out []string
+	for _, p := range res.Proposals {
+		if p.Action == action {
+			out = append(out, p.Key)
+		}
+	}
+	return out
+}
+
+// TestDottedGroup: a resource group may hold a dot, which an environment's
+// key may not (ADR 0016 §5 reads environment/<a>.<b> as a namespace).
+func TestDottedGroup(t *testing.T) {
+	res := survey(t, nil, []string{groupRow("rg.shop")}, []string{resourceRow("rg.shop", "rg.shop", vmType, vmType+"/vm-1")})
+	if diff := cmp.Diff([]string{envShop, "compute/vm-1"}, proposals(res, v1alpha1.ProposalAdd)); diff != "" {
+		t.Fatalf("added (-want +got):\n%s", diff)
+	}
+	var vm mapserver.Entry
+	if err := yaml.Unmarshal([]byte(res.Proposals[1].Entry), &vm); err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff([]string{envShop}, vm.Relations.DeployedIn); diff != "" {
+		t.Errorf("deployedIn (-want +got):\n%s", diff)
+	}
+}
+
+// TestRemovals: only a scope read whole, and seen to be readable, yields
+// removals; a row Resource Graph returned and the import dropped is not
+// gone.
+func TestRemovals(t *testing.T) {
+	vmID := "/subscriptions/" + sub1 + "/resourceGroups/rg-shop/providers/" + vmType + "/vm-1"
+	env := entry("environment/shop", "validated", az("/subscriptions/"+sub1+"/resourceGroups/rg-shop"))
+	vm := entry("compute/vm-1", "validated", az(vmID))
+	for _, tc := range []struct {
+		name              string
+		narrowed          []v1alpha1.ResourceGroupName
+		groups, resources []string
+		notSeen, removed  []string
+	}{
+		{
+			name:      "a dropped row is not gone",
+			groups:    []string{groupRow("rg-shop")},
+			resources: []string{resourceRow("rg-shop", "rg-other", vmType, vmType+"/vm-1")},
+			notSeen:   []string{"environment c/Resources: " + fmt.Sprintf(reasonOutside, 1)},
+		},
+		{
+			name:    "a whole subscription shows no group",
+			notSeen: []string{"environment c/subscriptions/" + sub1 + ": " + reasonNoGroup},
+		},
+		{
+			name:     "a narrowed group is not returned",
+			narrowed: []v1alpha1.ResourceGroupName{"rg-shop"},
+			notSeen:  []string{"environment c/subscriptions/" + sub1 + "/resourceGroups/rg-shop: " + reasonGroupMissing},
+		},
+		{
+			name:    "a group gone from a readable subscription",
+			groups:  []string{groupRow("rg-data")},
+			removed: []string{"environment/shop", "compute/vm-1"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := survey(t, tc.narrowed, tc.groups, tc.resources, env, vm)
+			if diff := cmp.Diff(tc.notSeen, notSeen(res)); diff != "" {
+				t.Errorf("notSeen (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tc.removed, proposals(res, v1alpha1.ProposalRemove)); diff != "" {
+				t.Errorf("removed (-want +got):\n%s", diff)
+			}
+			for _, p := range res.Proposals {
+				if p.Action == v1alpha1.ProposalRemove && (len(p.Evidence) != 1 || !slices.Contains([]string{"c/ResourceContainers", "c/Resources"}, p.Evidence[0])) {
+					t.Errorf("removal evidence of %s = %v, want the connector and its table", p.Key, p.Evidence)
+				}
+			}
+		})
+	}
+}
+
+// TestKeysNotProposed: a key still taken after qualifying, by the Map or
+// by another row, is proposed for none of them; an entry the schema
+// refuses is not proposed either. Each says it in a notSeen line.
+func TestKeysNotProposed(t *testing.T) {
+	db := func(server string) string {
+		return resourceRow("rg-shop", "rg-shop", sqlType, "Microsoft.Sql/servers/sql-"+server+"/databases/orders")
+	}
+	vmID := "/subscriptions/" + sub1 + "/resourceGroups/rg-shop/providers/" + vmType + "/vm-1"
+	bad := entry("compute/old", "validated", az(vmID))
+	bad.Created = "not a date"
+	for _, tc := range []struct {
+		name      string
+		resources []string
+		entries   []mapserver.Entry
+		notSeen   []string
+		added     []string
+	}{
+		{
+			name:      "two rows on one qualified key",
+			resources: []string{db("a"), db("b")},
+			notSeen: []string{
+				"datastore /subscriptions/" + sub1 + "/resourceGroups/rg-shop/providers/Microsoft.Sql/servers/sql-a/databases/orders: " + reasonKeyTaken,
+				"datastore /subscriptions/" + sub1 + "/resourceGroups/rg-shop/providers/Microsoft.Sql/servers/sql-b/databases/orders: " + reasonKeyTaken,
+			},
+			added: []string{envShop},
+		},
+		{
+			name:      "the qualified key is in the Map",
+			resources: []string{resourceRow("rg-shop", "rg-shop", vmType, vmType+"/vm-1")},
+			entries:   []mapserver.Entry{entry("compute/vm-1", "proposed"), entry("compute/vm-1-rg-shop", "proposed")},
+			notSeen:   []string{"compute " + vmID + ": " + reasonKeyTaken},
+			added:     []string{envShop},
+		},
+		{
+			name:      "the schema refuses the update",
+			resources: []string{resourceRow("rg-shop", "rg-shop", vmType, vmType+"/vm-1")},
+			entries:   []mapserver.Entry{bad},
+			notSeen:   []string{"compute compute/old: " + reasonInvalidEntry},
+			added:     []string{envShop},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := survey(t, nil, []string{groupRow("rg-shop")}, tc.resources, tc.entries...)
+			if diff := cmp.Diff(tc.notSeen, notSeen(res)); diff != "" {
+				t.Errorf("notSeen (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tc.added, proposals(res, v1alpha1.ProposalAdd)); diff != "" {
+				t.Errorf("added (-want +got):\n%s", diff)
+			}
+			if got := proposals(res, v1alpha1.ProposalUpdate); len(got) > 0 {
+				t.Errorf("updated: %v", got)
+			}
+		})
+	}
 }
