@@ -1,0 +1,158 @@
+{
+  "layers": [
+    {
+      "name": "environment",
+      "seen": 3,
+      "matched": 1,
+      "proposed": 2,
+      "notSeen": [
+        {
+          "ref": "azure-prod/Resources",
+          "reason": "2 rows outside the connector's reach or the mapped types were dropped"
+        }
+      ]
+    },
+    {
+      "name": "compute",
+      "seen": 4,
+      "matched": 0,
+      "proposed": 4
+    },
+    {
+      "name": "datastore",
+      "seen": 2,
+      "matched": 1,
+      "proposed": 2
+    },
+    {
+      "name": "network",
+      "seen": 1,
+      "matched": 0,
+      "proposed": 1
+    },
+    {
+      "name": "identity",
+      "seen": 1,
+      "matched": 0,
+      "proposed": 1
+    },
+    {
+      "name": "storage",
+      "seen": 0,
+      "matched": 0,
+      "proposed": 1
+    }
+  ],
+  "proposals": [
+    {
+      "id": "3eb3c3c52a98c8db",
+      "action": "Add",
+      "key": "environment/rg-shop-11111111",
+      "entry": "created: \"2026-11-24\"\nkey: environment/rg-shop-11111111\nlastSeen: \"2026-11-24\"\nprovenance: discovered\nsources:\n- azure: /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-shop\nstatus: proposed\n",
+      "evidence": [
+        "azure-prod/ResourceContainers"
+      ],
+      "source": "Import"
+    },
+    {
+      "id": "714c23e93e855434",
+      "action": "Add",
+      "key": "environment/rg-shop-22222222",
+      "entry": "created: \"2026-11-24\"\nkey: environment/rg-shop-22222222\nlastSeen: \"2026-11-24\"\nprovenance: discovered\nsources:\n- azure: /subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg-shop\nstatus: proposed\n",
+      "evidence": [
+        "azure-prod/ResourceContainers"
+      ],
+      "source": "Import"
+    },
+    {
+      "id": "30e19eb6dd56cbec",
+      "action": "Add",
+      "key": "compute/api-rg-data",
+      "entry": "created: \"2026-11-24\"\nkey: compute/api-rg-data\nlastSeen: \"2026-11-24\"\nprovenance: discovered\nrelations:\n  deployedIn:\n  - environment/data\nsources:\n- azure: /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/RG-Data/providers/Microsoft.Web/sites/api\nstatus: proposed\n",
+      "evidence": [
+        "azure-prod/Resources"
+      ],
+      "source": "Import"
+    },
+    {
+      "id": "ef3cfa64096e8f3d",
+      "action": "Add",
+      "key": "compute/api-rg-shop",
+      "entry": "created: \"2026-11-24\"\nkey: compute/api-rg-shop\nlastSeen: \"2026-11-24\"\nprovenance: discovered\nrelations:\n  deployedIn:\n  - environment/rg-shop-11111111\nsources:\n- azure: /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-shop/providers/Microsoft.Web/sites/api\nstatus: proposed\n",
+      "evidence": [
+        "azure-prod/Resources"
+      ],
+      "source": "Import"
+    },
+    {
+      "id": "7e8b0d9bbf96bc24",
+      "action": "Add",
+      "key": "compute/vm-web-1-11111111",
+      "entry": "created: \"2026-11-24\"\nkey: compute/vm-web-1-11111111\nlastSeen: \"2026-11-24\"\nprovenance: discovered\nrelations:\n  deployedIn:\n  - environment/rg-shop-11111111\nsources:\n- azure: /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-shop/providers/Microsoft.Compute/virtualMachines/vm-web-1\nstatus: proposed\n",
+      "evidence": [
+        "azure-prod/Resources"
+      ],
+      "source": "Import"
+    },
+    {
+      "id": "af1b96086f4119ac",
+      "action": "Add",
+      "key": "compute/vm-web-1-22222222",
+      "entry": "created: \"2026-11-24\"\nkey: compute/vm-web-1-22222222\nlastSeen: \"2026-11-24\"\nprovenance: discovered\nrelations:\n  deployedIn:\n  - environment/rg-shop-22222222\nsources:\n- azure: /subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg-shop/providers/Microsoft.Compute/virtualMachines/vm-web-1\nstatus: proposed\n",
+      "evidence": [
+        "azure-prod/Resources"
+      ],
+      "source": "Import"
+    },
+    {
+      "id": "9d403622c6c47809",
+      "action": "Add",
+      "key": "datastore/cache-shop",
+      "entry": "created: \"2026-11-24\"\nkey: datastore/cache-shop\nlastSeen: \"2026-11-24\"\nprovenance: discovered\nrelations:\n  deployedIn:\n  - environment/rg-shop-11111111\nsources:\n- azure: /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-shop/providers/Microsoft.Cache/redis/Cache_Shop\nstatus: proposed\n",
+      "evidence": [
+        "azure-prod/Resources"
+      ],
+      "source": "Import"
+    },
+    {
+      "id": "e670705205c2357d",
+      "action": "Update",
+      "key": "datastore/orders",
+      "entry": "created: \"2026-11-01\"\nkey: datastore/orders\nlastSeen: \"2026-11-24\"\nprovenance: declared\nrelations:\n  deployedIn:\n  - environment/data\nsources:\n- azure: /SUBSCRIPTIONS/11111111-1111-1111-1111-111111111111/RESOURCEGROUPS/RG-DATA/providers/Microsoft.Sql/servers/sql-orders/databases/orders\nstatus: validated\n",
+      "evidence": [
+        "azure-prod/Resources"
+      ],
+      "source": "Import"
+    },
+    {
+      "id": "5c62fb7b10de0603",
+      "action": "Add",
+      "key": "network/lb-front-rg-shop",
+      "entry": "created: \"2026-11-24\"\nkey: network/lb-front-rg-shop\nlastSeen: \"2026-11-24\"\nprovenance: discovered\nrelations:\n  deployedIn:\n  - environment/rg-shop-11111111\nsources:\n- azure: /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-shop/providers/Microsoft.Network/loadBalancers/lb-front\nstatus: proposed\n",
+      "evidence": [
+        "azure-prod/Resources"
+      ],
+      "source": "Import"
+    },
+    {
+      "id": "c7db93e7ed8237cd",
+      "action": "Add",
+      "key": "identity/id-shop",
+      "entry": "created: \"2026-11-24\"\nkey: identity/id-shop\nlastSeen: \"2026-11-24\"\nprovenance: discovered\nsources:\n- azure: /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-shop/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-shop\nstatus: proposed\n",
+      "evidence": [
+        "azure-prod/Resources"
+      ],
+      "source": "Import"
+    },
+    {
+      "id": "9c9b3c17bb138453",
+      "action": "Remove",
+      "key": "storage/old-exports",
+      "entry": "created: \"2026-11-01\"\nkey: storage/old-exports\nprovenance: declared\nsources:\n- azure: /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-data/providers/Microsoft.Storage/storageAccounts/stexports\nstatus: validated\n",
+      "evidence": [
+        "Resources"
+      ],
+      "source": "Import"
+    }
+  ]
+}

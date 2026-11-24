@@ -149,7 +149,7 @@ spec:
 
 ## Cloud connectors
 
-A ground without Kubernetes is read by a connector of type `cloud` (ADR 0014 §3, ADR 0021). Its server runs in the administration cluster, as an add-on next to the Map; agents reach it only through the gateway and their own route, with the allow-list enforced there (ADR 0008). Nothing enters the ground: the server's pod has egress only, to the provider's endpoints (DNS and TCP 443, or the configured proxy), set by a NetworkPolicy like the Map's. The authorization decision stays at the data, made by the provider's own control plane. No add-on ships yet; this section fixes the API and the rules the add-on will follow.
+A ground without Kubernetes is read by a connector of type `cloud` (ADR 0014 §3, ADR 0021). Its server runs in the administration cluster, as an add-on next to the Map; agents reach it only through the gateway and their own route, with the allow-list enforced there (ADR 0008). Nothing enters the ground: the server's pod has egress only, to the provider's endpoints (DNS and TCP 443, or the configured proxy), set by a NetworkPolicy like the Map's. The authorization decision stays at the data, made by the provider's own control plane. No add-on ships yet; this section fixes the API and the rules the add-on will follow. The `cloud` type is a first step: coverage by reach works today, and no TakeCare server for it ships before a 1.x release, which will also wire the Resource Graph importer (spec 10 §4.1).
 
 ```yaml
 spec:
