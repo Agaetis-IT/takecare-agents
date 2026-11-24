@@ -4,7 +4,7 @@
 |---|---|
 | Status | Proposed |
 | Date | 2026-10-30 |
-| Related decisions | ADR 0001, 0003, 0004, 0007, 0008, 0009; specs 00, 01, 02, 05 |
+| Related decisions | ADR 0001, 0003, 0004, 0007, 0008, 0009, 0022; specs 00, 01, 02, 05, 11 |
 | Source of truth for the collection | the concept (brief of 2026-11-04, outside this repository; the README reflects it) |
 
 ## Purpose
@@ -37,7 +37,7 @@ Already in `RoleCommonSpec` and to keep as is: `level`, `model` (per-role model,
 |---|---|---|---|
 | **Alert** | Doc | An Alertmanager webhook (spec 02 §1) | alert intake, in the operator binary |
 | **Schedule** | Mécano, Nutri, Coach, Intendant (the survey) | A cron in the role's spec | a scheduler in the operator (one per role resource) |
-| **Upstream record** | Kiné (after a Doc investigation), Mécano (after a Kiné finding), Intendant (a connector or an agent registered) | A record of another role reaching a phase (ADR 0009's `TakeCareFinding`) | a watch on the upstream record kind |
+| **Upstream record** | Kiné (after a Doc investigation), Mécano (after a Kiné finding), Intendant (a connector or an agent registered) | A record of another role reaching a phase: the investigation itself for the Kiné (ADR 0022, spec 11 §3), ADR 0009's `TakeCareFinding` from the Mécano on | a watch on the upstream record kind |
 | **Conversation** | Guide | A human message in a chat (Slack, Teams) | a `chat` connector that delivers messages to the operator |
 
 Contract shared by the four: a trigger **creates a record** (§3) with a deterministic name (deduplication is the create, as spec 02 does with the fingerprint), then the role's controller runs it. The engine (`engine.Engine`, PR 4) sees a run, never a trigger. Nothing in the engine boundary may assume an alert.
@@ -69,7 +69,7 @@ Everything an agent touches is a connector (ADR 0008). The seven types of spec 0
 | `code` | `read` at `Apprentice` (repositories, manifests, IaC), `propose` at `Practitioner` (open a pull request), `act` at `Expert` (merge is **never** an agent's: a human merges) | Mécano, then Kiné | The first writing role writes **a pull request**, which is a `propose` tool: the three-layer guarantee of ADR 0008 holds unchanged |
 | `billing` | `read` (cloud and Kubernetes cost exports, quotas) | Nutri | Scope is cloud accounts, not namespaces |
 | `chat` | `read` (receive messages), `propose` (reply) | Guide | The `report` connector posts; a `chat` connector converses. Same Slack server, two surfaces |
-| `history` | `read` | Kiné | **TakeCare's own records** (investigations, reviews) exposed as an MCP server by the operator, so a role reads another role's history through the gateway with an allow-list, like any other source. No role reads the Kubernetes API for TakeCare objects |
+| `history` | `read` | Kiné | **TakeCare's own records** (investigations, reviews) exposed as an MCP server, an add-on with its own read-only ServiceAccount (spec 11 §4), so a role reads another role's history through the gateway with an allow-list, like any other source. No role reads the Kubernetes API for TakeCare objects |
 
 `report` stays the only connector whose tools agents never get: publishing is the operator's (spec 02 §4), for every role.
 
@@ -105,13 +105,13 @@ Changing level is changing the resource: a reviewed pull request, a traced chang
 The concept's chains: Doc → Kiné → Mécano (an incident, its root cause, the upgrade that fixes it); Coach ↔ Nutri (margin before the peak versus hunting waste, never below the Coach's floor); Guide + Mécano (knowledge handover). In the operator, a hand-off is **a record plus an A2A call**:
 
 - the **record** is the durable contract: a `TakeCareFinding` (ADR 0009) written by the upstream role's controller, or the upstream record itself reaching a phase; the downstream role watches it (§2, trigger "upstream record");
-- the **A2A call** is how one agent asks another a question during a run (the Kiné asking the Doc for details). Through the gateway, with the caller's trace context (ADR 0006), and the callee's tools restricted by **the callee's** level, never the caller's.
+- the **A2A call** is how one agent asks another a question during a run. Through the gateway, with the caller's trace context (ADR 0006), and the callee's tools restricted by **the callee's** level, never the caller's. The Kiné makes none in 0.5.0: it reads the Doc's diagnosis through `history` (ADR 0022).
 
 Exercises hand nothing to the operator: what a Bootcamp or a Handover reveals becomes a Map or Topo entry, and a flaw found in an agent becomes a Ranger policy, **through a human**.
 
 ## 7. Memory and history
 
-- Every record is kept for a retention set in the chart (spec 02: 7 days for investigations; longer for reviews and maintenances, since the Kiné needs months).
+- Every record is kept for a retention set in the chart: from 0.5.0, 90 days for investigations with a count cap, and 365 days for reviews, since the Kiné needs months (spec 11 §5); longer for maintenances too.
 - Roles read history through the `history` connector (§4), never directly.
 - No role has a private memory outside its records. If a role needs one (the Guide across conversations), it is a record kind, reviewable like the others.
 
@@ -152,7 +152,7 @@ After 0.3.0, which delivers the Intendant beside the Doc and the Ranger, the ord
 | `scope.namespaces` optional in the shared type, `scope.entities` added, required per kind by CEL | step 2's foundations (done) |
 | Connector types `code`, `history`, `billing`, `chat` | each with its first role |
 | `GuardrailCommonSpec`, `TakeCareRanger` | step 2 |
-| `history` MCP server exposed by the operator | step 2 (replay at Apprentice; the Kiné) |
+| `history` MCP server, an add-on | with the Kiné (spec 11 §4) |
 | Spec 00 roadmap replaced by §9 | now, with this spec |
 | The Map as a connector, one internal alert format keyed by Map entity, readiness by ground coverage | two ADRs before step 2 |
 | `TakeCareIntendant`, `TakeCareSurvey`, the Kubernetes import, the inventory | step 2 (spec 10) |

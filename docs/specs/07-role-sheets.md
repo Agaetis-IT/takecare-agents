@@ -101,12 +101,12 @@ Template: nature · business name · the promise (recto of the card) · trigger 
 
 - **Nature**: agent. **Pillar**: Heal.
 - **Promise**: "He traces the underlying cause and proposes what prevents the relapse."
-- **Trigger**: upstream record (a Doc investigation completed; a recurrence detected over a period) and schedule (the periodic review). **Reads**: `history` (investigations), `tickets`, `knowledge` (post-mortems, runbooks), `changes`, `cluster`.
+- **Trigger**: upstream record (a Doc investigation completed, once its alert resolved or after a grace) and schedule (the periodic review). **Reads**: `history` (investigations, reviews), `tickets`, `knowledge` (post-mortems, runbooks), `changes`, `map`; no `cluster` in 0.5.0, since it takes the root cause from the Doc's diagnosis.
 - **Produces**: `TakeCareReview`: the problem statement, corrective actions; published through `report`; at `Expert`, the changes made (runbooks, alert rules) as pull requests.
 - **Levels**: `Apprentice` "He spots recurrences" (on past incidents: what repeats and what stayed undone) · `Practitioner` "He prescribes the rehabilitation" (post-mortem and corrective actions after each incident; you approve) · `Expert` "He follows the sessions" (carries out the validated actions, updates runbooks and alerts, reports).
-- **Build**: the first **upstream-record trigger** and the first consumer of the `history` connector (spec 06 §4). The first A2A exchange between roles (asks the Doc for details, ADR 0009). `Expert` writes are pull requests on the `code` connector (runbooks, alert rules), never live changes.
-- **Partners**: Doc, Mécano, Guide. **Step**: **2**.
-- **Open**: `TakeCareFinding` (ADR 0009) or the investigation itself as the hand-off record; retention of investigations long enough for recurrences (months, not 7 days).
+- **Build**: spec 11. The first **upstream-record trigger**, on the investigation itself (ADR 0022), and the first consumer of the `history` connector (spec 06 §4). No A2A exchange in 0.5.0 (ADR 0022). `Expert` writes, later, are pull requests on the `code` connector (runbooks, alert rules), never live changes.
+- **Partners**: Doc, Mécano, Guide. **Step**: after the TUI, release 0.5.0 (spec 06 §9).
+- **Closed by spec 11**: the investigation itself is the hand-off record (ADR 0022); investigations are kept 90 days and reviews 365 days (spec 11 §5).
 
 ## 09 Mécano — Lifecycle management
 
