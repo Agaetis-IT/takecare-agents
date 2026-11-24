@@ -710,7 +710,7 @@ func recordedParent(traceID string) (trace.SpanContext, bool) {
 func (w *Worker) degradation(ctx context.Context, d *v1alpha1.TakeCareDoc) (*v1alpha1.Degradation, error) {
 	c := d.Spec.Connectors
 	var down []string
-	for _, name := range slices.Concat(c.Cluster, c.Metrics, c.Knowledge, c.Changes, c.Tickets) {
+	for _, name := range slices.Concat(c.Cluster, c.Metrics, c.Knowledge, c.Changes, c.Tickets, c.Cloud) {
 		if slices.Contains(down, name) {
 			continue
 		}

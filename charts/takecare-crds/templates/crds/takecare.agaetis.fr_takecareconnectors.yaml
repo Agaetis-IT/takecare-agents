@@ -212,6 +212,79 @@ spec:
                   rule: has(self.addon) != has(self.url)
                 - message: headersFrom is only valid with url
                   rule: '!has(self.headersFrom) || has(self.url)'
+              reach:
+                description: |-
+                  What of a ground without Kubernetes the connector reads. Type cloud
+                  only (ADR 0021 §5).
+                properties:
+                  azure:
+                    description: |-
+                      AzureReach is a list of subscriptions of one tenant, each whole or
+                      narrowed to resource groups (ADR 0021 §5). Azure compares IDs and names
+                      regardless of case, so do the uniqueness rules and coverage; the API
+                      stores what was written.
+                    properties:
+                      subscriptions:
+                        items:
+                          description: |-
+                            AzureSubscription is a subscription of the reach: the whole of it, or
+                            only the listed resource groups.
+                          properties:
+                            id:
+                              description: The subscription ID, a GUID.
+                              maxLength: 36
+                              pattern: ^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$
+                              type: string
+                            resourceGroups:
+                              description: |-
+                                Only these resource groups; unset, the whole subscription. At most
+                                32: the case-folded uniqueness rule is quadratic in the groups and
+                                counted for each of the 64 subscriptions, and 64 groups exceed the API
+                                server's CEL cost budget for one rule (2.9 times over, Kubernetes
+                                1.37), so the CRD would not install.
+                              items:
+                                description: |-
+                                  ResourceGroupName is an Azure resource group name: 1 to 90 characters,
+                                  letters and digits in the Unicode sense (Char.IsLetterOrDigit: Lu, Ll,
+                                  Lt, Lm, Lo, Nd), underscores, hyphens, periods and parentheses, not
+                                  ending with a period.
+                                maxLength: 90
+                                pattern: ^[-_.()\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nd}]{0,89}[-_()\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nd}]$
+                                type: string
+                              maxItems: 32
+                              minItems: 1
+                              type: array
+                              x-kubernetes-list-type: set
+                              x-kubernetes-validations:
+                              - message: resource group names are unique regardless
+                                  of case
+                                rule: self.all(g, self.exists_one(h, h.lowerAscii()
+                                  == g.lowerAscii()))
+                          required:
+                          - id
+                          type: object
+                        maxItems: 64
+                        minItems: 1
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - id
+                        x-kubernetes-list-type: map
+                        x-kubernetes-validations:
+                        - message: subscription IDs are unique regardless of case
+                          rule: self.all(s, self.exists_one(t, t.id.lowerAscii() ==
+                            s.id.lowerAscii()))
+                      tenantID:
+                        description: The Microsoft Entra tenant, a GUID.
+                        maxLength: 36
+                        pattern: ^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$
+                        type: string
+                    required:
+                    - subscriptions
+                    - tenantID
+                    type: object
+                required:
+                - azure
+                type: object
               report:
                 description: Adapter and destinations. Type report only.
                 properties:
@@ -288,6 +361,7 @@ spec:
                   - tickets
                   - report
                   - map
+                  - cloud
                   type: string
                 minItems: 1
                 type: array
@@ -308,6 +382,10 @@ spec:
               rule: '!(''cluster'' in self.types) || has(self.kubernetes)'
             - message: spec.kubernetes is only valid for a connector of type cluster
               rule: '!has(self.kubernetes) || ''cluster'' in self.types'
+            - message: a connector of type cloud must declare spec.reach
+              rule: '!(''cloud'' in self.types) || has(self.reach)'
+            - message: spec.reach is only valid for a connector of type cloud
+              rule: '!has(self.reach) || ''cloud'' in self.types'
             - message: cluster needs an https mcp.url, no addon, and the cluster type
               rule: '!has(self.cluster) || (has(self.mcp.url) && !has(self.mcp.addon)
                 && self.mcp.url.startsWith(''https://'') && ''cluster'' in self.types)'

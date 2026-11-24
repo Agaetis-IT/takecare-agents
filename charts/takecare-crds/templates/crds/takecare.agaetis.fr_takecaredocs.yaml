@@ -98,6 +98,16 @@ spec:
                     maxItems: 16
                     type: array
                     x-kubernetes-list-type: set
+                  cloud:
+                    description: |-
+                      Cloud connectors (type cloud, ADR 0021): a ground without Kubernetes,
+                      read within each connector's spec.reach.
+                    items:
+                      maxLength: 253
+                      type: string
+                    maxItems: 16
+                    type: array
+                    x-kubernetes-list-type: set
                   cluster:
                     items:
                       maxLength: 253

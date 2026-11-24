@@ -873,10 +873,13 @@ func (w *Runner) grounds(ctx context.Context, in *v1alpha1.TakeCareIntendant, id
 					entry.Places = append(entry.Places, p)
 				}
 			}
+			if _, ok := mapschema.ParseAzure(src["azure"]); ok {
+				entry.Azure = append(entry.Azure, src["azure"])
+			}
 		}
 		entries[k], places[k] = entry, entry.Places
 	}
-	res := coverage.Cover(in.Spec.Scope, declared, given, entries, coverage.MapProblem{})
+	res := coverage.Cover(in.Spec.Scope, declared, nil, given, entries, coverage.MapProblem{})
 	wanted := map[coverage.Place]bool{}
 	for _, cl := range coverage.Clusters(declared) {
 		for _, ns := range in.Spec.Scope.Namespaces {

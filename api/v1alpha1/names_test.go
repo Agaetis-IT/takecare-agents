@@ -147,6 +147,8 @@ func TestDocSlotCaps(t *testing.T) {
 		{"17 metrics connectors", func(c *v1alpha1.DocConnectors) { c.Metrics = names(17) }, "metrics"},
 		{"17 changes connectors", func(c *v1alpha1.DocConnectors) { c.Changes = names(17) }, "changes"},
 		{"17 tickets connectors", func(c *v1alpha1.DocConnectors) { c.Tickets = names(17) }, "tickets"},
+		{"16 cloud connectors", func(c *v1alpha1.DocConnectors) { c.Cloud = names(16) }, ""},
+		{"17 cloud connectors", func(c *v1alpha1.DocConnectors) { c.Cloud = names(17) }, "cloud"},
 		{"map connector name past 253", func(c *v1alpha1.DocConnectors) { c.Map = []string{strings.Repeat("m", 254)} }, "map"},
 		{"report connector name past 253", func(c *v1alpha1.DocConnectors) { c.Report = strings.Repeat("r", 254) }, connReport},
 	} {

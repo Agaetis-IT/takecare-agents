@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Proposed |
+| Status | Accepted |
 | Date | 2026-11-24 |
 | Amends | ADR 0011 (§2: for grounds without Kubernetes, the connector runs in the administration cluster, and the certificate fallback is a stated exception to "no long-lived credential") |
 | Relates to | ADR 0008, ADR 0014, ADR 0016, ADR 0018, spec 05, spec 08 |
