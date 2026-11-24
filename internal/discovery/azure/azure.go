@@ -112,12 +112,12 @@ type run struct {
 	// ids: the lower-cased IDs kept; dropped: those of the rows dropped,
 	// which Resource Graph did return, so they are not gone.
 	ids, dropped map[string]bool
-	// groupsRead, resourcesRead: the "<sub>" and "<sub>/<rg>" scopes whose
-	// query read every row, with the connector that read them.
+	// groupsRead, resourcesRead: the "<sub>" and "<sub>/<rg>" scopes a
+	// connector's own groups query read whole and showed a group in, with
+	// that connector; resourcesRead also needs its resources query read
+	// whole. A resource row or another connector's row never marks one.
 	groupsRead, resourcesRead map[string]string
-	// visible: the "<sub>" and "<sub>/<rg>" of every group row kept.
-	visible           map[string]bool
-	groups, resources []*seen
+	groups, resources         []*seen
 	// envs: the environment key of a "<sub>/<rg>" group.
 	envs map[string]string
 	// reserved: the new keys assignKeys gave out.
@@ -140,7 +140,7 @@ func Import(ctx context.Context, q Querier, grounds []Ground, entries []mapserve
 	r := &run{
 		today: now.UTC().Format(time.DateOnly), layers: map[string]*discovery.Layer{},
 		byKey: map[string]mapserver.Entry{}, bySource: map[string][]string{},
-		ids: map[string]bool{}, dropped: map[string]bool{}, visible: map[string]bool{},
+		ids: map[string]bool{}, dropped: map[string]bool{},
 		groupsRead: map[string]string{}, resourcesRead: map[string]string{},
 		envs: map[string]string{}, reserved: map[string]bool{}, proposedKeys: map[string]bool{}, updates: map[string]*pending{},
 	}
@@ -221,11 +221,12 @@ func (r *run) read(ctx context.Context, q Querier, g Ground) error {
 	visible := map[string]bool{}
 	var silent []string
 	for _, sc := range r.plan(g) {
+		complete := map[bool]bool{}
 		for _, resources := range []bool{false, true} {
 			req := Request{Query: groupsQuery(sc.groups), Subscriptions: sc.subscriptions}
-			table, read := tableGroups, r.groupsRead
+			table := tableGroups
 			if resources {
-				req.Query, table, read = resourcesQuery(sc.groups), tableResources, r.resourcesRead
+				req.Query, table = resourcesQuery(sc.groups), tableResources
 			}
 			rows, why, err := readAll(ctx, q, req, resources)
 			if err != nil {
@@ -252,22 +253,27 @@ func (r *run) read(ctx context.Context, q Querier, g Ground) error {
 				}
 				continue
 			}
-			for _, sub := range sc.subscriptions {
-				if len(sc.groups) == 0 {
-					read[sub] = g.Connector
-				}
-				for _, rg := range sc.groups {
-					read[sub+"/"+rg] = g.Connector
-				}
-			}
+			complete[resources] = true
+		}
+		if !complete[false] {
+			continue
 		}
 		for _, sub := range sc.subscriptions {
-			if len(sc.groups) == 0 && r.groupsRead[sub] != "" && !visible[sub] {
-				silent = append(silent, sub)
+			keys, refs := []string{sub}, []string{sub}
+			if len(sc.groups) > 0 {
+				keys, refs = nil, nil
+				for _, rg := range sc.groups {
+					keys, refs = append(keys, sub+"/"+rg), append(refs, sub+"/resourceGroups/"+rg)
+				}
 			}
-			for _, rg := range sc.groups {
-				if r.groupsRead[sub+"/"+rg] != "" && !visible[sub+"/"+rg] {
-					silent = append(silent, sub+"/resourceGroups/"+rg)
+			for i, key := range keys {
+				if !visible[key] {
+					silent = append(silent, refs[i])
+					continue
+				}
+				r.groupsRead[key] = g.Connector
+				if complete[true] {
+					r.resourcesRead[key] = g.Connector
 				}
 			}
 		}
@@ -314,7 +320,6 @@ func (r *run) keep(reach coverage.Reach, rw row, resources bool) (mapschema.Azur
 	} else {
 		r.groups = append(r.groups, s)
 	}
-	r.visible[sc.Subscription], r.visible[sc.Subscription+"/"+sc.ResourceGroup] = true, true
 	return sc, true
 }
 
@@ -546,9 +551,9 @@ func (r *run) removals() {
 
 // surveyed names the connector that read whole the scope of an ID of that
 // layer, or says "": a group in a groups scope, a resource of a listed
-// type in a resources scope. A groups scope counts only when it showed a
-// group: any group of a whole subscription, the group itself of a
-// narrowed one. An empty answer may be a scope the identity cannot read.
+// type in a resources scope. A scope counts only when the connector's own
+// groups query showed a group in it (see read): an empty answer may be a
+// scope the identity cannot read.
 func (r *run) surveyed(id, layer string) string {
 	sc, ok := mapschema.ParseAzure(id)
 	if !ok || sc.ResourceGroup == "" {
@@ -556,10 +561,8 @@ func (r *run) surveyed(id, layer string) string {
 	}
 	sub, group := sc.Subscription, sc.Subscription+"/"+sc.ResourceGroup
 	groups := r.groupsRead[sub]
-	if groups == "" || !r.visible[sub] {
-		if groups = r.groupsRead[group]; !r.visible[group] {
-			groups = ""
-		}
+	if groups == "" {
+		groups = r.groupsRead[group]
 	}
 	if groups == "" {
 		return ""

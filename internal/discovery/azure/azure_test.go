@@ -462,6 +462,11 @@ func TestRemovals(t *testing.T) {
 			notSeen:  []string{"environment c/subscriptions/" + sub1 + "/resourceGroups/rg-shop: " + reasonGroupMissing},
 		},
 		{
+			name:      "a resource row does not make a subscription readable",
+			resources: []string{resourceRow("rg-data", "rg-data", vmType, vmType+"/vm-9")},
+			notSeen:   []string{"environment c/subscriptions/" + sub1 + ": " + reasonNoGroup},
+		},
+		{
 			name:    "a group gone from a readable subscription",
 			groups:  []string{groupRow("rg-data")},
 			removed: []string{"environment/shop", "compute/vm-1"},
@@ -481,6 +486,44 @@ func TestRemovals(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestRemovalsTwoConnectors: a scope is readable only through the
+// connector whose own groups query showed it. A blind connector over the
+// whole subscription proposes no removal, and gives no evidence for the
+// group another connector can read.
+func TestRemovalsTwoConnectors(t *testing.T) {
+	f := &fake{answer: func(req Request) ([]byte, error) {
+		if strings.Contains(req.Query, "rg-data") && !isResources(req) {
+			return answer(groupRow("rg-data")), nil
+		}
+		return answer(), nil
+	}}
+	grounds := []Ground{
+		{Connector: "blind", Reach: v1alpha1.AzureReach{Subscriptions: []v1alpha1.AzureSubscription{{ID: sub1}}}},
+		{Connector: "narrow", Reach: v1alpha1.AzureReach{Subscriptions: []v1alpha1.AzureSubscription{{ID: sub1, ResourceGroups: []v1alpha1.ResourceGroupName{"rg-data"}}}}},
+	}
+	entries := []mapserver.Entry{
+		entry("environment/shop", "validated", az("/subscriptions/"+sub1+"/resourceGroups/rg-shop")),
+		entry("compute/vm-1", "validated", az("/subscriptions/"+sub1+"/resourceGroups/rg-shop/providers/"+vmType+"/vm-1")),
+		entry("compute/vm-2", "validated", az("/subscriptions/"+sub1+"/resourceGroups/rg-data/providers/"+vmType+"/vm-2")),
+	}
+	res, err := Import(context.Background(), f, grounds, entries, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff([]string{"environment blind/subscriptions/" + sub1 + ": " + reasonNoGroup}, notSeen(res)); diff != "" {
+		t.Errorf("notSeen (-want +got):\n%s", diff)
+	}
+	var removed []string
+	for _, p := range res.Proposals {
+		if p.Action == v1alpha1.ProposalRemove {
+			removed = append(removed, p.Key+" "+strings.Join(p.Evidence, ","))
+		}
+	}
+	if diff := cmp.Diff([]string{"compute/vm-2 narrow/Resources"}, removed); diff != "" {
+		t.Errorf("removed (-want +got):\n%s", diff)
 	}
 }
 
