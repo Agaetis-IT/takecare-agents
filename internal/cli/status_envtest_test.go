@@ -32,7 +32,7 @@ var statusRights = []rbacv1.PolicyRule{{
 	APIGroups: []string{v1alpha1.GroupVersion.Group},
 	Resources: []string{"takecareplatforms", "takecaredocs", "takecareintendants", "takecarerangers",
 		"takecareconnectors", "takecaresurveys", "takecareinvestigations"},
-	Verbs: []string{"get", "list"},
+	Verbs: []string{verbGet, "list"},
 }}
 
 const (
@@ -73,20 +73,20 @@ func TestStatusAsReader(t *testing.T) {
 	ready := func() []metav1.Condition {
 		return []metav1.Condition{{Type: v1alpha1.ConditionReady, Status: metav1.ConditionTrue, Reason: "Ready", LastTransitionTime: metav1.Now()}}
 	}
-	scope := v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{"apps"}}
+	scope := v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{nsApps}}
 	platform := &v1alpha1.TakeCarePlatform{Name: "main", Spec: v1alpha1.TakeCarePlatformSpec{Models: []v1alpha1.ModelSpec{{
 		Name: "default", BaseURL: "https://models.example/v1", Model: "m", APIKeySecretRef: v1alpha1.SecretKeyRef{Name: "model", Key: "apiKey"},
 	}}}}
 	doc := &v1alpha1.TakeCareDoc{Name: "doc", Namespace: testNS,
 		Spec: v1alpha1.TakeCareDocSpec{RoleCommonSpec: v1alpha1.RoleCommonSpec{Scope: scope}}}
-	intendant := &v1alpha1.TakeCareIntendant{Name: "intendant", Namespace: testNS,
+	intendant := &v1alpha1.TakeCareIntendant{Name: intendantName, Namespace: testNS,
 		Spec: v1alpha1.TakeCareIntendantSpec{RoleCommonSpec: v1alpha1.RoleCommonSpec{Scope: scope}, Connectors: v1alpha1.IntendantConnectors{Map: []string{"map"}}}}
 	ranger := &v1alpha1.TakeCareRanger{Name: "main"}
 	connector := &v1alpha1.TakeCareConnector{Name: "kubernetes", Namespace: testNS,
 		Spec: v1alpha1.TakeCareConnectorSpec{Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster}, MCP: v1alpha1.MCPSpec{Addon: "kubernetes"},
-			Kubernetes: &v1alpha1.KubernetesSpec{Namespaces: []v1alpha1.Namespace{"apps"}}}}
+			Kubernetes: &v1alpha1.KubernetesSpec{Namespaces: []v1alpha1.Namespace{nsApps}}}}
 	survey := &v1alpha1.TakeCareSurvey{Name: "intendant-1", Namespace: testNS,
-		Spec: v1alpha1.TakeCareSurveySpec{IntendantRef: v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareIntendant, Name: "intendant"}, Trigger: v1alpha1.TriggerOnDemand}}
+		Spec: v1alpha1.TakeCareSurveySpec{IntendantRef: v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareIntendant, Name: intendantName}, Trigger: v1alpha1.TriggerOnDemand}}
 	investigation := &v1alpha1.TakeCareInvestigation{Name: "doc-1", Namespace: testNS,
 		Spec: v1alpha1.TakeCareInvestigationSpec{RoleRef: v1alpha1.RoleRef{Kind: "TakeCareDoc", Name: "doc"},
 			Alert: v1alpha1.AlertRecord{Name: alertName}, Level: v1alpha1.LevelApprentice}}
@@ -175,7 +175,7 @@ func kubeconfigAs(t *testing.T, cfg *rest.Config, user string) string {
 func runStatus(ctx context.Context, kubeconfig string) (code int, stdout, stderr string) {
 	var out, errOut bytes.Buffer
 	a := &app{stdout: &out, stderr: &errOut, now: time.Now}
-	code = a.run(ctx, []string{"status", "--kubeconfig", kubeconfig, flagOutput, outputJSON})
+	code = a.run(ctx, []string{"status", flagKubecfg, kubeconfig, flagOutput, outputJSON})
 	return code, out.String(), errOut.String()
 }
 
