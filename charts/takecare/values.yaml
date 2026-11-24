@@ -151,12 +151,23 @@ ranger:
   # `expressions`). The chart refuses them below Expert, as the API does.
   extra: {}
 
-# The roles' records (spec 02).
+# The roles' records (spec 02, spec 11 §5), kept for months so that the
+# Kiné sees recurrences.
 investigations:
   # -- How long an ended investigation (Completed, Failed, TimedOut,
   # Dropped) is kept before the operator deletes it. Queued and Running
   # ones are never deleted.
-  retention: 168h
+  retention: 2160h
+  # -- How many ended investigations are kept at most: past it, the oldest
+  # ended go first, whatever their age. Two thousand, with their diagnoses,
+  # weigh tens of MiB in etcd.
+  maxKept: 2000
+
+reviews:
+  # -- How long an ended review of the Kiné (Completed, Failed, Dropped) is
+  # kept before the operator deletes it. Each Kiné keeps its newest ended
+  # review however old it is; Queued and Running ones are never deleted.
+  retention: 8760h
 
 # The Doc's Alertmanager webhook (spec 02 §1).
 alerting:

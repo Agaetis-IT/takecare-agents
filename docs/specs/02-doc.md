@@ -92,7 +92,7 @@ status:
   resolvedAt: null
 ```
 
-Printer columns: `ALERT`, `PHASE`, `PUBLISHED`, `AGE`. Investigations older than 7 days are deleted (chart value).
+Printer columns: `ALERT`, `PHASE`, `PUBLISHED`, `AGE`. Ended investigations are kept 90 days, at most 2000 of them, the oldest ended going first past that count; both are chart values (spec 11 §5).
 
 ## Flow
 

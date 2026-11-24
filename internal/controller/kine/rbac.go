@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package kine runs the Kiné (spec 11). For now it holds the operator's
-// rights on the Kiné's kinds; the retention of the reviews, the controller,
-// the triggers and the runner come with the next lots.
+// rights on the Kiné's kinds and the retention of the reviews; the
+// controller, the triggers and the runner come with the next lots.
 package kine
 
 // The operator's rights on the Kiné's kinds, in its own namespace, approved
