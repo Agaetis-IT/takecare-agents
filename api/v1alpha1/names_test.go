@@ -63,6 +63,8 @@ func TestNameBoundsAgree(t *testing.T) {
 		{"takecaredocs", fmt.Sprintf("oldSelf.hasValue() || size(self.metadata.name) <= %d", v1alpha1.MaxDocName), v1alpha1.MessageDocName, v1alpha1.MaxDocName},
 		{"takecareconnectors", fmt.Sprintf("oldSelf.hasValue() || size(self.metadata.name) <= %d || self.spec.types.all(t, t == 'report')", v1alpha1.MaxConnectorName), v1alpha1.MessageConnectorName, v1alpha1.MaxConnectorName},
 		{"takecaredemos", fmt.Sprintf("oldSelf.hasValue() || size(self.metadata.name) <= %d", v1alpha1.MaxDemoName), v1alpha1.MessageDemoName, v1alpha1.MaxDemoName},
+		{"takecarekines", fmt.Sprintf("oldSelf.hasValue() || size(self.metadata.name) <= %d", v1alpha1.MaxKineName), v1alpha1.MessageKineName, v1alpha1.MaxKineName},
+		{"takecarereviews", fmt.Sprintf("oldSelf.hasValue() || size(self.metadata.name) <= %d", v1alpha1.MaxReviewName), v1alpha1.MessageReviewName, v1alpha1.MaxReviewName},
 	} {
 		t.Run(tc.plural, func(t *testing.T) {
 			said := crdSays(t, tc.plural)
@@ -76,8 +78,20 @@ func TestNameBoundsAgree(t *testing.T) {
 			}
 		})
 	}
-	if !crdSays(t, "takecareintendants")[v1alpha1.MessageScheduleUTC] {
-		t.Errorf("the Intendant's CRD does not say %q", v1alpha1.MessageScheduleUTC)
+	for _, plural := range []string{"takecareintendants", "takecarekines"} {
+		if !crdSays(t, plural)[v1alpha1.MessageScheduleUTC] {
+			t.Errorf("the %s CRD does not say %q", plural, v1alpha1.MessageScheduleUTC)
+		}
+	}
+	// The Kiné's engine agent, takecare-kine-<name>, at its bound: 63
+	// characters (the agent's renderer comes with lot K3).
+	if n := len(v1alpha1.KineAgentPrefix) + v1alpha1.MaxKineName; n != 63 || !strings.Contains(v1alpha1.MessageKineName, v1alpha1.KineAgentPrefix) {
+		t.Errorf("Kiné at its bound: agent name of %d characters, want 63; message names the prefix: %v", n, strings.Contains(v1alpha1.MessageKineName, v1alpha1.KineAgentPrefix))
+	}
+	// A new action's id, <review name>-<n>, fits its bound for a review
+	// at its own bound and its 20th action.
+	if n := v1alpha1.MaxReviewName + len("-20"); n > v1alpha1.MaxActionID {
+		t.Errorf("a new action's id may be %d characters, past MaxActionID %d", n, v1alpha1.MaxActionID)
 	}
 	for _, tc := range []struct {
 		name, prefix, message string
@@ -141,15 +155,15 @@ func TestDocSlotCaps(t *testing.T) {
 		mutate func(*v1alpha1.DocConnectors)
 		want   string
 	}{
-		{"16 knowledge connectors", func(c *v1alpha1.DocConnectors) { c.Knowledge = names(16) }, ""},
-		{"17 knowledge connectors", func(c *v1alpha1.DocConnectors) { c.Knowledge = names(17) }, "knowledge"},
+		{case16Knowledge, func(c *v1alpha1.DocConnectors) { c.Knowledge = names(16) }, ""},
+		{case17Knowledge, func(c *v1alpha1.DocConnectors) { c.Knowledge = names(17) }, wantKnowledge},
 		{"17 cluster connectors", func(c *v1alpha1.DocConnectors) { c.Cluster = names(17) }, "cluster"},
 		{"17 metrics connectors", func(c *v1alpha1.DocConnectors) { c.Metrics = names(17) }, "metrics"},
 		{"17 changes connectors", func(c *v1alpha1.DocConnectors) { c.Changes = names(17) }, "changes"},
-		{"17 tickets connectors", func(c *v1alpha1.DocConnectors) { c.Tickets = names(17) }, "tickets"},
+		{"17 tickets connectors", func(c *v1alpha1.DocConnectors) { c.Tickets = names(17) }, connTickets},
 		{"16 cloud connectors", func(c *v1alpha1.DocConnectors) { c.Cloud = names(16) }, ""},
 		{"17 cloud connectors", func(c *v1alpha1.DocConnectors) { c.Cloud = names(17) }, "cloud"},
-		{"map connector name past 253", func(c *v1alpha1.DocConnectors) { c.Map = []string{strings.Repeat("m", 254)} }, "map"},
+		{"map connector name past 253", func(c *v1alpha1.DocConnectors) { c.Map = []string{strings.Repeat("m", 254)} }, connMap},
 		{"report connector name past 253", func(c *v1alpha1.DocConnectors) { c.Report = strings.Repeat("r", 254) }, connReport},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

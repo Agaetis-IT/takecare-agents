@@ -37,7 +37,7 @@ func TestInvestigationValidation(t *testing.T) {
 	}{
 		{"complete investigation", func(*v1alpha1.TakeCareInvestigation) {}, ""},
 		{"silent investigation", func(i *v1alpha1.TakeCareInvestigation) { i.Spec.Silent = true }, ""},
-		{"unknown role kind", func(i *v1alpha1.TakeCareInvestigation) { i.Spec.RoleRef.Kind = "TakeCareRanger" }, "kind"},
+		{caseUnknownRoleKind, func(i *v1alpha1.TakeCareInvestigation) { i.Spec.RoleRef.Kind = kindRanger }, wantKind},
 		{"alert without name", func(i *v1alpha1.TakeCareInvestigation) { i.Spec.Alert.Name = "" }, wantName},
 		{caseUnknownLevel, func(i *v1alpha1.TakeCareInvestigation) { i.Spec.Level = badLevel }, wantLevel},
 		{"source and entity", func(i *v1alpha1.TakeCareInvestigation) {

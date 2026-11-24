@@ -16,7 +16,7 @@ const MaxConnectorName = 63
 const MessageConnectorName = "a connector's name is at most 63 characters unless its only type is report: its gateway backend carries the name as a label"
 
 // ConnectorType says what a connector gives access to (ADR 0008).
-// +kubebuilder:validation:Enum=cluster;metrics;logs;knowledge;changes;tickets;report;map;cloud
+// +kubebuilder:validation:Enum=cluster;metrics;logs;knowledge;changes;tickets;report;map;history;cloud
 type ConnectorType string
 
 // Connector types.
@@ -30,6 +30,9 @@ const (
 	ConnectorReport    ConnectorType = "report"
 	// ConnectorMap is the Map (spec 08); its tools are read only.
 	ConnectorMap ConnectorType = "map"
+	// ConnectorHistory is TakeCare's own records, investigations and
+	// reviews, read by the Kiné (spec 11 §4).
+	ConnectorHistory ConnectorType = "history"
 	// ConnectorCloud reads a ground without Kubernetes through its
 	// provider's control plane, within spec.reach (ADR 0021).
 	ConnectorCloud ConnectorType = "cloud"

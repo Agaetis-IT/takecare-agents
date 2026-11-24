@@ -361,6 +361,7 @@ spec:
                   - tickets
                   - report
                   - map
+                  - history
                   - cloud
                   type: string
                 minItems: 1

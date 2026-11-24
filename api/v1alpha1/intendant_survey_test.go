@@ -33,7 +33,7 @@ func intendantFixture() *v1alpha1.TakeCareIntendant {
 			Importers: []v1alpha1.Importer{v1alpha1.ImporterKubernetes},
 			Connectors: v1alpha1.IntendantConnectors{
 				Cluster:   []string{addonKubernetes},
-				Knowledge: []string{"runbooks"},
+				Knowledge: []string{connRunbooks},
 				Map:       []string{connMap},
 				Metrics:   []string{connPrometheus},
 				Report:    connReport,
@@ -66,16 +66,16 @@ func TestIntendantValidation(t *testing.T) {
 			i.Spec.Importers = []v1alpha1.Importer{v1alpha1.ImporterKubernetes, v1alpha1.ImporterKubernetes}
 		}, wantDuplicate},
 		{caseUnknownLevel, func(i *v1alpha1.TakeCareIntendant) { i.Spec.Level = badLevel }, wantLevel},
-		{"empty scope", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Scope.Namespaces = nil }, "at least one selector"},
+		{caseEmptyScope, func(i *v1alpha1.TakeCareIntendant) { i.Spec.Scope.Namespaces = nil }, wantSelector},
 		{"schedule too long", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Schedule = string(make([]byte, 101)) }, "schedule"},
 		{"schedule naming a time zone", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Schedule = "CRON_TZ=Europe/Paris 0 3 * * *" }, v1alpha1.MessageScheduleUTC},
 		{"schedule with TZ=", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Schedule = "TZ=UTC 0 3 * * *" }, v1alpha1.MessageScheduleUTC},
-		{"name at the bound", func(i *v1alpha1.TakeCareIntendant) { i.Name = padded(i.Name, v1alpha1.MaxIntendantName) }, ""},
-		{"name past the bound", func(i *v1alpha1.TakeCareIntendant) { i.Name = padded(i.Name, v1alpha1.MaxIntendantName+1) }, v1alpha1.MessageIntendantName},
+		{caseNameAtBound, func(i *v1alpha1.TakeCareIntendant) { i.Name = padded(i.Name, v1alpha1.MaxIntendantName) }, ""},
+		{caseNamePastBound, func(i *v1alpha1.TakeCareIntendant) { i.Name = padded(i.Name, v1alpha1.MaxIntendantName+1) }, v1alpha1.MessageIntendantName},
 		{"17 cluster connectors", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Cluster = names(17) }, "cluster"},
-		{"16 knowledge connectors", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Knowledge = names(16) }, ""},
-		{"17 knowledge connectors", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Knowledge = names(17) }, "knowledge"},
-		{"connector name past 253", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Map = []string{strings.Repeat("m", 254)} }, "map"},
+		{case16Knowledge, func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Knowledge = names(16) }, ""},
+		{case17Knowledge, func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Knowledge = names(17) }, wantKnowledge},
+		{"connector name past 253", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Map = []string{strings.Repeat("m", 254)} }, connMap},
 		{"report connector past 253", func(i *v1alpha1.TakeCareIntendant) { i.Spec.Connectors.Report = strings.Repeat("r", 254) }, connReport},
 	}
 	for _, tt := range tests {
@@ -170,7 +170,7 @@ func TestSurveyValidation(t *testing.T) {
 	}{
 		{"complete survey", func(*v1alpha1.TakeCareSurvey) {}, ""},
 		{"unknown trigger", func(s *v1alpha1.TakeCareSurvey) { s.Spec.Trigger = "Webhook" }, "trigger"},
-		{"unknown role kind", func(s *v1alpha1.TakeCareSurvey) { s.Spec.IntendantRef.Kind = "TakeCareRanger" }, "kind"},
+		{caseUnknownRoleKind, func(s *v1alpha1.TakeCareSurvey) { s.Spec.IntendantRef.Kind = kindRanger }, wantKind},
 		{"a Doc does not survey", func(s *v1alpha1.TakeCareSurvey) { s.Spec.IntendantRef.Kind = v1alpha1.KindTakeCareDoc }, "TakeCareIntendant"},
 		{"intendant without a name", func(s *v1alpha1.TakeCareSurvey) { s.Spec.IntendantRef.Name = "" }, wantName},
 	}
