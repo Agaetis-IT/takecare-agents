@@ -24,5 +24,6 @@ One decision per file, numbered, never rewritten: a decision that changes gives 
 | [0018](0018-grounds-beyond-kubernetes.md) | Grounds beyond Kubernetes: coverage by access type, alerts resolved by source, the Talkie | Accepted |
 | [0019](0019-bag-packed-from-git.md) | An agent's Bag is packed from Git, at configuration time | Accepted |
 | [0020](0020-guard-content-patterns-are-ours.md) | The content patterns of the Ranger's guards are ours; the gateway is the engine | Accepted |
+| [0022](0022-kine-watches-investigations.md) | The Kiné watches the Doc's investigations; findings wait for the Mécano | Proposed |
 
 Format: Context, Decision, Consequences, Rejected alternatives. Statuses: Proposed, Accepted, Superseded.
