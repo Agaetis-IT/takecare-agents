@@ -4,7 +4,7 @@
 |---|---|
 | Status | Proposed |
 | Date | 2026-11-05 |
-| Related decisions | ADR 0008, 0014, 0015; specs 02, 05, 06 (§5 invariant 4, §11), 07 (§01 Intendant), 10 |
+| Related decisions | ADR 0008, 0014, 0015; specs 02, 05, 06 (§5 invariant 4, §11), 07 (§01 Intendant), 10, 13 |
 
 ## 1. Purpose
 
@@ -116,7 +116,7 @@ The server also answers **`GET /resolve`** for the operator's alert intake (spec
 
 ## 6. Who writes
 
-Never an agent. The Intendant's survey (spec 10) proposes entries in its record's status, the deterministic import's and the agent's alike (spec 06 §5, invariant 4); a human turns them into a pull request with `takecare review` and merges it. A validated entry that the import no longer sees is not marked: it keeps its `lastSeen`, and the survey proposes its removal.
+Never an agent. The Intendant's survey (spec 10) proposes entries in its record's status, the deterministic import's and the agent's alike (spec 06 §5, invariant 4); a human turns them into a pull request with `takecare review` (spec 13 §3.4), which writes the accepted entries as files and commits them on a local branch, and merges it. `takecare review` never writes into a cluster and never pushes: the person pushes and opens the pull request with their own tools. A validated entry that the import no longer sees is not marked: it keeps its `lastSeen`, and the survey proposes its removal.
 
 ## 7. What the Map is used for
 

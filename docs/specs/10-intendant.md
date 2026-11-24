@@ -35,7 +35,7 @@ Out of scope for 0.3.0: the Bib (its own ADR and spec), cloud importers, any wri
 ## 3. Triggers
 
 - **Schedule**: the Intendant's `schedule`.
-- **On demand**: a `TakeCareSurvey` created by hand or by `takecare discover`. When the operator admits it, a survey without a controller reference gets one to its Intendant, set once and never moved: it then goes with its Intendant and is kept and deleted as the operator's own (§10, retention). Its Intendant is in its namespace, since the kind is namespaced and `intendantRef` names no namespace. A survey whose Intendant does not exist or is being deleted when it is admitted ends `Failed`, its reason naming the Intendant; it is never left `Queued`.
+- **On demand**: a `TakeCareSurvey` created by hand, with the person's own rights; `takecare discover` (spec 13 §3.3) prints the command and never creates the survey itself. When the operator admits it, a survey without a controller reference gets one to its Intendant, set once and never moved: it then goes with its Intendant and is kept and deleted as the operator's own (§10, retention). Its Intendant is in its namespace, since the kind is namespaced and `intendantRef` names no namespace. A survey whose Intendant does not exist or is being deleted when it is admitted ends `Failed`, its reason naming the Intendant; it is never left `Queued`.
 - **A new Map revision**: the `status.mapRevision` of the map connector changes. The connector reads it at each discovery, so a new revision reaches the Intendant up to one discovery interval (10 minutes) after the Map server loads it.
 - **A registration**: a connector the Intendant binds, or a kagent agent of the engine namespace, appears or changes. Agents are watched in the engine namespace only, where the operator already reads them; other namespaces would need new rights.
 
@@ -55,7 +55,7 @@ The Intendant's first survey starts when it is first Ready. When an agent is exp
 
 ## 4. The deterministic import
 
-Operator code, no model. It reads **through the `kubernetes` connectors** given to the Intendant, that is MCP behind the gateway (ADR 0008, 0016); the operator's own rights do not grow. It lives in one package, `internal/discovery`, which `takecare discover` also runs.
+Operator code, no model. It reads **through the `kubernetes` connectors** given to the Intendant, that is MCP behind the gateway (ADR 0008, 0016); the operator's own rights do not grow. It lives in one package, `internal/discovery`, which only the operator runs: `takecare discover` reads the newest survey and does not run the import (spec 13 §3.3; a local import is an open question there).
 
 Layers, and how they map to spec 08:
 
@@ -116,7 +116,7 @@ The pass runs after the import when the Intendant's agent is ready (`EngineReady
 
 "Changed" compares a fingerprint, a hash of the ids of the full set and their total, with the Intendant's `status.lastDigest`. That record is written only after a successful post, with the survey, the connector and the destination. A survey with the same fingerprint, to the same connector and destination, posts nothing, and its `status.published` names the survey whose digest it repeats. Another destination or connector posts again, and so does the survey after a failed post, since the failure records nothing. A survey with no proposal posts nothing, and in 0.3.0 no "all clear" message tells a team that everything was merged. `docs/how-to/review-proposals.md` says how to review the proposals by hand.
 
-Invariant 4 (spec 06 §5) holds: there is no `propose` tool, and `takecare review` is a human's act.
+Invariant 4 (spec 06 §5) holds: there is no `propose` tool, and `takecare review` (spec 13 §3.4) is a human's act: it writes the accepted proposals as Map files and commits them on a local branch of the person's checkout, never in the cluster and never pushed.
 
 ## 7. Proposals
 
@@ -126,7 +126,7 @@ Each item of `proposals[]` is `{id, action, key, entry, evidence[], source}`:
 - `entry`: the YAML that the file of spec 08 §4 would hold;
 - `source`: `Import` or `Agent`.
 
-Ids are stable across surveys (a hash of the action and the key), so that `takecare review` can tick what was taken.
+Ids are stable across surveys (a hash of the action and the key), so that `takecare review` can tick what was taken (spec 13 §5, `.takecare/review.yaml`).
 
 The status is bounded in size: it keeps the counts and the first 20 proposals (20 entries of at most 8 KiB, 160 KiB at worst). The full set is in a ConfigMap owned by the survey, which never holds content:
 
