@@ -289,7 +289,9 @@ func (g Gateway) routeSpec(path, match, backend string) map[string]any {
 
 // Prune deletes the role's MCP routes and policies whose connector is not in
 // keep and its model routes whose model is not in models; with keep and
-// models nil and a2a false it deletes every object of the role.
+// models nil and a2a false it deletes every object of the role. Routes go
+// first, so that a route never stands without its policies or its backend:
+// no window serves a route without its allow-list or argument rule.
 func Prune(ctx context.Context, c client.Client, r Role, keep map[string]bool, models []string, a2a bool) error {
 	wanted := map[string]bool{}
 	for connector := range keep {
@@ -301,7 +303,7 @@ func Prune(ctx context.Context, c client.Client, r Role, keep map[string]bool, m
 	if a2a {
 		wanted[a2aName(r)] = true
 	}
-	for _, gvk := range []schema.GroupVersionKind{PolicyGVK, HTTPRouteGVK, BackendGVK} {
+	for _, gvk := range []schema.GroupVersionKind{HTTPRouteGVK, PolicyGVK, BackendGVK} {
 		list := &unstructured.UnstructuredList{}
 		list.SetGroupVersionKind(gvk.GroupVersion().WithKind(gvk.Kind + "List"))
 		if err := c.List(ctx, list, client.InNamespace(r.Namespace), client.MatchingLabels{RoleLabel: r.Key()}); err != nil {

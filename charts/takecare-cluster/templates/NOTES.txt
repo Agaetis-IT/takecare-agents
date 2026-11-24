@@ -22,6 +22,12 @@ operator version that ships the cluster block):
       alertTokenSecretRef: { name: <the Secret holding this cluster's alert token, key token> }
     kubernetes:
       namespaces: [{{ join ", " .Values.cluster.namespaces }}]
+{{- with .Values.cluster.extraResources }}
+      extraResources:
+{{- range . }}
+        - { group: {{ .group | default "" | quote }}, resource: {{ .resource | quote }} }
+{{- end }}
+{{- end }}
 
 Send this cluster's alerts to the administration cluster with this receiver in
 its Alertmanager (the token in a file mounted from a Secret, the same value as
