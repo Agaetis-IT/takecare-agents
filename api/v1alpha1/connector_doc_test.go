@@ -110,7 +110,7 @@ func TestAzureReachValidation(t *testing.T) {
 			c.Spec.Types = []v1alpha1.ConnectorType{v1alpha1.ConnectorMetrics}
 		}, "only valid for a connector of type cloud"},
 		{"reach without azure", func(c *v1alpha1.TakeCareConnector) { c.Spec.Reach.Azure = nil }, "reach.azure"},
-		{"tenant not a GUID", func(c *v1alpha1.TakeCareConnector) { c.Spec.Reach.Azure.TenantID = "contoso.onmicrosoft.com" }, "tenantID"},
+		{"tenant not a GUID", func(c *v1alpha1.TakeCareConnector) { c.Spec.Reach.Azure.TenantID = "tenant.example.org" }, "tenantID"},
 		{"no subscription", func(c *v1alpha1.TakeCareConnector) { c.Spec.Reach.Azure.Subscriptions = nil }, "subscriptions"},
 		{"subscription not a GUID", func(c *v1alpha1.TakeCareConnector) { c.Spec.Reach.Azure.Subscriptions[0].ID = "sub-shop" }, "id"},
 		{"subscription twice", func(c *v1alpha1.TakeCareConnector) { c.Spec.Reach.Azure.Subscriptions[1].ID = subA }, wantDuplicate},
