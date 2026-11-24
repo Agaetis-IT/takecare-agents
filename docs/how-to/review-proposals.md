@@ -1,6 +1,6 @@
 # Reviewing the Intendant's proposals by hand
 
-The Intendant proposes changes to the Map (spec 10): it never writes the Map itself. A person reviews each proposal and turns those they accept into a pull request on the Map's repository. The TUI's `takecare review` will help with this later; this page shows how to do it with `kubectl` and `jq` meanwhile.
+The Intendant proposes changes to the Map (spec 10): it never writes the Map itself. A person reviews each proposal and turns those they accept into a pull request on the Map's repository. The `takecare review` command will do this ([spec 13](../specs/13-tui.md) §3.4, lot T2); until it ships, this page shows how to do it with `kubectl` and `jq`.
 
 ## 1. Find the survey
 
