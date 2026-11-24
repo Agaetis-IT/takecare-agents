@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- When a role's connector, model or A2A route is removed, the operator deletes the gateway route before its policies and backend. Until now it deleted the policies first, which left a short window where the gateway served the route without its allow-list or argument rule.
+- The connector manifest printed by the `takecare-cluster` chart's install notes now carries `cluster.extraResources`. The inventory opt-ins granted on a workload cluster (kagent `agents`, `sandboxagents`) are then declared on the administration cluster too.
+- `make demo-up` with `DEMO_IMAGES=build` stops with the reason when `make docker-build` or `k3d image import` fails. Before, it went on to the install and failed later on an `ImagePullBackOff`.
+
 ## [0.4.0] - 2026-11-24
 
 The corrections release: the Ranger's guards scan what tools return, the operator's own rights hold only what its code calls, a customer's MCP server is reached with its credentials and its tools are trusted only once listed, every survey and investigation reaches an end a reader can see, a publication is posted once, and kagent moves to 0.10.6 and agentgateway to 1.7.0. The API stays `v1alpha1`; new bounds refuse only values that never worked.
