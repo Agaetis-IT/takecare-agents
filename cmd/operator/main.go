@@ -243,6 +243,28 @@ func setupKine(mgr ctrl.Manager, cfg config, mcpClient *http.Client, rr kineRuns
 	return nil
 }
 
+// setupAlerts adds the Doc's trigger: the Alertmanager webhook, on every
+// replica, and the admission of its records into the leader's run queue.
+func setupAlerts(mgr ctrl.Manager, cfg config, mcpClient *http.Client) error {
+	alertMetrics, err := alerts.NewMetrics(crmetrics.Registry)
+	if err != nil {
+		return err
+	}
+	// The intake finds an incident's or a fingerprint's investigations
+	// through a cache index, not by reading the namespace's.
+	if err := alerts.IndexInvestigations(context.Background(), mgr.GetFieldIndexer()); err != nil {
+		return err
+	}
+	if err := mgr.Add(&alertServer{addr: cfg.alertsAddr, handler: &alerts.Handler{
+		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Indexed: true, TokenSecret: cfg.alertsTokenSecret,
+		Namespace: cfg.operatorNamespace, Metrics: alertMetrics,
+		Resolver: &alerts.MapResolver{Client: mgr.GetClient(), HTTP: mcpClient, Namespace: cfg.operatorNamespace},
+	}}); err != nil {
+		return fmt.Errorf("add the alert intake: %w", err)
+	}
+	return nil
+}
+
 // setupControllers wires every controller and runnable on the manager, in
 // production and in the startup test alike: a type a controller watches
 // that the scheme does not know fails here, not on the cluster.
@@ -293,18 +315,8 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	if err != nil {
 		return nil, fmt.Errorf("MCP HTTP client: %w", err)
 	}
-	// The Doc's trigger: the Alertmanager webhook, on every replica, and
-	// the admission of its records into the leader's run queue.
-	alertMetrics, err := alerts.NewMetrics(crmetrics.Registry)
-	if err != nil {
+	if err := setupAlerts(mgr, cfg, mcpClient); err != nil {
 		return nil, err
-	}
-	if err := mgr.Add(&alertServer{addr: cfg.alertsAddr, handler: &alerts.Handler{
-		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), TokenSecret: cfg.alertsTokenSecret,
-		Namespace: cfg.operatorNamespace, Metrics: alertMetrics,
-		Resolver: &alerts.MapResolver{Client: mgr.GetClient(), HTTP: mcpClient, Namespace: cfg.operatorNamespace},
-	}}); err != nil {
-		return nil, fmt.Errorf("add the alert intake: %w", err)
 	}
 	phases, err := investigation.NewPhaseMetric(crmetrics.Registry)
 	if err != nil {
