@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -113,7 +114,13 @@ func (f *fixture) agentTools(t *testing.T) string {
 // an Apprentice Kiné listing investigation_get, and waits for its agent.
 func readyKine(t *testing.T, mutate func(*v1alpha1.TakeCareKine)) *fixture {
 	t.Helper()
-	f := start(t)
+	return readyKineWith(t, nil, mutate)
+}
+
+// readyKineWith is readyKine on startWith(add).
+func readyKineWith(t *testing.T, add func(*testing.T, ctrl.Manager), mutate func(*v1alpha1.TakeCareKine)) *fixture {
+	t.Helper()
+	f := startWith(t, add)
 	f.platform(t)
 	f.connector(t, connHist, v1alpha1.ConnectorHistory, history, true)
 	f.connector(t, connKnow, v1alpha1.ConnectorKnowledge, tools([]string{toolSearch}), true)

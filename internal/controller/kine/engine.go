@@ -147,10 +147,7 @@ func (r *Reconciler) runningUntil(ctx context.Context, k *v1alpha1.TakeCareKine)
 	if err := r.List(ctx, &list, client.InNamespace(k.Namespace)); err != nil {
 		return "", time.Time{}, fmt.Errorf("list reviews: %w", err)
 	}
-	timeout := defaultReviewTimeout
-	if k.Spec.Review.Timeout != nil {
-		timeout = k.Spec.Review.Timeout.Duration
-	}
+	timeout := reviewTimeout(k)
 	var name string
 	var until time.Time
 	for _, rv := range list.Items {

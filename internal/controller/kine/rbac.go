@@ -3,8 +3,8 @@
 
 // Package kine runs the Kiné (spec 11): its controller (conditions, scope
 // overlap, connectors, its routes on the gateway and its agent in the
-// engine) and the retention of the reviews. The triggers and the runner
-// come with the next lots.
+// engine), the queue and the runner of its reviews, and their retention.
+// The triggers come with the next lot.
 package kine
 
 // The operator's rights on the Kiné's kinds, in its own namespace, approved
