@@ -72,6 +72,9 @@ outputs:
   - { path: call.md, template: "{{ call .report.kind }}" }
   - { path: missing.md, template: "{{ .report.channel }}" }
   - { path: typo.md, template: "{{ .reprot.kind }}" }
+  - { path: index-key.md, template: "{{ index .report \"typo\" }}" }
+  - { path: index-top.md, template: "{{ index . \"reprot\" }}" }
+  - { path: index-ok.md, template: "{{ index .report \"kind\" }}{{ index .environments 0 }}" }
   - { path: large.md, template: "{{ range .environments }}{{ template \"big\" }}{{ end }}{{ define \"big\" }}{{ range $i := 1000000 }}xxxxxxxxxxxxxxxxxxx{{ end }}{{ end }}" }
   - { path: ok.md, template: "fine" }
 `)
@@ -84,6 +87,8 @@ outputs:
 		"output call.md: template: call.md:1:3: executing \"call.md\" at <call .report.kind>: error calling call: " + errNoCall.Error(),
 		"output missing.md: template: missing.md:1:10: executing \"missing.md\" at <.report.channel>: map has no entry for key \"channel\"",
 		"output typo.md: template: typo.md:1:10: executing \"typo.md\" at <.reprot.kind>: map has no entry for key \"reprot\"",
+		"output index-key.md: template: index-key.md:1:3: executing \"index-key.md\" at <index .report \"typo\">: error calling index: map has no entry for key \"typo\"",
+		"output index-top.md: template: index-top.md:1:3: executing \"index-top.md\" at <index . \"reprot\">: error calling index: map has no entry for key \"reprot\"",
 		"output large.md: renders to more than 1048576 bytes",
 	}
 	got := make([]string, 0, len(faults))
