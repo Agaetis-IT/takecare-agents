@@ -19,6 +19,7 @@ import (
 const (
 	mapConnector = "map"
 	servedRev    = "9b1f0c2d7a44"
+	otherName    = "other"
 )
 
 // discoverObjects is an Intendant with its map connector serving
@@ -44,7 +45,7 @@ func discoverObjects() []client.Object {
 		&v1alpha1.TakeCareSurvey{ObjectMeta: meta("intendant-older", testNS, 30*time.Hour), Spec: v1alpha1.TakeCareSurveySpec{IntendantRef: ref}},
 		newest,
 		&v1alpha1.TakeCareSurvey{ObjectMeta: meta("other-new", testNS, 0),
-			Spec: v1alpha1.TakeCareSurveySpec{IntendantRef: v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareIntendant, Name: "other"}}},
+			Spec: v1alpha1.TakeCareSurveySpec{IntendantRef: v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareIntendant, Name: otherName}}},
 	}
 }
 
@@ -80,7 +81,7 @@ func TestDiscoverCases(t *testing.T) {
 	intendant, connector, newest := objs[0], objs[1], objs[3].(*v1alpha1.TakeCareSurvey)
 	sameRev := newest.DeepCopy()
 	sameRev.Status.MapRevision = servedRev
-	other := &v1alpha1.TakeCareIntendant{ObjectMeta: meta("other", testNS, 0)}
+	other := &v1alpha1.TakeCareIntendant{ObjectMeta: meta(otherName, testNS, 0)}
 	for _, tc := range []struct {
 		name, flag, wantErr string
 		objs                []client.Object
@@ -92,8 +93,8 @@ func TestDiscoverCases(t *testing.T) {
 			check: func(d *Discover) bool { return !d.Survey.PredatesServedMap }},
 		{name: "map connector not found", objs: []client.Object{intendant, newest},
 			check: func(d *Discover) bool { return d.ServedRevision == "" && !d.Survey.PredatesServedMap }},
-		{name: "--intendant picks one of several", flag: "other", objs: []client.Object{intendant, other, objs[4]},
-			check: func(d *Discover) bool { return d.Intendant == "other" && d.Survey.Name == "other-new" }},
+		{name: "--intendant picks one of several", flag: otherName, objs: []client.Object{intendant, other, objs[4]},
+			check: func(d *Discover) bool { return d.Intendant == otherName && d.Survey.Name == "other-new" }},
 		{name: "several need --intendant", objs: []client.Object{intendant, other}, wantErr: "2 Intendants in namespace takecare-system: pass --intendant"},
 		{name: "none", wantErr: "no TakeCareIntendant in namespace takecare-system"},
 		{name: "unknown --intendant", flag: "ghost", objs: []client.Object{intendant}, wantErr: "read the Intendant ghost"},

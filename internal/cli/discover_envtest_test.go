@@ -21,11 +21,18 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/testenv"
 )
 
+const (
+	resIntendants = "takecareintendants"
+	resSurveys    = "takecaresurveys"
+	resConnectors = "takecareconnectors"
+	verbList      = "list"
+)
+
 // The rights spec 13 §6 documents for discover, word for word.
 var discoverRights = []rbacv1.PolicyRule{{
 	APIGroups: []string{v1alpha1.GroupVersion.Group},
-	Resources: []string{"takecareintendants", "takecaresurveys", "takecareconnectors"},
-	Verbs:     []string{verbGet, "list"},
+	Resources: []string{resIntendants, resSurveys, resConnectors},
+	Verbs:     []string{verbGet, verbList},
 }}
 
 // Spec 13 §3.3, §6 and §10: discover runs as a user holding only the
@@ -63,7 +70,7 @@ func TestDiscoverAsReader(t *testing.T) {
 		Spec: v1alpha1.TakeCareIntendantSpec{RoleCommonSpec: v1alpha1.RoleCommonSpec{Scope: scope},
 			Connectors: v1alpha1.IntendantConnectors{Map: []string{mapConnector}}}})
 	connector := &v1alpha1.TakeCareConnector{Name: mapConnector, Namespace: testNS,
-		Spec: v1alpha1.TakeCareConnectorSpec{Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorMap}, MCP: v1alpha1.MCPSpec{Addon: "map"}}}
+		Spec: v1alpha1.TakeCareConnectorSpec{Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorMap}, MCP: v1alpha1.MCPSpec{Addon: string(v1alpha1.ConnectorMap)}}}
 	mustCreate(connector)
 	connector.Status.MapRevision = servedRev
 	if err := admin.Status().Update(ctx, connector); err != nil {
