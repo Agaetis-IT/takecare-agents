@@ -205,8 +205,9 @@ type kineRuns struct {
 }
 
 // setupKine sets up the Kiné (spec 11): the retention of its reviews, its
-// controller (its conditions, its scope and its routes on the gateway), and
-// its reviews, queued as they come and run one per Kiné at a time.
+// controller (its conditions, its scope, its routes on the gateway and the
+// triggers of its reviews), and its reviews, queued as they come and run
+// one per Kiné at a time.
 func setupKine(mgr ctrl.Manager, cfg config, mcpClient *http.Client, rr kineRuns) error {
 	metrics, err := kine.NewReviewMetrics(crmetrics.Registry)
 	if err != nil {
@@ -218,7 +219,7 @@ func setupKine(mgr ctrl.Manager, cfg config, mcpClient *http.Client, rr kineRuns
 		return fmt.Errorf("add the review retention: %w", err)
 	}
 	if err := (&kine.Reconciler{
-		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("takecare-operator"),
+		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("takecare-operator"),
 		OperatorNamespace: cfg.operatorNamespace, EngineNamespace: cfg.engineNamespace,
 		Engine: &kagent0103.Agents{Client: mgr.GetClient()}, Models: &kagent0103.Models{Client: mgr.GetClient()},
 		Lookup: &coverage.Lookup{MCP: &mcp.Client{HTTP: mcpClient}}, Metrics: metrics,

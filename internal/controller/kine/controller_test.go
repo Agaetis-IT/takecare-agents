@@ -103,7 +103,7 @@ func startWith(t *testing.T, add func(*testing.T, ctrl.Manager)) *fixture {
 		t.Fatal(err)
 	}
 	r := &Reconciler{
-		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("test"),
+		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("test"),
 		OperatorNamespace: ns, EngineNamespace: engineNS,
 		Engine: &kagent0103.Agents{Client: mgr.GetClient()}, Models: &kagent0103.Models{Client: mgr.GetClient()},
 		Lookup: &coverage.Lookup{MCP: f.maps},
