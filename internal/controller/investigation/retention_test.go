@@ -108,7 +108,7 @@ func TestSweepByCount(t *testing.T) {
 		record("ended-4h", v1alpha1.PhaseFailed, at(1), at(4)),
 		record("ended-3h", v1alpha1.PhaseTimedOut, at(6), at(3)),
 		record("dropped-2h", v1alpha1.PhaseDropped, at(2), none),
-		record("ended-past-retention", v1alpha1.PhaseCompleted, at(100), at(99)),
+		record("ended-99h", v1alpha1.PhaseCompleted, at(100), at(99)),
 		record("running-old", v1alpha1.PhaseRunning, at(500), none),
 		record("queued-old", v1alpha1.PhaseQueued, at(500), none),
 	}

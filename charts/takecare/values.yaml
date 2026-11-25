@@ -160,7 +160,8 @@ investigations:
   retention: 2160h
   # -- How many ended investigations are kept at most: past it, the oldest
   # ended go first, whatever their age. Two thousand, with their diagnoses,
-  # weigh tens of MiB in etcd.
+  # weigh tens of MiB in etcd. Zero or a negative number means the default,
+  # 2000: there is no unlimited setting.
   maxKept: 2000
 
 reviews:
