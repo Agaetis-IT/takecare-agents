@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"path"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"text/template"
@@ -31,11 +33,14 @@ var errNoCall = errors.New("call is not available in a question file's template"
 
 // funcs is the fixed list a template may use besides the predefined ones
 // (spec 13 §4.3). None reads a file, the environment or the network, or
-// runs a command. call is replaced: text/template looks a template's own
-// functions up before its predefined ones.
+// runs a command. call and index are replaced: text/template looks a
+// template's own functions up before its predefined ones, and its
+// predefined index returns the zero value of an absent map key, which
+// missingkey=error does not reach.
 func funcs() template.FuncMap {
 	return template.FuncMap{
 		"call":   func(...any) (any, error) { return nil, errNoCall },
+		"index":  index,
 		"quote":  quote,
 		"toYaml": toYaml,
 		"lower":  strings.ToLower,
@@ -47,6 +52,75 @@ func funcs() template.FuncMap {
 			return v
 		},
 	}
+}
+
+// index is the predefined index, except that an absent map key is an
+// error: a template never renders <no value>.
+func index(item reflect.Value, indexes ...reflect.Value) (reflect.Value, error) {
+	v := indirect(item)
+	if !v.IsValid() {
+		return reflect.Value{}, errors.New("index of untyped nil")
+	}
+	for _, ix := range indexes {
+		ix = indirect(ix)
+		switch v.Kind() {
+		case reflect.Array, reflect.Slice, reflect.String:
+			i, err := position(ix, v.Len())
+			if err != nil {
+				return reflect.Value{}, err
+			}
+			v = v.Index(i)
+		case reflect.Map:
+			if !ix.IsValid() || !ix.Type().AssignableTo(v.Type().Key()) {
+				return reflect.Value{}, fmt.Errorf("index of a map by a %s", typeName(ix))
+			}
+			x := v.MapIndex(ix)
+			if !x.IsValid() {
+				return reflect.Value{}, fmt.Errorf("map has no entry for key %q", ix.Interface())
+			}
+			v = x
+		default:
+			return reflect.Value{}, fmt.Errorf("cannot index a %s", typeName(v))
+		}
+		v = indirect(v)
+	}
+	return v, nil
+}
+
+// position checks a list index.
+func position(ix reflect.Value, n int) (int, error) {
+	var i int64
+	switch {
+	case ix.CanInt():
+		i = ix.Int()
+	case ix.CanUint():
+		u := ix.Uint()
+		if u > math.MaxInt64 {
+			return 0, fmt.Errorf("index out of range: %d", u)
+		}
+		i = int64(u)
+	default:
+		return 0, fmt.Errorf("index of a list by a %s", typeName(ix))
+	}
+	if i < 0 || i >= int64(n) {
+		return 0, fmt.Errorf("index out of range: %d", i)
+	}
+	return int(i), nil
+}
+
+// indirect looks through an interface: answers are held as any.
+func indirect(v reflect.Value) reflect.Value {
+	for v.Kind() == reflect.Interface {
+		v = v.Elem()
+	}
+	return v
+}
+
+func typeName(v reflect.Value) string {
+	if !v.IsValid() {
+		return "nil"
+	}
+	return v.Type().String()
 }
 
 // quote writes s as a double-quoted YAML scalar: a JSON string is one.
