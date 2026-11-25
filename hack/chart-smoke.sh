@@ -1054,8 +1054,10 @@ EOF
   local kcap=ranger-cap-role-kine-smoke-kine-model-default
   check "the gateway accepted ${kcap}, the per-model cap on the Kiné's model route" \
     bash -c "for _ in \$(seq 30); do [[ \$(kubectl -n ${NS} get agentgatewaypolicy ${kcap} -o jsonpath='{.status.ancestors[0].conditions[?(@.type==\"Accepted\")].status}' 2>/dev/null) == True ]] && exit 0; sleep 2; done; exit 1"
-  check_not "the Kiné's history route has no argument rule" \
-    kubectl -n "$NS" get agentgatewaypolicy role-kine-smoke-kine-mcp-history-calls
+  # Absence read from a listing that succeeded and holds the allow-list:
+  # a failed kubectl call must not pass for an absent rule.
+  check "the Kiné's history route has no argument rule" \
+    bash -c "p=\$(kubectl -n ${NS} get agentgatewaypolicies -l takecare.agaetis.fr/role-instance=kine.smoke-kine -o name) && grep -qx 'agentgatewaypolicy[.a-z]*/role-kine-smoke-kine-mcp-history' <<<\"\$p\" && ! grep -qx 'agentgatewaypolicy[.a-z]*/role-kine-smoke-kine-mcp-history-calls' <<<\"\$p\""
   local kroute="${gw}/mcp/${NS}/smoke-kine/history"
   check "investigations_list through the Kiné's history route is let through" \
     mcp_allowed kagent smoke-a2a "$kroute" investigations_list '{}'
@@ -1085,9 +1087,10 @@ EOF
   check "a call on the Kiné's denied model route is refused (403)" \
     test "$kcode" = 403
   kcode="$(kubectl -n kagent exec smoke-a2a -- curl -s -o /dev/null -m 10 -w '%{http_code}' -H 'Content-Type: application/json' \
-    -d '{"model":"default","messages":[{"role":"user","content":"ping"}]}' "${gw}/roles/doc.smoke-doc/models/default/v1/chat/completions")"
-  check "the Doc's model route is not denied by the Kiné's entry (${kcode})" \
-    test "$kcode" != 403
+    -d '{"model":"default","messages":[{"role":"user","content":"ping"}]}' "${gw}/roles/doc.smoke-doc/models/default/v1/chat/completions")" || true
+  # A real gateway answer, not a failed call (empty or 000), and not the deny.
+  check "the Doc's model route is not denied by the Kiné's entry (${kcode:-none})" \
+    bash -c "[[ '${kcode}' =~ ^[1-5][0-9][0-9]\$ && '${kcode}' != 403 ]]"
   ranger_models_restore
   check "the Ranger's models are restored, and the Kiné's deny removed" \
     bash -c "[[ \$(kubectl get takecareranger main -o jsonpath='{.spec.models}') == '${RANGER_MODELS_SAVED}' ]] && for _ in \$(seq 30); do kubectl -n ${NS} get agentgatewaypolicy ${kdeny} >/dev/null 2>&1 || exit 0; sleep 2; done; exit 1"
