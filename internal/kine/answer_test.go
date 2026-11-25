@@ -62,6 +62,39 @@ func TestParse(t *testing.T) {
 	}
 }
 
+// A fence inside a JSON string is the answer's content, not the block's
+// end: the post-mortem draft is Markdown (spec 11 §6, §7). A JSON string
+// holds no raw newline, so such a fence is never at a line's start.
+func TestParseFenceInAString(t *testing.T) {
+	const f = "```"
+	bash := `## Steps\n` + f + `bash\nkubectl get pods\n` + f + `\n`
+	jsonBlock := `Config:\n` + f + `json\n{\"idle\": \"30s\"}\n` + f + `\nend`
+	answer := func(statement, text, postMortem string) string {
+		return "Here.\n\n" + f + "json\n" + `{"problem": {"statement": "` + statement + `"},
+  "actions": [{"text": "` + text + `", "kind": "Check", "origin": "New", "state": "Proposed"}],
+  "postMortem": "` + postMortem + `"}` + "\n" + f + "\n\nThat is all."
+	}
+	for _, tc := range []struct{ name, statement, text, postMortem string }{
+		{"a fenced block in the post-mortem", "s", "t", bash},
+		{"a json fenced block in the post-mortem", "s", "t", jsonBlock},
+		{"a json fence in the statement", "the " + f + "json fence", "t", "p"},
+		{"a fence in an action's text", "s", "run " + f + "ls" + f, "p"},
+		{"fences everywhere", jsonBlock, bash, jsonBlock + bash},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, err := Parse(answer(tc.statement, tc.text, tc.postMortem))
+			if err != nil {
+				t.Fatal(err)
+			}
+			unquote := strings.NewReplacer(`\n`, "\n", `\"`, `"`)
+			if a.Problem.Statement != unquote.Replace(tc.statement) || a.Actions[0].Text != unquote.Replace(tc.text) ||
+				a.PostMortem != unquote.Replace(tc.postMortem) {
+				t.Errorf("parsed %+v", a)
+			}
+		})
+	}
+}
+
 // Every answer that is not one well-formed block is unreadable (spec 11
 // §6), and the error never quotes the model's text.
 func TestParseUnreadable(t *testing.T) {
@@ -77,6 +110,10 @@ func TestParseUnreadable(t *testing.T) {
 		{"not closed", "```json\n" + minimal},
 		{"a fence after the block", block(minimal) + "\n```" + canary},
 		{"two values", block(minimal + minimal)},
+		{"a closing brace after the value", block(minimal + " }")},
+		{"a closing bracket after the value", block(minimal + "]")},
+		{"a fence line inside the block", "```json\n" + minimal + "\n```bash\n```"},
+		{"a second json block after prose", block(minimal) + "\nmore\n" + block(minimal)},
 		{"not json", block(canary)},
 		{"no actions", block(`{"problem": {}}`)},
 		{"an unknown field", block(`{"problem": {}, "actions": [], "` + canary + `": 1}`)},
