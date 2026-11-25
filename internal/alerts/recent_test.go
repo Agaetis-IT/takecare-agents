@@ -19,6 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -68,6 +69,17 @@ func (l *lagging) List(ctx context.Context, list client.ObjectList, opts ...clie
 	return nil
 }
 
+// stamping sets the creation time the API server would, which the fake
+// client leaves empty.
+type stamping struct{ client.Client }
+
+func (s stamping) Create(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
+	if at := obj.GetCreationTimestamp(); at.IsZero() {
+		obj.SetCreationTimestamp(metav1.NewTime(time.Now().Truncate(time.Second)))
+	}
+	return s.Client.Create(ctx, obj, opts...)
+}
+
 // spy counts the investigation lists a reader serves, by whether they
 // went through IndexRecent.
 type spy struct {
@@ -115,25 +127,33 @@ func intakeDoc() *v1alpha1.TakeCareDoc {
 // cache that does not show what the intake created.
 func startIndexed(t *testing.T, objs ...client.Object) (*fixture, *spy, client.Client) {
 	t.Helper()
-	api := fake.NewClientBuilder().WithScheme(testScheme(t)).
+	api := stamping{fake.NewClientBuilder().WithScheme(testScheme(t)).
 		WithObjects(append(objs,
 			&corev1.Secret{Name: TokenSecretName, Namespace: ns, Data: map[string][]byte{TokenSecretKey: []byte(token)}},
 			intakeDoc())...).
 		WithStatusSubresource(&v1alpha1.TakeCareInvestigation{}).
 		WithIndex(&v1alpha1.TakeCareInvestigation{}, IndexRecent, recentKeys).
-		Build()
+		Build()}
 	metrics, err := NewMetrics(prometheus.NewRegistry())
 	if err != nil {
 		t.Fatal(err)
 	}
 	live := &spy{Reader: api}
 	f := &fixture{t: t, c: api, metrics: metrics, now: time.Now()}
-	f.srv = httptest.NewServer(&Handler{
-		Client: &lagging{Client: api, hidden: map[string]bool{}}, Reader: live, Indexed: true,
-		Namespace: ns, Metrics: metrics, Resolver: f, Now: func() time.Time { return f.now },
-	})
-	t.Cleanup(f.srv.Close)
+	f.serveIndexed(&lagging{Client: api, hidden: map[string]bool{}}, live)
 	return f, live, api
+}
+
+// serveIndexed points f at a new indexed intake, with an empty memo, over
+// cached for its lists and live for its reads by name: another replica,
+// or the same one after a restart.
+func (f *fixture) serveIndexed(cached client.Client, live client.Reader) {
+	f.t.Helper()
+	f.srv = httptest.NewServer(&Handler{
+		Client: cached, Reader: live, Indexed: true,
+		Namespace: ns, Metrics: f.metrics, Resolver: f, Now: func() time.Time { return f.now },
+	})
+	f.t.Cleanup(f.srv.Close)
 }
 
 func TestRecentKeys(t *testing.T) {
@@ -178,6 +198,56 @@ func TestIndexedIntakeSeesWhatTheCacheLags(t *testing.T) {
 	}
 	if _, scanned := live.counts(); scanned != 0 {
 		t.Errorf("%d investigation lists reached the API server", scanned)
+	}
+}
+
+// Another replica, or the same one restarted, has an empty memo: once the
+// cache shows the first record, the index alone answers the grouping of
+// the incident's second alert and the cooldown of the first one fired
+// again.
+func TestIndexedIntakeWithAnEmptyMemo(t *testing.T) {
+	f, live, api := startIndexed(t)
+	t0 := time.Now().Add(-time.Minute).Truncate(time.Second)
+	pod := notifPod
+	f.post(token, alert("PodCrashLooping", "0f0f0f0f0f0f0f01", pod, t0, nil))
+	if n := len(f.investigations()); n != 1 {
+		t.Fatalf("%d investigations after the first alert", n)
+	}
+	f.serveIndexed(api, live)
+	f.post(token, alert(alertNotReady, "0f0f0f0f0f0f0f02", pod, t0, nil))
+	f.post(token, alert("PodCrashLooping", "0f0f0f0f0f0f0f01", pod, t0.Add(30*time.Second), nil))
+	items := f.investigations()
+	if len(items) != 1 {
+		t.Fatalf("%d investigations for one incident across two intakes", len(items))
+	}
+	if a := items[0].Status.Alerts; len(a) != 1 || a[0].Name != alertNotReady {
+		t.Errorf("status.alerts = %+v", a)
+	}
+	for reason, want := range map[string]float64{ReasonGrouped: 1, ReasonCooldown: 1} {
+		if got := f.ignored(reason); got != want {
+			t.Errorf("ignored %s = %v, want %v", reason, got, want)
+		}
+	}
+	if _, scanned := live.counts(); scanned != 0 {
+		t.Errorf("%d investigation lists reached the API server", scanned)
+	}
+}
+
+// The memo only covers the cache's lag: a record remembered longer ago
+// than cacheLag is the cache's to show.
+func TestCreatedMemoMatchesWithinTheLag(t *testing.T) {
+	at := time.Now()
+	var m createdMemo
+	m.add(investigationAt(1, at), at)
+	label, value := LabelIncident, "other-1"
+	if n := len(m.match(label, value, at.Add(cacheLag))); n != 1 {
+		t.Errorf("%d matches at the end of the lag, want 1", n)
+	}
+	if n := len(m.match(label, value, at.Add(cacheLag+time.Second))); n != 0 {
+		t.Errorf("%d matches past the lag, want 0", n)
+	}
+	if n := len(m.match(label, "other-2", at)); n != 0 {
+		t.Errorf("%d matches of another incident, want 0", n)
 	}
 }
 
@@ -252,30 +322,9 @@ func TestIndexedIntakeOnTheCache(t *testing.T) {
 	if err := g.Wait(); err != nil {
 		t.Fatal(err)
 	}
-	scheme := testScheme(t)
-	c, err := cache.New(f.cfg, cache.Options{Scheme: scheme, DefaultNamespaces: map[string]cache.Config{ns: {}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := IndexInvestigations(ctx, c); err != nil {
-		t.Fatal(err)
-	}
-	go func() { _ = c.Start(ctx) }()
-	if !c.WaitForCacheSync(ctx) {
-		t.Fatal("the cache did not sync")
-	}
-	cached := &spy{Reader: c}
-	cachedClient, err := client.New(f.cfg, client.Options{Scheme: scheme, Cache: &client.CacheOptions{Reader: cached}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	cachedClient, cached := indexedCache(ctx, t, f)
 	live := &spy{Reader: f.c}
-	srv := httptest.NewServer(&Handler{
-		Client: cachedClient, Reader: live, Indexed: true,
-		Namespace: ns, Metrics: f.metrics, Resolver: f, Now: func() time.Time { return f.now },
-	})
-	t.Cleanup(srv.Close)
-	f.srv = srv
+	f.serveIndexed(cachedClient, live)
 
 	t0 := time.Now().Add(-time.Minute).Truncate(time.Second)
 	pod := notifPod
@@ -305,6 +354,82 @@ func TestIndexedIntakeOnTheCache(t *testing.T) {
 	indexed, scanned := cached.counts()
 	if indexed == 0 || scanned != 0 {
 		t.Errorf("cache: %d indexed lists, %d scans; want indexed lists only", indexed, scanned)
+	}
+	if indexed, scanned := live.counts(); indexed+scanned != 0 {
+		t.Errorf("%d investigation lists reached the API server", indexed+scanned)
+	}
+}
+
+// indexedCache is a client reading through a started cache of the
+// operator namespace holding IndexRecent, as the manager's, and the spy on
+// that cache.
+func indexedCache(ctx context.Context, t *testing.T, f *fixture) (client.Client, *spy) {
+	t.Helper()
+	scheme := testScheme(t)
+	c, err := cache.New(f.cfg, cache.Options{Scheme: scheme, DefaultNamespaces: map[string]cache.Config{ns: {}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := IndexInvestigations(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = c.Start(ctx) }()
+	if !c.WaitForCacheSync(ctx) {
+		t.Fatal("the cache did not sync")
+	}
+	cached := &spy{Reader: c}
+	cachedClient, err := client.New(f.cfg, client.Options{Scheme: scheme, Cache: &client.CacheOptions{Reader: cached}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cachedClient, cached
+}
+
+// envtest: another replica, or the same one restarted, has an empty memo.
+// Once the cache shows the first record, the cache index alone answers
+// the grouping of the incident's second alert and the cooldown of the
+// first one fired again.
+func TestIndexedIntakeOnTheCacheWithAnEmptyMemo(t *testing.T) {
+	f := start(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	cachedClient, cached := indexedCache(ctx, t, f)
+	live := &spy{Reader: f.c}
+	f.serveIndexed(cachedClient, live)
+
+	t0 := time.Now().Add(-time.Minute).Truncate(time.Second)
+	pod := notifPod
+	crash := alert("PodCrashLooping", "0a0a0a0a0a0a0a01", pod, t0, nil)
+	f.post(token, crash)
+	incident := IncidentKey(fromAlertmanager(Payload{Alerts: []Alert{crash}})[0].record)
+	err := wait.PollUntilContextTimeout(ctx, 50*time.Millisecond, 10*time.Second, true, func(ctx context.Context) (bool, error) {
+		var shown v1alpha1.TakeCareInvestigationList
+		if err := cachedClient.List(ctx, &shown, client.InNamespace(ns), client.MatchingFields{IndexRecent: LabelIncident + "=" + incident}); err != nil {
+			return false, err
+		}
+		return len(shown.Items) == 1, nil
+	})
+	if err != nil {
+		t.Fatalf("the cache did not show the first record: %v", err)
+	}
+
+	f.serveIndexed(cachedClient, live)
+	f.post(token, alert(alertNotReady, "0a0a0a0a0a0a0a02", pod, t0, nil))
+	f.post(token, alert("PodCrashLooping", "0a0a0a0a0a0a0a01", pod, t0.Add(30*time.Second), nil))
+	items := f.investigations()
+	if len(items) != 1 {
+		t.Fatalf("%d investigations for one incident across two intakes", len(items))
+	}
+	if a := items[0].Status.Alerts; len(a) != 1 || a[0].Name != alertNotReady {
+		t.Errorf("status.alerts = %+v", a)
+	}
+	for reason, want := range map[string]float64{ReasonGrouped: 1, ReasonCooldown: 1} {
+		if got := f.ignored(reason); got != want {
+			t.Errorf("ignored %s = %v, want %v", reason, got, want)
+		}
+	}
+	if _, scanned := cached.counts(); scanned != 0 {
+		t.Errorf("cache: %d scans; want indexed lists only", scanned)
 	}
 	if indexed, scanned := live.counts(); indexed+scanned != 0 {
 		t.Errorf("%d investigation lists reached the API server", indexed+scanned)

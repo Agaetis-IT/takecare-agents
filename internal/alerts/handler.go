@@ -383,7 +383,7 @@ func (h *Handler) recent(ctx context.Context, label, value string, since time.Ti
 	// What the cache or the memo holds is read again by name from the API
 	// server, newest first, so that a deleted record is not believed and
 	// a fold patches the current object.
-	candidates := append(list.Items, h.created.match(label, value)...)
+	candidates := append(list.Items, h.created.match(label, value, h.now())...)
 	for {
 		inv := newest(candidates, since)
 		if inv == nil {
@@ -464,15 +464,16 @@ func (m *createdMemo) add(inv *v1alpha1.TakeCareInvestigation, now time.Time) {
 	m.items = append(m.items, createdItem{inv: inv.DeepCopy(), at: now})
 }
 
-// match returns copies of the remembered investigations carrying the
-// label value. One created without a creation time (a fake client) gets
-// the time it was remembered.
-func (m *createdMemo) match(label, value string) []v1alpha1.TakeCareInvestigation {
+// match returns copies of the investigations carrying the label value
+// remembered during the last cacheLag before now: an older one is the
+// cache's to show. One created without a creation time (a fake client)
+// gets the time it was remembered.
+func (m *createdMemo) match(label, value string, now time.Time) []v1alpha1.TakeCareInvestigation {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var out []v1alpha1.TakeCareInvestigation
 	for _, c := range m.items {
-		if c.inv.Labels[label] != value {
+		if now.Sub(c.at) > cacheLag || c.inv.Labels[label] != value {
 			continue
 		}
 		inv := *c.inv.DeepCopy()
