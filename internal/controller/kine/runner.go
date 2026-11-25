@@ -6,6 +6,8 @@ package kine
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,8 +26,11 @@ import (
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/engine"
 	kineagent "github.com/agaetis-it/takecare-agents/internal/kine"
+	"github.com/agaetis-it/takecare-agents/internal/roleagent"
+	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/runs"
 	"github.com/agaetis-it/takecare-agents/internal/telemetry/semconv"
+	"github.com/agaetis-it/takecare-agents/internal/usage"
 )
 
 // Why a review failed, in status.reason: a fixed phrase per class, never
@@ -59,6 +64,13 @@ type Runner struct {
 	Now        func() time.Time
 	RunMetrics *runs.Metrics
 	Tracer     trace.Tracer
+	// Usage gives the platform's usage source, nil when it declares no
+	// Prometheus; ScrapeWait is one scrape interval (spec 02 §5).
+	Usage      func(p *v1alpha1.TakeCarePlatform) usage.Source
+	ScrapeWait time.Duration
+	// Retention is how long ended investigations are kept: a period that
+	// starts earlier is a blind spot. Zero says nothing.
+	Retention time.Duration
 	// GateRetry is how long the runner waits when every queued review is
 	// held back.
 	GateRetry time.Duration
@@ -327,9 +339,18 @@ func (w *Runner) review(ctx context.Context, rv *v1alpha1.TakeCareReview, k *v1a
 		return failed(failNotFinished), err
 	}
 	run := engine.Run{Namespace: w.EngineNamespace, Agent: kineagent.AgentName(k), GatewayURL: p.Status.GatewayURL, Message: msg, ConversationID: rv.Name}
+	var m *meter
+	unknown := "the operator restarted during the review: its start was not measured"
+	if e := rv.Status.Engine; e == nil || e.TaskID == "" {
+		m, unknown = w.meter(ctx, rv, k, p)
+	}
 	res, err := w.execute(ctx, rv, run, reviewTimeout(k))
 	if ctx.Err() != nil {
 		return v1alpha1.TakeCareReviewStatus{}, ctx.Err()
+	}
+	var u *v1alpha1.Usage
+	if m != nil {
+		u, unknown = m.end(ctx, w.ScrapeWait)
 	}
 	var out v1alpha1.TakeCareReviewStatus
 	switch {
@@ -350,12 +371,22 @@ func (w *Runner) review(ctx context.Context, rv *v1alpha1.TakeCareReview, k *v1a
 			log.FromContext(ctx).Info(out.Reason, "review", rv.Name, "task", res.TaskID)
 			break
 		}
-		rec := kineagent.Record(a, rv.Name, lvl, nil)
+		known, kerr := w.knownIDs(ctx, rv)
+		if kerr != nil {
+			return failed(failNotFinished), kerr
+		}
+		rec := kineagent.Record(a, rv.Name, lvl, known)
 		out.Problem, out.Actions, out.ActionsOmitted, out.PostMortem = rec.Problem, rec.Actions, rec.ActionsOmitted, rec.PostMortem
 		out.ActionCounts = &rec.Counts
 		out.BlindSpots = rec.BlindSpots
 	}
-	sayUsage(&out.Conditions, nil, "the operator measures no usage", rv.Generation)
+	spots, err := w.blindSpots(ctx, k, period)
+	if err != nil {
+		return failed(failNotFinished), err
+	}
+	out.BlindSpots = slices.Concat(spots, out.BlindSpots)[:min(len(spots)+len(out.BlindSpots), kineagent.MaxBlindSpots)]
+	out.Usage = u
+	sayUsage(&out.Conditions, u, unknown, rv.Generation)
 	return out, nil
 }
 
@@ -400,6 +431,129 @@ func periodOf(rv *v1alpha1.TakeCareReview, k *v1alpha1.TakeCareKine) v1alpha1.Re
 		lookback = l.Duration
 	}
 	return v1alpha1.ReviewPeriod{From: metav1.NewTime(rv.CreationTimestamp.Add(-lookback)), To: rv.CreationTimestamp}
+}
+
+// knownIDs are the action ids the Kiné's other reviews hold: an earlier
+// action keeps its id only when one of them does (spec 11 §2).
+func (w *Runner) knownIDs(ctx context.Context, rv *v1alpha1.TakeCareReview) (map[string]bool, error) {
+	var list v1alpha1.TakeCareReviewList
+	if err := w.Client.List(ctx, &list, client.InNamespace(rv.Namespace)); err != nil {
+		return nil, fmt.Errorf("list reviews: %w", err)
+	}
+	known := map[string]bool{}
+	for _, o := range list.Items {
+		if o.Name == rv.Name || o.Spec.KineRef.Name != rv.Spec.KineRef.Name {
+			continue
+		}
+		for _, a := range o.Status.Actions {
+			known[a.ID] = true
+		}
+	}
+	return known, nil
+}
+
+// blindSpots are what the review could not read (spec 11 §2): a bound
+// connector not Ready, a content tool not listed in spec.contentTools, a
+// period older than the investigations kept.
+func (w *Runner) blindSpots(ctx context.Context, k *v1alpha1.TakeCareKine, period v1alpha1.ReviewPeriod) ([]v1alpha1.NotSeen, error) {
+	var out []v1alpha1.NotSeen
+	for _, s := range slots(k) {
+		for _, name := range s.names {
+			var c v1alpha1.TakeCareConnector
+			if err := w.Client.Get(ctx, client.ObjectKey{Namespace: k.Namespace, Name: name}, &c); client.IgnoreNotFound(err) != nil {
+				return nil, fmt.Errorf("get connector %s: %w", name, err)
+			}
+			if !meta.IsStatusConditionTrue(c.Status.Conditions, v1alpha1.ConditionReady) {
+				out = append(out, v1alpha1.NotSeen{Ref: name, Reason: "the " + string(s.t) + " connector is not Ready"})
+			}
+			for _, t := range c.Status.Tools {
+				if t.Content && !slices.Contains(k.Spec.ContentTools, t.Name) && !slices.ContainsFunc(out, func(n v1alpha1.NotSeen) bool { return n.Ref == t.Name }) {
+					out = append(out, v1alpha1.NotSeen{Ref: t.Name, Reason: "a content tool spec.contentTools does not list: the review did not read it"})
+				}
+			}
+		}
+	}
+	if w.Retention > 0 && period.From.Before(&metav1.Time{Time: w.now().Add(-w.Retention)}) {
+		out = append(out, v1alpha1.NotSeen{Ref: "investigations", Reason: "the period starts before the oldest investigations kept (" + w.Retention.String() + ")"})
+	}
+	return out, nil
+}
+
+// meter measures a review on the Kiné's own model route (spec 11 §6): one
+// review runs at a time per Kiné, so it counts no other run's calls, except
+// one the engine still runs after it did not finish: then it is
+// approximate.
+type meter struct {
+	source      usage.Source
+	start       usage.Counters
+	pricing     *v1alpha1.Pricing
+	approximate bool
+}
+
+func (w *Runner) meter(ctx context.Context, rv *v1alpha1.TakeCareReview, k *v1alpha1.TakeCareKine, p *v1alpha1.TakeCarePlatform) (*meter, string) {
+	if w.Usage == nil {
+		return nil, "the operator measures no usage"
+	}
+	src := w.Usage(p)
+	if src == nil {
+		return nil, "the platform declares no Prometheus (observability.metrics.prometheusURL)"
+	}
+	name, _, _ := roleagent.Model(p, k.Spec.Model)
+	if name == "" {
+		return nil, "the Kiné's model is not resolved"
+	}
+	m := &meter{source: usage.ForRoute(src, routes.ModelRoute(roleOf(k), name)), approximate: w.previousUnfinished(ctx, rv)}
+	for _, spec := range p.Spec.Models {
+		if spec.Name == name {
+			m.pricing = spec.Pricing
+		}
+	}
+	var err error
+	if m.start, err = m.source.Snapshot(ctx); err != nil {
+		return nil, "the start snapshot: " + err.Error()
+	}
+	return m, ""
+}
+
+// previousUnfinished says whether the Kiné's last ended review did not
+// finish: the engine may still run it on the same route.
+func (w *Runner) previousUnfinished(ctx context.Context, rv *v1alpha1.TakeCareReview) bool {
+	var list v1alpha1.TakeCareReviewList
+	if err := w.Client.List(ctx, &list, client.InNamespace(rv.Namespace)); err != nil {
+		return true // unknown: not claimed exact
+	}
+	var last *v1alpha1.TakeCareReview
+	for i := range list.Items {
+		o := &list.Items[i]
+		if o.Name != rv.Name && o.Spec.KineRef.Name == rv.Spec.KineRef.Name && o.Status.CompletedAt != nil &&
+			(last == nil || o.Status.CompletedAt.After(last.Status.CompletedAt.Time)) {
+			last = o
+		}
+	}
+	return last != nil && (strings.HasPrefix(last.Status.Reason, failNotFinished) || strings.HasPrefix(last.Status.Reason, v1alpha1.ReasonAbandoned))
+}
+
+// end reads the counters one scrape interval after the run: the usage, or
+// why it is unknown.
+func (m *meter) end(ctx context.Context, wait time.Duration) (*v1alpha1.Usage, string) {
+	select {
+	case <-ctx.Done():
+		return nil, "the operator stopped before the usage was read"
+	case <-time.After(wait):
+	}
+	end, err := m.source.Snapshot(ctx)
+	if err != nil {
+		return nil, "the end snapshot: " + err.Error()
+	}
+	d, err := usage.Delta(m.start, end)
+	if err != nil {
+		return nil, err.Error()
+	}
+	u, err := usage.Record(d, m.pricing, m.approximate)
+	if err != nil {
+		return nil, "not priced: " + err.Error()
+	}
+	return &u, ""
 }
 
 // sayUsage writes UsageAttributed: measured, or why not.

@@ -56,7 +56,9 @@ type ReviewQueuer struct {
 	Recorder recorder.EventRecorder
 	// Runs says which reviews the runner holds; nil holds none.
 	Runs Holder
-	Now  func() time.Time
+	// ScrapeWait is the runner's; the backstop's bound counts it.
+	ScrapeWait time.Duration
+	Now        func() time.Time
 
 	mu sync.Mutex
 	// full holds the Kinés told that the queue is full: said once, until
@@ -130,7 +132,7 @@ func (q *ReviewQueuer) backstop(ctx context.Context, rv *v1alpha1.TakeCareReview
 	if rv.Status.StartedAt != nil {
 		start = rv.Status.StartedAt.Time
 	}
-	bound := start.Add(timeout + backstopGrace)
+	bound := start.Add(timeout + q.ScrapeWait + backstopGrace)
 	now := time.Now()
 	if q.Now != nil {
 		now = q.Now()
