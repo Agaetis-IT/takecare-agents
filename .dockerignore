@@ -17,3 +17,5 @@
 !internal/demo/corpus/pools.json
 !internal/demo/corpus/seed/*.json
 !api/map/entry.schema.json
+!config/crd/crd.go
+!config/crd/takecare.agaetis.fr_*.yaml
