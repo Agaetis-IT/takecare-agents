@@ -16,6 +16,7 @@ const (
 	docFile       = "takecare/roles/doc.yaml"
 	intendantFile = "takecare/roles/intendant.yaml"
 	valuesFile    = "takecare/values.yaml"
+	promFile      = "map/observability/prometheus.yaml"
 )
 
 func load(t *testing.T) *questionnaire.Set {
@@ -110,14 +111,14 @@ func TestSkeletonNamedCluster(t *testing.T) {
 	}
 	slices.Sort(paths)
 	want := []string{"map/README.md", "map/environment/east.pay.yaml", "map/environment/east.shop.yaml", "map/environment/east.yaml",
-		"map/observability/prometheus.yaml", "map/team/money.yaml", "map/team/web.yaml",
+		promFile, "map/team/money.yaml", "map/team/web.yaml",
 		docFile, intendantFile, valuesFile}
 	if !slices.Equal(paths, want) {
 		t.Fatalf("paths %v, want %v", paths, want)
 	}
 	for p, holds := range map[string][]string{
-		"map/environment/east.shop.yaml":    {"owner: team/web", `kubernetes: "east/shop"`, "observedBy: [observability/prometheus]"},
-		"map/observability/prometheus.yaml": {`kubernetes: "east/monitoring/Service/prometheus"`},
+		"map/environment/east.shop.yaml": {"owner: team/web", `kubernetes: "east/shop"`, "observedBy: [observability/prometheus]"},
+		promFile:                         {`kubernetes: "east/monitoring/Service/prometheus"`},
 		valuesFile: {"not in other", "sshKeySecret:", "knownHostsConfigMap", `create: "false"`,
 			`{ name: practitioner, target: "C0123456789" }`, "# TODO: the key of the Secret"},
 		docFile:       {"level: Apprentice", "practitioner: practitioner", "metrics: [prometheus]"},
@@ -138,13 +139,14 @@ func TestSkeletonNamedCluster(t *testing.T) {
 // never a guessed value.
 func TestSkeletonUnknown(t *testing.T) {
 	set := load(t)
-	files := render(t, set, answers(t, set, "operator.namespace", "environments", "teams", "metrics.service",
+	files := render(t, set, answers(t, set, "cluster.name", "operator.namespace", "environments", "teams", "metrics.service",
 		"report.kind", "model.provider", "model.secret", "map.repository", "knowledge"))
 	for p, holds := range map[string][]string{
-		"map/README.md": {"TODO: init did not know the application namespaces (environment/*), the teams (team/*), the Prometheus service"},
-		valuesFile:      {"# TODO: unknown: the operator's namespace", "# TODO: unknown: the provider's", "# TODO: unknown: the Secret's name", "# TODO: unknown: where results are posted", "# TODO: unknown: the Map's Git repository"},
-		docFile:         {`namespace: ""`, "# TODO: unknown: the namespaces"},
-		intendantFile:   {"# TODO: unknown: the operator's namespace"},
+		"map/README.md": {"TODO: init did not know the cluster's name", "qualify each\nenvironment key",
+			"TODO: init did not know the application namespaces (environment/*), the teams (team/*), the Prometheus service"},
+		valuesFile:    {"# TODO: unknown: the operator's namespace", "# TODO: unknown: the provider's", "# TODO: unknown: the Secret's name", "# TODO: unknown: where results are posted", "# TODO: unknown: the Map's Git repository"},
+		docFile:       {`namespace: ""`, "# TODO: unknown: the namespaces", "# TODO: unknown: a runbook source"},
+		intendantFile: {"# TODO: unknown: the operator's namespace", "# TODO: unknown: a runbook source"},
 	} {
 		for _, h := range holds {
 			if !strings.Contains(files[p], h) {
@@ -157,5 +159,32 @@ func TestSkeletonUnknown(t *testing.T) {
 	}
 	if strings.Contains(files[valuesFile], "some-model") {
 		t.Error("an unknown answer's value reached the values")
+	}
+}
+
+// An unknown cluster name leaves the entries unqualified, each with a TODO
+// saying a named cluster qualifies its key and source; an empty name, a
+// single-cluster install, leaves none.
+func TestSkeletonUnknownCluster(t *testing.T) {
+	set := load(t)
+	unknown := render(t, set, answers(t, set, "cluster.name"))
+	for _, p := range []string{"map/environment/shop.yaml", promFile} {
+		if !strings.HasPrefix(unknown[p], "# TODO: unknown: the cluster's name") {
+			t.Errorf("%s has no TODO for the cluster's name:\n%s", p, unknown[p])
+		}
+	}
+	if strings.Contains(unknown["map/team/web.yaml"], "TODO") {
+		t.Errorf("a team entry, which no cluster qualifies, has a TODO:\n%s", unknown["map/team/web.yaml"])
+	}
+	a := answers(t, set)
+	a["cluster.name"] = questionnaire.Answer{Value: ""}
+	single := render(t, set, a)
+	for p, d := range single {
+		if strings.Contains(d, "cluster's name") {
+			t.Errorf("%s has a TODO for the cluster's name on a single-cluster install:\n%s", p, d)
+		}
+	}
+	if strings.Contains(single[docFile], "runbook source") {
+		t.Errorf("an empty knowledge answer left a TODO:\n%s", single[docFile])
 	}
 }
