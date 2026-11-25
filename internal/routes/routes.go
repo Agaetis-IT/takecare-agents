@@ -77,9 +77,12 @@ type Role struct {
 // Key is the value of RoleLabel.
 func (r Role) Key() string { return r.Kind + "." + r.Name }
 
-// MCPPath is the role's route to one connector, as spec 02 §2 names it.
+// MCPPath is the role's route to one connector, as spec 05 names it. It
+// holds the role's key, kind and name: the route is the role's identity at
+// the gateway (ADR 0008), so roles of different kinds and the same name
+// never share a path, whose routes would conflict.
 func MCPPath(r Role, connector string) string {
-	return fmt.Sprintf("/mcp/%s/%s/%s", r.Namespace, r.Name, connector)
+	return fmt.Sprintf("/mcp/%s/%s/%s", r.Namespace, r.Key(), connector)
 }
 
 // MCP is the role's route to one connector.
