@@ -1,0 +1,10 @@
+Kiné · review of incident a1b2c3
+The proxy's idle timeout (600 s) is shorter than the pool's (900 s): the proxy closes idle connections first.
+Recurrences:
+• INC-2024-0312 (2024-03-12)
+Corrective actions: 2 to do, 3 in all
+• Open · INC-2024-0312/1 · Compare the proxy's idle timeout with the pool's recycling in an automated check.
+• Done · INC-2024-0312/2 · Document the timeouts in RB-014.
+• Proposed · review-0123456789-1 · Alert on connection resets from the proxy.
+Post-mortem draft: kubectl -n takecare-system get takecarereview review-0123456789 -o jsonpath='{.status.postMortem}'
+investigation billing-api-1 · 8 model calls · 63,560 tokens · 0.0412 USD · trace 4bf92f3577b34da6a3ce929d0e0e4736

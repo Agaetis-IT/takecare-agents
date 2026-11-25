@@ -1,0 +1,8 @@
+Kiné payments · periodic review
+No earlier incident with the same cause found.
+Corrective actions: 2 to do, 3 in all
+• Open · INC-2024-0312/1 · Compare the proxy's idle timeout with the pool's recycling in an automated check.
+• Done · INC-2024-0312/2 · Document the timeouts in RB-014.
+• Proposed · review-0123456789-1 · Alert on connection resets from the proxy.
+Post-mortem draft: kubectl -n takecare-system get takecarereview review-0123456789 -o jsonpath='{.status.postMortem}'
+incidents from 2026-10-26 to 2026-11-25 · usage unknown: the platform declares no Prometheus (observability.metrics.prometheusURL) · trace 4bf92f3577b34da6a3ce929d0e0e4736
