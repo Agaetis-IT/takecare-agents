@@ -196,10 +196,11 @@ func run(args []string) error {
 }
 
 // kineRuns is what the Kiné's reviews share with the other roles' runs:
-// the A2A client, the run metrics and the tracer.
+// the A2A client, the run metrics, the usage source and the tracer.
 type kineRuns struct {
 	a2a     *http.Client
 	metrics *runs.Metrics
+	usage   func(p *takecarev1alpha1.TakeCarePlatform) usage.Source
 	tracer  trace.Tracer
 }
 
@@ -224,13 +225,14 @@ func setupKine(mgr ctrl.Manager, cfg config, mcpClient *http.Client, rr kineRuns
 	runner := &kine.Runner{
 		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: reviews,
 		Runs: &kagent0103.Runs{HTTP: rr.a2a}, EngineKind: kagent0103.Kind, EngineNamespace: cfg.engineNamespace,
-		RunMetrics: rr.metrics, Tracer: rr.tracer,
+		RunMetrics: rr.metrics, Tracer: rr.tracer, Usage: rr.usage, ScrapeWait: cfg.usageScrapeWait,
+		Retention: cfg.investigationRetention,
 	}
 	// The queuer ends a Running review the runner does not hold at its
 	// bound (spec 11 §6).
 	if err := (&kine.ReviewQueuer{
 		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: reviews,
-		Recorder: mgr.GetEventRecorder("takecare-operator"), Runs: runner,
+		Recorder: mgr.GetEventRecorder("takecare-operator"), Runs: runner, ScrapeWait: cfg.usageScrapeWait,
 	}).SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("set up the review queue: %w", err)
 	}
@@ -419,7 +421,7 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		return nil, fmt.Errorf("add the survey sweeper: %w", err)
 	}
 	if err := setupKine(mgr, cfg, mcpClient, kineRuns{
-		a2a: a2aClient, metrics: runMetrics,
+		a2a: a2aClient, metrics: runMetrics, usage: usageSource,
 		tracer: traces.Tracer("github.com/agaetis-it/takecare-agents/internal/controller/kine"),
 	}); err != nil {
 		return nil, err
