@@ -5,7 +5,7 @@ go 1.27.0
 toolchain go1.27.1
 
 require (
-	github.com/a2aproject/a2a-go/v2 v2.8.0
+	github.com/a2aproject/a2a-go/v2 v2.9.0
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/go-logr/logr v1.4.4
 	github.com/google/cel-go v0.29.2

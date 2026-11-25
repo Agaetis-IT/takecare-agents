@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - A blind spot for an entity with no source a connector can read now says "no kubernetes or azure source in the Map", instead of "no kubernetes source".
 - Ended investigations are kept 90 days by default (`investigations.retention: 2160h`) instead of 7, so that the Kiné can see recurrences. Two thousand investigations with their diagnoses weigh tens of MiB in etcd. The upgrade deletes nothing more than before.
+- a2a-go 2.9.0. A failed read or cancellation of a run's task is still labelled with its HTTP status (404, 503…) in the operator's metrics and logs: the status is now taken from the response itself, no longer from the client's error text, which this version changed.
 
 ### Fixed
 

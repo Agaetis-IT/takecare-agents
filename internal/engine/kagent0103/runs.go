@@ -10,8 +10,8 @@ import (
 	"net"
 	"net/http"
 	"regexp"
-	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/a2aproject/a2a-go/v2/a2aclient"
@@ -60,10 +60,12 @@ type Runs struct {
 var _ engine.Runs = (*Runs)(nil)
 
 // headers adds the conversation ID and the caller's trace context to every
-// A2A request of a run.
+// A2A request of a run, and keeps the HTTP status of the last response:
+// readError classes a failed call by it.
 type headers struct {
 	next           http.RoundTripper
 	conversationID string
+	status         *atomic.Int32
 }
 
 func (h headers) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -71,7 +73,11 @@ func (h headers) RoundTrip(req *http.Request) (*http.Response, error) {
 	out := req.Clone(ctx)
 	out.Header.Set(conversationHeader, h.conversationID)
 	propagation.TraceContext{}.Inject(ctx, propagation.HeaderCarrier(out.Header))
-	return h.next.RoundTrip(out)
+	resp, err := h.next.RoundTrip(out)
+	if resp != nil {
+		h.status.Store(int32(resp.StatusCode)) //nolint:gosec // an HTTP status fits
+	}
+	return resp, err
 }
 
 // URL is the run's A2A endpoint: the gateway's base URL and the agent's
@@ -80,10 +86,12 @@ func URL(r engine.Run) string {
 	return strings.TrimSuffix(r.GatewayURL, "/") + (&Agents{}).Endpoint(r.Namespace, r.Agent).Path + "/"
 }
 
-func (g *Runs) client(ctx context.Context, r engine.Run) (*a2aclient.Client, error) {
+// client builds a client for one call of a run, with the HTTP status of
+// that call's last response.
+func (g *Runs) client(ctx context.Context, r engine.Run) (*a2aclient.Client, *atomic.Int32, error) {
 	base := g.HTTP
 	if base == nil {
-		return nil, errors.New("no HTTP client for A2A")
+		return nil, nil, errors.New("no HTTP client for A2A")
 	}
 	next := base.Transport
 	if next == nil {
@@ -92,19 +100,20 @@ func (g *Runs) client(ctx context.Context, r engine.Run) (*a2aclient.Client, err
 	// The shared client's timeout (30 s, cmd/operator/main.go) bounds one
 	// read of the task: a read that hangs fails with class timeout, so the
 	// follow never takes it for a pause (internal/runs).
-	hc := &http.Client{Transport: headers{next: next, conversationID: r.ConversationID}, Timeout: base.Timeout}
+	status := new(atomic.Int32)
+	hc := &http.Client{Transport: headers{next: next, conversationID: r.ConversationID, status: status}, Timeout: base.Timeout}
 	c, err := a2aclient.NewFromEndpoints(ctx,
 		[]*a2a.AgentInterface{{URL: URL(r), ProtocolBinding: a2a.TransportProtocolJSONRPC, ProtocolVersion: a2a.Version}},
 		a2aclient.WithJSONRPCTransport(hc))
 	if err != nil {
-		return nil, fmt.Errorf("A2A client for %s: %w", URL(r), err)
+		return nil, nil, fmt.Errorf("A2A client for %s: %w", URL(r), err)
 	}
-	return c, nil
+	return c, status, nil
 }
 
 // Start implements engine.Runs.
 func (g *Runs) Start(ctx context.Context, r engine.Run) (string, error) {
-	c, err := g.client(ctx, r)
+	c, _, err := g.client(ctx, r)
 	if err != nil {
 		return "", err
 	}
@@ -122,7 +131,7 @@ func (g *Runs) Start(ctx context.Context, r engine.Run) (string, error) {
 
 // Poll implements engine.Runs.
 func (g *Runs) Poll(ctx context.Context, r engine.Run, taskID string) (engine.Result, bool, error) {
-	c, err := g.client(ctx, r)
+	c, status, err := g.client(ctx, r)
 	if err != nil {
 		return engine.Result{}, false, err
 	}
@@ -132,7 +141,7 @@ func (g *Runs) Poll(ctx context.Context, r engine.Run, taskID string) (engine.Re
 	case errors.Is(err, a2a.ErrTaskNotFound):
 		return engine.Result{Outcome: engine.OutcomeLost, Reason: "the engine does not know task " + taskID}, true, engine.ErrTaskUnknown
 	case err != nil:
-		return engine.Result{}, false, readError(err)
+		return engine.Result{}, false, readError(err, int(status.Load()))
 	}
 	if !task.Status.State.Terminal() && task.Status.State != a2a.TaskStateInputRequired && task.Status.State != a2a.TaskStateAuthRequired {
 		return engine.Result{}, false, nil
@@ -140,19 +149,19 @@ func (g *Runs) Poll(ctx context.Context, r engine.Run, taskID string) (engine.Re
 	return outcome(task), true, nil
 }
 
-// a2a-go v2.8.0 reports an HTTP failure without a JSON-RPC body as an
-// error whose whole text is "unexpected HTTP status: 404 Not Found"
-// (internal/jsonrpc FromHTTPError), a transport failure as one opening
-// with "failed to send HTTP request", an unreadable answer as one opening
-// with "failed to decode response"; none carries a type with the status.
-// A JSON-RPC error (*a2a.Error) carries the server's own message, which may
-// be anything: it is never read. TestPollClassesAFailedRead, through the
-// real client, is the tripwire for that wording at an a2a-go bump.
-var httpStatusRead = regexp.MustCompile(`^unexpected HTTP status: ([0-9]{3})(?: |$)`)
-
 // readError classes a failed call to the engine, keeping no text of it:
-// the HTTP status (100 to 599) or a fixed class.
-func readError(err error) *engine.ReadError {
+// the HTTP status (100 to 599) of the call's last response when it was not
+// 200, or a fixed class. The status comes from the transport, never from an
+// error's text: since a2a-go v2.9.0 an HTTP failure is an *a2a.Error
+// (ErrServerError, or ErrUnauthenticated / ErrUnauthorized for 401 / 403)
+// whose message holds the status line, the same type and sentinel as a
+// JSON-RPC error whose message is the server's own and may be anything;
+// its ServiceParams hold the response headers, not the status
+// (internal/jsonrpc FromHTTPError, a2a/errors.go). A transport failure
+// opens with "failed to send HTTP request", an unreadable answer with
+// "failed to decode response" (a2aclient/jsonrpc.go). TestPollClassesAFailedRead,
+// through the real client, is the tripwire for that wording at a bump.
+func readError(err error, status int) *engine.ReadError {
 	re := &engine.ReadError{Err: err, Class: "other"}
 	var ne net.Error
 	var ae *a2a.Error
@@ -160,18 +169,15 @@ func readError(err error) *engine.ReadError {
 	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &ne) && ne.Timeout():
 		re.Class = "timeout"
 		return re
+	case status != http.StatusOK && status >= 100 && status <= 599:
+		re.Status, re.Class = status, ""
+		return re
 	case errors.As(err, &ae):
+		// A JSON-RPC error: its message is the server's, never read.
 		return re
 	}
 	for e := err; e != nil; e = errors.Unwrap(e) {
-		msg := e.Error()
-		if m := httpStatusRead.FindStringSubmatch(msg); m != nil {
-			if n, _ := strconv.Atoi(m[1]); n >= 100 && n <= 599 {
-				re.Status, re.Class = n, ""
-			}
-			return re
-		}
-		switch {
+		switch msg := e.Error(); {
 		case strings.HasPrefix(msg, "failed to send HTTP request"):
 			re.Class = "network"
 			return re
@@ -284,7 +290,7 @@ func partsText(parts []*a2a.Part) string {
 
 // Cancel implements engine.Runs.
 func (g *Runs) Cancel(ctx context.Context, r engine.Run, taskID string) (engine.CancelResult, error) {
-	c, err := g.client(ctx, r)
+	c, status, err := g.client(ctx, r)
 	if err != nil {
 		return "", err
 	}
@@ -297,6 +303,6 @@ func (g *Runs) Cancel(ctx context.Context, r engine.Run, taskID string) (engine.
 	case errors.Is(err, a2a.ErrUnsupportedOperation), strings.Contains(err.Error(), cancelUnsupported):
 		return engine.CancelUnsupported, nil
 	default:
-		return "", readError(err)
+		return "", readError(err, int(status.Load()))
 	}
 }
