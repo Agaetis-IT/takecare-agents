@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # The release (spec 04), on a tag v<SemVer> pushed by a maintainer
-# (docs/release.md): the six images for amd64 and arm64, the three charts as
+# (docs/release.md): the seven images for amd64 and arm64, the three charts as
 # OCI artifacts, the takecare command's binaries for linux, darwin and
 # windows on amd64 and arm64, with their checksums and one SBOM per binary
 # (spec 13), and the GitHub release with the tag's CHANGELOG section and
