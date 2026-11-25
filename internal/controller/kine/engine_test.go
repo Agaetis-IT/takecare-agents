@@ -174,7 +174,7 @@ func TestAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if url, _, _ := unstructured.NestedString(server.Object, "spec", "url"); url != gwURL+"/mcp/"+ns+"/kine/history" {
+	if url, _, _ := unstructured.NestedString(server.Object, "spec", "url"); url != gwURL+"/mcp/"+ns+"/kine.kine/history" {
 		t.Errorf("the history server's URL = %q", url)
 	}
 	if text := f.instructions(t); !strings.Contains(text, apprenticeLine) || strings.Contains(text, postMortemLine) || strings.Contains(text, "you cannot read a diagnosis") {

@@ -95,6 +95,25 @@ check_not() { # NAME COMMAND...: PASS when the command fails
   : >"$DIAG"
   if "$@" >/dev/null 2>&1; then printf 'FAIL  %s\n' "$name"; failed=$((failed + 1)); else printf 'PASS  %s\n' "$name"; fi
 }
+# twin_doc_gone ROLE_INSTANCE DOC_AGENT INTENDANT_AGENT: once the Doc named
+# like the Intendant is deleted, nothing of it is left, on the gateway or in
+# kagent, and the Intendant's route, agent and map server are still there.
+# Every kubectl must succeed: an API error is a failure, never an empty list.
+twin_doc_gone() {
+  local instance="$1" docagent="$2" iagent="$3" routes kagent
+  routes="$(kubectl -n "$NS" get httproutes,agentgatewaypolicies -l "takecare.agaetis.fr/role-instance=${instance}" -o name)" || return 1
+  kagent="$(kubectl -n kagent get agents,remotemcpservers -o name)" || return 1
+  [[ -z "$routes" ]] || return 1
+  ! grep -qE "/${docagent}(-|\$)" <<<"$kagent" || return 1
+  grep -qx "agent[.a-z0-9]*/${iagent}" <<<"$kagent" || return 1
+  grep -qx "remotemcpserver[.a-z0-9]*/${iagent}-map" <<<"$kagent" || return 1
+  kubectl -n "$NS" get httproute role-intendant-smoke-intendant-mcp-prometheus >/dev/null
+}
+retry_twin_doc_gone() { # the garbage collection is asynchronous: the last try decides
+  local _
+  for _ in $(seq 29); do twin_doc_gone "$@" 2>/dev/null && return 0; sleep 2; done
+  twin_doc_gone "$@"
+}
 # ranger_models_restore puts the Ranger's spec.models back as saved:
 # removed when it was absent.
 ranger_models_restore() {
@@ -259,11 +278,11 @@ mcp_diagnose() {
   local path="${1#*://*/}" status first
   status="$(grep -o '^HTTP [0-9]*$' <<<"$2" | tail -1)"
   first="$(grep -v '^HTTP [0-9]*$' <<<"$2" | grep -v '^$' | head -1 | cut -c1-200)"
-  # /mcp/<namespace>/<role>/<connector> is served by role-<kind>-<role>-mcp-<connector>.
+  # /mcp/<namespace>/<kind>.<role>/<connector> is served by role-<kind>-<role>-mcp-<connector>.
   local role connector policy tools
   IFS=/ read -r _ _ role connector <<<"$path"
   policy="$(kubectl -n "$NS" get agentgatewaypolicies -o jsonpath='{range .items[*]}{.metadata.name} generation={.metadata.generation} {.spec.backend.mcp.authorization.policy.matchExpressions[0]}{"\n"}{end}' 2>/dev/null |
-    grep -E "^role-[a-z]+-${role}-mcp-${connector} " || true)"
+    grep -F "role-${role%%.*}-${role#*.}-mcp-${connector} " || true)"
   tools="$(kubectl -n "$NS" get takecareconnector "$connector" -o jsonpath='{range .status.tools[*]}{.name} {end}' 2>/dev/null || true)"
   {
     echo "      last answer: ${status:-no status}: ${first:-empty body}"
@@ -757,7 +776,7 @@ EOF
     test "$(kubectl get takecareranger main -o jsonpath='{.spec.caps}')" = "$RANGER_CAPS_SAVED"
   RANGER_CAPS_SAVED=""
   for _ in $(seq 30); do
-    gcode="$(kubectl -n kagent exec smoke-a2a -- curl -s -o /dev/null -m 10 -w '%{http_code}' -H 'Content-Type: application/json' -d '{}' "${gw}/mcp/${NS}/smoke-doc/kubernetes")"
+    gcode="$(kubectl -n kagent exec smoke-a2a -- curl -s -o /dev/null -m 10 -w '%{http_code}' -H 'Content-Type: application/json' -d '{}' "${gw}/mcp/${NS}/doc.smoke-doc/kubernetes")"
     [[ "$gcode" != 429 ]] && break
     sleep 2
   done
@@ -796,7 +815,7 @@ EOF
     [[ "$(kubectl -n "$NS" get agentgatewaypolicy role-doc-smoke-doc-mcp-kubernetes -o jsonpath='{.spec.backend.mcp.authorization.policy.matchExpressions[0]}')" != *pods_log* ]] && break
     sleep 2
   done
-  local route="${gw}/mcp/${NS}/smoke-doc/kubernetes"
+  local route="${gw}/mcp/${NS}/doc.smoke-doc/kubernetes"
   check "a forged call to pods_log through the Doc's route is refused" \
     mcp_unknown_tool kagent smoke-a2a "$route" pods_log
   check "a call to pods_list through the Doc's route is let through" \
@@ -870,7 +889,7 @@ EOF
   log "quick calls on the Intendant's model route: ${ilimited[*]}"
   check "the per-model cap answers a run of quick calls on the Intendant's model route with 429" \
     test "$ilast" = 429
-  local iroute="${gw}/mcp/${NS}/smoke-intendant"
+  local iroute="${gw}/mcp/${NS}/intendant.smoke-intendant"
   check "get_rules with the survey's arguments is let through" \
     mcp_allowed kagent smoke-a2a "${iroute}/prometheus" get_rules '{"type":"alert","exclude_alerts":true}'
   check "get_rules naming rules that match the pattern is let through" \
@@ -953,6 +972,42 @@ EOF
   check "through the Intendant's A2A route, its agent's card answers (200)" \
     test "$("${code[@]}" "${gw}/api/a2a/kagent/${iagent}/.well-known/agent-card.json")" = "200"
   log "the Intendant's agent pod: $(kubectl -n kagent top pod --no-headers 2>/dev/null | awk -v a="$iagent" 'index($1, a) == 1 {print $1" "$2" "$3}' | head -1)"
+  # Two roles of different kinds and one name (spec 05): an MCP path holds
+  # the role's kind, so a Doc named like the Intendant, on the same metrics
+  # connector, has a route of its own, and each sees only its own
+  # allow-list and rule. Its scope (ack-system) is outside the smoke Doc's.
+  log "a Doc named like the Intendant: one MCP route each (spec 05)"
+  kubectl -n "$NS" apply -f - >/dev/null <<EOF
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareDoc
+metadata: { name: smoke-intendant, namespace: ${NS} }
+spec:
+  level: Practitioner
+  scope: { namespaces: [ack-system] }
+  connectors: { cluster: [kubernetes], metrics: [prometheus], report: report }
+  report: { practitioner: on-call }
+EOF
+  local twin=role-doc-smoke-intendant-mcp-prometheus twinagent=takecare-doc-smoke-intendant
+  local twinroute="${gw}/mcp/${NS}/doc.smoke-intendant/prometheus"
+  check "the Doc's and the Intendant's metrics routes match their own exact paths" \
+    bash -c "for _ in \$(seq 30); do [[ \$(kubectl -n ${NS} get httproute ${twin} -o jsonpath='{.spec.rules[0].matches[0].path.value}' 2>/dev/null) == /mcp/${NS}/doc.smoke-intendant/prometheus ]] && break; sleep 2; done; [[ \$(kubectl -n ${NS} get httproute ${twin} -o jsonpath='{.spec.rules[0].matches[0].path.value}') == /mcp/${NS}/doc.smoke-intendant/prometheus && \$(kubectl -n ${NS} get httproute role-intendant-smoke-intendant-mcp-prometheus -o jsonpath='{.spec.rules[0].matches[0].path.value}') == /mcp/${NS}/intendant.smoke-intendant/prometheus ]]"
+  check "the allow-list on the Doc's metrics route is Accepted and Attached" \
+    bash -c "for _ in \$(seq 30); do s=\$(kubectl -n ${NS} get agentgatewaypolicy ${twin} -o jsonpath='{.status.ancestors[*].conditions[?(@.type==\"Accepted\")].status} {.status.ancestors[*].conditions[?(@.type==\"Attached\")].status}' 2>/dev/null); [[ \$s == 'True True' ]] && exit 0; sleep 2; done; exit 1"
+  check "execute_query through the Doc's metrics route is let through" \
+    mcp_allowed kagent smoke-a2a "$twinroute" execute_query '{"query":"up"}'
+  check "execute_query, off the Intendant's allow-list, is still refused on its metrics route" \
+    mcp_unknown_tool kagent smoke-a2a "${iroute}/prometheus" execute_query '{"query":"up"}'
+  check "the Intendant's argument rule still refuses get_rules with {\"type\":\"alert\"} (403)" \
+    mcp_forbidden kagent smoke-a2a "${iroute}/prometheus" get_rules '{"type":"alert"}'
+  check "the Doc's metrics route has no argument rule" \
+    bash -c "p=\$(kubectl -n ${NS} get agentgatewaypolicies -l takecare.agaetis.fr/role-instance=doc.smoke-intendant -o name) && grep -qx 'agentgatewaypolicy[.a-z]*/${twin}' <<<\"\$p\" && ! grep -qx 'agentgatewaypolicy[.a-z]*/${twin}-calls' <<<\"\$p\""
+  check "the path without the role's kind has no route (404)" \
+    mcp_not_found kagent smoke-a2a "${gw}/mcp/${NS}/smoke-intendant/prometheus" execute_query '{"query":"up"}'
+  check "each RemoteMCPServer's URL ends with its own role's path" \
+    bash -c "for _ in \$(seq 30); do kubectl -n kagent get remotemcpserver ${twinagent}-prometheus >/dev/null 2>&1 && break; sleep 2; done; [[ \$(kubectl -n kagent get remotemcpserver ${twinagent}-prometheus -o jsonpath='{.spec.url}') == */mcp/${NS}/doc.smoke-intendant/prometheus && \$(kubectl -n kagent get remotemcpserver ${iagent}-map -o jsonpath='{.spec.url}') == */mcp/${NS}/intendant.smoke-intendant/map && \$(kubectl -n kagent get remotemcpserver takecare-doc-smoke-doc-kubernetes -o jsonpath='{.spec.url}') == */mcp/${NS}/doc.smoke-doc/kubernetes ]]"
+  kubectl -n "$NS" delete takecaredoc smoke-intendant --wait=true --timeout=60s >/dev/null
+  check "deleting the Doc named like the Intendant removed its routes and left the Intendant's" \
+    retry_twin_doc_gone doc.smoke-intendant "$twinagent" "$iagent"
   # The call rule's canary (spec 10 §8): a Gateway-level traffic policy
   # with strategy.inheritance Override drops the route's argument rule
   # while its status stays Accepted and Attached (agentgateway 1.6,
@@ -1058,7 +1113,7 @@ EOF
   # a failed kubectl call must not pass for an absent rule.
   check "the Kiné's history route has no argument rule" \
     bash -c "p=\$(kubectl -n ${NS} get agentgatewaypolicies -l takecare.agaetis.fr/role-instance=kine.smoke-kine -o name) && grep -qx 'agentgatewaypolicy[.a-z]*/role-kine-smoke-kine-mcp-history' <<<\"\$p\" && ! grep -qx 'agentgatewaypolicy[.a-z]*/role-kine-smoke-kine-mcp-history-calls' <<<\"\$p\""
-  local kroute="${gw}/mcp/${NS}/smoke-kine/history"
+  local kroute="${gw}/mcp/${NS}/kine.smoke-kine/history"
   check "investigations_list through the Kiné's history route is let through" \
     mcp_allowed kagent smoke-a2a "$kroute" investigations_list '{}'
   check "investigation_get, a content tool the Kiné lists, is let through" \
@@ -1565,13 +1620,13 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=217 install ;;
-  upgrade) CHECKS_EXPECTED=217 upgrade ;;
+  install) CHECKS_EXPECTED=226 install ;;
+  upgrade) CHECKS_EXPECTED=226 upgrade ;;
   status) status ;;
   mask-test) mask_test ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=5 cluster_chart ;;
   url) CHECKS_EXPECTED=8 url_connector ;;
-  all) mask_test; up; CHECKS_EXPECTED=217 install; CHECKS_EXPECTED=217 upgrade; CHECKS_EXPECTED=8 url_connector; CHECKS_EXPECTED=5 cluster_chart ;;
+  all) mask_test; up; CHECKS_EXPECTED=226 install; CHECKS_EXPECTED=226 upgrade; CHECKS_EXPECTED=8 url_connector; CHECKS_EXPECTED=5 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|url|cluster|status|mask-test|down|all]"; exit 2 ;;
 esac
