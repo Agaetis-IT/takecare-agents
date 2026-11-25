@@ -5,12 +5,14 @@ package questionnaire
 
 import (
 	"crypto/sha256"
+	"encoding/base32"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"math/rand/v2"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/google/go-cmp/cmp"
 )
@@ -21,6 +23,14 @@ func samples() map[string]string {
 	sum := sha256.Sum256([]byte("takecare questionnaire sample"))
 	b64 := base64.RawURLEncoding.EncodeToString(sum[:]) // 43 characters
 	alnum := strings.NewReplacer("-", "x", "_", "y").Replace(b64)
+	letters := strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) {
+			return r
+		}
+		return -1
+	}, alnum+alnum)
+	b32 := base32.StdEncoding.EncodeToString(sum[:]) // A-Z and 2-7
+	hexs := hex.EncodeToString(sum[:])
 	return map[string]string{
 		"private key":    "-----BEGIN " + "OPENSSH PRIVATE" + " KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA",
 		"rsa key":        "-----BEGIN " + "RSA PRIVATE" + " KEY-----",
@@ -31,15 +41,15 @@ func samples() map[string]string {
 		"slack webhook":  "https://hooks.slack" + ".com/services/" + alnum,
 		"anthropic":      "sk-" + "ant-" + alnum,
 		"openai":         "sk-" + "proj-" + alnum,
-		"aws":            "AK" + "IA" + strings.ToUpper(alnum[:16]),
+		"aws":            "AK" + "IA" + b32[:16],
 		"gcp":            "AI" + "za" + alnum[:35],
 		"jwt":            "ey" + "J" + alnum[:20] + ".ey" + "J" + alnum[20:40] + "." + alnum[:10],
 		"url password":   "https://deploy:" + alnum[:12] + "@git.example.org/map.git",
 		"high entropy":   b64,
 		"in a sentence":  "the key is " + alnum + " today",
 		"stripe":         "sk" + "_live_" + alnum[:24],
-		"vault":          "hv" + "s." + alnum,
-		"huggingface":    "h" + "f_" + strings.ToLower(alnum[:34]),
+		"vault":          "hv" + "s." + alnum + alnum + alnum,
+		"huggingface":    "h" + "f_" + letters[:34],
 		"npm":            "np" + "m_" + alnum[:36],
 		"digitalocean":   "do" + "p_v1_" + hex.EncodeToString(sum[:]),
 		"age":            "AGE-SECRET" + "-KEY-1" + strings.ToUpper(alnum),
@@ -51,6 +61,10 @@ func samples() map[string]string {
 		"slack app":      "xa" + "pp-1-" + strings.ToUpper(alnum[:10]) + "-123-" + strings.ToLower(alnum[:20]),
 		"gitlab deploy":  "gl" + "dt-" + alnum[:20],
 		"a url password": "postgres://user:" + alnum[:10] + "@db:5432/x",
+		"pulumi":         "pu" + "l-" + hexs[:40],
+		"notion":         "nt" + "n_" + "12345678901" + alnum[:35],
+		"prefect":        "pn" + "u_" + alnum[:36],
+		"gitlab runner":  "gl" + "rt-" + alnum[:20],
 	}
 }
 
@@ -76,6 +90,14 @@ func TestCheckCredential(t *testing.T) {
 		"0123456789abcdef0123456789abcdef01234567",                        // a commit
 		"The ghp_ prefix names a GitHub token", "sk-ant- is a prefix", "PrometheusAlertmanager2026Edition",
 		"team-a, team-b, team-c, team-d", "arn:aws:iam::123456789012:role/takecare-reader",
+		// Names that start with a short token prefix but have neither the
+		// length nor the alphabet of its rule.
+		"https://gitlab.example.org/platform/npm_packages_mirror.git", "dapiserver.example.org",
+		"monitoring/dapi-gateway-prometheus", "pul-requests-map", "hf_models_cache",
+		"glc_dashboards_provisioning", "pnu_notifications-routing", "ntn_workspace_pages",
+		"SG.example.org/alerts", "ABSKafkaConsumersLagging", "AIzaRolloutDashboard",
+		"xapp-gateway-config", "hvs.production.example.org", "ghp_mirror_settings",
+		"ACCAccountsReceivableExport", "ya29.example.org",
 	} {
 		if err := CheckCredential(s); err != nil {
 			t.Errorf("%q refused: %v", s, err)

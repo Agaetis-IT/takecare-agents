@@ -17,30 +17,46 @@ import (
 var ErrCredential = errors.New("looks like a credential: a question asks where a Secret lives, never its value")
 
 // credentialShapes are the shapes refused in any answer (spec 13 §4.2): a
-// private key header, a URL holding a password, and the fixed token
-// prefixes of the default rules of the secret scanner this repository runs
-// (gitleaks' config/gitleaks.toml, at the version GITLEAKS_IMAGE pins in
-// hack/versions.env), each followed by enough token characters that a
-// prefix named in a sentence is not refused.
+// private key header, a URL holding a password, and the tokens of the
+// default rules of the secret scanner this repository runs (gitleaks'
+// config/gitleaks.toml, at the version GITLEAKS_IMAGE pins in
+// hack/versions.env).
 var credentialShapes = []struct {
 	what string
 	re   *regexp.Regexp
 }{
 	{"a private key header", regexp.MustCompile(`-----BEGIN[ A-Z0-9_-]{0,100}PRIVATE KEY`)},
 	{"a URL holding a password", regexp.MustCompile(`[a-zA-Z][a-zA-Z0-9+.-]*://[^/\s:@]+:[^/\s@]+@`)},
-	{"a token prefix", regexp.MustCompile(`\b(?:` + strings.Join([]string{
-		`gh[pousr]_`, `github_pat_`, // GitHub
-		`glpat-`, `gldt-`, `glrt-`, `glptt-`, `glsoat-`, `glcbt-`, `glft-`, `gloas-`, // GitLab
-		`xox[abeoprs]-`, `xapp-`, `hooks\.slack\.com/(?:services|workflows|triggers)/`, // Slack
-		`sk-ant-`, `sk-(?:proj|svcacct|admin)-`, // model providers
-		`(?:A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA)[A-Z2-7]{4}`, `ABSK`, // AWS
-		`AIza`, `ya29\.`, // Google
-		`npm_`, `pypi-AgEIcHlwaS5vcmc`, `rubygems_`, // package registries
-		`SG\.`, `hf_`, `dop_v1_`, `doo_v1_`, `dor_v1_`, `shp(?:at|ca|pa|ss)_`,
-		`(?:sk|rk)_(?:test|live|prod)_`, `hv[sb]\.`, `glc_`, `glsa_`, `AGE-SECRET-KEY-1`,
-		`dapi`, `pul-`, `lin_api_`, `pplx-`, `ntn_`, `ops_eyJ`, `sntry[su]_`, `pnu_`,
-		`eyJ[a-zA-Z0-9]{8,}\.eyJ`, // a JWT
-	}, "|") + `)[A-Za-z0-9_\-./+=]{8,}`)},
+	{"a token prefix", regexp.MustCompile(`\b(?:` + strings.Join(longPrefixes, "|") + `)[A-Za-z0-9_\-./+=]{8,}`)},
+	{"a token prefix", regexp.MustCompile(`\b(?:` + strings.Join(shortPrefixTokens, "|") + `)`)},
+}
+
+// longPrefixes are token prefixes long and distinctive enough that one
+// followed by eight token characters is refused: a prefix named in a
+// sentence is not.
+var longPrefixes = []string{
+	`github_pat_`,                                                                // GitHub
+	`glpat-`, `gldt-`, `glrt-`, `glptt-`, `glsoat-`, `glcbt-`, `glft-`, `gloas-`, // GitLab
+	`xox[abeoprs]-`, `hooks\.slack\.com/(?:services|workflows|triggers)/`, // Slack
+	`sk-ant-`, `sk-(?:proj|svcacct|admin)-`, // model providers
+	`pypi-AgEIcHlwaS5vcmc`, `rubygems_`, // package registries
+	`dop_v1_`, `doo_v1_`, `dor_v1_`, `shp(?:at|ca|pa|ss)_`,
+	`(?:sk|rk)_(?:test|live|prod)_`, `glsa_`, `AGE-SECRET-KEY-1`,
+	`lin_api_`, `pplx-`, `ops_eyJ`, `sntry[su]_`,
+	`eyJ[a-zA-Z0-9]{8,}\.eyJ`, // a JWT
+}
+
+// shortPrefixTokens are the tokens whose prefix is too short to stand
+// alone: platform names start with dapi, npm_ or hf_. Each one takes the
+// alphabet and the length of its gitleaks rule, at least.
+var shortPrefixTokens = []string{
+	`gh[pousr]_[0-9a-zA-Z]{36}`,                                                 // GitHub
+	`(?:A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA)[A-Z2-7]{16}`, `ABSK[A-Za-z0-9+/]{109}`, // AWS
+	`AIza[\w-]{35}`, `ya29\.[\w-]{20}`, // Google; no gitleaks rule for ya29.
+	`(?i:npm_[a-z0-9]{36})`, `SG\.[A-Za-z0-9=_\-.]{66}`, `hf_[A-Za-z]{34}`,
+	`(?i:glc_[A-Za-z0-9+/]{32})`, `dapi[a-f0-9]{32}`, `pul-[a-f0-9]{40}`,
+	`ntn_[0-9]{11}[A-Za-z0-9]{35}`, `pnu_[a-zA-Z0-9]{36}`,
+	`hvs\.[\w-]{90}`, `hvb\.[\w-]{138}`, `(?i:xapp-\d-[A-Z0-9]+-\d+-[a-z0-9]+)`, // Vault, Slack
 }
 
 // Thresholds of the high-entropy shape: a token at least this long,
