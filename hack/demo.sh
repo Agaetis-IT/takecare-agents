@@ -88,7 +88,7 @@ images() {
   local tag ref node missing=() refs=()
   # What the images are built from, untracked files included.
   tag="$(demo_tag)" || die "cannot compute the images' tag"
-  for ref in operator mcp-report-slack mcp-corpus mcp-map mcp-front demo-app; do
+  for ref in operator mcp-report-slack mcp-corpus mcp-map mcp-front mcp-history demo-app; do
     refs+=("${IMAGE_REGISTRY}/takecare-agents-${ref}:${tag}")
   done
   # The stamp is a build cache only: a missing local image builds again.
@@ -148,7 +148,7 @@ install() {
     # The CRD chart's hook job runs the operator's image too.
     crds+=(--set "image.tag=${tag}")
     sets+=(--set "operator.image.tag=${tag}" --set "addons.report.image.tag=${tag}"
-      --set "addons.demoCorpus.image.tag=${tag}" --set "addons.map.image.tag=${tag}" --set "demo.app.image.tag=${tag}")
+      --set "addons.demoCorpus.image.tag=${tag}" --set "addons.map.image.tag=${tag}" --set "addons.history.image.tag=${tag}" --set "demo.app.image.tag=${tag}")
   fi
   if [[ -n "${TAKECARE_SLACK_BOT_TOKEN:-}" ]]; then
     sets+=(--set addons.reportSlack.enabled=true --set addons.reportLog.enabled=false

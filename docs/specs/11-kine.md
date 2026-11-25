@@ -131,9 +131,11 @@ Tools, all `read`, none taking a free text argument:
 | `reviews_list` | `since`, `until`, optional `kine`, `limit` (at most 100) | per review: name, Kiné, trigger, incident, phase, the action ids and their states | read, state |
 | `review_get` | `name` | the review's problem, actions and post-mortem | read, **content** |
 
+The lists leave `silent` records out: a bench's runs never show as earlier incidents or reviews. `investigation_get` and `review_get` serve a record by name, `silent` or not, as an on-demand review may name one (§3). The server reads through an informer cache of the release namespace and is ready once it holds the records.
+
 `investigation_get` and `review_get` return model text that may quote logs and configuration. They are content tools (ADR 0014 §5): a Kiné gets them only when `spec.contentTools` lists them, and the chart's Kiné example lists both. A Kiné without them reviews from the lists and the knowledge connectors only, and each review says so in `blindSpots`.
 
-The Kiné's agent reaches the server only through the gateway, on the Kiné's history route with the tool allow-list (ADR 0008). The server's NetworkPolicy admits the gateway only. The answers pass the Ranger's guards like every tool output (spec 09 §4): a diagnosis read again is masked and filtered again.
+The Kiné's agent reaches the server only through the gateway, on the Kiné's history route with the tool allow-list (ADR 0008). The server's NetworkPolicy admits the gateway, and the operator for discovery (the shared add-on ingress, spec 05); its egress is the API server only, TCP 443 and 6443, without DNS (the in-cluster configuration names the API server by its IP). The answers pass the Ranger's guards like every tool output (spec 09 §4): a diagnosis read again is masked and filtered again.
 
 The server serves every record of the release namespace to whoever its route admits; it does not filter by the caller's scope. A Kiné's routes identify it by their path, as the Doc's do (spec 10 §8), and the Bib closes that later. A customer who needs teams kept apart in 0.5.0 runs them on separate releases (open question 1).
 
@@ -270,5 +272,4 @@ Seams: K1 first. K2 and K3 then run in parallel: K2 needs only the connector typ
 ## Open questions
 
 1. **Scope at the history server.** The server serves every record of the release namespace; a Kiné is kept to its scope by its message and instructions, not by the server. Filtering per route (the Kiné's scope passed to the server by the gateway) needs either the Bib or an argument rule per route; until then, teams that must not read each other's incidents run separate releases.
-2. **`review_get` as a content tool.** Decided for `investigation_get`; `review_get` returns model text built from diagnoses, so it is classed content too, the conservative reading. To confirm at K2.
-3. **The Kiné's default model** is a chart value (spec 06 §8), set from the bench's first report.
+2. **The Kiné's default model** is a chart value (spec 06 §8), set from the bench's first report.

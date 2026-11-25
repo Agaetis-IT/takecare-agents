@@ -155,7 +155,7 @@ jobs:
             printf 'cannot tell whether %s %s is published:\n%s\n' "$1" "$VERSION" "$out" >&2
             return 1
           }
-          for image in operator mcp-report-slack demo-app mcp-corpus mcp-map mcp-front; do
+          for image in operator mcp-report-slack demo-app mcp-corpus mcp-map mcp-front mcp-history; do
             absent "image takecare-agents-${image}" docker buildx imagetools inspect "${REGISTRY}/takecare-agents-${image}:${VERSION}"
           done
           for chart in takecare-crds takecare takecare-cluster; do
@@ -184,7 +184,7 @@ jobs:
           set -euo pipefail
           source hack/versions.env
           mkdir -p bin/sbom
-          for image in operator mcp-report-slack demo-app mcp-corpus mcp-map mcp-front; do
+          for image in operator mcp-report-slack demo-app mcp-corpus mcp-map mcp-front mcp-history; do
             ref="${REGISTRY}/takecare-agents-${image}:${VERSION}"
             digest="$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' | jq -er .digest)"
             for platform in ${IMAGE_PLATFORMS//,/ }; do
@@ -193,7 +193,7 @@ jobs:
                 "bin/sbom/takecare-agents-${image}-${VERSION}-${platform//\//-}.spdx.json"
             done
           done
-          test "$(find bin/sbom -name '*.spdx.json' | wc -l)" -eq 12
+          test "$(find bin/sbom -name '*.spdx.json' | wc -l)" -eq 14
       - name: GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -203,7 +203,7 @@ jobs:
           {
             cat "$RUNNER_TEMP/notes.md"
             printf '\n### Artifacts\n\nImages (linux/amd64, linux/arm64):\n\n'
-            for image in operator mcp-report-slack demo-app mcp-corpus mcp-map mcp-front; do
+            for image in operator mcp-report-slack demo-app mcp-corpus mcp-map mcp-front mcp-history; do
               printf -- "- \`%s/takecare-agents-%s:%s\`\n" "$REGISTRY" "$image" "$VERSION"
             done
             printf '\nCharts:\n\n'

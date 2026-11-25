@@ -160,14 +160,23 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			return ctrl.Result{}, err
 		}
 		r.discover(ctx, &c, st, *ep)
-		if slices.Contains(c.Spec.Types, v1alpha1.ConnectorCluster) {
+		switch {
+		case slices.Contains(c.Spec.Types, v1alpha1.ConnectorCluster):
 			if err := r.readOnlyGuard(ctx, &c, st, ep.HTTP); err != nil {
 				return ctrl.Result{}, err
 			}
 			if err := r.resourcesListable(ctx, &c, st, *ep); err != nil {
 				return ctrl.Result{}, err
 			}
-		} else {
+		case c.Spec.MCP.Addon != "":
+			// Every add-on runs with a ServiceAccount the chart binds: the
+			// guard checks it too, in the release namespace and at the
+			// cluster scope, though it reads no workload.
+			if err := r.addonGuard(ctx, &c, st); err != nil {
+				return ctrl.Result{}, err
+			}
+			st.set(ConditionResourcesListable, true, ReasonNotApplicable, "not a cluster connector")
+		default:
 			st.set(ConditionReadOnlyGuard, true, ReasonNotApplicable, "not a cluster connector")
 			st.set(ConditionResourcesListable, true, ReasonNotApplicable, "not a cluster connector")
 		}
@@ -531,6 +540,26 @@ func (r *Reconciler) readOnlyGuard(ctx context.Context, c *v1alpha1.TakeCareConn
 	default:
 		st.set(ConditionReadOnlyGuard, true, ReasonReady, fmt.Sprintf("%s holds nothing the read-only guard forbids in %d namespace(s) and at the cluster scope (sampled)", sa, len(namespaces)))
 	}
+	return nil
+}
+
+// addonGuard asks, for the ServiceAccount of an add-on that is not a
+// cluster connector, whether it may do what the read-only guard forbids,
+// in the release namespace and at the cluster scope. Such an add-on needs
+// no right on workloads: nothing is required of it.
+func (r *Reconciler) addonGuard(ctx context.Context, c *v1alpha1.TakeCareConnector, st *status) error {
+	sa := fmt.Sprintf("system:serviceaccount:%s:%s%s", r.OperatorNamespace, addonNamePrefix, c.Spec.MCP.Addon)
+	v, err := guard.CheckForbidden(ctx, func(ctx context.Context, ns, group, resource, subresource, verb string) (bool, error) {
+		return r.can(ctx, sa, ns, group, resource, subresource, verb)
+	}, []string{r.OperatorNamespace})
+	if err != nil {
+		return err
+	}
+	if len(v.Violations) > 0 {
+		st.set(ConditionReadOnlyGuard, false, ReasonReadOnlyGuardViolated, fmt.Sprintf("the ServiceAccount %s may %s: the read-only guard forbids it (spec 04)", sa, strings.Join(v.Violations, ", ")))
+		return nil
+	}
+	st.set(ConditionReadOnlyGuard, true, ReasonReady, fmt.Sprintf("%s holds nothing the read-only guard forbids in %s and at the cluster scope (sampled)", sa, r.OperatorNamespace))
 	return nil
 }
 
