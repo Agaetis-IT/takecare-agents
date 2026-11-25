@@ -420,7 +420,7 @@ func newest(items []v1alpha1.TakeCareInvestigation, since time.Time) *v1alpha1.T
 // fingerprint and their incident, each key being "<label>=<value>". The
 // creation time is not in the key: one fingerprint's or one incident's
 // records are few, and recent() keeps those created within the cooldown.
-const IndexRecent = "takecare.recent"
+const IndexRecent = "metadata.labels.recent"
 
 // IndexInvestigations registers IndexRecent on the manager's cache.
 func IndexInvestigations(ctx context.Context, indexer client.FieldIndexer) error {
