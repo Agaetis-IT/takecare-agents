@@ -22,10 +22,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/recorder"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/engine"
 	kineagent "github.com/agaetis-it/takecare-agents/internal/kine"
+	"github.com/agaetis-it/takecare-agents/internal/report"
 	"github.com/agaetis-it/takecare-agents/internal/roleagent"
 	"github.com/agaetis-it/takecare-agents/internal/routes"
 	"github.com/agaetis-it/takecare-agents/internal/runs"
@@ -74,6 +76,19 @@ type Runner struct {
 	// GateRetry is how long the runner waits when every queued review is
 	// held back.
 	GateRetry time.Duration
+	// Poster posts a completed review through its Kiné's report connector
+	// (spec 11 §8); nil publishes nothing. Backoff is report.Post's first
+	// wait (report.Backoff when zero), PublishTimeout bounds one
+	// publication (publishTimeout when zero), After waits (time.After
+	// when nil). Recorder emits the PublicationFailed event.
+	Poster         report.Poster
+	Backoff        time.Duration
+	PublishTimeout time.Duration
+	After          func(time.Duration) <-chan time.Time
+	Recorder       recorder.EventRecorder
+	// Metrics counts the reviews ended and holds the Rehab's state (spec
+	// 11 §11); nil counts nothing.
+	Metrics *ReviewMetrics
 
 	mu sync.Mutex
 	// running holds each Kiné's running review; held the reviews this
@@ -111,9 +126,12 @@ func (w *Runner) Start(ctx context.Context) error {
 		w.GateRetry = 5 * time.Second
 	}
 	defer w.wg.Wait()
-	if err := w.resume(ctx); err != nil {
+	if reviews, err := w.resume(ctx); err != nil {
 		// Not retried: a review left Running is ended by the backstop.
 		log.FromContext(ctx).Error(err, "resume the reviews left running")
+	} else {
+		w.Metrics.Seed(reviews)
+		w.resumePublish(ctx, reviews)
 	}
 	w.resumed.Store(true)
 	ownerOf := map[types.NamespacedName]types.NamespacedName{}
@@ -147,11 +165,12 @@ func (w *Runner) Start(ctx context.Context) error {
 // resume puts back in the queue every review a stopped operator left
 // Running, its task and start kept: the run follows that task again, to
 // the same deadline (spec 11 §6). Through the cache, which holds the
-// operator's namespace only, where its Role may list.
-func (w *Runner) resume(ctx context.Context) error {
+// operator's namespace only, where its Role may list. It returns the
+// reviews it listed.
+func (w *Runner) resume(ctx context.Context) ([]v1alpha1.TakeCareReview, error) {
 	var list v1alpha1.TakeCareReviewList
 	if err := w.Client.List(ctx, &list); err != nil {
-		return fmt.Errorf("list reviews: %w", err)
+		return nil, fmt.Errorf("list reviews: %w", err)
 	}
 	for i := range list.Items {
 		rv := &list.Items[i]
@@ -159,11 +178,11 @@ func (w *Runner) resume(ctx context.Context) error {
 			continue
 		}
 		if _, err := w.patch(ctx, rv, requeueResumed); err != nil {
-			return fmt.Errorf("put review %s back in the queue: %w", rv.Name, err)
+			return nil, fmt.Errorf("put review %s back in the queue: %w", rv.Name, err)
 		}
 		w.Queue.Add(client.ObjectKeyFromObject(rv), rv.CreationTimestamp.Time)
 	}
-	return nil
+	return list.Items, nil
 }
 
 // admit starts a queued review unless its Kiné already runs one; it
@@ -229,15 +248,19 @@ func (w *Runner) adopt(ctx context.Context, rv *v1alpha1.TakeCareReview, owner t
 	}
 	if reason != "" {
 		done := metav1.NewTime(w.now())
-		if _, err := w.patch(ctx, rv, func(st *v1alpha1.TakeCareReviewStatus) bool {
+		failed, err := w.patch(ctx, rv, func(st *v1alpha1.TakeCareReviewStatus) bool {
 			if st.Phase != v1alpha1.RunQueued {
 				return false
 			}
 			st.Phase, st.Reason, st.CompletedAt = v1alpha1.RunFailed, reason[:min(len(reason), maxReason)], &done
 			return true
-		}); err != nil {
+		})
+		if err != nil {
 			logger.Error(err, "fail the review")
 			return nil, false, true
+		}
+		if failed {
+			w.Metrics.End(rv, resultFailed)
 		}
 		return nil, false, false
 	}
@@ -293,12 +316,16 @@ func (w *Runner) run(ctx context.Context, rv *v1alpha1.TakeCareReview, k *v1alph
 	defer span.End()
 	traceID := span.SpanContext().TraceID().String()
 	logger := log.FromContext(ctx).WithValues("review", rv.Name, "traceID", traceID)
-	marked, err := w.patch(ctx, rv, markRunning(metav1.NewTime(w.now()), traceID))
+	started := metav1.NewTime(w.now())
+	marked, err := w.patch(ctx, rv, markRunning(started, traceID))
 	if err != nil || !marked {
 		if err != nil {
 			logger.Error(err, "mark the review running")
 		}
 		return
+	}
+	if err := w.recordLastReview(ctx, rv, started); err != nil {
+		logger.Error(err, "record the Kiné's last review")
 	}
 	if err := w.Reader.Get(ctx, client.ObjectKeyFromObject(rv), rv); err != nil {
 		logger.Error(err, "read the review")
@@ -316,8 +343,19 @@ func (w *Runner) run(ctx context.Context, rv *v1alpha1.TakeCareReview, k *v1alph
 	} else {
 		span.SetAttributes(attribute.Int(semconv.ReviewActions, len(out.Actions)))
 	}
-	if _, err := w.patch(ctx, rv, recordOutcome(out, metav1.NewTime(w.now()), traceID)); err != nil {
+	recorded, err := w.patch(ctx, rv, recordOutcome(out, metav1.NewTime(w.now()), traceID))
+	if err != nil {
 		logger.Error(err, "record the review's outcome")
+	}
+	if !recorded {
+		return // an end written meanwhile (the backstop) stands, and counted
+	}
+	w.Metrics.End(rv, resultOf(&out))
+	if out.Phase == v1alpha1.RunCompleted {
+		ended := rv.DeepCopy()
+		ended.Status = out
+		w.Metrics.Record(ended)
+		w.startPublish(ctx, client.ObjectKeyFromObject(rv), span.SpanContext())
 	}
 }
 
