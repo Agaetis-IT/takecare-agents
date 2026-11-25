@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -194,9 +195,18 @@ func run(args []string) error {
 	return nil
 }
 
-// setupKine sets up the Kiné (spec 11): the retention of its reviews, and
-// its controller (its conditions, its scope and its routes on the gateway).
-func setupKine(mgr ctrl.Manager, cfg config, mcpClient *http.Client) error {
+// kineRuns is what the Kiné's reviews share with the other roles' runs:
+// the A2A client, the run metrics and the tracer.
+type kineRuns struct {
+	a2a     *http.Client
+	metrics *runs.Metrics
+	tracer  trace.Tracer
+}
+
+// setupKine sets up the Kiné (spec 11): the retention of its reviews, its
+// controller (its conditions, its scope and its routes on the gateway), and
+// its reviews, queued as they come and run one per Kiné at a time.
+func setupKine(mgr ctrl.Manager, cfg config, mcpClient *http.Client, rr kineRuns) error {
 	if err := mgr.Add(&kine.Sweeper{
 		Client: mgr.GetClient(), Namespace: cfg.operatorNamespace, Retention: cfg.reviewRetention,
 	}); err != nil {
@@ -209,6 +219,23 @@ func setupKine(mgr ctrl.Manager, cfg config, mcpClient *http.Client) error {
 		Lookup: &coverage.Lookup{MCP: &mcp.Client{HTTP: mcpClient}},
 	}).SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("set up the Kiné controller: %w", err)
+	}
+	reviews := runs.NewQueue(16)
+	runner := &kine.Runner{
+		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: reviews,
+		Runs: &kagent0103.Runs{HTTP: rr.a2a}, EngineKind: kagent0103.Kind, EngineNamespace: cfg.engineNamespace,
+		RunMetrics: rr.metrics, Tracer: rr.tracer,
+	}
+	// The queuer ends a Running review the runner does not hold at its
+	// bound (spec 11 §6).
+	if err := (&kine.ReviewQueuer{
+		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: reviews,
+		Recorder: mgr.GetEventRecorder("takecare-operator"), Runs: runner,
+	}).SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("set up the review queue: %w", err)
+	}
+	if err := mgr.Add(runner); err != nil {
+		return fmt.Errorf("add the review runner: %w", err)
 	}
 	return nil
 }
@@ -391,7 +418,10 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	if err := mgr.Add(&intendant.Sweeper{Client: mgr.GetClient(), Namespace: cfg.operatorNamespace}); err != nil {
 		return nil, fmt.Errorf("add the survey sweeper: %w", err)
 	}
-	if err := setupKine(mgr, cfg, mcpClient); err != nil {
+	if err := setupKine(mgr, cfg, mcpClient, kineRuns{
+		a2a: a2aClient, metrics: runMetrics,
+		tracer: traces.Tracer("github.com/agaetis-it/takecare-agents/internal/controller/kine"),
+	}); err != nil {
 		return nil, err
 	}
 	caBundle, err := parseCABundle(cfg.caBundle)

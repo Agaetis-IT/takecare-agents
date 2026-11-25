@@ -76,6 +76,12 @@ type fixture struct {
 // a request its Roles refuse fails the test.
 func start(t *testing.T) *fixture {
 	t.Helper()
+	return startWith(t, nil)
+}
+
+// startWith is start, with more runnables added to the manager by add.
+func startWith(t *testing.T, add func(*testing.T, ctrl.Manager)) *fixture {
+	t.Helper()
 	env := testenv.StartOperator(t)
 	scheme := runtime.NewScheme()
 	for _, add := range []func(*runtime.Scheme) error{clientgoscheme.AddToScheme, v1alpha1.AddToScheme} {
@@ -104,6 +110,9 @@ func start(t *testing.T) *fixture {
 	}
 	if err := r.SetupWithManager(mgr); err != nil {
 		t.Fatal(err)
+	}
+	if add != nil {
+		add(t, mgr)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
