@@ -267,6 +267,8 @@ k8s.io/kube-openapi/pkg/validation/spec
   License: Apache-2.0
 k8s.io/kube-openapi/pkg/validation/strfmt
   License: Apache-2.0
+k8s.io/kube-openapi/pkg/validation/validate
+  License: Apache-2.0
 k8s.io/streaming/pkg
   License: Apache-2.0
 k8s.io/utils
