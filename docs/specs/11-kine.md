@@ -106,11 +106,11 @@ The Kiné watches the investigations of its namespace (ADR 0022). An investigati
 
 The review's name is a hash of the Kiné's UID and the investigation's UID (`review-<10 hex>`), at most 63 characters. Investigations of the same incident key that are due together (an incident that fired again after the Doc's cooldown, before the first one resolved) give one review, named after the oldest, which lists them all (at most 10, oldest first). The operator indexes reviews by the investigations they name, so that "already named" is a cache lookup, and reads the reviews live before creating one, as spec 10 §3 does for surveys.
 
-A Kiné that is suspended or not `Ready` creates no review; the investigations that became due meanwhile are reviewed when it is `Ready` again, while they are kept (§5).
+A Kiné that is suspended or not `Ready` creates no review; the investigations that became due meanwhile are reviewed when it is `Ready` again, while they are kept (§5). A review that ended `Failed` because the Kiné or the gateway was not ready (§6) never ran: once the Kiné has been `Ready` since that review ended, it no longer counts as naming its investigations, and a new review lists them again, its name hashing the count of such reviews as well. The failed review stays as the record of what happened.
 
 ### Periodic review (`Schedule`)
 
-At `status.nextReviewTime`, from `schedule`. Its period is the `lookback` up to its creation. It looks for recurrences across the period's incidents and follows the open actions, without a triggering investigation. Its name is a hash of the Kiné's UID and the scheduled time. A due schedule that meets a running review waits in `status.pendingTrigger`; triggers that pile up give one periodic review, not several.
+At `status.nextReviewTime`, from `schedule`. Its period is the `lookback` up to its creation. A due time stays in `nextReviewTime` until its review is created. A schedule that is refused (`ScheduleValid` False) plans no periodic review; it does not make the Kiné not `Ready`, and the reviews after an incident go on. It looks for recurrences across the period's incidents and follows the open actions, without a triggering investigation. Its name is a hash of the Kiné's UID and the scheduled time. A due schedule that meets a running review waits in `status.pendingTrigger`; triggers that pile up give one periodic review, not several.
 
 ### On demand (`OnDemand`)
 

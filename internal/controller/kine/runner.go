@@ -426,11 +426,7 @@ func periodOf(rv *v1alpha1.TakeCareReview, k *v1alpha1.TakeCareKine) v1alpha1.Re
 	if rv.Spec.Period != nil {
 		return *rv.Spec.Period
 	}
-	lookback := defaultLookback
-	if l := k.Spec.Review.Lookback; l != nil && l.Duration > 0 {
-		lookback = l.Duration
-	}
-	return v1alpha1.ReviewPeriod{From: metav1.NewTime(rv.CreationTimestamp.Add(-lookback)), To: rv.CreationTimestamp}
+	return v1alpha1.ReviewPeriod{From: metav1.NewTime(rv.CreationTimestamp.Add(-lookbackOf(k))), To: rv.CreationTimestamp}
 }
 
 // knownIDs are the action ids the Kiné's other reviews hold: an earlier
