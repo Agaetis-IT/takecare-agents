@@ -1,0 +1,20 @@
+{
+  "count": 2,
+  "data": [
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/RG-Data",
+      "name": "RG-Data",
+      "subscriptionId": "11111111-1111-1111-1111-111111111111",
+      "location": "westeurope"
+    },
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-shop",
+      "name": "rg-shop",
+      "subscriptionId": "11111111-1111-1111-1111-111111111111",
+      "location": "westeurope"
+    }
+  ],
+  "facets": [],
+  "resultTruncated": "false",
+  "totalRecords": 2
+}

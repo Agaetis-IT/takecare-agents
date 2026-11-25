@@ -1,0 +1,24 @@
+{
+  "count": 2,
+  "data": [
+    {
+      "id": "/subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg-shop/providers/Microsoft.Compute/virtualMachines/vm-web-1",
+      "name": "vm-web-1",
+      "type": "microsoft.compute/virtualmachines",
+      "subscriptionId": "22222222-2222-2222-2222-222222222222",
+      "resourceGroup": "rg-shop",
+      "location": "northeurope"
+    },
+    {
+      "id": "/subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg-other/providers/Microsoft.Storage/storageAccounts/stother",
+      "name": "stother",
+      "type": "microsoft.storage/storageaccounts",
+      "subscriptionId": "22222222-2222-2222-2222-222222222222",
+      "resourceGroup": "rg-other",
+      "location": "northeurope"
+    }
+  ],
+  "facets": [],
+  "resultTruncated": "false",
+  "totalRecords": 2
+}

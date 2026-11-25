@@ -12,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 )
@@ -37,22 +38,30 @@ Usage:
   takecare <command> [flags]
 
 Commands:
-  status   show what the install says about itself (reads the cluster)
-  version  print the version, the commit and the Go version
+  status    show what the install says about itself (reads the cluster)
+  review    turn a survey's proposals into Map files, on a local branch
+  validate  check the Map files, offline, with the Map server's checks
+  version   print the version, the commit and the Go version
 
 Run "takecare <command> -h" for a command's flags.
 `
 
-// app is one run: its streams and its clock.
+// app is one run: its streams and its clock. terminal tells whether
+// stdin is one: without it, no command prompts.
 type app struct {
+	stdin          io.Reader
 	stdout, stderr io.Writer
+	terminal       bool
 	now            func() time.Time
 }
 
 // Run runs the command line args (without the program name) and returns
-// the exit code.
+// the exit code. It reads answers from the process's standard input, when
+// that is a terminal.
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	a := &app{stdout: stdout, stderr: stderr, now: time.Now}
+	info, err := os.Stdin.Stat()
+	terminal := err == nil && info.Mode()&os.ModeCharDevice != 0
+	a := &app{stdin: os.Stdin, stdout: stdout, stderr: stderr, terminal: terminal, now: time.Now}
 	return a.run(ctx, args)
 }
 
@@ -64,6 +73,10 @@ func (a *app) run(ctx context.Context, args []string) int {
 	switch args[0] {
 	case "status":
 		return a.status(ctx, args[1:])
+	case "review":
+		return a.review(ctx, args[1:])
+	case "validate":
+		return a.validate(args[1:])
 	case "version":
 		return a.version(args[1:])
 	case "help", "-h", "--help":
@@ -75,9 +88,10 @@ func (a *app) run(ctx context.Context, args []string) int {
 	}
 }
 
-// common are the flags every command takes. status and version draw no
-// screen and print no color: --no-color and --accessible are accepted so
-// that a script can pass them to every command.
+// common are the flags every command takes. No command draws a full
+// screen or prints color yet: review asks with line prompts, which is what
+// --accessible asks for; --no-color and --accessible are accepted so that
+// a script can pass them to every command.
 type common struct {
 	output     string
 	noColor    bool
