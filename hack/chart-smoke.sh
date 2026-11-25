@@ -1105,8 +1105,8 @@ EOF
   check "the per-model cap answers a run of quick calls on the Kiné's model route with 429" \
     test "$klast" = 429
   kubectl -n "$NS" delete takecarekine smoke-kine --timeout=60s >/dev/null
-  check "deleting the Kiné removed its agent and model configuration in kagent, and its routes, policies and backend" \
-    bash -c "[[ -z \$(kubectl -n kagent get agents,modelconfigs,remotemcpservers -l takecare.agaetis.fr/owner=smoke-kine -o name) && -z \$(kubectl -n ${NS} get httproutes,agentgatewaypolicies,agentgatewaybackends -l takecare.agaetis.fr/role-instance=kine.smoke-kine -o name) ]]"
+  check "deleting the Kiné removed its agent, model configuration, tool servers and instructions in kagent, and its routes, policies and backend" \
+    bash -c "[[ -z \$(kubectl -n kagent get agents,modelconfigs,remotemcpservers,configmaps -l takecare.agaetis.fr/owner=smoke-kine -o name) && -z \$(kubectl -n ${NS} get httproutes,agentgatewaypolicies,agentgatewaybackends -l takecare.agaetis.fr/role-instance=kine.smoke-kine -o name) ]]"
   kubectl -n kagent delete pod smoke-a2a --now >/dev/null
   kubectl -n "$NS" delete takecaredoc smoke-doc --timeout=60s >/dev/null
   check "deleting the Doc removed its agent, tool servers and instructions in kagent, and its routes" \

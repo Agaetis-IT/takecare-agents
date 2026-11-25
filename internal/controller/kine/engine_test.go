@@ -15,8 +15,10 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	kineagent "github.com/agaetis-it/takecare-agents/internal/kine"
@@ -201,6 +203,46 @@ func TestAgent(t *testing.T) {
 	f.waitEngineGone(t)
 }
 
+// kagent 0.10.6 takes at most 20 tool servers on an agent (the Agent CRD's
+// spec.declarative.tools, maxItems 20). A Kiné may bind more connectors
+// than that: past 20, EngineReady says so with the count and the bound,
+// and nothing is written in the engine. One fewer, and the agent runs.
+func TestAgentTooManyToolServers(t *testing.T) {
+	t.Parallel()
+	f := start(t)
+	f.platform(t)
+	f.connector(t, connHist, v1alpha1.ConnectorHistory, history, true)
+	var knowledge, tickets []string
+	for i := 1; i <= 16; i++ {
+		name := fmt.Sprintf("knowledge-%02d", i)
+		f.connector(t, name, v1alpha1.ConnectorKnowledge, tools([]string{toolSearch}), true)
+		knowledge = append(knowledge, name)
+	}
+	for i := 1; i <= 4; i++ {
+		name := fmt.Sprintf("tickets-%02d", i)
+		f.connector(t, name, v1alpha1.ConnectorTickets, tools([]string{toolSearch}), true)
+		tickets = append(tickets, name)
+	}
+	f.kine(t, kineName, func(k *v1alpha1.TakeCareKine) {
+		k.Spec.Connectors.Knowledge = knowledge
+		k.Spec.Connectors.Tickets = tickets
+	})
+	f.waitMessage(t, kineName, v1alpha1.ConditionEngineReady, ReasonTooManyToolServers, "21 tool servers, and the engine takes at most 20")
+	k := f.waitCondition(t, kineName, v1alpha1.ConditionEngineReady, metav1.ConditionFalse, ReasonTooManyToolServers)
+	if meta.IsStatusConditionTrue(k.Status.Conditions, v1alpha1.ConditionReady) {
+		t.Errorf("Ready with too many tool servers: %s", describe(k))
+	}
+	for _, gvk := range []schema.GroupVersionKind{agentGVK, modelConfigGVK} {
+		if _, err := f.engineObject(gvk, agentKine); !apierrors.IsNotFound(err) {
+			t.Errorf("the engine holds the Kiné's %s: %v", gvk.Kind, err)
+		}
+	}
+
+	f.update(t, kineName, func(k *v1alpha1.TakeCareKine) { k.Spec.Connectors.Tickets = tickets[:3] })
+	f.agentReady(t)
+	f.waitCondition(t, kineName, v1alpha1.ConditionReady, metav1.ConditionTrue, ReasonReady)
+}
+
 // waitEngineGone waits until the Kiné has no agent, tool server,
 // instructions or model configuration in the engine.
 func (f *fixture) waitEngineGone(t *testing.T) {
@@ -323,4 +365,37 @@ func TestAgentHeldWhileAReviewRuns(t *testing.T) {
 		f.update(t, kineName, func(k *v1alpha1.TakeCareKine) { k.Spec.ContentTools = []string{invGet} })
 		eventually(t, "the rendering applied", func() (bool, string) { return f.agentTools(t) == withGet, f.agentTools(t) })
 	})
+}
+
+// runningUntil counts only the Kiné's own reviews: a kineRef of another
+// kind with the Kiné's name is not one. The API refuses such a review
+// today; the controller does not rely on it, as its watch does not.
+func TestRunningUntilChecksTheKind(t *testing.T) {
+	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
+	running := func(name, kind string) client.Object {
+		rv := &v1alpha1.TakeCareReview{Name: name, Namespace: ns, CreationTimestamp: metav1.NewTime(now)}
+		rv.Spec.KineRef = v1alpha1.RoleRef{Kind: kind, Name: kineName}
+		rv.Status.Phase = v1alpha1.RunRunning
+		return rv
+	}
+	scheme := runtime.NewScheme()
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	k := &v1alpha1.TakeCareKine{Name: kineName, Namespace: ns}
+	for _, tc := range []struct {
+		kind, want string
+	}{{v1alpha1.KindTakeCareDoc, ""}, {v1alpha1.KindTakeCareKine, "own"}} {
+		t.Run(tc.kind, func(t *testing.T) {
+			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(running("own", tc.kind)).Build()
+			r := &Reconciler{Client: c}
+			got, _, err := r.runningUntil(context.Background(), k)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Errorf("runningUntil = %q, want %q", got, tc.want)
+			}
+		})
+	}
 }

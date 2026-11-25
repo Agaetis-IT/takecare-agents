@@ -27,7 +27,17 @@ const (
 	// ReasonRenderPending: a new rendering of the agent waits for a
 	// running review to end.
 	ReasonRenderPending = "RenderPending"
+	// ReasonTooManyToolServers: the bound connectors give the agent more
+	// tool servers than the engine takes.
+	ReasonTooManyToolServers = "TooManyToolServers"
 )
+
+// maxToolServers is the most tool servers kagent 0.10.6 takes on an agent:
+// its Agent CRD bounds spec.declarative.tools with maxItems 20
+// (go/api/config/crd/bases/kagent.dev_agents.yaml, v1alpha2). A Kiné may
+// bind more connectors than that; past the bound the engine would refuse
+// the agent.
+const maxToolServers = 20
 
 // defaultReviewTimeout is review.timeout's default (spec 11 §2), for a
 // Kiné stored without it.
@@ -45,6 +55,12 @@ func (r *Reconciler) renderAgent(ctx context.Context, k *v1alpha1.TakeCareKine, 
 	}
 	if len(b.routes) == 0 {
 		st.set(v1alpha1.ConditionEngineReady, false, ReasonAgentNoTool, "no bound connector gives the agent a tool")
+		st.pendingSince = nil
+		return 0, r.removeEngine(ctx, k)
+	}
+	if n := len(b.routes); n > maxToolServers {
+		st.set(v1alpha1.ConditionEngineReady, false, ReasonTooManyToolServers, fmt.Sprintf(
+			"not rendered: the bound connectors give the agent %d tool servers, and the engine takes at most %d; bind fewer knowledge, tickets or changes connectors", n, maxToolServers))
 		st.pendingSince = nil
 		return 0, r.removeEngine(ctx, k)
 	}
@@ -138,7 +154,7 @@ func (r *Reconciler) runningUntil(ctx context.Context, k *v1alpha1.TakeCareKine)
 	var name string
 	var until time.Time
 	for _, rv := range list.Items {
-		if rv.Spec.KineRef.Name != k.Name || rv.Status.Phase != v1alpha1.RunRunning {
+		if rv.Spec.KineRef.Kind != v1alpha1.KindTakeCareKine || rv.Spec.KineRef.Name != k.Name || rv.Status.Phase != v1alpha1.RunRunning {
 			continue
 		}
 		start := rv.CreationTimestamp.Time
