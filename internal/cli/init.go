@@ -366,6 +366,14 @@ func (a *app) writeInit(ctx context.Context, o *initOpts, root *os.Root, statePa
 	write map[string][]byte, res *Init, answers map[string]questionnaire.Answer) error {
 	paths := slices.Sorted(maps.Keys(write))
 	all := append(slices.Clone(paths), statePath)
+	// Those answered "I don't know", on this run or before, even when
+	// nothing changes.
+	for id, ans := range answers {
+		if ans.Unknown {
+			res.Unknown = append(res.Unknown, id)
+		}
+	}
+	slices.Sort(res.Unknown)
 	if old, err := root.ReadFile(statePath); len(paths) == 0 && err == nil && bytes.Equal(old, state) {
 		res.Branch = ""
 		return a.printInit(o, res, "nothing changed: no file written")
@@ -397,12 +405,6 @@ func (a *app) writeInit(ctx context.Context, o *initOpts, root *os.Root, statePa
 		return fmt.Errorf("write the answers record: %w", err)
 	}
 	res.Written = paths
-	for id, ans := range answers {
-		if ans.Unknown {
-			res.Unknown = append(res.Unknown, id)
-		}
-	}
-	slices.Sort(res.Unknown)
 	if !o.noCommit {
 		if _, err := git(ctx, o.dir, append([]string{"add", "--all", "--"}, all...)...); err != nil {
 			return fmt.Errorf("the files are written: %w", err)

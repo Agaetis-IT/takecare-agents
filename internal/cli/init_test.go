@@ -146,6 +146,32 @@ func TestInitRerunAndEditedFiles(t *testing.T) {
 
 const outputFlag = "--output"
 
+// A re-run that changes nothing still reports the answers recorded as
+// "I don't know" (spec 13 §3.6).
+func TestInitNothingChangedReportsUnknown(t *testing.T) {
+	raw, err := os.ReadFile(demoAnswers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	answers := strings.Replace(string(raw), "  knowledge: http://runbooks.takecare-system.svc:8080/mcp\n", "", 1) + "unknown: [knowledge]\n"
+	file := filepath.Join(t.TempDir(), "answers.yaml")
+	if err := os.WriteFile(file, []byte(answers), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if run := runInitWith(t, "", flagAnswers, file, flagDir, dir, flagNoCommit); run.code != ExitOK {
+		t.Fatalf("exit %d: %s", run.code, run.stderr)
+	}
+	run := runInitWith(t, "", flagDir, dir, flagNoCommit, outputFlag, outputJSON)
+	var res Init
+	if err := json.Unmarshal([]byte(run.stdout), &res); err != nil || run.code != ExitOK {
+		t.Fatalf("exit %d, %v: %s %s", run.code, err, run.stdout, run.stderr)
+	}
+	if len(res.Written) != 0 || !slices.Equal(res.Unknown, []string{"knowledge"}) {
+		t.Errorf("written %v, unknown %v; want nothing written and unknown [knowledge]", res.Written, res.Unknown)
+	}
+}
+
 // Spec 13 §3.6 and criterion 2 and 9: a re-run asks only the questions
 // without an answer and those whose when changed, in accessible mode
 // (TAKECARE_ACCESSIBLE), each with its why.
