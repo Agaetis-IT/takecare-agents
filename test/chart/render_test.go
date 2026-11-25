@@ -794,6 +794,8 @@ func TestNetworkPoliciesCloseTheServersAndTheGateway(t *testing.T) {
 		releaseNamespace + "/takecare-addon-kubernetes-ingress",
 		releaseNamespace + "/takecare-addon-prometheus-ingress",
 		releaseNamespace + "/takecare-addon-prometheus-egress",
+		releaseNamespace + "/takecare-addon-history-ingress",
+		releaseNamespace + "/takecare-addon-history-egress",
 		releaseNamespace + "/takecare-gateway-ingress",
 	} {
 		if !names[want] {

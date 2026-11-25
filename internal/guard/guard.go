@@ -60,6 +60,17 @@ type Verdict struct {
 // Check asks every probe at the cluster scope, then in each namespace, and
 // whether pods can be listed in each namespace.
 func Check(ctx context.Context, can Can, namespaces []string) (Verdict, error) {
+	return check(ctx, can, namespaces, true)
+}
+
+// CheckForbidden is Check without the read a cluster connector needs: for
+// an add-on that reads no pods (the history, the Map, a report server),
+// only what the guard forbids is asked.
+func CheckForbidden(ctx context.Context, can Can, namespaces []string) (Verdict, error) {
+	return check(ctx, can, namespaces, false)
+}
+
+func check(ctx context.Context, can Can, namespaces []string, readsPods bool) (Verdict, error) {
 	v := Verdict{Violations: []string{}, Missing: []string{}}
 	for _, ns := range append([]string{""}, namespaces...) {
 		for _, p := range Probes {
@@ -71,7 +82,7 @@ func Check(ctx context.Context, can Can, namespaces []string) (Verdict, error) {
 				v.Violations = append(v.Violations, where(p.What, ns))
 			}
 		}
-		if ns == "" {
+		if ns == "" || !readsPods {
 			continue
 		}
 		allowed, err := can(ctx, ns, "", resourcePods, "", "list")

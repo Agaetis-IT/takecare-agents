@@ -66,6 +66,10 @@ addons:
   map:
     enabled: true
     demo: true
+  # TakeCare's history, for the Kiné (spec 11 §12): the e2e runs it under its
+  # real Role.
+  history:
+    enabled: true
   prometheus:
     enabled: true
     url: http://prometheus-server.takecare-system.svc

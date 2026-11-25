@@ -38,7 +38,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=52
+CHECKS_EXPECTED=55
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s %s\n' "$(date +%H:%M:%S)" "$*"; }
@@ -450,6 +450,16 @@ run() {
   fi
   check "connector map is Ready with its five read tools, none content (spec 08 §5)" \
     bash -c "[[ \$(kubectl -n $NS get takecareconnector map -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}') == True && \$(kubectl -n $NS get takecareconnector map -o jsonpath='{range .status.tools[*]}{.name}={.class}{.content} {end}') == 'blast_radius=read entry=read map_at=read neighbours=read path=read ' ]]"
+  # The history add-on (spec 11 §4) under its real Role, which envtest
+  # cannot show: its pod is ready only once its cache listed and watched the
+  # records through its egress policy (TCP 443 and 6443, no DNS; k3s
+  # enforces NetworkPolicies), and the operator's guard checked its account.
+  check "the history server is ready under its egress policy, TCP 443 and 6443 only (spec 11 §4)" \
+    bash -c "[[ \$(kubectl -n $NS get networkpolicy takecare-addon-history-egress -o jsonpath='{.spec.egress[*].ports[*].port}') == '443 6443' && \$(kubectl -n $NS get deployment takecare-addon-history -o jsonpath='{.status.readyReplicas}') == 1 ]]"
+  check "connector history is Ready with its four read tools, the two gets content (spec 11 §4)" \
+    bash -c "[[ \$(kubectl -n $NS get takecareconnector history -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}') == True && \$(kubectl -n $NS get takecareconnector history -o jsonpath='{range .status.tools[*]}{.name}={.class}{.content} {end}') == 'investigation_get=readtrue investigations_list=read review_get=readtrue reviews_list=read ' ]]"
+  check "connector history's ServiceAccount passed the read-only guard (spec 04, spec 11 §10)" \
+    bash -c "[[ \$(kubectl -n $NS get takecareconnector history -o jsonpath='{.status.conditions[?(@.type==\"ReadOnlyGuard\")].status} {.status.conditions[?(@.type==\"ReadOnlyGuard\")].reason}') == 'True Ready' ]]"
   check "connector map has MapCurrent=True with a revision (spec 08 §9)" \
     bash -c "[[ \"\$(kubectl -n $NS get takecareconnector map -o jsonpath='{.status.conditions[?(@.type==\"MapCurrent\")].status} {.status.conditions[?(@.type==\"MapCurrent\")].message}')\" =~ ^True\ serving\ revision\ [0-9a-f]+ ]]"
   check "the demo Doc's agent is given the map connector's five read tools (spec 08 §9)" \
