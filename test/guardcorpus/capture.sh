@@ -60,7 +60,7 @@ capture() {
       -d "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}" "$url"
     curl -s -m 30 -X POST -H "$json" -H "$accept" -H "Mcp-Session-Id: $sid" \
       -d "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"$tool\",\"arguments\":$args}}" "$url"
-  ' "${gw}/mcp/${NS}/doc/${conn}" "$tool" "$args")"
+  ' "${gw}/mcp/${NS}/doc.doc/${conn}" "$tool" "$args")"
   # An SSE answer carries the JSON on its data: line.
   text="$(sed -n 's/^data: //p' <<<"$raw" | tail -1)"
   [[ -n "$text" ]] || text="$raw"

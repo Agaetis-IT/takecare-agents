@@ -105,7 +105,7 @@ func TestRoutes(t *testing.T) {
 	if typ := matchType(route); typ != pathExact {
 		t.Errorf("MCP route match type = %q, want Exact", typ)
 	}
-	if path != "/mcp/takecare-system/doc/kubernetes" {
+	if path != "/mcp/takecare-system/doc.doc/kubernetes" {
 		t.Errorf("route path = %s", path)
 	}
 	expr := func(name string) string {
@@ -259,5 +259,26 @@ func TestCallRule(t *testing.T) {
 	}
 	if got := names(t, c, PolicyGVK, r); len(got) != 0 {
 		t.Errorf("policies after the route is pruned: %v", got)
+	}
+}
+
+// TestMCPPathPerKind gives three roles of different kinds and the same
+// name, in one namespace, an MCP path each: the route is the role's
+// identity at the gateway (ADR 0008), so two roles never share a path,
+// whose routes would conflict and leave one of them served with the
+// other's allow-list.
+func TestMCPPathPerKind(t *testing.T) {
+	const doc, intendant, kine, name = "doc", "intendant", "kine", "main"
+	seen := map[string]string{}
+	for _, kind := range []string{doc, intendant, kine} {
+		r := Role{Kind: kind, Name: name, Namespace: ns}
+		got := MCPPath(r, "prometheus")
+		if want := "/mcp/" + ns + "/" + kind + "." + name + "/prometheus"; got != want {
+			t.Errorf("%s: MCPPath = %s, want %s", kind, got, want)
+		}
+		if other, ok := seen[got]; ok {
+			t.Errorf("%s and %s share the MCP path %s", other, kind, got)
+		}
+		seen[got] = kind
 	}
 }
