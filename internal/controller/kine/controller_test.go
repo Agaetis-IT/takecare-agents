@@ -399,7 +399,7 @@ func TestRoutes(t *testing.T) {
 		t.Errorf("knowledge allow-list = %s", got)
 	}
 	for _, c := range []struct{ route, match, path, backend string }{
-		{"role-kine-kine-mcp-history", "Exact", "/mcp/" + ns + "/kine/history", "mcp-history"},
+		{"role-kine-kine-mcp-history", "Exact", "/mcp/" + ns + "/kine.kine/history", "mcp-history"},
 		{"role-kine-kine-a2a", "PathPrefix", "/api/a2a/" + engineNS + "/takecare-kine-kine", "role-kine-kine-a2a"},
 		{"role-kine-kine-model-default", "PathPrefix", "/roles/kine.kine/models/default", "model-default"},
 	} {
