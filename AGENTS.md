@@ -131,7 +131,7 @@ Scopes: `api`, `platform`, `connector`, `doc`, `investigation`, `engine`, `repor
 - Every change is a pull request, reviewed by a maintainer before it is merged, and merged only once every CI check is green.
 - Every commit carries a DCO sign-off (`git commit -s`): the `Signed-off-by` line certifies the [Developer Certificate of Origin](https://developercertificate.org/).
 - The description follows `.github/pull_request_template.md`: spec and acceptance criteria covered (each with how it was checked), tests added, docs updated, **Open questions**.
-- Keep a PR under roughly 600 changed lines excluding tests and generated files; split otherwise.
+- One PR per piece of work, under roughly 1,000 changed lines of code, excluding tests, generated files and pure code moves. Keep its commits clean so a reviewer can read them one by one. Split only when a part can be merged and be useful on its own, never for the line count alone. Estimate the size first and say early when a change heads past it.
 - `CHANGELOG.md` is updated in the PR for every user-visible change (Keep a Changelog, section "Unreleased").
 
 ## Project skills
