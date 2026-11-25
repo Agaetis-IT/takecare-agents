@@ -270,6 +270,7 @@ spec:
                       enum:
                       - TakeCareDoc
                       - TakeCareIntendant
+                      - TakeCareKine
                       type: string
                   required:
                   - allowed

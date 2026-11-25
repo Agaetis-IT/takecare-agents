@@ -53,6 +53,7 @@ func TestRangerValidation(t *testing.T) {
 			r.Spec.Models = []v1alpha1.RoleModels{
 				{Kind: v1alpha1.KindTakeCareDoc, Allowed: []string{modelDefault}},
 				{Kind: v1alpha1.KindTakeCareIntendant, Allowed: []string{modelDefault}},
+				{Kind: v1alpha1.KindTakeCareKine, Allowed: []string{modelDefault}},
 			}
 		}, ""},
 		{"the models of a kind that is not a role", func(r *v1alpha1.TakeCareRanger) {

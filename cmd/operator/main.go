@@ -43,6 +43,7 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
 	"github.com/agaetis-it/takecare-agents/internal/controller/ranger"
 	"github.com/agaetis-it/takecare-agents/internal/controller/takecaredoc"
+	"github.com/agaetis-it/takecare-agents/internal/coverage"
 	"github.com/agaetis-it/takecare-agents/internal/engine/kagent0103"
 	"github.com/agaetis-it/takecare-agents/internal/gatewayapi"
 	"github.com/agaetis-it/takecare-agents/internal/httpclient"
@@ -193,6 +194,25 @@ func run(args []string) error {
 	return nil
 }
 
+// setupKine sets up the Kiné (spec 11): the retention of its reviews, and
+// its controller (its conditions, its scope and its routes on the gateway).
+func setupKine(mgr ctrl.Manager, cfg config, mcpClient *http.Client) error {
+	if err := mgr.Add(&kine.Sweeper{
+		Client: mgr.GetClient(), Namespace: cfg.operatorNamespace, Retention: cfg.reviewRetention,
+	}); err != nil {
+		return fmt.Errorf("add the review retention: %w", err)
+	}
+	if err := (&kine.Reconciler{
+		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("takecare-operator"),
+		OperatorNamespace: cfg.operatorNamespace, EngineNamespace: cfg.engineNamespace,
+		Engine: &kagent0103.Agents{Client: mgr.GetClient()}, Models: &kagent0103.Models{Client: mgr.GetClient()},
+		Lookup: &coverage.Lookup{MCP: &mcp.Client{HTTP: mcpClient}},
+	}).SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("set up the Kiné controller: %w", err)
+	}
+	return nil
+}
+
 // setupControllers wires every controller and runnable on the manager, in
 // production and in the startup test alike: a type a controller watches
 // that the scheme does not know fails here, not on the cluster.
@@ -268,11 +288,6 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		Retention: cfg.investigationRetention, MaxKept: cfg.investigationMaxKept,
 	}); err != nil {
 		return nil, fmt.Errorf("add the investigation retention: %w", err)
-	}
-	if err := mgr.Add(&kine.Sweeper{
-		Client: mgr.GetClient(), Namespace: cfg.operatorNamespace, Retention: cfg.reviewRetention,
-	}); err != nil {
-		return nil, fmt.Errorf("add the review retention: %w", err)
 	}
 	// The Doc's runs, on the leader: A2A through the gateway, one shared
 	// client whose timeout bounds one call (a run is followed by polling).
@@ -375,6 +390,9 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	}
 	if err := mgr.Add(&intendant.Sweeper{Client: mgr.GetClient(), Namespace: cfg.operatorNamespace}); err != nil {
 		return nil, fmt.Errorf("add the survey sweeper: %w", err)
+	}
+	if err := setupKine(mgr, cfg, mcpClient); err != nil {
+		return nil, err
 	}
 	caBundle, err := parseCABundle(cfg.caBundle)
 	if err != nil {
