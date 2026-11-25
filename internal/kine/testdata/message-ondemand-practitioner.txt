@@ -1,0 +1,9 @@
+Review the incidents of the period, as asked by hand.
+
+Review: review-0123456789
+Scope: none
+Period: from 2026-10-26T06:00:00Z to 2026-11-25T06:00:00Z
+
+Your task: the problem, its recurrences and the earlier actions with their state, then the new corrective actions this incident calls for and a post-mortem draft.
+
+Read the records with your tools and answer as your instructions say: one fenced JSON block, no question.
