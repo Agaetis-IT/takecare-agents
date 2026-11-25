@@ -1,0 +1,161 @@
+{{- $a := .Values.addons.history }}
+{{- if $a.enabled }}
+{{- $ctx := dict "root" . "name" "history" "port" 8080 }}
+{{- $image := printf "%s/%s:%s" (.Values.global.imageRegistry | default $a.image.registry) $a.image.repository ($a.image.tag | default .Chart.AppVersion) }}
+# Add-on history: takecare-agents-mcp-history (ours), four read tools over
+# TakeCare's own investigations and reviews of the release namespace, the
+# history the Kiné reads (spec 11 §4). It reads them with this
+# ServiceAccount, never the operator's: one Role, in the release namespace
+# only, with get, list and watch on the two kinds and nothing else; no
+# ClusterRole. The token is mounted on the pod only.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: takecare-addon-history
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: takecare-addon-history
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+rules:
+  - apiGroups: [takecare.agaetis.fr]
+    resources: [takecareinvestigations, takecarereviews]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: takecare-addon-history
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: takecare-addon-history
+subjects:
+  - kind: ServiceAccount
+    name: takecare-addon-history
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: takecare-addon-history
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "takecare.addon.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "takecare.addon.labels" $ctx | nindent 8 }}
+    spec:
+      serviceAccountName: takecare-addon-history
+      # The server reads the API with this token (client-go's in-cluster
+      # configuration); the ServiceAccount itself mounts none elsewhere.
+      automountServiceAccountToken: true
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: {{ include "takecare.addon.image" (dict "image" $image "root" .) | quote }}
+          imagePullPolicy: {{ $a.image.pullPolicy }}
+          args:
+            - --listen=:8080
+            - --namespace={{ .Release.Namespace }}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            {{- toYaml $a.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: takecare-addon-history
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    {{- include "takecare.addon.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+{{- if .Values.networkPolicies.enabled }}
+---
+{{ include "takecare.addon.ingressPolicy" $ctx }}
+---
+# Egress: the API server only, bounded by its ports (a NetworkPolicy cannot
+# name it): 443 for the kubernetes Service, 6443 for the API server behind
+# it on k3s and kubeadm, as policies are often applied after the Service's
+# translation. No DNS: the in-cluster configuration addresses the API
+# server by the IP in KUBERNETES_SERVICE_HOST.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: takecare-addon-history-egress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "takecare.addon.selectorLabels" $ctx | nindent 6 }}
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+{{- end }}
+---
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareConnector
+metadata:
+  name: history
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "takecare.addon.labels" $ctx | nindent 4 }}
+spec:
+  types: [history]
+  description: "TakeCare's history: past investigations and reviews of this release (read-only)"
+  mcp:
+    addon: history
+  {{- with include "takecare.addon.tools" (dict "contentTools" $a.contentTools "tools" $a.tools) | trim }}{{ . | nindent 2 }}{{ end }}
+{{- end }}

@@ -19,6 +19,8 @@ MCP_CORPUS_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-mcp-corpus:$(VERSION)
 MCP_MAP_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-mcp-map:$(VERSION)
 # The mTLS front of a workload cluster (ADR 0016).
 MCP_FRONT_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-mcp-front:$(VERSION)
+# The history server (spec 11).
+MCP_HISTORY_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-mcp-history:$(VERSION)
 # docker-buildx pushes only when PUSH=true (the release workflow, from PR 6).
 PUSH ?= false
 
@@ -297,13 +299,14 @@ DOCKER_BUILD_ARGS := --build-arg GO_BUILD_IMAGE=$(GO_BUILD_IMAGE) --build-arg RU
 LOCAL_LABELS ?=
 
 .PHONY: docker-build
-docker-build: ## Build every image (operator, report server, demo app, corpus server, Map server, front) for the local platform.
+docker-build: ## Build every image (operator, report server, demo app, corpus server, Map server, front, history server) for the local platform.
 	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=operator -t $(OPERATOR_IMG) .
 	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-report-slack -t $(REPORT_SLACK_IMG) .
 	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=demo-app -t $(DEMO_APP_IMG) .
 	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-corpus -t $(MCP_CORPUS_IMG) .
 	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-map -t $(MCP_MAP_IMG) .
 	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-front -t $(MCP_FRONT_IMG) .
+	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-history -t $(MCP_HISTORY_IMG) .
 
 .PHONY: clean-local
 clean-local: ## List the images the demo, the e2e and the smoke built here; CLEAN_LOCAL=remove removes them (never the current tree's).
@@ -332,6 +335,8 @@ docker-buildx: ## Build every image for IMAGE_PLATFORMS (amd64 and arm64; pushed
 	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-map $(call BUILDX_CACHE,mcp-map) -t $(MCP_MAP_IMG) \
 		$(if $(filter true,$(PUSH)),--push,) .
 	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-front $(call BUILDX_CACHE,mcp-front) -t $(MCP_FRONT_IMG) \
+		$(if $(filter true,$(PUSH)),--push,) .
+	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-history $(call BUILDX_CACHE,mcp-history) -t $(MCP_HISTORY_IMG) \
 		$(if $(filter true,$(PUSH)),--push,) .
 
 

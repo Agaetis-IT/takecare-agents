@@ -31,6 +31,7 @@ CORPUS_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-corpus:${IMAGE_TAG}"
 MAP_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-map:${IMAGE_TAG}"
 DEMO_APP_IMAGE="${IMAGE_REGISTRY}/takecare-agents-demo-app:${IMAGE_TAG}"
 FRONT_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-front:${IMAGE_TAG}"
+HISTORY_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-history:${IMAGE_TAG}"
 # Test only: the fake Slack image, here as a customer's MCP server.
 FAKE_SLACK_IMAGE="${IMAGE_REGISTRY}/takecare-agents-fake-slack:${IMAGE_TAG}"
 # The smoke's CA, the chart's global.caBundle: made at run time, never kept
@@ -53,13 +54,13 @@ up() {
       --kubeconfig-update-default=false --kubeconfig-switch-context=false --wait
   fi
   k3d kubeconfig write "$CLUSTER" --output "$KUBECONFIG" >/dev/null
-  log "building and importing ${IMAGE}, ${REPORT_IMAGE}, ${CORPUS_IMAGE}, ${MAP_IMAGE}, ${DEMO_APP_IMAGE} and ${FRONT_IMAGE}"
-  make docker-build OPERATOR_IMG="$IMAGE" REPORT_SLACK_IMG="$REPORT_IMAGE" MCP_CORPUS_IMG="$CORPUS_IMAGE" MCP_MAP_IMG="$MAP_IMAGE" DEMO_APP_IMG="$DEMO_APP_IMAGE" MCP_FRONT_IMG="$FRONT_IMAGE" \
+  log "building and importing ${IMAGE}, ${REPORT_IMAGE}, ${CORPUS_IMAGE}, ${MAP_IMAGE}, ${DEMO_APP_IMAGE}, ${FRONT_IMAGE} and ${HISTORY_IMAGE}"
+  make docker-build OPERATOR_IMG="$IMAGE" REPORT_SLACK_IMG="$REPORT_IMAGE" MCP_CORPUS_IMG="$CORPUS_IMAGE" MCP_MAP_IMG="$MAP_IMAGE" DEMO_APP_IMG="$DEMO_APP_IMAGE" MCP_FRONT_IMG="$FRONT_IMAGE" MCP_HISTORY_IMG="$HISTORY_IMAGE" \
     LOCAL_LABELS="--label org.agaetis.takecare.local=true --label org.agaetis.takecare.hash=${IMAGE_TAG}" >/dev/null
   docker build --build-arg GO_BUILD_IMAGE="$GO_BUILD_IMAGE" --build-arg RUNTIME_IMAGE="$RUNTIME_IMAGE" \
     --build-arg GO_LICENSES_VERSION="$GO_LICENSES_VERSION" --build-arg COMPONENT=fake-slack \
     --label org.agaetis.takecare.local=true --label org.agaetis.takecare.hash="${IMAGE_TAG}" -t "$FAKE_SLACK_IMAGE" . >/dev/null
-  k3d image import "$IMAGE" "$REPORT_IMAGE" "$CORPUS_IMAGE" "$MAP_IMAGE" "$DEMO_APP_IMAGE" "$FRONT_IMAGE" "$FAKE_SLACK_IMAGE" -c "$CLUSTER" >/dev/null
+  k3d image import "$IMAGE" "$REPORT_IMAGE" "$CORPUS_IMAGE" "$MAP_IMAGE" "$DEMO_APP_IMAGE" "$FRONT_IMAGE" "$HISTORY_IMAGE" "$FAKE_SLACK_IMAGE" -c "$CLUSTER" >/dev/null
   make chart-deps >/dev/null
 }
 
@@ -118,7 +119,7 @@ install() {
   empty_corpora
   "$HELM" upgrade --install takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
-    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set ranger.caps.gateway.requestsPerMinute=600 --set-json 'ranger.caps.models=[{"name":"default","requestsPerMinute":2,"burst":1}]' --wait --timeout 10m
+    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set addons.history.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set ranger.caps.gateway.requestsPerMinute=600 --set-json 'ranger.caps.models=[{"name":"default","requestsPerMinute":2,"burst":1}]' --wait --timeout 10m
   kubectl -n kagent rollout status deploy/kagent-controller --timeout=180s >/dev/null
   verify
 }
@@ -501,7 +502,7 @@ upgrade() {
     --set image.tag="$IMAGE_TAG" --set demo.enabled=true --wait --timeout 5m
   "$HELM" upgrade takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
-    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set operator.extraArgs[0]=--zap-log-level=debug --set global.caBundle.configMapName=smoke-ca --set ranger.caps.gateway.requestsPerMinute=600 --set-json 'ranger.caps.models=[{"name":"default","requestsPerMinute":2,"burst":1}]' --wait --timeout 10m
+    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set addons.history.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set operator.extraArgs[0]=--zap-log-level=debug --set global.caBundle.configMapName=smoke-ca --set ranger.caps.gateway.requestsPerMinute=600 --set-json 'ranger.caps.models=[{"name":"default","requestsPerMinute":2,"burst":1}]' --wait --timeout 10m
   check "helm upgrade of both charts succeeded without a field manager conflict" true
   check "operator rolled out with the new argument" \
     kubectl -n "$NS" rollout status deploy/takecare-operator --timeout=120s

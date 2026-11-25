@@ -26,6 +26,7 @@ charts/takecare/              operator + dependencies; values-prod.yaml, values-
 cmd/demo-app/                 billing-api, the demo application (Go; internal/demoapp)
 cmd/mcp-corpus/               the demo's corpus MCP server (Go; internal/corpus; seeds and generator in internal/demo/corpus)
 cmd/mcp-map/                  the Map's MCP server (Go; internal/mapserver; schema in api/map, spec 08)
+cmd/mcp-history/              the history's MCP server, for the Kiné (Go; internal/historyserver, spec 11)
 cmd/mcp-report-slack/         our Slack report MCP server (one tool, configurable apiURL); log variant for the demo
 demo/manifests/               the Doc and the TakeCareDemo applied by make demo-up
 test/e2e/                     end-to-end tests on k3d
@@ -97,7 +98,7 @@ Thresholds: at least 4 out of 5 correct to merge a change of prompt, engine, mod
 | `bench.yaml` | `workflow_dispatch` | accuracy bench with a real model (repository secret), report as an artifact |
 | `release.yaml` | tag `v*` | multi-arch images (amd64, arm64), charts packaged and pushed as OCI, GitHub release with CHANGELOG excerpt |
 
-Images, named `takecare-agents-<component>` (issue #22): `ghcr.io/agaetis-it/takecare-agents-operator`, `ghcr.io/agaetis-it/takecare-agents-demo-app`, `ghcr.io/agaetis-it/takecare-agents-mcp-corpus`, `ghcr.io/agaetis-it/takecare-agents-mcp-map`, `ghcr.io/agaetis-it/takecare-agents-mcp-report-slack` (registry still to be confirmed, vision open question 1). arm64 is required: demos run on Apple Silicon.
+Images, named `takecare-agents-<component>` (issue #22): `ghcr.io/agaetis-it/takecare-agents-operator`, `ghcr.io/agaetis-it/takecare-agents-demo-app`, `ghcr.io/agaetis-it/takecare-agents-mcp-corpus`, `ghcr.io/agaetis-it/takecare-agents-mcp-map`, `ghcr.io/agaetis-it/takecare-agents-mcp-history`, `ghcr.io/agaetis-it/takecare-agents-mcp-report-slack` (registry still to be confirmed, vision open question 1). arm64 is required: demos run on Apple Silicon.
 
 ## Conventions
 

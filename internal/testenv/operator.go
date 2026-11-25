@@ -169,9 +169,13 @@ func awaitRights(ctx context.Context, c client.Client, checks []rightCheck, time
 	err := wait.PollUntilContextTimeout(ctx, 50*time.Millisecond, timeout, true, func(context.Context) (bool, error) {
 		pending = pending[:0]
 		for _, ch := range checks {
+			user, groups := operatorUser, operatorGroups
+			if ch.user != "" {
+				user, groups = ch.user, ch.groups
+			}
 			sar := &authorizationv1.SubjectAccessReview{Spec: authorizationv1.SubjectAccessReviewSpec{
-				User:                  operatorUser,
-				Groups:                operatorGroups,
+				User:                  user,
+				Groups:                groups,
 				ResourceAttributes:    ch.resource,
 				NonResourceAttributes: ch.nonResource,
 			}}
@@ -191,7 +195,7 @@ func awaitRights(ctx context.Context, c client.Client, checks []rightCheck, time
 		return len(pending) == 0, nil
 	})
 	if err != nil {
-		return fmt.Errorf("the authorizer did not grant the operator its Roles within %s (%w); not granted: %s", timeout, err, strings.Join(pending, "; "))
+		return fmt.Errorf("the authorizer did not grant its Roles within %s (%w); not granted: %s", timeout, err, strings.Join(pending, "; "))
 	}
 	return nil
 }
@@ -201,6 +205,9 @@ type rightCheck struct {
 	name        string
 	resource    *authorizationv1.ResourceAttributes
 	nonResource *authorizationv1.NonResourceAttributes
+	// user and groups are asked about; empty: the operator.
+	user   string
+	groups []string
 }
 
 // rightChecks takes, for each binding, the first rule of the role it binds,
