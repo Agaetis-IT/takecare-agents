@@ -1,0 +1,17 @@
+# The demo's answers to the built-in questions of takecare init (spec 13
+# §4.1): the ground make demo-up installs. takecare init --answers reads
+# them, and the golden tree under init-demo/ is what they render to.
+version: 1
+answers:
+  cluster.name: ""
+  operator.namespace: takecare-system
+  environments: [demo-apps, ack-system]
+  teams: ["platform=demo-apps ack-system"]
+  alerts.source: Prometheus Alertmanager
+  metrics.service: takecare-system/prometheus-server
+  report.kind: The report server's log
+  model.provider: https://openrouter.ai/api/v1 google/gemini-3.7-flash
+  model.secret: { namespace: takecare-system, name: takecare-model, key: apiKey }
+  map.repository: https://github.com/agaetis-it/takecare-agents.git main charts/takecare/files/demo-map
+  map.secret: { namespace: takecare-system, name: takecare-map, key: token }
+  knowledge: http://runbooks.takecare-system.svc:8080/mcp

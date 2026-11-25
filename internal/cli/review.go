@@ -123,7 +123,7 @@ func (a *app) runReview(ctx context.Context, r getLister, o *reviewOpts) int {
 		Accepted: []string{}, Validated: []string{}, Skipped: []string{}, Written: []string{}, Deleted: []string{}, Faults: []string{}}
 	if !o.noCommit {
 		// Before any question, so that no answer is lost (spec 13 §7).
-		if res.Branch, err = branchReady(ctx, cmp.Or(o.branch, "takecare/review-"+s.Name)); err != nil {
+		if res.Branch, err = branchReady(ctx, ".", cmp.Or(o.branch, "takecare/review-"+s.Name)); err != nil {
 			return a.fail("review: %v", err)
 		}
 	}
@@ -203,23 +203,23 @@ func (a *app) printReview(o *reviewOpts, res *Review, code int, text string) int
 	return code
 }
 
-// branchReady checks, before anything is asked or written, that the
-// current directory is in a git work tree and that the branch review is
-// to create does not exist yet.
-func branchReady(ctx context.Context, branch string) (string, error) {
-	if _, err := git(ctx, ".", "rev-parse", "--is-inside-work-tree"); err != nil {
-		return "", fmt.Errorf("not in a git work tree: run it from the Map's repository, or pass --no-commit: %w", err)
+// branchReady checks, before anything is asked or written, that dir is
+// in a git work tree and that the branch the command is to create does
+// not exist yet.
+func branchReady(ctx context.Context, dir, branch string) (string, error) {
+	if _, err := git(ctx, dir, "rev-parse", "--is-inside-work-tree"); err != nil {
+		return "", fmt.Errorf("not in a git work tree: run it from the repository, or pass --no-commit: %w", err)
 	}
-	if _, err := git(ctx, ".", "check-ref-format", "--branch", branch); err != nil {
+	if _, err := git(ctx, dir, "check-ref-format", "--branch", branch); err != nil {
 		return "", fmt.Errorf("%q is not a branch name: %w", branch, err)
 	}
-	out, err := git(ctx, ".", "branch", "--list", branch)
+	out, err := git(ctx, dir, "branch", "--list", branch)
 	if err != nil {
 		return "", err
 	}
 	if out != "" {
 		return "", fmt.Errorf("the branch %s exists already, nothing asked: pass --branch <name> for this pass, "+
-			"or merge that branch and run review again from it with --branch", branch)
+			"or merge that branch and run the command again from it with --branch", branch)
 	}
 	return branch, nil
 }
