@@ -1,0 +1,38 @@
+{{- /*
+SPDX-FileCopyrightText: 2026 Agaetis
+SPDX-License-Identifier: Apache-2.0
+
+The request of one review (spec 11 §6), a Go text/template rendered by
+internal/kine: the trigger, the scope, the investigations under review
+with their incident key, the period and the level's task. Names only,
+never a diagnosis: the agent reads the records through history (ADR 0022).
+Versioned like code: the golden files under testdata/ show every change.
+*/ -}}
+{{- if eq .Trigger "Schedule" -}}
+This is the Kiné's periodic review: look for recurrences across the period's incidents and follow the open actions.
+{{- else if .Investigations -}}
+Review the incident these investigations diagnosed, now that it is over.
+{{- else -}}
+Review the incidents of the period, as asked by hand.
+{{- end }}
+
+Review: {{ .Name }}
+Scope: {{ .Scope }}
+{{- if .Investigations }}
+{{- if .Incident }}
+Incident key: {{ .Incident }}
+{{- end }}
+Investigations under review, oldest first:
+{{- range .Investigations }}
+- {{ . }}
+{{- end }}
+{{- end }}
+Period: from {{ .From }} to {{ .To }}
+
+{{ if .Practitioner -}}
+Your task: the problem, its recurrences and the earlier actions with their state, then the new corrective actions this incident calls for and a post-mortem draft.
+{{- else -}}
+Your task: the problem, its recurrences and the earlier actions still undone. You work as an Apprentice: no new action, no post-mortem.
+{{- end }}
+
+Read the records with your tools and answer as your instructions say: one fenced JSON block, no question.

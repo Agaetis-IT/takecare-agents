@@ -80,6 +80,12 @@ const (
 	SurveyNotSeen    = "takecare.survey.not_seen"
 	SurveyProposals  = "takecare.survey.proposals"
 
+	// A review of the Kiné (spec 11 §11): its record and trigger, on the
+	// root span, and the number of actions it recorded.
+	ReviewName    = "takecare.review.name"
+	ReviewTrigger = "takecare.review.trigger"
+	ReviewActions = "takecare.review.actions"
+
 	// The call rule's canary (spec 10 §8), on its span: what the gateway
 	// did (refused, let-through, pending) and the tools/call's HTTP status
 	// (0 when none came back), the OpenTelemetry HTTP attribute.

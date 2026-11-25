@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/agaetis-it/takecare-agents/internal/kine/answer.schema.json",
+  "title": "The Kiné's answer",
+  "description": "One review's answer, as the instructions state it (spec 11 §2, §6). The operator cuts what exceeds a status bound and counts it; the shape alone is checked here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["problem", "actions"],
+  "properties": {
+    "problem": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "statement": { "type": "string" },
+        "recurrences": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["record"],
+            "properties": {
+              "record": { "type": "string", "minLength": 1 },
+              "date": { "type": "string", "description": "RFC 3339, with a time and a zone." },
+              "evidence": { "$ref": "#/$defs/evidence" }
+            }
+          }
+        }
+      }
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "kind", "origin", "state"],
+        "properties": {
+          "id": { "type": "string" },
+          "text": { "type": "string", "minLength": 1 },
+          "kind": { "enum": ["Runbook", "AlertRule", "Check", "Configuration", "Other"] },
+          "origin": { "enum": ["Earlier", "New"] },
+          "state": { "enum": ["Proposed", "Open", "Done", "Unknown"] },
+          "source": { "type": "string" },
+          "evidence": { "$ref": "#/$defs/evidence" }
+        }
+      }
+    },
+    "postMortem": { "type": "string" }
+  },
+  "$defs": {
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tool"],
+        "properties": {
+          "tool": { "type": "string", "minLength": 1 },
+          "record": { "type": "string" }
+        }
+      }
+    }
+  }
+}

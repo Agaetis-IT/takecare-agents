@@ -1,0 +1,9 @@
+This is the Kiné's periodic review: look for recurrences across the period's incidents and follow the open actions.
+
+Review: review-0123456789
+Scope: the namespace demo-apps
+Period: from 2026-10-26T06:00:00Z to 2026-11-25T06:00:00Z
+
+Your task: the problem, its recurrences and the earlier actions still undone. You work as an Apprentice: no new action, no post-mortem.
+
+Read the records with your tools and answer as your instructions say: one fenced JSON block, no question.
