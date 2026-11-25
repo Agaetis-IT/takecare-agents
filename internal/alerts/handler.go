@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -111,17 +112,26 @@ type Handler struct {
 	// operator namespace (key TokenSecretKey); empty means TokenSecretName.
 	// The chart sets it from alerting.existingSecret.
 	TokenSecret string
-	// Reader reads investigations for deduplication and grouping straight
-	// from the API server: the cache may not hold yet the record created a
-	// moment ago, and two alerts of one incident often arrive in the same
-	// webhook (the smoke run showed it).
-	Reader    client.Reader
+	// Reader reads investigations by name straight from the API server:
+	// the duplicate check, and the record recent() found, so that a fold
+	// patches the current object.
+	Reader client.Reader
+	// Indexed says that Client reads investigations from a cache holding
+	// IndexRecent (IndexInvestigations): recent() then lists one incident's
+	// or one fingerprint's records instead of the namespace's. Off, it
+	// lists through Reader by label, which the API server answers by
+	// reading every investigation of the namespace.
+	Indexed   bool
 	Namespace string
 	Metrics   *Metrics
 	// Resolver finds a firing alert's Map entry; nil resolves nothing.
 	Resolver Resolver
 	// Now is replaceable in tests.
 	Now func() time.Time
+
+	// created holds what this handler created, for as long as the cache
+	// may not show it yet (Indexed only).
+	created createdMemo
 }
 
 // ServeHTTP authenticates, parses and records; it answers 202 once the
@@ -264,6 +274,9 @@ func (h *Handler) handle(ctx context.Context, in incoming, seen map[string]*v1al
 	}
 	h.Metrics.Created.Inc()
 	seen[key] = inv
+	if h.Indexed {
+		h.created.add(inv, h.now())
+	}
 	return nil
 }
 
@@ -352,26 +365,123 @@ func matches(matchers []v1alpha1.AlertMatcher, labels map[string]string) bool {
 }
 
 // recent returns the newest investigation carrying the label value created
-// after since, if any. It lists every record of the label value: cheap with
-// the 7-day retention of milestone 1; a longer retention (the Kiné's
-// history, spec 06 §7) will need a cache index on the label and the
-// creation time instead.
+// after since, if any.
 func (h *Handler) recent(ctx context.Context, label, value string, since time.Time) (*v1alpha1.TakeCareInvestigation, error) {
+	if !h.Indexed {
+		var list v1alpha1.TakeCareInvestigationList
+		if err := h.reader().List(ctx, &list, client.InNamespace(h.Namespace), client.MatchingLabels{label: value}); err != nil {
+			return nil, fmt.Errorf("list investigations by %s: %w", label, err)
+		}
+		return newest(list.Items, since), nil
+	}
 	var list v1alpha1.TakeCareInvestigationList
-	if err := h.reader().List(ctx, &list, client.InNamespace(h.Namespace), client.MatchingLabels{label: value}); err != nil {
+	if err := h.Client.List(ctx, &list, client.InNamespace(h.Namespace), client.MatchingFields{IndexRecent: label + "=" + value}); err != nil {
 		return nil, fmt.Errorf("list investigations by %s: %w", label, err)
 	}
-	var newest *v1alpha1.TakeCareInvestigation
-	for i := range list.Items {
-		inv := &list.Items[i]
+	// The cache may lag a record this handler created a moment ago (two
+	// webhooks of one incident in a row): the memo covers that window.
+	// What the cache or the memo holds is read again by name from the API
+	// server, newest first, so that a deleted record is not believed and
+	// a fold patches the current object.
+	candidates := append(list.Items, h.created.match(label, value)...)
+	for {
+		inv := newest(candidates, since)
+		if inv == nil {
+			return nil, nil
+		}
+		var current v1alpha1.TakeCareInvestigation
+		err := h.reader().Get(ctx, client.ObjectKeyFromObject(inv), &current)
+		if err == nil {
+			return &current, nil
+		}
+		if !apierrors.IsNotFound(err) {
+			return nil, fmt.Errorf("get investigation %s: %w", inv.Name, err)
+		}
+		candidates = slices.DeleteFunc(candidates, func(c v1alpha1.TakeCareInvestigation) bool { return c.Name == inv.Name })
+	}
+}
+
+// newest is the newest of items created after since, nil if none.
+func newest(items []v1alpha1.TakeCareInvestigation, since time.Time) *v1alpha1.TakeCareInvestigation {
+	var out *v1alpha1.TakeCareInvestigation
+	for i := range items {
+		inv := &items[i]
 		if inv.CreationTimestamp.Time.Before(since) {
 			continue
 		}
-		if newest == nil || inv.CreationTimestamp.After(newest.CreationTimestamp.Time) {
-			newest = inv
+		if out == nil || inv.CreationTimestamp.After(out.CreationTimestamp.Time) {
+			out = inv
 		}
 	}
-	return newest, nil
+	return out
+}
+
+// IndexRecent is the cache's field index of investigations by their
+// fingerprint and their incident, each key being "<label>=<value>". The
+// creation time is not in the key: one fingerprint's or one incident's
+// records are few, and recent() keeps those created within the cooldown.
+const IndexRecent = "takecare.recent"
+
+// IndexInvestigations registers IndexRecent on the manager's cache.
+func IndexInvestigations(ctx context.Context, indexer client.FieldIndexer) error {
+	if err := indexer.IndexField(ctx, &v1alpha1.TakeCareInvestigation{}, IndexRecent, recentKeys); err != nil {
+		return fmt.Errorf("index investigations for the alert intake: %w", err)
+	}
+	return nil
+}
+
+// recentKeys is an investigation's values in IndexRecent.
+func recentKeys(o client.Object) []string {
+	var keys []string
+	for _, label := range []string{v1alpha1.LabelFingerprint, LabelIncident} {
+		if v, ok := o.GetLabels()[label]; ok {
+			keys = append(keys, label+"="+v)
+		}
+	}
+	return keys
+}
+
+// cacheLag bounds how long the cache may take to show a record created
+// through the API server; an informer usually takes milliseconds.
+const cacheLag = 30 * time.Second
+
+// createdMemo remembers the investigations a handler created during the
+// last cacheLag.
+type createdMemo struct {
+	mu    sync.Mutex
+	items []createdItem
+}
+
+type createdItem struct {
+	inv *v1alpha1.TakeCareInvestigation
+	at  time.Time
+}
+
+func (m *createdMemo) add(inv *v1alpha1.TakeCareInvestigation, now time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.items = slices.DeleteFunc(m.items, func(c createdItem) bool { return now.Sub(c.at) > cacheLag })
+	m.items = append(m.items, createdItem{inv: inv.DeepCopy(), at: now})
+}
+
+// match returns copies of the remembered investigations carrying the
+// label value. One created without a creation time (a fake client) gets
+// the time it was remembered.
+func (m *createdMemo) match(label, value string) []v1alpha1.TakeCareInvestigation {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []v1alpha1.TakeCareInvestigation
+	for _, c := range m.items {
+		if c.inv.Labels[label] != value {
+			continue
+		}
+		inv := *c.inv.DeepCopy()
+		if inv.CreationTimestamp.IsZero() {
+			inv.CreationTimestamp = metav1.NewTime(c.at)
+		}
+		out = append(out, inv)
+	}
+	return out
 }
 
 // fold records an alert of the same incident on the existing investigation.
