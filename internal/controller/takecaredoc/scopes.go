@@ -159,14 +159,9 @@ func (r *Reconciler) entityPlaces(ctx context.Context, d *v1alpha1.TakeCareDoc) 
 		return out
 	}
 	for _, k := range keys {
-		info, ok := r.cachedEntry(name, c.Status.MapRevision, k)
-		if !ok {
-			if info = r.entry(ctx, ep, k); info.down {
-				return out
-			}
-			if info.Err == "" && c.Status.MapRevision != "" {
-				r.cacheEntry(name, c.Status.MapRevision, k, info)
-			}
+		info := r.entry(ctx, ep, name, c.Status.MapRevision, k)
+		if info.down {
+			return out
 		}
 		if info.Found && info.Validated {
 			for _, p := range info.Places {

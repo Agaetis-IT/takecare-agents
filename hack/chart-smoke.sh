@@ -76,9 +76,13 @@ DIAG="$(mktemp "${TMPDIR:-/tmp}/chart-smoke-diag.XXXXXX")"
 # account that may read Secrets; the listener check creates a namespace:
 # all are undone right after their checks, and again on any exit.
 RANGER_CAPS_SAVED=""
+# The Ranger's spec.models as found before the Kiné's deny check (empty
+# when absent), and whether the check changed them.
+RANGER_MODELS_SAVED=""
+RANGER_MODELS_TOUCHED=""
 # shellcheck source=hack/run-window.sh
 source hack/run-window.sh
-trap 'c1_cleanup 2>/dev/null || true; url_cleanup 2>/dev/null || true; kubectl delete namespace smoke-foreign --ignore-not-found --wait=false --request-timeout=5s >/dev/null 2>&1 || true; rm -f "$DIAG"; kubectl -n "$NS" delete agentgatewaypolicy smoke-override --ignore-not-found --request-timeout=5s >/dev/null 2>&1 || true; [[ -z "$RANGER_CAPS_SAVED" ]] || kubectl patch takecareranger main --type=json -p "[{\"op\":\"replace\",\"path\":\"/spec/caps\",\"value\":${RANGER_CAPS_SAVED}}]" --request-timeout=5s >/dev/null 2>&1 || true; power_guard' EXIT
+trap 'c1_cleanup 2>/dev/null || true; url_cleanup 2>/dev/null || true; kubectl delete namespace smoke-foreign --ignore-not-found --wait=false --request-timeout=5s >/dev/null 2>&1 || true; rm -f "$DIAG"; kubectl -n "$NS" delete agentgatewaypolicy smoke-override --ignore-not-found --request-timeout=5s >/dev/null 2>&1 || true; [[ -z "$RANGER_CAPS_SAVED" ]] || kubectl patch takecareranger main --type=json -p "[{\"op\":\"replace\",\"path\":\"/spec/caps\",\"value\":${RANGER_CAPS_SAVED}}]" --request-timeout=5s >/dev/null 2>&1 || true; [[ -z "$RANGER_MODELS_TOUCHED" ]] || ranger_models_restore >/dev/null 2>&1 || true; power_guard' EXIT
 check() { # NAME COMMAND...: PASS when the command succeeds
   local name="$1"; shift
   checks=$((checks + 1))
@@ -90,6 +94,16 @@ check_not() { # NAME COMMAND...: PASS when the command fails
   checks=$((checks + 1))
   : >"$DIAG"
   if "$@" >/dev/null 2>&1; then printf 'FAIL  %s\n' "$name"; failed=$((failed + 1)); else printf 'PASS  %s\n' "$name"; fi
+}
+# ranger_models_restore puts the Ranger's spec.models back as saved:
+# removed when it was absent.
+ranger_models_restore() {
+  if [[ -z "$RANGER_MODELS_SAVED" ]]; then
+    kubectl patch takecareranger main --type=json -p '[{"op":"remove","path":"/spec/models"}]' --request-timeout=10s >/dev/null
+  else
+    kubectl patch takecareranger main --type=json -p "[{\"op\":\"replace\",\"path\":\"/spec/models\",\"value\":${RANGER_MODELS_SAVED}}]" --request-timeout=10s >/dev/null
+  fi
+  RANGER_MODELS_TOUCHED=""
 }
 assert_checks() { # EXPECTED
   if [[ "$checks" -ne "$1" || "$failed" -ne 0 ]]; then
@@ -1016,6 +1030,81 @@ EOF
     bash -c "for _ in \$(seq 30); do [[ -z \$(kubectl -n ${NS} get takecaresurveys -o jsonpath='{range .items[?(@.spec.intendantRef.name==\"smoke-intendant\")]}{.metadata.name}{\" \"}{end}') ]] && exit 0; sleep 2; done; exit 1"
   check "deleting the Intendant removed its agent and model configuration in kagent, and its routes" \
     bash -c "[[ -z \$(kubectl -n kagent get agents,modelconfigs,remotemcpservers -l takecare.agaetis.fr/owner=smoke-intendant -o name) && -z \$(kubectl -n ${NS} get httproutes,agentgatewaypolicies -l takecare.agaetis.fr/role-instance=intendant.smoke-intendant -o name) ]]"
+  # The Kiné's routes (spec 11 §9): its history route lets the lists and
+  # the content tool it lists through, and refuses the rest at the gateway;
+  # the Ranger's deny and per-model cap reach its model route (spec 09 §4).
+  # Its agent comes with the next lot: its connectors and routes are ready,
+  # the Kiné is not.
+  log "the Kiné's routes (spec 11 §9)"
+  kubectl -n "$NS" apply -f - >/dev/null <<EOF
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareKine
+metadata: { name: smoke-kine, namespace: ${NS} }
+spec:
+  level: Practitioner
+  scope: { namespaces: [demo-apps] }
+  contentTools: [investigation_get]
+  connectors: { history: [history], report: report }
+EOF
+  check "the Kiné reaches ConnectorsReady=True with its history connector" \
+    wait_condition_long takecarekine smoke-kine ConnectorsReady True 120
+  check "the Kiné's EngineReady is False, NotRendered: its agent comes with the next lot" \
+    test "$(kubectl -n "$NS" get takecarekine smoke-kine -o jsonpath='{.status.conditions[?(@.type=="EngineReady")].reason}')" = NotRendered
+  check "the allow-list on the Kiné's history route is Accepted and Attached" \
+    bash -c "for _ in \$(seq 30); do s=\$(kubectl -n ${NS} get agentgatewaypolicy role-kine-smoke-kine-mcp-history -o jsonpath='{.status.ancestors[*].conditions[?(@.type==\"Accepted\")].status} {.status.ancestors[*].conditions[?(@.type==\"Attached\")].status}' 2>/dev/null); [[ \$s == 'True True' ]] && exit 0; sleep 2; done; exit 1"
+  local kcap=ranger-cap-role-kine-smoke-kine-model-default
+  check "the gateway accepted ${kcap}, the per-model cap on the Kiné's model route" \
+    bash -c "for _ in \$(seq 30); do [[ \$(kubectl -n ${NS} get agentgatewaypolicy ${kcap} -o jsonpath='{.status.ancestors[0].conditions[?(@.type==\"Accepted\")].status}' 2>/dev/null) == True ]] && exit 0; sleep 2; done; exit 1"
+  check_not "the Kiné's history route has no argument rule" \
+    kubectl -n "$NS" get agentgatewaypolicy role-kine-smoke-kine-mcp-history-calls
+  local kroute="${gw}/mcp/${NS}/smoke-kine/history"
+  check "investigations_list through the Kiné's history route is let through" \
+    mcp_allowed kagent smoke-a2a "$kroute" investigations_list '{}'
+  check "investigation_get, a content tool the Kiné lists, is let through" \
+    mcp_allowed kagent smoke-a2a "$kroute" investigation_get '{"name":"smoke-none"}'
+  check "review_get, a content tool the Kiné does not list, is refused by the gateway" \
+    mcp_unknown_tool kagent smoke-a2a "$kroute" review_get '{"name":"smoke-none"}'
+  check "a tool off the Kiné's allow-list is refused by the gateway" \
+    mcp_unknown_tool kagent smoke-a2a "$kroute" smoke_invented '{}'
+  # The deny: the Kiné's kind may call another model only. The Kiné's
+  # model route has had no call yet: the first ones meet the deny, not the
+  # cap.
+  local kchat="${gw}/roles/kine.smoke-kine/models/default/v1/chat/completions" kdeny=ranger-deny-role-kine-smoke-kine-model-default kcode kcodes=()
+  RANGER_MODELS_SAVED="$(kubectl get takecareranger main -o jsonpath='{.spec.models}')"
+  RANGER_MODELS_TOUCHED=1
+  kubectl patch takecareranger main --type=merge -p '{"spec":{"models":[{"kind":"TakeCareKine","allowed":["smoke-other"]}]}}' >/dev/null
+  check "the gateway accepted ${kdeny}, the Ranger's deny on the Kiné's model route" \
+    bash -c "for _ in \$(seq 30); do [[ \$(kubectl -n ${NS} get agentgatewaypolicy ${kdeny} -o jsonpath='{.status.ancestors[0].conditions[?(@.type==\"Accepted\")].status}' 2>/dev/null) == True ]] && exit 0; sleep 2; done; exit 1"
+  for _ in 1 2 3; do
+    kcode="$(kubectl -n kagent exec smoke-a2a -- curl -s -o /dev/null -m 10 -w '%{http_code}' -H 'Content-Type: application/json' \
+      -d '{"model":"default","messages":[{"role":"user","content":"ping"}]}' "$kchat")"
+    kcodes+=("$kcode")
+    [[ "$kcode" == 403 ]] && break
+    sleep 3
+  done
+  log "calls on the Kiné's denied model route: ${kcodes[*]}"
+  check "a call on the Kiné's denied model route is refused (403)" \
+    test "$kcode" = 403
+  kcode="$(kubectl -n kagent exec smoke-a2a -- curl -s -o /dev/null -m 10 -w '%{http_code}' -H 'Content-Type: application/json' \
+    -d '{"model":"default","messages":[{"role":"user","content":"ping"}]}' "${gw}/roles/doc.smoke-doc/models/default/v1/chat/completions")"
+  check "the Doc's model route is not denied by the Kiné's entry (${kcode})" \
+    test "$kcode" != 403
+  ranger_models_restore
+  check "the Ranger's models are restored, and the Kiné's deny removed" \
+    bash -c "[[ \$(kubectl get takecareranger main -o jsonpath='{.spec.models}') == '${RANGER_MODELS_SAVED}' ]] && for _ in \$(seq 30); do kubectl -n ${NS} get agentgatewaypolicy ${kdeny} >/dev/null 2>&1 || exit 0; sleep 2; done; exit 1"
+  local klimited=() klast
+  for _ in 1 2 3 4 5; do
+    klast="$(kubectl -n kagent exec smoke-a2a -- curl -s -o /dev/null -m 10 -w '%{http_code}' -H 'Content-Type: application/json' \
+      -d '{"model":"default","messages":[{"role":"user","content":"ping"}]}' "$kchat")"
+    klimited+=("$klast")
+    [[ "$klast" == 429 ]] && break
+  done
+  log "quick calls on the Kiné's model route: ${klimited[*]}"
+  check "the per-model cap answers a run of quick calls on the Kiné's model route with 429" \
+    test "$klast" = 429
+  kubectl -n "$NS" delete takecarekine smoke-kine --timeout=60s >/dev/null
+  check "deleting the Kiné removed its routes, policies and backend" \
+    bash -c "[[ -z \$(kubectl -n ${NS} get httproutes,agentgatewaypolicies,agentgatewaybackends -l takecare.agaetis.fr/role-instance=kine.smoke-kine -o name) ]]"
   kubectl -n kagent delete pod smoke-a2a --now >/dev/null
   kubectl -n "$NS" delete takecaredoc smoke-doc --timeout=60s >/dev/null
   check "deleting the Doc removed its agent, tool servers and instructions in kagent, and its routes" \
@@ -1474,13 +1563,13 @@ down() {
 
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=202 install ;;
-  upgrade) CHECKS_EXPECTED=202 upgrade ;;
+  install) CHECKS_EXPECTED=217 install ;;
+  upgrade) CHECKS_EXPECTED=217 upgrade ;;
   status) status ;;
   mask-test) mask_test ;;
   down) down ;;
   cluster) CHECKS_EXPECTED=5 cluster_chart ;;
   url) CHECKS_EXPECTED=8 url_connector ;;
-  all) mask_test; up; CHECKS_EXPECTED=202 install; CHECKS_EXPECTED=202 upgrade; CHECKS_EXPECTED=8 url_connector; CHECKS_EXPECTED=5 cluster_chart ;;
+  all) mask_test; up; CHECKS_EXPECTED=217 install; CHECKS_EXPECTED=217 upgrade; CHECKS_EXPECTED=8 url_connector; CHECKS_EXPECTED=5 cluster_chart ;;
   *) echo "usage: $0 [up|install|upgrade|url|cluster|status|mask-test|down|all]"; exit 2 ;;
 esac

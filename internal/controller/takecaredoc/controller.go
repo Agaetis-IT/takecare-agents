@@ -137,8 +137,10 @@ type Reconciler struct {
 	// status' observedGeneration, like the Doc itself, may be read stale
 	// from the cache.
 	said map[string]said
-	// entries caches the Map's answers per connector and revision.
-	entries map[string]entryCache
+	// lookup asks the Map for scope.entities and keeps its answers per
+	// connector and revision.
+	lookupOnce sync.Once
+	lookup     *coverage.Lookup
 }
 
 // said is what an event last said, and for which generation.

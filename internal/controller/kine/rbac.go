@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
 // SPDX-License-Identifier: Apache-2.0
 
-// Package kine runs the Kiné (spec 11). For now it holds the operator's
-// rights on the Kiné's kinds and the retention of the reviews; the
-// controller, the triggers and the runner come with the next lots.
+// Package kine runs the Kiné (spec 11): its controller (conditions, scope
+// overlap, connectors and its routes on the gateway) and the retention of
+// the reviews. Its agent, the triggers and the runner come with the next
+// lots.
 package kine
 
 // The operator's rights on the Kiné's kinds, in its own namespace, approved
