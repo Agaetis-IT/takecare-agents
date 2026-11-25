@@ -113,6 +113,9 @@ func (a answer) secret() secret {
 type entry struct {
 	Key, Created, Owner, Source string
 	ObservedBy                  string
+	// UnknownCluster is true on an entry a named cluster would qualify,
+	// when the cluster's name is unknown.
+	UnknownCluster bool
 }
 
 // view is what the templates read. A field Unknown* is true when the
@@ -121,6 +124,7 @@ type view struct {
 	Version                       int
 	Namespace                     string
 	UnknownNamespace              bool
+	UnknownCluster                bool
 	Namespaces                    []string
 	UnknownEnvironments           bool
 	UnknownTeams                  bool
@@ -155,7 +159,9 @@ func newView(set *questionnaire.Set, answers map[string]questionnaire.Answer, cr
 	v := &view{Version: Version}
 	ns := get("operator.namespace")
 	v.Namespace, v.UnknownNamespace = ns.text(), !ns.known
-	cluster := get("cluster.name").text()
+	c := get("cluster.name")
+	cluster := c.text()
+	v.UnknownCluster = !c.known
 	envs, teams := get("environments"), get("teams")
 	v.Namespaces, v.UnknownEnvironments, v.UnknownTeams = envs.list(), !envs.known, !teams.known
 
@@ -185,11 +191,12 @@ func newView(set *questionnaire.Set, answers map[string]questionnaire.Answer, cr
 		v.Entries = append(v.Entries, entry{Key: "environment/" + cluster, Created: created})
 	}
 	for _, n := range v.Namespaces {
-		v.Entries = append(v.Entries, entry{Key: envKey(n), Created: created, Owner: owners[n], Source: source(n), ObservedBy: observed})
+		v.Entries = append(v.Entries, entry{Key: envKey(n), Created: created, Owner: owners[n], Source: source(n),
+			ObservedBy: observed, UnknownCluster: v.UnknownCluster})
 	}
 	if observed != "" {
 		v.Entries = append(v.Entries, entry{Key: observed, Created: created,
-			Source: source(v.MetricsNamespace) + "/Service/" + v.MetricsName})
+			Source: source(v.MetricsNamespace) + "/Service/" + v.MetricsName, UnknownCluster: v.UnknownCluster})
 	}
 	v.Entries = append(v.Entries, teamEntries...)
 	slices.SortStableFunc(v.Entries, func(a, b entry) int { return strings.Compare(a.Key, b.Key) })

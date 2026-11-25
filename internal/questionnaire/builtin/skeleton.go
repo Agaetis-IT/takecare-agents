@@ -18,6 +18,13 @@ declared and status proposed: a person reads each one and marks it validated.
 Only validated entries are used for routing and scope.
 
 Check the files before a commit with ` + "`takecare validate --map-dir <this directory>`" + `.
+{{- if .UnknownCluster}}
+
+TODO: init did not know the cluster's name, and wrote the entries as for a
+single-cluster install. If the cluster is named (ADR 0016), qualify each
+environment key as environment/<cluster>.<namespace> and each kubernetes
+source as <cluster>/<namespace>, and add an environment/<cluster> entry.
+{{- end}}
 {{- if or .UnknownEnvironments .UnknownTeams .UnknownMetrics}}
 
 TODO: init did not know{{if .UnknownEnvironments}} the application namespaces (environment/*){{end}}
@@ -28,6 +35,10 @@ Add those entries by hand, or run takecare init again.
 {{end}}
 
 {{- define "entry" -}}
+{{- if .UnknownCluster -}}
+# TODO: unknown: the cluster's name. If the cluster is named, qualify the
+# key and the kubernetes source with it (see README.md).
+{{end -}}
 key: {{.Key}}
 provenance: declared
 status: proposed
@@ -188,6 +199,9 @@ metadata:
 {{- end}}
 {{- if .Knowledge}}
     knowledge: [knowledge]
+{{- else if .UnknownKnowledge}}
+    # TODO: unknown: a runbook source served over MCP. If there is one, add
+    # knowledge: [knowledge] and a TakeCareConnector named knowledge for it.
 {{- end}}
     report: report
 {{- end}}

@@ -141,8 +141,8 @@ func typed(q *Question, v any) (any, error) {
 	return nil, bad
 }
 
-// EncodeAnswers writes answers into f, keeping the answers f holds for
-// ids set does not know, and returns the file's bytes.
+// EncodeAnswers writes answers into f, keeping the answers and the whens f
+// holds for ids set does not know, and returns the file's bytes.
 func EncodeAnswers(set *Set, f *AnswersFile, answers map[string]Answer) ([]byte, error) {
 	next := map[string]any{}
 	for id, v := range f.Answers {
@@ -151,7 +151,13 @@ func EncodeAnswers(set *Set, f *AnswersFile, answers map[string]Answer) ([]byte,
 		}
 	}
 	f.Unknown = slices.DeleteFunc(f.Unknown, func(id string) bool { return set.Question(id) != nil })
-	f.When = map[string]string{}
+	when := map[string]string{}
+	for id, w := range f.When {
+		if set.Question(id) == nil {
+			when[id] = w
+		}
+	}
+	f.When = when
 	for _, q := range set.Questions {
 		a, ok := answers[q.ID]
 		if !ok {
