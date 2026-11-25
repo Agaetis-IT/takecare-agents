@@ -222,6 +222,11 @@ release-notes-test: ## Check hack/release-notes.sh against its fixture.
 sbom-test: ## Check that hack/sbom.sh refuses an empty, Go-less or wrong-architecture SBOM.
 	hack/sbom-test.sh
 
+.PHONY: takecare-dist
+takecare-dist: syft go-licenses ## Build the takecare command's release archives, SBOMs and checksums at RELEASE_VERSION into bin/dist.
+	@test -n "$(RELEASE_VERSION)" || { echo "RELEASE_VERSION is required (the tag without its v)"; exit 1; }
+	SYFT="$(SYFT)" GO_LICENSES="$(GO_LICENSES)" hack/takecare-dist.sh "$(RELEASE_VERSION)"
+
 .PHONY: site-deploy-test
 site-deploy-test: ## Check which runs publish the site (hack/site-deploy.sh): a final tag on main, or by hand from main or such a tag.
 	hack/site-deploy-test.sh

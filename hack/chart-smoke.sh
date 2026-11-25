@@ -1069,8 +1069,7 @@ EOF
   # The Kiné's routes (spec 11 §9): its history route lets the lists and
   # the content tool it lists through, and refuses the rest at the gateway;
   # the Ranger's deny and per-model cap reach its model route (spec 09 §4).
-  # Its agent comes with the next lot: its connectors and routes are ready,
-  # the Kiné is not.
+  # Its agent runs in kagent: the Kiné reaches Ready (spec 11 §6).
   log "the Kiné's routes (spec 11 §9)"
   kubectl -n "$NS" apply -f - >/dev/null <<EOF
 apiVersion: takecare.agaetis.fr/v1alpha1
@@ -1084,8 +1083,8 @@ spec:
 EOF
   check "the Kiné reaches ConnectorsReady=True with its history connector" \
     wait_condition_long takecarekine smoke-kine ConnectorsReady True 120
-  check "the Kiné's EngineReady is False, NotRendered: its agent comes with the next lot" \
-    test "$(kubectl -n "$NS" get takecarekine smoke-kine -o jsonpath='{.status.conditions[?(@.type=="EngineReady")].reason}')" = NotRendered
+  check "the Kiné reaches Ready=True, its agent running in kagent" \
+    wait_condition_long takecarekine smoke-kine Ready True 300
   check "the allow-list on the Kiné's history route is Accepted and Attached" \
     bash -c "for _ in \$(seq 30); do s=\$(kubectl -n ${NS} get agentgatewaypolicy role-kine-smoke-kine-mcp-history -o jsonpath='{.status.ancestors[*].conditions[?(@.type==\"Accepted\")].status} {.status.ancestors[*].conditions[?(@.type==\"Attached\")].status}' 2>/dev/null); [[ \$s == 'True True' ]] && exit 0; sleep 2; done; exit 1"
   local kcap=ranger-cap-role-kine-smoke-kine-model-default
@@ -1142,8 +1141,8 @@ EOF
   check "the per-model cap answers a run of quick calls on the Kiné's model route with 429" \
     test "$klast" = 429
   kubectl -n "$NS" delete takecarekine smoke-kine --timeout=60s >/dev/null
-  check "deleting the Kiné removed its routes, policies and backend" \
-    bash -c "[[ -z \$(kubectl -n ${NS} get httproutes,agentgatewaypolicies,agentgatewaybackends -l takecare.agaetis.fr/role-instance=kine.smoke-kine -o name) ]]"
+  check "deleting the Kiné removed its agent, model configuration, tool servers and instructions in kagent, and its routes, policies and backend" \
+    bash -c "[[ -z \$(kubectl -n kagent get agents,modelconfigs,remotemcpservers,configmaps -l takecare.agaetis.fr/owner=smoke-kine -o name) && -z \$(kubectl -n ${NS} get httproutes,agentgatewaypolicies,agentgatewaybackends -l takecare.agaetis.fr/role-instance=kine.smoke-kine -o name) ]]"
   kubectl -n kagent delete pod smoke-a2a --now >/dev/null
   kubectl -n "$NS" delete takecaredoc smoke-doc --timeout=60s >/dev/null
   check "deleting the Doc removed its agent, tool servers and instructions in kagent, and its routes" \

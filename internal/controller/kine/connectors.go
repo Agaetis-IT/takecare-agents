@@ -35,10 +35,11 @@ const (
 	ReasonContentToolUnknown = "ContentToolUnknown"
 )
 
-// binding is what the Kiné's connectors give: the routes to render, and
-// what is missing.
+// binding is what the Kiné's connectors give: the routes to render with
+// the types they are bound as, and what is missing.
 type binding struct {
 	routes []routes.MCP
+	types  map[v1alpha1.ConnectorType]bool
 	// history says why the history connector cannot be read; problems why
 	// the report connector cannot be published to; unavailable names each
 	// optional connector that cannot be read.
@@ -74,7 +75,7 @@ func slots(k *v1alpha1.TakeCareKine) []struct {
 // degrades and says so, a blip does not remove the route): its read tools,
 // content tools only when spec.contentTools lists them (ADR 0014 §5).
 func (r *Reconciler) connectors(ctx context.Context, k *v1alpha1.TakeCareKine, st *status) (binding, error) {
-	b := binding{content: map[string]bool{}}
+	b := binding{content: map[string]bool{}, types: map[v1alpha1.ConnectorType]bool{}}
 	for _, s := range slots(k) {
 		for _, name := range s.names {
 			problem, err := r.inspect(ctx, k, s.t, name, &b)
@@ -145,6 +146,7 @@ func (r *Reconciler) inspect(ctx context.Context, k *v1alpha1.TakeCareKine, t v1
 		return fmt.Sprintf("connector %s has no read tool%s", name, why), nil
 	}
 	b.addRoute(routes.MCP{Connector: name, Backend: "mcp-" + name, Tools: read})
+	b.types[t] = true
 	if !meta.IsStatusConditionTrue(c.Status.Conditions, v1alpha1.ConditionReady) {
 		return fmt.Sprintf("connector %s is not Ready", name), nil
 	}

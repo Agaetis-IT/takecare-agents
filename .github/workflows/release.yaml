@@ -3,13 +3,16 @@
 
 # The release (spec 04), on a tag v<SemVer> pushed by a maintainer
 # (docs/release.md): the six images for amd64 and arm64, the three charts as
-# OCI artifacts, and the GitHub release with the tag's CHANGELOG section and
+# OCI artifacts, the takecare command's binaries for linux, darwin and
+# windows on amd64 and arm64, with their checksums and one SBOM per binary
+# (spec 13), and the GitHub release with the tag's CHANGELOG section and
 # one SBOM per image and architecture (never committed). A
 # prerelease tag (v0.1.0-rc.1) runs the same chain, marked prerelease.
 # Nothing published is ever replaced: a version already in the registry
 # stops the release. On pull requests, a dry run packages and lints the
-# charts, reads the Unreleased notes and writes the SBOM of a built binary,
-# with no login and no push.
+# charts, reads the Unreleased notes, writes the SBOM of a built binary and
+# builds the takecare binaries, their checksums and SBOMs, with no login
+# and no push.
 name: release
 
 on:
@@ -22,12 +25,14 @@ on:
       - hack/release-notes-test.sh
       - hack/sbom.sh
       - hack/sbom-test.sh
+      - hack/takecare-dist.sh
       - hack/testdata/sbom-image.spdx.json
       - hack/versions.env
       - hack/testdata/changelog.md
       - charts/**
       - CHANGELOG.md
       - Makefile
+      - go.mod
 
 permissions:
   contents: read
@@ -38,7 +43,7 @@ concurrency:
 
 jobs:
   dry-run:
-    name: release dry run (charts packaged and linted, notes read, SBOM written)
+    name: release dry run (charts packaged and linted, notes read, SBOMs and takecare binaries written)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     steps:
@@ -78,6 +83,16 @@ jobs:
           hack/sbom.sh scan file:bin/operator-dryrun takecare-agents-operator 0.0.0-dryrun linux/amd64 bin/sbom/dryrun.spdx.json
           ls -l bin/sbom/dryrun.spdx.json
           jq -r '.packages[0:5][] | [.name, .versionInfo] | @tsv' bin/sbom/dryrun.spdx.json
+      # go install …/cmd/takecare@vX refuses a module whose go.mod has
+      # replace or exclude directives (Go modules reference, go install).
+      - name: the takecare binaries, checksums and SBOMs
+        run: |
+          set -euo pipefail
+          go mod edit -json | jq -e '((.Replace // []) + (.Exclude // [])) | length == 0' >/dev/null ||
+            { echo "go.mod has replace or exclude directives: go install …/cmd/takecare@<version> would fail" >&2; exit 1; }
+          test "$(go list -m)" = github.com/agaetis-it/takecare-agents
+          make takecare-dist RELEASE_VERSION=0.0.0-dryrun
+          ls -l bin/dist
 
   release:
     name: publish the release
@@ -165,6 +180,13 @@ jobs:
       # so a failed download stops the release with nothing published.
       - name: syft
         run: make syft
+      # No Go cache on a tag (cache poisoning, zizmor).
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: takecare binaries, checksums and SBOMs (built before anything is pushed)
+        run: make takecare-dist RELEASE_VERSION="$VERSION"
       - name: images (amd64 + arm64)
         run: make docker-buildx PUSH=true VERSION="$VERSION"
       - name: charts
@@ -210,10 +232,13 @@ jobs:
             for chart in takecare-crds takecare takecare-cluster; do
               printf -- "- \`oci://%s/charts/%s --version %s\`\n" "$REGISTRY" "$chart" "$VERSION"
             done
-            printf '\nSBOMs (SPDX 2.3 JSON, one per image and architecture), attached below.\n'
+            printf '\nThe takecare command (linux, darwin, windows; amd64, arm64), attached below with takecare-%s-checksums.txt and one SBOM per binary, or:\n\n' "$VERSION"
+            printf -- "- \`go install github.com/agaetis-it/takecare-agents/cmd/takecare@v%s\`\n" "$VERSION"
+            printf '\nSBOMs (SPDX 2.3 JSON, one per image and architecture, and one per takecare binary), attached below.\n'
           } >"$RUNNER_TEMP/release.md"
+          test "$(find bin/dist -maxdepth 1 -type f | wc -l)" -eq 13
           prerelease=()
           [[ "$VERSION" == *-* ]] && prerelease=(--prerelease)
           gh release create "$TAG" "${prerelease[@]}" --verify-tag --title "TakeCare Agents ${VERSION}" \
             --notes-file "$RUNNER_TEMP/release.md" "bin/charts/takecare-crds-${VERSION}.tgz" "bin/charts/takecare-${VERSION}.tgz" \
-            "bin/charts/takecare-cluster-${VERSION}.tgz" bin/sbom/*.spdx.json
+            "bin/charts/takecare-cluster-${VERSION}.tgz" bin/sbom/*.spdx.json bin/dist/*

@@ -12,7 +12,7 @@
 
 TakeCare Agents is a collection of specialised roles (AI agents and guardrails) that take care of your production alongside your teams: Kubernetes and the managed cloud services around it. They govern every AI agent, prepare for the peaks and heal incidents down to their cause. It installs at the customer's site as a **Kubernetes operator**, on an open source stack (agentgateway, kagent, agentregistry, MCP), with the model of their choice. A built-in **demo mode** runs the same product on a local cluster, with a scenery and replayable incidents.
 
-> **Status.** The **Doc** works end to end: an alert in, a sourced diagnosis published, with its trace and its cost, on the demo or on your cluster. The **Ranger** puts the same rules on every agent at the gateway: a journal, masking, filtering, caps and allowed models. The images and charts of the latest release are on `ghcr.io/agaetis-it` (see the [CHANGELOG](CHANGELOG.md)); `make demo-up` installs them. The other roles are specified, not coded yet.
+> **Status.** The **Doc** works end to end: an alert in, a sourced diagnosis published, with its trace and its cost, on the demo or on your cluster. The **Ranger** puts the same rules on every agent at the gateway: a journal, masking, filtering, caps and allowed models. The images and charts of the latest release are on `ghcr.io/agaetis-it` (see the [CHANGELOG](CHANGELOG.md)); `make demo-up` installs them. The [`takecare` command](docs/how-to/takecare-command.md) ships with each release as binaries for Linux, macOS and Windows (amd64 and arm64), or through `go install`. The other roles are specified, not coded yet.
 
 ## The staff
 
