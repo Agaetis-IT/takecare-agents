@@ -38,6 +38,7 @@ Usage:
   takecare <command> [flags]
 
 Commands:
+  init      ask factual questions and write the first files of an install, on a local branch
   status    show what the install says about itself (reads the cluster)
   discover  show an Intendant's newest survey and how to start a new one
   review    turn a survey's proposals into Map files, on a local branch
@@ -72,6 +73,8 @@ func (a *app) run(ctx context.Context, args []string) int {
 		return ExitError
 	}
 	switch args[0] {
+	case "init":
+		return a.init(ctx, args[1:])
 	case "status":
 		return a.status(ctx, args[1:])
 	case "discover":
@@ -91,10 +94,11 @@ func (a *app) run(ctx context.Context, args []string) int {
 	}
 }
 
-// common are the flags every command takes. No command draws a full
-// screen or prints color yet: review asks with line prompts, which is what
-// --accessible asks for; --no-color and --accessible are accepted so that
-// a script can pass them to every command.
+// common are the flags every command takes. Only init's forms draw a full
+// screen or print color: --no-color turns their colors off, --accessible
+// turns them into line prompts. The other commands print no color, and
+// review asks with line prompts; they accept both flags so that a script
+// can pass them to every command.
 type common struct {
 	output     string
 	noColor    bool

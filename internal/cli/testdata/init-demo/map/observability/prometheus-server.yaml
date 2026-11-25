@@ -1,0 +1,6 @@
+key: observability/prometheus-server
+provenance: declared
+status: proposed
+created: 2026-11-24
+sources:
+  - kubernetes: "takecare-system/Service/prometheus-server"
