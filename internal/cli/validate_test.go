@@ -219,3 +219,51 @@ func TestReviewChecksGitBeforeAsking(t *testing.T) {
 		}
 	})
 }
+
+// Spec 13 §3.5 and criterion 3: validate --questions checks question
+// files without running them, every fault of every file at once.
+func TestValidateQuestions(t *testing.T) {
+	mapDir := t.TempDir()
+	writeTree(t, mapDir, fixtureMap)
+	questions := t.TempDir()
+	good := "version: 1\nquestions:\n  - { id: oncall.channel, text: The on-call channel, why: Where diagnoses go, kind: text }\n" +
+		"outputs:\n  - { path: takecare/oncall.md, template: \"{{ .oncall.channel }}\" }\n"
+	if err := os.WriteFile(filepath.Join(questions, "a.yaml"), []byte(good), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, stderr := runValidate(t, flagMapDir, mapDir, "--questions", questions)
+	if want := mapDir + ": valid, 5 entries\n" + questions + ": valid, 1 questions, 1 outputs\n"; code != ExitOK || out != want {
+		t.Fatalf("valid files: exit %d, stdout %q, stderr %q", code, out, stderr)
+	}
+
+	bad := "version: 1\nquestions:\n  - { id: oncall.channel, text: Again, why: Twice, kind: secret }\n" +
+		"outputs:\n  - { path: ../escape.md, template: \"{{ call .x }\" }\n"
+	if err := os.WriteFile(filepath.Join(questions, "b.yml"), []byte(bad), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, _ = runValidate(t, flagMapDir, mapDir, "--questions", questions, flagOutput, outputJSON)
+	var v Validation
+	if err := json.Unmarshal([]byte(out), &v); err != nil {
+		t.Fatal(err)
+	}
+	b := filepath.Join(questions, "b.yml")
+	want := []string{
+		b + `: question oncall.channel: unknown kind "secret", want one of [text choice list bool secretRef]`,
+		b + ": question oncall.channel is already defined in " + filepath.Join(questions, "a.yaml"),
+		b + `: output "../escape.md": leads out of the repository`,
+		b + `: output "../escape.md": template does not parse: template: ../escape.md:1: unexpected "}" in operand`,
+	}
+	if diff := cmp.Diff(want, v.QuestionFaults); diff != "" || code != ExitFinding || v.Valid || len(v.Faults) != 0 {
+		t.Errorf("exit %d, valid %v, map faults %v, question faults (-want +got):\n%s", code, v.Valid, v.Faults, diff)
+	}
+
+	empty := t.TempDir()
+	code, out, _ = runValidate(t, flagMapDir, mapDir, "--questions", empty)
+	if code != ExitFinding || !strings.Contains(out, empty+": no .yaml or .yml question file") {
+		t.Errorf("no question file: exit %d, stdout %q", code, out)
+	}
+	code, _, stderr = runValidate(t, flagMapDir, mapDir, "--questions", filepath.Join(empty, "absent"))
+	if code != ExitError || !strings.Contains(stderr, "open the question directory") {
+		t.Errorf("an absent directory: exit %d, stderr %q", code, stderr)
+	}
+}

@@ -4,13 +4,16 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
 	"strings"
 
 	"github.com/agaetis-it/takecare-agents/internal/mapserver"
+	"github.com/agaetis-it/takecare-agents/internal/questionnaire"
 )
 
 // validateSchemaVersion versions the shape of validate --output json.
@@ -25,16 +28,31 @@ type Validation struct {
 	// Faults are every fault at once, each naming its file as
 	// map/<type>/<name>.yaml.
 	Faults []string `json:"faults"`
+	// QuestionsDir is the directory of question files --questions gave,
+	// and Questions what it holds once loaded with the built-in set.
+	QuestionsDir string `json:"questionsDir,omitempty"`
+	Questions    int    `json:"questions,omitempty"`
+	Outputs      int    `json:"outputs,omitempty"`
+	// QuestionFaults are every fault of every question file at once, each
+	// naming its file.
+	QuestionFaults []string `json:"questionFaults,omitempty"`
 }
+
+// builtinQuestions is the built-in question set (spec 13 §4.1), which the
+// question files given are loaded with: an id of theirs may not redefine
+// one of it.
+var builtinQuestions []questionnaire.Source
 
 func (a *app) validate(args []string) int {
 	var (
-		c      common
-		mapDir string
+		c            common
+		mapDir       string
+		questionsDir string
 	)
 	flags := a.newFlags("validate")
 	c.register(flags)
 	flags.StringVar(&mapDir, "map-dir", "map", "the Map directory")
+	flags.StringVar(&questionsDir, "questions", "", "also check the question files of this directory, without running them")
 	if code := a.parse(flags, &c, args); code >= 0 {
 		return code
 	}
@@ -43,16 +61,19 @@ func (a *app) validate(args []string) int {
 		return a.fail("validate: %v", err)
 	}
 	v := Validation{SchemaVersion: validateSchemaVersion, MapDir: mapDir, Faults: faults(files)}
-	v.Valid = len(v.Faults) == 0
-	if v.Valid {
+	if v.Valid = len(v.Faults) == 0; v.Valid {
 		v.Entries = entries(files)
+	}
+	if questionsDir != "" {
+		if err := checkQuestions(questionsDir, &v); err != nil {
+			return a.fail("validate: %v", err)
+		}
+		v.Valid = v.Valid && len(v.QuestionFaults) == 0
 	}
 	if c.output == outputJSON {
 		err = a.printJSON(v)
-	} else if v.Valid {
-		_, err = fmt.Fprintf(a.stdout, "%s: valid, %d entries\n", mapDir, v.Entries)
 	} else {
-		_, err = fmt.Fprintf(a.stdout, "%s: %d faults\n  %s\n", mapDir, len(v.Faults), strings.Join(v.Faults, "\n  "))
+		err = a.printValidation(v)
 	}
 	if err != nil {
 		return a.fail("validate: %v", err)
@@ -61,6 +82,52 @@ func (a *app) validate(args []string) int {
 		return ExitFinding
 	}
 	return ExitOK
+}
+
+// checkQuestions loads the question files of dir with the built-in set,
+// every fault at once. A directory without a question file is a fault: a
+// check that read nothing did not pass.
+func checkQuestions(dir string, v *Validation) error {
+	v.QuestionsDir = dir
+	extra, err := questionnaire.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	if len(extra) == 0 {
+		v.QuestionFaults = []string{dir + ": no .yaml or .yml question file"}
+		return nil
+	}
+	set, err := questionnaire.Load(builtinQuestions, extra)
+	var faults questionnaire.Faults
+	switch {
+	case errors.As(err, &faults):
+		for _, f := range faults {
+			v.QuestionFaults = append(v.QuestionFaults, f.String())
+		}
+	case err != nil:
+		return err
+	default:
+		v.Questions, v.Outputs = len(set.Questions), len(set.Outputs)
+	}
+	return nil
+}
+
+func (a *app) printValidation(v Validation) error {
+	var b strings.Builder
+	if len(v.Faults) == 0 {
+		fmt.Fprintf(&b, "%s: valid, %d entries\n", v.MapDir, v.Entries)
+	} else {
+		fmt.Fprintf(&b, "%s: %d faults\n  %s\n", v.MapDir, len(v.Faults), strings.Join(v.Faults, "\n  "))
+	}
+	switch {
+	case v.QuestionsDir == "":
+	case len(v.QuestionFaults) == 0:
+		fmt.Fprintf(&b, "%s: valid, %d questions, %d outputs\n", v.QuestionsDir, v.Questions, v.Outputs)
+	default:
+		fmt.Fprintf(&b, "%s: %d faults\n  %s\n", v.QuestionsDir, len(v.QuestionFaults), strings.Join(v.QuestionFaults, "\n  "))
+	}
+	_, err := io.WriteString(a.stdout, b.String())
+	return err
 }
 
 // faults runs the Map server's checks over files, every fault at once.
