@@ -47,6 +47,7 @@ const (
 	verbList         = "list"
 	verbWatch        = "watch"
 	tokenSecret      = "takecare-alerting"
+	operatorName     = "takecare-operator"
 )
 
 var repoRoot = filepath.Join("..", "..")
@@ -582,6 +583,49 @@ func TestAlertIntakeIsExposed(t *testing.T) {
 				t.Error("the operator is not told the existing Secret")
 			}
 		}
+	}
+}
+
+// The records' retention (spec 02, spec 11 §5): the operator is told the
+// values as shipped, and the user's overrides.
+func TestOperatorRecordRetention(t *testing.T) {
+	for name, tc := range map[string]struct {
+		sets []string
+		want []string
+	}{
+		"defaults": {want: []string{
+			"--investigation-retention=2160h", "--investigation-max-kept=2000", "--review-retention=8760h",
+		}},
+		"overridden": {
+			sets: []string{
+				flagSet, "investigations.retention=720h",
+				flagSet, "investigations.maxKept=500",
+				flagSet, "reviews.retention=4380h",
+			},
+			want: []string{
+				"--investigation-retention=720h", "--investigation-max-kept=500", "--review-retention=4380h",
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			objs := render(t, releaseName, append(profileArgs("demo"), tc.sets...)...)
+			var found bool
+			for _, o := range ofKind(objs, "Deployment") {
+				if o.GetName() != operatorName {
+					continue
+				}
+				found = true
+				raw, _ := json.Marshal(o.Object["spec"])
+				for _, arg := range tc.want {
+					if !strings.Contains(string(raw), `"`+arg+`"`) {
+						t.Errorf("the operator is not given %s", arg)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("no takecare-operator Deployment rendered")
+			}
+		})
 	}
 }
 

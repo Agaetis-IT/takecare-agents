@@ -16,10 +16,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The Kiné's API (spec 11), ahead of its controller: the kinds `TakeCareKine` (short name `tckine`) and `TakeCareReview` (`tcreview`), with their CRDs in the `takecare-crds` chart. A Kiné needs exactly one `history` connector; its name is at most 49 characters and a review's at most 63, refused at creation. A review's spec is immutable and its status bounded (20 actions, a 4 KiB problem statement, a 16 KiB post-mortem draft). Nothing creates or runs a review yet.
 - The connector type `history`, for TakeCare's own investigations and reviews (spec 11 §4). Its server comes with the next lot.
 - The operator's rights on the Kiné's kinds in `takecare-system`, decided by the product owner: `get`, `list`, `watch` and `update` on `takecarekines`, `update` on `takecarekines/finalizers`, `create`, `delete`, `get`, `list`, `patch` and `watch` on `takecarereviews`, and `patch` on both kinds' `status`.
+- The chart value `investigations.maxKept` (2000): past that count, the oldest ended investigations are deleted first, whatever their age. And `reviews.retention` (8760h): each Kiné keeps its newest ended review however old it is.
 
 ### Changed
 
 - A blind spot for an entity with no source a connector can read now says "no kubernetes or azure source in the Map", instead of "no kubernetes source".
+- Ended investigations are kept 90 days by default (`investigations.retention: 2160h`) instead of 7, so that the Kiné can see recurrences. Two thousand investigations with their diagnoses weigh tens of MiB in etcd. The upgrade deletes nothing more than before.
 
 ### Fixed
 
