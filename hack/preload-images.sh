@@ -126,7 +126,11 @@ import() {
   for ref in "${refs[@]}"; do
     docker image inspect "$ref" >/dev/null 2>&1 || die "${ref} is not on the host: run hack/preload-images.sh pull first"
   done
-  k3d image import -c "$cluster" "${refs[@]}" >/dev/null || die "k3d image import into ${cluster} failed"
+  # Direct mode loads the images into each node, with no tools node and
+  # no tarball on a shared volume: in the default tools-node mode, the
+  # nodes once could not open that tarball right after the cluster was
+  # created, and k3d still exited 0. Hence the check of every node below.
+  k3d image import --mode direct -c "$cluster" "${refs[@]}" >/dev/null || die "k3d image import into ${cluster} failed"
   nodes="$(docker ps --format '{{.Names}} {{.Label "k3d.role"}}' --filter "label=k3d.cluster=${cluster}" | awk '$2 == "server" || $2 == "agent" {print $1}')" \
     || die "cannot list the nodes of the k3d cluster ${cluster}"
   [[ -n "$nodes" ]] || die "no server or agent node of the k3d cluster ${cluster} is running"
