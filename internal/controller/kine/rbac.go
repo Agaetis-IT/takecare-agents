@@ -3,8 +3,8 @@
 
 // Package kine runs the Kiné (spec 11): its controller (conditions, scope
 // overlap, connectors, its routes on the gateway and its agent in the
-// engine), the queue and the runner of its reviews, and their retention.
-// The triggers come with the next lot.
+// engine), the triggers, the queue and the runner of its reviews, and
+// their retention.
 package kine
 
 // The operator's rights on the Kiné's kinds, in its own namespace, approved
@@ -26,3 +26,8 @@ package kine
 //
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecarereviews,verbs=create;delete;get;list;patch;watch,namespace=takecare-system
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecarereviews/status,verbs=patch,namespace=takecare-system
+//
+// The investigations, read from the cache: the trigger after an incident
+// (spec 11 §3). The Doc's controller already holds these rights.
+//
+// +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareinvestigations,verbs=get;list;watch,namespace=takecare-system

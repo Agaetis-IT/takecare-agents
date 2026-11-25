@@ -59,10 +59,13 @@ const requeueNotReady = 30 * time.Second
 
 // Reconciler reconciles TakeCareKines: their conditions, their scope
 // against the other Kinés', their routes on the gateway and their agent in
-// the engine (spec 11 §2, §6, §9). Reviews run elsewhere, never in
-// Reconcile.
+// the engine (spec 11 §2, §6, §9), and the reviews its triggers create
+// (§3). Reviews run elsewhere, never in Reconcile.
 type Reconciler struct {
 	client.Client
+	// Reader reads the reviews live before one is created; Client when
+	// nil.
+	Reader            client.Reader
 	Recorder          recorder.EventRecorder
 	OperatorNamespace string
 	EngineNamespace   string
@@ -126,7 +129,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if !k.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, r.remove(ctx, &k)
 	}
-	st := &status{generation: k.Generation, now: r.now(), pendingSince: k.Status.RenderPendingSince}
+	// One instant for the whole reconciliation: the schedule and what is
+	// due are read from the same clock reading.
+	now := r.now()
+	st := &status{generation: k.Generation, now: now, pendingSince: k.Status.RenderPendingSince}
 	st.level = level(&k, st)
 	if len(k.Name) > v1alpha1.MaxKineName {
 		// Stored before the API refused such names: its agent could never
@@ -135,7 +141,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		for _, c := range []string{v1alpha1.ConditionEngineReady, v1alpha1.ConditionReady} {
 			st.set(c, false, v1alpha1.ReasonNameTooLong, v1alpha1.MessageKineName)
 		}
-		return ctrl.Result{}, r.writeStatus(ctx, &k, st)
+		return ctrl.Result{}, r.writeStatus(ctx, &k, st, kept(&k))
 	}
 	if controllerutil.AddFinalizer(&k, Finalizer) {
 		if err := r.Update(ctx, &k); err != nil {
@@ -146,11 +152,26 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := r.writeStatus(ctx, &k, st); err != nil {
+	t, err := r.triggers(ctx, &k, st, now)
+	if err != nil {
 		return ctrl.Result{}, err
 	}
-	log.FromContext(ctx).V(1).Info("reconciled", "level", st.level, "ready", st.isTrue(v1alpha1.ConditionReady))
+	if err := r.writeStatus(ctx, &k, st, t); err != nil {
+		return ctrl.Result{}, err
+	}
+	log.FromContext(ctx).V(1).Info("reconciled", "level", st.level, "ready", st.isTrue(v1alpha1.ConditionReady), "review", t.last)
+	if !t.wake.IsZero() {
+		// A grace or the schedule: due then, unless something sooner.
+		if wait := max(t.wake.Sub(now), time.Second); requeue == 0 || wait < requeue {
+			requeue = wait
+		}
+	}
 	return ctrl.Result{RequeueAfter: requeue}, nil
+}
+
+// kept is the trigger bookkeeping as the status holds it.
+func kept(k *v1alpha1.TakeCareKine) triggered {
+	return triggered{next: k.Status.NextReviewTime, pending: k.Status.PendingTrigger}
 }
 
 // level is the level the Kiné works at: Expert is not implemented in 0.5.0
@@ -293,11 +314,15 @@ func platformOf(ctx context.Context, c client.Reader) (*v1alpha1.TakeCarePlatfor
 
 // writeStatus writes the status and the events a human should see: a
 // level change, a scope overlap that starts.
-func (r *Reconciler) writeStatus(ctx context.Context, k *v1alpha1.TakeCareKine, st *status) error {
+func (r *Reconciler) writeStatus(ctx context.Context, k *v1alpha1.TakeCareKine, st *status, t triggered) error {
 	before := k.DeepCopy()
 	k.Status.ObservedGeneration = k.Generation
 	k.Status.Level = st.level
 	k.Status.RenderPendingSince = st.pendingSince
+	k.Status.NextReviewTime, k.Status.PendingTrigger = t.next, t.pending
+	if t.last != "" {
+		k.Status.LastReview, k.Status.LastReviewTime = t.last, t.lastAt
+	}
 	for _, c := range st.conditions {
 		meta.SetStatusCondition(&k.Status.Conditions, c)
 	}
@@ -320,9 +345,13 @@ func (r *Reconciler) writeStatus(ctx context.Context, k *v1alpha1.TakeCareKine, 
 
 // SetupWithManager watches the Kiné, the other Kinés (their scopes decide
 // ScopeOverlap), what its routes and agent are made of (connectors, the
-// platform), what ends a deferred rendering (its reviews leaving Running),
+// platform), what ends a deferred rendering or frees a pending trigger
+// (its reviews leaving Running), the investigations that may become due,
 // and what it renders.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := indexReviews(context.Background(), mgr.GetFieldIndexer()); err != nil {
+		return err
+	}
 	all := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, _ client.Object) []reconcile.Request {
 		return r.kines(ctx)
 	})
@@ -332,6 +361,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&v1alpha1.TakeCareKine{}, all, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&v1alpha1.TakeCareConnector{}, all, builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, statusChanged{}))).
 		Watches(&v1alpha1.TakeCarePlatform{}, all, builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, statusChanged{}))).
+		Watches(&v1alpha1.TakeCareInvestigation{}, all, builder.WithPredicates(investigationChanged{})).
 		Watches(&v1alpha1.TakeCareReview{}, handler.EnqueueRequestsFromMapFunc(func(_ context.Context, o client.Object) []reconcile.Request {
 			rv, ok := o.(*v1alpha1.TakeCareReview)
 			if !ok || rv.Spec.KineRef.Kind != v1alpha1.KindTakeCareKine {
