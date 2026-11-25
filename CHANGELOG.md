@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- The alert intake finds an alert's earlier investigations, for its cooldown and its incident, through an index of the operator's cache instead of listing the namespace's investigations from the API server at every alert, which cost a read of up to `investigations.maxKept` records per alert. Deduplication, cooldown and grouping are unchanged, including for a record this replica created a moment before that the cache does not show yet.
 - The operator's run-time read-only guard (`ReadOnlyGuard`) now checks the ServiceAccount of every add-on connector, not only the `cluster` ones: a right the guard forbids, bound later to the history, Map, report or corpus server's account, makes its connector not Ready.
 - A blind spot for an entity with no source a connector can read now says "no kubernetes or azure source in the Map", instead of "no kubernetes source".
 - Ended investigations are kept 90 days by default (`investigations.retention: 2160h`) instead of 7, so that the Kiné can see recurrences. Two thousand investigations with their diagnoses weigh tens of MiB in etcd. The upgrade deletes nothing more than before.
@@ -35,6 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **A role's MCP path on the gateway now holds the role's kind; breaking for a client of your own on the old path.** The path is `/mcp/<namespace>/<kind>.<role>/<connector>` (for example `/mcp/takecare-system/doc.main/prometheus`), instead of `/mcp/<namespace>/<role>/<connector>`. Two roles of different kinds and the same name in one namespace, a Doc and an Intendant both named `main` for instance, shared one path: their routes conflicted on the gateway, and one role could be served with the other's allow-list. Route names, labels, backends and every policy stay the same; the upgrade moves each route to its new path, then points the role's agent at it. A client of your own that calls a role's MCP route by its old path gets a 404 and must use the new one.
 - When a role's connector, model or A2A route is removed, the operator deletes the gateway route before its policies and backend. Until now it deleted the policies first, which left a short window where the gateway served the route without its allow-list or argument rule.
 - The connector manifest printed by the `takecare-cluster` chart's install notes now carries `cluster.extraResources`. The inventory opt-ins granted on a workload cluster (kagent `agents`, `sandboxagents`) are then declared on the administration cluster too.
 - `make demo-up` with `DEMO_IMAGES=build` stops with the reason when `make docker-build` or `k3d image import` fails. Before, it went on to the install and failed later on an `ImagePullBackOff`.
