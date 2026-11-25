@@ -31,12 +31,14 @@ type Publication struct {
 	Kine, Namespace, Review string
 	// Alert and Target name the incident of a per-incident review: the
 	// alert's name and its entity, else its namespace. Both are empty for
-	// a periodic review; Target alone names an incident whose
+	// a review over a period; Target alone names an incident whose
 	// investigation is gone.
 	Alert, Target string
-	Apprentice    bool
-	Problem       v1alpha1.Problem
-	Actions       []v1alpha1.CorrectiveAction
+	// Periodic: the schedule's review, else one made on demand.
+	Periodic   bool
+	Apprentice bool
+	Problem    v1alpha1.Problem
+	Actions    []v1alpha1.CorrectiveAction
 	// More counts the actions not listed: past PublishedActions, and
 	// those the answer held past the status' bound. ToDo counts the
 	// recorded actions still to do (Proposed or Open).
@@ -59,7 +61,7 @@ func NewPublication(rv *v1alpha1.TakeCareReview, level v1alpha1.Level, inv *v1al
 	p := Publication{
 		Kine: rv.Spec.KineRef.Name, Namespace: rv.Namespace, Review: rv.Name,
 		Apprentice:     level == v1alpha1.LevelApprentice || level == "",
-		Investigations: rv.Spec.Investigations, Period: rv.Spec.Period,
+		Investigations: rv.Spec.Investigations, Period: rv.Spec.Period, Periodic: rv.Spec.Trigger == v1alpha1.ReviewTriggerSchedule,
 		Usage: rv.Status.Usage, UsageReason: usageReason, TraceID: rv.Status.TraceID,
 		PostMortem: level != v1alpha1.LevelApprentice && level != "" && rv.Status.PostMortem != "",
 	}
@@ -97,7 +99,7 @@ func (p Publication) Empty() bool {
 	return p.Problem.Statement == "" && len(p.Problem.Recurrences) == 0 && len(p.Actions) == 0 && p.More == 0
 }
 
-// header names the incident, or the periodic review, and the Kiné unless
+// header names the incident, or the review over a period, and the Kiné unless
 // its name only repeats the kind (the chart's "kine").
 func (p Publication) header() string {
 	who := "Kiné"
@@ -110,8 +112,10 @@ func (p Publication) header() string {
 		h = fmt.Sprintf("%s · %s on %s", who, p.Alert, p.Target)
 	case p.Target != "":
 		h = fmt.Sprintf("%s · review of %s", who, p.Target)
-	default:
+	case p.Periodic:
 		h = who + " · periodic review"
+	default:
+		h = who + " · review on demand"
 	}
 	if utf8.RuneCountInString(h) > headerLimit {
 		r := []rune(h)
@@ -214,9 +218,10 @@ func (p Publication) blocks() []any {
 	blocks = append(blocks, section(report.Escape(strings.Join(p.recurrences(), "\n"))))
 	// One section per group of lines under Block Kit's bound: ten
 	// actions of 512 characters do not fit in one.
-	var group []string
+	lines := p.actions()
+	group := make([]string, 0, len(lines))
 	size := 0
-	for _, line := range p.actions() {
+	for _, line := range lines {
 		line = report.Escape(line)
 		if size+len(line)+1 > report.SectionLimit && len(group) > 0 {
 			blocks, group, size = append(blocks, section(strings.Join(group, "\n"))), nil, 0
