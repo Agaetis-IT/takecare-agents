@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 // SecretRef names where a Secret lives, never its value.
@@ -67,12 +69,33 @@ func CheckAnswer(q *Question, a Answer) error {
 			return fmt.Errorf("%s: %w", q.ID, err)
 		}
 	}
+	if r, ok := a.Value.(SecretRef); ok {
+		return checkSecretRef(q.ID, r)
+	}
 	if q.pattern != nil && (q.Kind == KindText || q.Kind == KindList) {
 		for _, t := range texts {
 			if !q.pattern.MatchString(t) {
 				return fmt.Errorf("%s: does not match %s", q.ID, q.Validate.Pattern)
 			}
 		}
+	}
+	return nil
+}
+
+// checkSecretRef checks the shape of a Secret reference, after the
+// credential check: the namespace is a DNS label, the name a DNS
+// subdomain, the key a Secret data key, as Kubernetes validates them.
+// The writers then put them in YAML and in comments as they are. Its
+// errors never hold the parts.
+func checkSecretRef(id string, r SecretRef) error {
+	if len(validation.IsDNS1123Label(r.Namespace)) > 0 {
+		return fmt.Errorf("%s: the Secret's namespace is not a DNS label", id)
+	}
+	if len(validation.IsDNS1123Subdomain(r.Name)) > 0 {
+		return fmt.Errorf("%s: the Secret's name is not a DNS subdomain", id)
+	}
+	if r.Key != "" && len(validation.IsConfigMapKey(r.Key)) > 0 {
+		return fmt.Errorf("%s: the Secret's key is not a valid data key", id)
 	}
 	return nil
 }
