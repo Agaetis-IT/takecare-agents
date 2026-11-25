@@ -95,6 +95,25 @@ check_not() { # NAME COMMAND...: PASS when the command fails
   : >"$DIAG"
   if "$@" >/dev/null 2>&1; then printf 'FAIL  %s\n' "$name"; failed=$((failed + 1)); else printf 'PASS  %s\n' "$name"; fi
 }
+# twin_doc_gone ROLE_INSTANCE DOC_AGENT INTENDANT_AGENT: once the Doc named
+# like the Intendant is deleted, nothing of it is left, on the gateway or in
+# kagent, and the Intendant's route, agent and map server are still there.
+# Every kubectl must succeed: an API error is a failure, never an empty list.
+twin_doc_gone() {
+  local instance="$1" docagent="$2" iagent="$3" routes kagent
+  routes="$(kubectl -n "$NS" get httproutes,agentgatewaypolicies -l "takecare.agaetis.fr/role-instance=${instance}" -o name)" || return 1
+  kagent="$(kubectl -n kagent get agents,remotemcpservers -o name)" || return 1
+  [[ -z "$routes" ]] || return 1
+  ! grep -qE "/${docagent}(-|\$)" <<<"$kagent" || return 1
+  grep -qx "agent[.a-z0-9]*/${iagent}" <<<"$kagent" || return 1
+  grep -qx "remotemcpserver[.a-z0-9]*/${iagent}-map" <<<"$kagent" || return 1
+  kubectl -n "$NS" get httproute role-intendant-smoke-intendant-mcp-prometheus >/dev/null
+}
+retry_twin_doc_gone() { # the garbage collection is asynchronous: the last try decides
+  local _
+  for _ in $(seq 29); do twin_doc_gone "$@" 2>/dev/null && return 0; sleep 2; done
+  twin_doc_gone "$@"
+}
 # ranger_models_restore puts the Ranger's spec.models back as saved:
 # removed when it was absent.
 ranger_models_restore() {
@@ -988,7 +1007,7 @@ EOF
     bash -c "for _ in \$(seq 30); do kubectl -n kagent get remotemcpserver ${twinagent}-prometheus >/dev/null 2>&1 && break; sleep 2; done; [[ \$(kubectl -n kagent get remotemcpserver ${twinagent}-prometheus -o jsonpath='{.spec.url}') == */mcp/${NS}/doc.smoke-intendant/prometheus && \$(kubectl -n kagent get remotemcpserver ${iagent}-map -o jsonpath='{.spec.url}') == */mcp/${NS}/intendant.smoke-intendant/map && \$(kubectl -n kagent get remotemcpserver takecare-doc-smoke-doc-kubernetes -o jsonpath='{.spec.url}') == */mcp/${NS}/doc.smoke-doc/kubernetes ]]"
   kubectl -n "$NS" delete takecaredoc smoke-intendant --wait=true --timeout=60s >/dev/null
   check "deleting the Doc named like the Intendant removed its routes and left the Intendant's" \
-    bash -c "for _ in \$(seq 30); do [[ -z \$(kubectl -n ${NS} get httproutes,agentgatewaypolicies -l takecare.agaetis.fr/role-instance=doc.smoke-intendant -o name) && -z \$(kubectl -n kagent get agents,remotemcpservers -l takecare.agaetis.fr/owner=smoke-intendant -o name | grep takecare-doc-) ]] && break; sleep 2; done; [[ -z \$(kubectl -n ${NS} get httproutes,agentgatewaypolicies -l takecare.agaetis.fr/role-instance=doc.smoke-intendant -o name) ]] && kubectl -n ${NS} get httproute role-intendant-smoke-intendant-mcp-prometheus >/dev/null"
+    retry_twin_doc_gone doc.smoke-intendant "$twinagent" "$iagent"
   # The call rule's canary (spec 10 §8): a Gateway-level traffic policy
   # with strategy.inheritance Override drops the route's argument rule
   # while its status stays Accepted and Attached (agentgateway 1.6,
