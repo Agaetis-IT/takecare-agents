@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "namespace": "takecare-system",
+  "intendant": "intendant",
+  "mapConnector": "map",
+  "servedRevision": "9b1f0c2d7a44",
+  "survey": {
+    "name": "intendant-q6w6z",
+    "phase": "Completed",
+    "trigger": "Schedule",
+    "created": "2026-11-24T10:00:00Z",
+    "mapRevision": "470725dee572",
+    "predatesServedMap": true,
+    "proposals": {
+      "add": 1,
+      "update": 1,
+      "remove": 1,
+      "total": 3,
+      "import": 1,
+      "agent": 1,
+      "counted": 2
+    },
+    "layers": [
+      {
+        "name": "compute",
+        "seen": 4,
+        "matched": 3,
+        "proposed": 1,
+        "notSeen": []
+      },
+      {
+        "name": "network",
+        "seen": 2,
+        "matched": 1,
+        "proposed": 1,
+        "notSeen": [
+          {
+            "ref": "kube-system",
+            "reason": "outside the Intendant's scope"
+          }
+        ]
+      }
+    ],
+    "blindSpots": [
+      {
+        "entity": "service/ledger",
+        "reason": "NoAccess",
+        "message": "no connector reads it"
+      }
+    ]
+  },
+  "command": "kubectl -n takecare-system create -f - \u003c\u003c'EOF'\napiVersion: takecare.agaetis.fr/v1alpha1\nkind: TakeCareSurvey\nmetadata: { generateName: intendant-by-hand-, namespace: takecare-system }\nspec: { intendantRef: { kind: TakeCareIntendant, name: intendant } }\nEOF\n"
+}
