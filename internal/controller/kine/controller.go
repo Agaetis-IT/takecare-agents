@@ -29,12 +29,13 @@ import (
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/coverage"
 	"github.com/agaetis-it/takecare-agents/internal/engine"
+	kineagent "github.com/agaetis-it/takecare-agents/internal/kine"
 	"github.com/agaetis-it/takecare-agents/internal/roleagent"
 	"github.com/agaetis-it/takecare-agents/internal/routes"
 )
 
 // Kind is the Kiné's role kind on the gateway's routes.
-const Kind = "kine"
+const Kind = kineagent.Kind
 
 // Finalizer removes the Kiné's objects in the engine namespace, which
 // cannot carry an owner reference to it (ADR 0001); its routes go first.
@@ -54,22 +55,19 @@ const (
 	ReasonNotRendered = "NotRendered"
 )
 
-// messageNoAgent is EngineReady's message while the Kiné renders its
-// routes only.
-const messageNoAgent = "the engine agent comes with the next lot"
-
 const requeueNotReady = 30 * time.Second
 
 // Reconciler reconciles TakeCareKines: their conditions, their scope
-// against the other Kinés', and their routes on the gateway (spec 11 §2,
-// §6, §9). Reviews run elsewhere, never in Reconcile.
+// against the other Kinés', their routes on the gateway and their agent in
+// the engine (spec 11 §2, §6, §9). Reviews run elsewhere, never in
+// Reconcile.
 type Reconciler struct {
 	client.Client
 	Recorder          recorder.EventRecorder
 	OperatorNamespace string
 	EngineNamespace   string
-	// Engine and Models are the engine's boundary: the A2A endpoint of the
-	// Kiné's agent, and what the finalizer removes.
+	// Engine and Models are the engine's boundary: the Kiné's agent and its
+	// model configuration.
 	Engine engine.Agents
 	Models engine.Models
 	// Lookup places the scope's entities through the bound Map, for the
@@ -128,7 +126,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if !k.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, r.remove(ctx, &k)
 	}
-	st := &status{generation: k.Generation, now: r.now()}
+	st := &status{generation: k.Generation, now: r.now(), pendingSince: k.Status.RenderPendingSince}
 	st.level = level(&k, st)
 	if len(k.Name) > v1alpha1.MaxKineName {
 		// Stored before the API refused such names: its agent could never
@@ -152,10 +150,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 	log.FromContext(ctx).V(1).Info("reconciled", "level", st.level, "ready", st.isTrue(v1alpha1.ConditionReady))
-	if requeue {
-		return ctrl.Result{RequeueAfter: requeueNotReady}, nil
-	}
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: requeue}, nil
 }
 
 // level is the level the Kiné works at: Expert is not implemented in 0.5.0
@@ -173,24 +168,25 @@ func level(k *v1alpha1.TakeCareKine, st *status) v1alpha1.Level {
 	return k.Spec.Level
 }
 
-// reconcileKine evaluates everything but the level and renders the routes;
-// it returns whether to look again.
-func (r *Reconciler) reconcileKine(ctx context.Context, k *v1alpha1.TakeCareKine, st *status) (bool, error) {
+// reconcileKine evaluates everything but the level and renders the routes
+// and the agent; it returns when to look again, zero for never.
+func (r *Reconciler) reconcileKine(ctx context.Context, k *v1alpha1.TakeCareKine, st *status) (time.Duration, error) {
 	role := roleOf(k)
 	other, shared, err := r.overlap(ctx, k)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
 	if other != "" {
 		msg := overlapMessage(other, shared)
 		for _, c := range []string{v1alpha1.ConditionConnectorsReady, v1alpha1.ConditionModelResolved, v1alpha1.ConditionEngineReady, v1alpha1.ConditionReady} {
 			st.set(c, false, v1alpha1.ReasonScopeOverlap, msg)
 		}
-		return false, r.removeAll(ctx, k, role)
+		st.pendingSince = nil
+		return 0, r.removeAll(ctx, k, role)
 	}
 	p, err := platformOf(ctx, r.Client)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
 	model, reason, message := roleagent.Model(p, k.Spec.Model)
 	if model == "" {
@@ -200,19 +196,23 @@ func (r *Reconciler) reconcileKine(ctx context.Context, k *v1alpha1.TakeCareKine
 	}
 	b, err := r.connectors(ctx, k, st)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
-	requeue := false
+	var requeue time.Duration
 	if p == nil || p.Spec.Gateway.GatewayRef == nil || p.Status.GatewayURL == "" {
 		// What was rendered stays: a gateway that is not ready yet may pass
 		// by itself.
 		st.set(v1alpha1.ConditionEngineReady, false, ReasonNotRendered, "not rendered: the platform's gateway is not ready")
-		requeue = true
+		st.pendingSince = nil
+		requeue = requeueNotReady
 	} else {
+		// The gateway's layer first, never deferred, then the agent.
 		if err := r.render(ctx, k, role, routes.Gateway{Name: p.Spec.Gateway.GatewayRef.Name}, b, model); err != nil {
-			return false, err
+			return 0, err
 		}
-		st.set(v1alpha1.ConditionEngineReady, false, ReasonNotRendered, messageNoAgent)
+		if requeue, err = r.renderAgent(ctx, k, p, role, b, model, st); err != nil {
+			return 0, err
+		}
 	}
 	st.ready(k.Spec.Suspend)
 	return requeue, nil
@@ -230,7 +230,7 @@ func (r *Reconciler) render(ctx context.Context, k *v1alpha1.TakeCareKine, role 
 			return err
 		}
 	}
-	if err := routes.EnsureA2A(ctx, r.Client, gw, role, r.Engine.Endpoint(r.EngineNamespace, AgentName(k))); err != nil {
+	if err := routes.EnsureA2A(ctx, r.Client, gw, role, r.Engine.Endpoint(r.EngineNamespace, kineagent.AgentName(k))); err != nil {
 		return err
 	}
 	var models []string
@@ -266,14 +266,8 @@ func (r *Reconciler) removeAll(ctx context.Context, k *v1alpha1.TakeCareKine, ro
 	if err := routes.Prune(ctx, r.Client, role, nil, nil, false); err != nil {
 		return err
 	}
-	if err := r.Engine.DeleteAgent(ctx, r.EngineNamespace, AgentName(k)); err != nil {
-		return err
-	}
-	return r.Models.DeleteModel(ctx, r.EngineNamespace, AgentName(k))
+	return r.removeEngine(ctx, k)
 }
-
-// AgentName is the Kiné's agent in the engine.
-func AgentName(k *v1alpha1.TakeCareKine) string { return v1alpha1.KineAgentPrefix + k.Name }
 
 // roleOf is the Kiné's identity on the gateway's routes.
 func roleOf(k *v1alpha1.TakeCareKine) routes.Role {
@@ -303,6 +297,7 @@ func (r *Reconciler) writeStatus(ctx context.Context, k *v1alpha1.TakeCareKine, 
 	before := k.DeepCopy()
 	k.Status.ObservedGeneration = k.Generation
 	k.Status.Level = st.level
+	k.Status.RenderPendingSince = st.pendingSince
 	for _, c := range st.conditions {
 		meta.SetStatusCondition(&k.Status.Conditions, c)
 	}
@@ -324,8 +319,9 @@ func (r *Reconciler) writeStatus(ctx context.Context, k *v1alpha1.TakeCareKine, 
 }
 
 // SetupWithManager watches the Kiné, the other Kinés (their scopes decide
-// ScopeOverlap), what its routes are made of (connectors, the platform)
-// and the routes it renders.
+// ScopeOverlap), what its routes and agent are made of (connectors, the
+// platform), what ends a deferred rendering (its reviews leaving Running),
+// and what it renders.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	all := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, _ client.Object) []reconcile.Request {
 		return r.kines(ctx)
@@ -335,11 +331,31 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&v1alpha1.TakeCareKine{}).
 		Watches(&v1alpha1.TakeCareKine{}, all, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&v1alpha1.TakeCareConnector{}, all, builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, statusChanged{}))).
-		Watches(&v1alpha1.TakeCarePlatform{}, all, builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, statusChanged{})))
+		Watches(&v1alpha1.TakeCarePlatform{}, all, builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, statusChanged{}))).
+		Watches(&v1alpha1.TakeCareReview{}, handler.EnqueueRequestsFromMapFunc(func(_ context.Context, o client.Object) []reconcile.Request {
+			rv, ok := o.(*v1alpha1.TakeCareReview)
+			if !ok || rv.Spec.KineRef.Kind != v1alpha1.KindTakeCareKine {
+				return nil
+			}
+			return []reconcile.Request{{Namespace: rv.Namespace, Name: rv.Spec.KineRef.Name}}
+		}), builder.WithPredicates(reviewPhaseChanged{}))
 	for _, gvk := range routes.Kinds() {
 		u := &unstructured.Unstructured{}
 		u.SetGroupVersionKind(gvk)
 		b = b.Owns(u)
+	}
+	// The agent and its model configuration live in the engine namespace,
+	// without an owner reference: their labels name the Kiné.
+	for _, gvk := range append(r.Engine.AgentTypes(), r.Models.OwnedTypes()...) {
+		u := &unstructured.Unstructured{}
+		u.SetGroupVersionKind(gvk)
+		b = b.Watches(u, handler.EnqueueRequestsFromMapFunc(func(_ context.Context, o client.Object) []reconcile.Request {
+			l := o.GetLabels()
+			if l[v1alpha1.LabelRole] != Kind || l["takecare.agaetis.fr/owner"] == "" {
+				return nil
+			}
+			return []reconcile.Request{{Namespace: l["takecare.agaetis.fr/owner-ns"], Name: l["takecare.agaetis.fr/owner"]}}
+		}))
 	}
 	return b.Complete(r)
 }
@@ -373,12 +389,25 @@ func (statusChanged) Update(e event.UpdateEvent) bool {
 	return false
 }
 
+// reviewPhaseChanged passes a review's creation, deletion and phase
+// changes: a review leaving Running ends a deferred rendering.
+type reviewPhaseChanged struct{ predicate.Funcs }
+
+func (reviewPhaseChanged) Update(e event.UpdateEvent) bool {
+	a, ok := e.ObjectOld.(*v1alpha1.TakeCareReview)
+	b, ok2 := e.ObjectNew.(*v1alpha1.TakeCareReview)
+	return ok && ok2 && a.Status.Phase != b.Status.Phase
+}
+
 // status collects one reconciliation's verdicts before they are written.
 type status struct {
 	generation int64
 	level      v1alpha1.Level
 	conditions []metav1.Condition
 	now        time.Time
+	// pendingSince is when a deferred rendering of the agent started
+	// waiting, nil when none waits.
+	pendingSince *metav1.Time
 }
 
 func (s *status) set(condType string, ok bool, reason, message string) {
@@ -426,5 +455,5 @@ func (s *status) ready(suspended bool) {
 			return
 		}
 	}
-	s.set(v1alpha1.ConditionReady, true, ReasonReady, "the Kiné reviews through its routes on the gateway")
+	s.set(v1alpha1.ConditionReady, true, ReasonReady, "the Kiné's agent reviews through its routes on the gateway")
 }
