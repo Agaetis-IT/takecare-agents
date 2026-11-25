@@ -232,11 +232,12 @@ func TestValidateQuestions(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, out, stderr := runValidate(t, flagMapDir, mapDir, "--questions", questions)
-	if want := mapDir + ": valid, 5 entries\n" + questions + ": valid, 1 questions, 1 outputs\n"; code != ExitOK || out != want {
+	if want := mapDir + ": valid, 5 entries\n" + questions + ": valid, 15 questions, 1 outputs\n"; code != ExitOK || out != want {
 		t.Fatalf("valid files: exit %d, stdout %q, stderr %q", code, out, stderr)
 	}
 
 	bad := "version: 1\nquestions:\n  - { id: oncall.channel, text: Again, why: Twice, kind: secret }\n" +
+		"  - { id: cluster.name, text: Again, why: Built in, kind: text }\n" +
 		"outputs:\n  - { path: ../escape.md, template: \"{{ call .x }\" }\n"
 	if err := os.WriteFile(filepath.Join(questions, "b.yml"), []byte(bad), 0o600); err != nil {
 		t.Fatal(err)
@@ -250,6 +251,7 @@ func TestValidateQuestions(t *testing.T) {
 	want := []string{
 		b + `: question oncall.channel: unknown kind "secret", want one of [text choice list bool secretRef]`,
 		b + ": question oncall.channel is already defined in " + filepath.Join(questions, "a.yaml"),
+		b + ": question cluster.name redefines a built-in question",
 		b + `: output "../escape.md": leads out of the repository`,
 		b + `: output "../escape.md": template does not parse: template: ../escape.md:1: unexpected "}" in operand`,
 	}

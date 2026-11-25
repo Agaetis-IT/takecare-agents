@@ -14,6 +14,7 @@ import (
 
 	"github.com/agaetis-it/takecare-agents/internal/mapserver"
 	"github.com/agaetis-it/takecare-agents/internal/questionnaire"
+	"github.com/agaetis-it/takecare-agents/internal/questionnaire/builtin"
 )
 
 // validateSchemaVersion versions the shape of validate --output json.
@@ -37,11 +38,6 @@ type Validation struct {
 	// naming its file.
 	QuestionFaults []string `json:"questionFaults,omitempty"`
 }
-
-// builtinQuestions is the built-in question set (spec 13 §4.1), which the
-// question files given are loaded with: an id of theirs may not redefine
-// one of it.
-var builtinQuestions []questionnaire.Source
 
 func (a *app) validate(args []string) int {
 	var (
@@ -84,7 +80,8 @@ func (a *app) validate(args []string) int {
 	return ExitOK
 }
 
-// checkQuestions loads the question files of dir with the built-in set,
+// checkQuestions loads the question files of dir with the built-in set
+// (an id of theirs may not redefine one of it),
 // every fault at once. A directory without a question file is a fault: a
 // check that read nothing did not pass.
 func checkQuestions(dir string, v *Validation) error {
@@ -97,7 +94,7 @@ func checkQuestions(dir string, v *Validation) error {
 		v.QuestionFaults = []string{dir + ": no .yaml or .yml question file"}
 		return nil
 	}
-	set, err := questionnaire.Load(builtinQuestions, extra)
+	set, err := questionnaire.Load(builtin.Sources(), extra)
 	var faults questionnaire.Faults
 	switch {
 	case errors.As(err, &faults):
