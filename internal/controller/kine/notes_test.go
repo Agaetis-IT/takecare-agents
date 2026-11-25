@@ -8,6 +8,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -16,12 +17,14 @@ import (
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 )
 
-// A review whose Kiné does not exist ends Failed and says its usage, as
-// every review does (spec 11 §6, AC 6).
+// A review whose Kiné does not exist ends Failed, says its usage and
+// counts once as failed, as every review does (spec 11 §6, §11, AC 6).
 func TestReviewFailedAtAdoptionSaysItsUsage(t *testing.T) {
 	rv := unitReview("review-orphan", v1alpha1.RunQueued)
 	c := fakeAPI(t, gatewayPlatform(), rv)
 	w := newRunner(c, c, newRuns(modeComplete, answerJSON))
+	with, m, _ := publishing(&fakePoster{})
+	with(w)
 	queue(w, rv)
 	startRunner(t, w)
 	got := waitReview(t, c, rv.Name, "ended", ended)
@@ -31,6 +34,9 @@ func TestReviewFailedAtAdoptionSaysItsUsage(t *testing.T) {
 	c2 := meta.FindStatusCondition(got.Status.Conditions, v1alpha1.ConditionUsageAttributed)
 	if c2 == nil || c2.Status != metav1.ConditionFalse || c2.Reason != v1alpha1.ReasonNotMeasured || c2.Message != usageNotRun {
 		t.Errorf("UsageAttributed %+v", c2)
+	}
+	if n := testutil.ToFloat64(m.Ended.WithLabelValues(kineName, string(v1alpha1.ReviewTriggerOnDemand), resultFailed)); n != 1 {
+		t.Errorf("failed %v, want 1", n)
 	}
 }
 
