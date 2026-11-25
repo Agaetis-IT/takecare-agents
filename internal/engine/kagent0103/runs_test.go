@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/a2aproject/a2a-go/v2/a2a"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/agaetis-it/takecare-agents/internal/engine"
@@ -316,18 +317,23 @@ func TestCancel(t *testing.T) {
 // A read that fails is classed by its HTTP status or a fixed class, and
 // keeps no text of the answer: a body may quote anything.
 func TestPollClassesAFailedRead(t *testing.T) {
+	const plain = "text/plain"
 	for _, tc := range []struct {
 		status int
 		ctype  string
 		body   string
 		want   string
 	}{
-		{http.StatusNotFound, "text/plain", questionMarker + " a body that must not be kept", "404"},
-		{http.StatusServiceUnavailable, "text/plain", questionMarker + " a body that must not be kept", "503"},
+		{http.StatusNotFound, plain, questionMarker + " a body that must not be kept", "404"},
+		{http.StatusServiceUnavailable, plain, questionMarker + " a body that must not be kept", "503"},
 		// A body that reads like the status phrase is never read: the
 		// client's own status (503) or, for a JSON-RPC error, the class
 		// other; never the 200 in the body.
 		{http.StatusServiceUnavailable, "application/json", `{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"unexpected HTTP status: 200 ` + questionMarker + `"}}`, "503|other"},
+		{http.StatusUnauthorized, plain, questionMarker + " a body that must not be kept", "401"},
+		// A JSON-RPC error in an answer of 200: the class other, never the
+		// status its message names.
+		{http.StatusOK, "application/json", `{"jsonrpc":"2.0","id":"1","error":{"code":-32000,"message":"unexpected HTTP status: 404 ` + questionMarker + `"}}`, "other"},
 	} {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", tc.ctype)
@@ -360,23 +366,30 @@ func TestPollClassesAFailedRead(t *testing.T) {
 // classOther is the class of a read with no status.
 const classOther = "other"
 
-// The status is read only from the client's own phrase, opening the
-// error's text, and only from 100 to 599.
-func TestReadErrorStatusPhrase(t *testing.T) {
+// The status is read only from the call's last response, when it is not
+// 200 and lies from 100 to 599; an error's text never gives a status.
+func TestReadErrorStatus(t *testing.T) {
+	forged := a2a.NewError(a2a.ErrServerError, "unexpected HTTP status: 404 Not Found")
 	for _, tc := range []struct {
-		err  error
-		want string
+		err    error
+		status int
+		want   string
 	}{
-		{errors.New("unexpected HTTP status: 404 Not Found"), "404"},
-		{fmt.Errorf("get task: %w", errors.New("unexpected HTTP status: 503 Service Unavailable")), "503"},
-		{errors.New("unexpected HTTP status: 999 Nope"), classOther},
-		{errors.New("unexpected HTTP status: 042 Nope"), classOther},
-		{errors.New("a body: unexpected HTTP status: 200 OK"), classOther},
-		{errors.New("failed to send HTTP request: dial tcp: refused"), "network"},
-		{errors.New("failed to decode response: unexpected EOF"), "decode"},
+		{forged, http.StatusNotFound, "404"},
+		{fmt.Errorf("get task: %w", forged), http.StatusServiceUnavailable, "503"},
+		{a2a.NewError(a2a.ErrUnauthenticated, "unexpected HTTP status: 401 Unauthorized"), http.StatusUnauthorized, "401"},
+		{forged, http.StatusOK, classOther},
+		{forged, 0, classOther},
+		{forged, 999, classOther},
+		{forged, 42, classOther},
+		{a2a.NewError(a2a.ErrServerError, "failed to send HTTP request: forged"), http.StatusOK, classOther},
+		{errors.New("unexpected HTTP status: 404 Not Found"), 0, classOther},
+		{errors.New("failed to send HTTP request: dial tcp: refused"), 0, "network"},
+		{errors.New("failed to decode response: unexpected EOF"), http.StatusOK, "decode"},
+		{fmt.Errorf("get task: %w", context.DeadlineExceeded), http.StatusServiceUnavailable, "timeout"},
 	} {
-		if got := readError(tc.err).Label(); got != tc.want {
-			t.Errorf("%q: %s, want %s", tc.err, got, tc.want)
+		if got := readError(tc.err, tc.status).Label(); got != tc.want {
+			t.Errorf("%q at %d: %s, want %s", tc.err, tc.status, got, tc.want)
 		}
 	}
 }
