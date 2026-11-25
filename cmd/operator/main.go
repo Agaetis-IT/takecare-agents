@@ -39,6 +39,7 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/controller/demo"
 	"github.com/agaetis-it/takecare-agents/internal/controller/intendant"
 	"github.com/agaetis-it/takecare-agents/internal/controller/investigation"
+	"github.com/agaetis-it/takecare-agents/internal/controller/kine"
 	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
 	"github.com/agaetis-it/takecare-agents/internal/controller/ranger"
 	"github.com/agaetis-it/takecare-agents/internal/controller/takecaredoc"
@@ -74,8 +75,12 @@ type config struct {
 	// token of the Secret alertsTokenSecret.
 	alertsAddr        string
 	alertsTokenSecret string
-	// investigationRetention is how long an ended investigation is kept.
+	// investigationRetention is how long an ended investigation is kept,
+	// and investigationMaxKept how many ended ones at most.
 	investigationRetention time.Duration
+	investigationMaxKept   int
+	// reviewRetention is how long an ended review is kept.
+	reviewRetention time.Duration
 	// demo runs the TakeCareDemo controller, with demoAppImage as
 	// billing-api's image: the chart sets both with demo.enabled.
 	demo         bool
@@ -118,7 +123,11 @@ func run(args []string) error {
 	fs.StringVar(&cfg.alertsAddr, "alerts-bind-address", ":8080",
 		"Address the Alertmanager webhook (POST /v1/alerts) binds to; 0 disables it.")
 	fs.DurationVar(&cfg.investigationRetention, "investigation-retention", investigation.DefaultRetention,
-		"How long an ended investigation is kept before it is deleted (spec 02); Queued and Running ones are never deleted.")
+		"How long an ended investigation is kept before it is deleted (spec 11 §5); Queued and Running ones are never deleted.")
+	fs.IntVar(&cfg.investigationMaxKept, "investigation-max-kept", investigation.DefaultMaxKept,
+		"How many ended investigations are kept at most; past it, the oldest ended go first, whatever their age.")
+	fs.DurationVar(&cfg.reviewRetention, "review-retention", kine.DefaultReviewRetention,
+		"How long an ended review is kept before it is deleted; each Kiné keeps its newest ended review.")
 	fs.DurationVar(&cfg.usageScrapeWait, "usage-scrape-wait", 30*time.Second,
 		"How long after a run ends its usage is read from Prometheus: one scrape interval of the gateway.")
 	fs.StringVar(&cfg.alertsTokenSecret, "alerts-token-secret", alerts.TokenSecretName,
@@ -252,11 +261,18 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		return nil, err
 	}
 	queue := runs.NewQueue(runs.DefaultCapacity)
-	// The retention of ended investigations, on the leader (spec 02).
+	// The retention of ended investigations and reviews, on the leader
+	// (spec 11 §5).
 	if err := mgr.Add(&investigation.Sweeper{
-		Client: mgr.GetClient(), Namespace: cfg.operatorNamespace, Retention: cfg.investigationRetention,
+		Client: mgr.GetClient(), Namespace: cfg.operatorNamespace,
+		Retention: cfg.investigationRetention, MaxKept: cfg.investigationMaxKept,
 	}); err != nil {
 		return nil, fmt.Errorf("add the investigation retention: %w", err)
+	}
+	if err := mgr.Add(&kine.Sweeper{
+		Client: mgr.GetClient(), Namespace: cfg.operatorNamespace, Retention: cfg.reviewRetention,
+	}); err != nil {
+		return nil, fmt.Errorf("add the review retention: %w", err)
 	}
 	// The Doc's runs, on the leader: A2A through the gateway, one shared
 	// client whose timeout bounds one call (a run is followed by polling).

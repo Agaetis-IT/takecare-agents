@@ -6,6 +6,7 @@ package investigation
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -15,10 +16,12 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/runs"
 )
 
-// Retention defaults (spec 02: investigations older than 7 days are
-// deleted, a chart value).
+// Retention defaults (spec 11 §5: investigations are kept 90 days, at most
+// 2000 of the ended ones, both chart values), long enough for the Kiné to
+// see recurrences.
 const (
-	DefaultRetention     = 7 * 24 * time.Hour
+	DefaultRetention     = 90 * 24 * time.Hour
+	DefaultMaxKept       = 2000
 	defaultSweepInterval = time.Hour
 )
 
@@ -27,14 +30,18 @@ const (
 // +kubebuilder:rbac:groups=takecare.agaetis.fr,resources=takecareinvestigations,verbs=delete,namespace=takecare-system
 
 // Sweeper deletes the investigations that ended longer ago than the
-// retention, once an hour, on the leader. It never deletes a record that
-// is Queued or Running. A record's age runs from its completion, or from
-// its creation for a Dropped record or one without a completion time.
+// retention, then, past MaxKept ended ones, the oldest ended first, once an
+// hour, on the leader. It never deletes a record that is Queued or Running.
+// A record's age runs from its completion, or from its creation for a
+// Dropped record or one without a completion time.
 type Sweeper struct {
 	Client    client.Client
 	Namespace string
 	// Retention is how long an ended record is kept; DefaultRetention if 0.
 	Retention time.Duration
+	// MaxKept is how many ended records are kept at most; DefaultMaxKept
+	// if 0.
+	MaxKept int
 	// Interval between two sweeps; one hour if 0.
 	Interval time.Duration
 	// Clock is runs.WallClock when nil.
@@ -72,26 +79,42 @@ func (s *Sweeper) Start(ctx context.Context) error {
 	}
 }
 
-// Sweep deletes the ended records past the retention and returns how many.
+// Sweep deletes the ended records past the retention or the count, and
+// returns how many.
 func (s *Sweeper) Sweep(ctx context.Context) (int, error) {
 	retention := s.Retention
 	if retention <= 0 {
 		retention = DefaultRetention
 	}
+	maxKept := s.MaxKept
+	if maxKept <= 0 {
+		maxKept = DefaultMaxKept
+	}
 	var list v1alpha1.TakeCareInvestigationList
 	if err := s.Client.List(ctx, &list, client.InNamespace(s.Namespace)); err != nil {
 		return 0, fmt.Errorf("list investigations: %w", err)
 	}
+	type record struct {
+		inv   *v1alpha1.TakeCareInvestigation
+		ended time.Time
+	}
+	var ended []record
+	for i := range list.Items {
+		if at, ok := endedAt(&list.Items[i]); ok {
+			ended = append(ended, record{&list.Items[i], at})
+		}
+	}
+	// Newest first: the records past the count are the tail, and every
+	// record past the retention is behind the ones within it.
+	slices.SortStableFunc(ended, func(a, b record) int { return b.ended.Compare(a.ended) })
 	now := s.clock().Now()
 	deleted := 0
-	for i := range list.Items {
-		inv := &list.Items[i]
-		ended, ok := endedAt(inv)
-		if !ok || now.Sub(ended) < retention {
+	for i, r := range ended {
+		if i < maxKept && now.Sub(r.ended) < retention {
 			continue
 		}
-		if err := s.Client.Delete(ctx, inv); client.IgnoreNotFound(err) != nil {
-			return deleted, fmt.Errorf("delete investigation %s: %w", inv.Name, err)
+		if err := s.Client.Delete(ctx, r.inv); client.IgnoreNotFound(err) != nil {
+			return deleted, fmt.Errorf("delete investigation %s: %w", r.inv.Name, err)
 		}
 		deleted++
 	}
