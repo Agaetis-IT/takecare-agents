@@ -2,7 +2,7 @@
 
 `takecare` is the command-line tool for the people who set up and keep a TakeCare install ([spec 13](../specs/13-tui.md)). It reads the cluster and works on files in your Git working copy. **It never writes into a cluster**: it has no create, update, patch or delete call, no watch, no exec and no port-forward, and it never changes your kubeconfig.
 
-This page covers the commands shipped so far: `status`, `review`, `validate` and `version`. `init` and `discover` come with the next lots of spec 13.
+This page covers the commands shipped so far: `status`, `discover`, `review`, `validate` and `version`. `init` comes with a next lot of spec 13.
 
 ## Install
 
@@ -25,6 +25,7 @@ It reads with your own rights. The charts ship no role for it: give the people w
 | Command | Rights |
 |---|---|
 | `status` | `get`, `list` on `takecareplatforms`, `takecaredocs`, `takecareintendants`, `takecarerangers`, `takecareconnectors`, `takecaresurveys`, `takecareinvestigations` (`takecare.agaetis.fr`) |
+| `discover` | `get`, `list` on `takecareintendants`, `takecaresurveys`, `takecareconnectors` (`takecare.agaetis.fr`) |
 | `review` | `get`, `list` on `takecareintendants`, `takecaresurveys` (`takecare.agaetis.fr`); `get` on `configmaps` in the operator's namespace, for the survey's full set of proposals |
 | `validate`, `version` | none |
 
@@ -63,6 +64,34 @@ A script can wait for an install with the exit code:
 
 ```bash
 until takecare status >/dev/null; do sleep 10; done
+```
+
+## `takecare discover`
+
+Shows the newest survey of an Intendant (`--intendant`, required when the namespace holds several; the only one by default), whatever its phase:
+
+- its name, phase, trigger and age, and the reason of one that did not complete;
+- the Map revision it surveyed against and the one the Intendant's map connector serves now; when they differ, it says that the survey predates the served Map;
+- its proposals counted by action (add, update, remove, over the full set) and by source (import, agent, over the proposals the survey's status holds; the rest are in its ConfigMap, which `discover` does not read);
+- each layer's seen, matched and proposed counts, with what it could not read and why;
+- its blind spots.
+
+It then prints the command that creates a new survey, with the Intendant's name and namespace filled in, for you to run with your own rights:
+
+```bash
+kubectl -n takecare-system create -f - <<'EOF'
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareSurvey
+metadata: { generateName: intendant-by-hand-, namespace: takecare-system }
+spec: { intendantRef: { kind: TakeCareIntendant, name: intendant } }
+EOF
+```
+
+`discover` creates nothing: running the command is your act, with your rights. Once the new survey is `Completed`, `takecare review` turns its proposals into Map files.
+
+```bash
+takecare discover
+takecare discover --intendant intendant --output json   # a stable shape, versioned by schemaVersion
 ```
 
 ## `takecare review`
@@ -113,6 +142,6 @@ Every command takes `--output text|json`, `--no-color` and `--accessible`. No co
 
 | Code | Meaning |
 |---|---|
-| 0 | done; for `status`, the platform, every role and every connector `Ready`; for `validate`, a valid Map and valid question files |
+| 0 | done (for `discover`, whatever the survey shows); for `status`, the platform, every role and every connector `Ready`; for `validate`, a valid Map and valid question files |
 | 1 | a finding: for `status`, something not `Ready` (or no platform at all); for `validate`, a fault in the files; for `review`, a result that does not validate (nothing is written) |
 | 2 | the command could not run: a usage error, a kubeconfig, a list or a file it could not read, a survey not `Completed`, a dirty working tree on the paths `review` writes, a refused commit |

@@ -1,0 +1,25 @@
+Intendant intendant in namespace takecare-system
+
+SURVEY intendant-q6w6z
+  phase Completed, trigger Schedule, age 120m
+  Map revision surveyed against: 470725dee572; served now: 9b1f0c2d7a44 (map connector map)
+  The survey predates the served Map.
+  proposals 3: add 1, update 1, remove 1
+  by source, over the 2 the status holds: import 1, agent 1
+
+LAYERS
+  compute: seen 4, matched 3, proposed 1
+  network: seen 2, matched 1, proposed 1
+    not seen kube-system: outside the Intendant's scope
+
+BLIND SPOTS
+  service/ledger: NoAccess: no connector reads it
+
+To start a new survey, run with your own rights:
+
+kubectl -n takecare-system create -f - <<'EOF'
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareSurvey
+metadata: { generateName: intendant-by-hand-, namespace: takecare-system }
+spec: { intendantRef: { kind: TakeCareIntendant, name: intendant } }
+EOF
