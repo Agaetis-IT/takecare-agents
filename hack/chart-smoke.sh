@@ -57,11 +57,20 @@ up() {
   log "building and importing ${IMAGE}, ${REPORT_IMAGE}, ${CORPUS_IMAGE}, ${MAP_IMAGE}, ${DEMO_APP_IMAGE}, ${FRONT_IMAGE} and ${HISTORY_IMAGE}"
   make docker-build OPERATOR_IMG="$IMAGE" REPORT_SLACK_IMG="$REPORT_IMAGE" MCP_CORPUS_IMG="$CORPUS_IMAGE" MCP_MAP_IMG="$MAP_IMAGE" DEMO_APP_IMG="$DEMO_APP_IMAGE" MCP_FRONT_IMG="$FRONT_IMAGE" MCP_HISTORY_IMG="$HISTORY_IMAGE" \
     LOCAL_LABELS="--label org.agaetis.takecare.local=true --label org.agaetis.takecare.hash=${IMAGE_TAG}" >/dev/null
-  docker build --build-arg GO_BUILD_IMAGE="$GO_BUILD_IMAGE" --build-arg RUNTIME_IMAGE="$RUNTIME_IMAGE" \
+  # In CI, the fake Slack's layers come from the Actions cache too, in the
+  # e2e's scope (Makefile, DOCKER_BUILD).
+  local build=(docker build)
+  if [[ -n "${ACTIONS_RUNTIME_TOKEN:-}" ]]; then
+    build=(docker buildx build --load --cache-from "type=gha,scope=fake-slack" --cache-to "type=gha,mode=max,scope=fake-slack")
+  fi
+  "${build[@]}" --build-arg GO_BUILD_IMAGE="$GO_BUILD_IMAGE" --build-arg RUNTIME_IMAGE="$RUNTIME_IMAGE" \
     --build-arg GO_LICENSES_VERSION="$GO_LICENSES_VERSION" --build-arg COMPONENT=fake-slack \
     --label org.agaetis.takecare.local=true --label org.agaetis.takecare.hash="${IMAGE_TAG}" -t "$FAKE_SLACK_IMAGE" . >/dev/null
   k3d image import "$IMAGE" "$REPORT_IMAGE" "$CORPUS_IMAGE" "$MAP_IMAGE" "$DEMO_APP_IMAGE" "$FRONT_IMAGE" "$HISTORY_IMAGE" "$FAKE_SLACK_IMAGE" -c "$CLUSTER" >/dev/null
   make chart-deps >/dev/null
+  # The Docker Hub images, pulled once on the host (hack/preload-images.sh).
+  hack/preload-images.sh pull
+  hack/preload-images.sh import "$CLUSTER"
 }
 
 # Every check prints PASS or FAIL and each phase asserts its total, so that a
@@ -150,9 +159,21 @@ install() {
   kubectl -n "$NS" create secret generic takecare-model --from-literal=apiKey=smoke-placeholder \
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   empty_corpora
+  # An image that cannot be pulled stops the install with its pod's events
+  # instead of the ten minutes of --wait (hack/preload-images.sh watch);
+  # either one failing fails the install.
   "$HELM" upgrade --install takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
-    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set addons.history.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set ranger.caps.gateway.requestsPerMinute=600 --set-json 'ranger.caps.models=[{"name":"default","requestsPerMinute":2,"burst":1}]' --wait --timeout 10m
+    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set addons.history.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set ranger.caps.gateway.requestsPerMinute=600 --set-json 'ranger.caps.models=[{"name":"default","requestsPerMinute":2,"burst":1}]' --wait --timeout 10m &
+  local helm_pid=$! watch_pid helm_rc=0 watch_rc=0
+  hack/preload-images.sh watch "$helm_pid" &
+  watch_pid=$!
+  wait "$helm_pid" || helm_rc=$?
+  wait "$watch_pid" || watch_rc=$?
+  if [[ "$helm_rc" -ne 0 || "$watch_rc" -ne 0 ]]; then
+    echo "the takecare release did not install (helm exit ${helm_rc}, pull watch exit ${watch_rc})" >&2
+    exit 1
+  fi
   kubectl -n kagent rollout status deploy/kagent-controller --timeout=180s >/dev/null
   verify
 }

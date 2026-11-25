@@ -303,15 +303,21 @@ DOCKER_BUILD_ARGS := --build-arg GO_BUILD_IMAGE=$(GO_BUILD_IMAGE) --build-arg RU
 # make clean-local finds them and nothing else; empty for a release build.
 LOCAL_LABELS ?=
 
+# DOCKER_BUILD COMPONENT: a plain docker build, or, once the Actions cache's
+# token is exposed (the e2e and chart-smoke workflows do it, with a buildx
+# builder), a buildx build loaded into Docker that shares the image job's
+# layers through the Actions cache, one scope per image (BUILDX_CACHE).
+DOCKER_BUILD = $(if $(ACTIONS_RUNTIME_TOKEN),docker buildx build --load $(call BUILDX_CACHE,$(1)),docker build)
+
 .PHONY: docker-build
 docker-build: ## Build every image (operator, report server, demo app, corpus server, Map server, front, history server) for the local platform.
-	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=operator -t $(OPERATOR_IMG) .
-	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-report-slack -t $(REPORT_SLACK_IMG) .
-	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=demo-app -t $(DEMO_APP_IMG) .
-	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-corpus -t $(MCP_CORPUS_IMG) .
-	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-map -t $(MCP_MAP_IMG) .
-	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-front -t $(MCP_FRONT_IMG) .
-	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-history -t $(MCP_HISTORY_IMG) .
+	$(call DOCKER_BUILD,operator) $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=operator -t $(OPERATOR_IMG) .
+	$(call DOCKER_BUILD,mcp-report-slack) $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-report-slack -t $(REPORT_SLACK_IMG) .
+	$(call DOCKER_BUILD,demo-app) $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=demo-app -t $(DEMO_APP_IMG) .
+	$(call DOCKER_BUILD,mcp-corpus) $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-corpus -t $(MCP_CORPUS_IMG) .
+	$(call DOCKER_BUILD,mcp-map) $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-map -t $(MCP_MAP_IMG) .
+	$(call DOCKER_BUILD,mcp-front) $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-front -t $(MCP_FRONT_IMG) .
+	$(call DOCKER_BUILD,mcp-history) $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-history -t $(MCP_HISTORY_IMG) .
 
 .PHONY: clean-local
 clean-local: ## List the images the demo, the e2e and the smoke built here; CLEAN_LOCAL=remove removes them (never the current tree's).
@@ -319,8 +325,8 @@ clean-local: ## List the images the demo, the e2e and the smoke built here; CLEA
 
 .PHONY: docker-build-e2e
 docker-build-e2e: ## Build the end-to-end tests' fakes (model provider, Slack) for the local platform.
-	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=fake-llm -t $(FAKE_LLM_IMG) .
-	docker build $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=fake-slack -t $(FAKE_SLACK_IMG) .
+	$(call DOCKER_BUILD,fake-llm) $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=fake-llm -t $(FAKE_LLM_IMG) .
+	$(call DOCKER_BUILD,fake-slack) $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=fake-slack -t $(FAKE_SLACK_IMG) .
 
 # In GitHub Actions, once the runtime token is exposed (the ci workflow does
 # it), the layers go to the Actions cache, one scope per image.

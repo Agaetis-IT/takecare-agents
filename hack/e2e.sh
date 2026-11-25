@@ -411,8 +411,20 @@ run() {
   # Last, after the checks' line: whether the machine slept during the run.
   trap power_guard EXIT
   hack/demo.sh cluster
+  # The Docker Hub images, pulled once on the host (hack/preload-images.sh).
+  hack/preload-images.sh pull
+  hack/preload-images.sh import takecare-demo
   fakes
-  hack/demo.sh up
+  # An image that cannot be pulled stops the install with its pod's events
+  # instead of the ten minutes of --wait (hack/preload-images.sh watch);
+  # either one failing fails the setup.
+  hack/demo.sh up &
+  local up_pid=$! watch_pid up_rc=0 watch_rc=0
+  hack/preload-images.sh watch "$up_pid" &
+  watch_pid=$!
+  wait "$up_pid" || up_rc=$?
+  wait "$watch_pid" || watch_rc=$?
+  [[ "$up_rc" -eq 0 && "$watch_rc" -eq 0 ]] || { echo "the demo did not come up (demo.sh exit ${up_rc}, pull watch exit ${watch_rc})" >&2; false; }
   trap - ERR
   kubectl apply -f test/e2e/doc-ops.yaml >/dev/null
   # An Agent in the demo Intendant's scope, for its inventory: no pod.
