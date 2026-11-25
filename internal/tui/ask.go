@@ -37,7 +37,7 @@ const (
 var ErrInputEnded = errors.New("the input ended before an answer")
 
 // Screen is where the forms run: the person's input and output, whether
-// line prompts replace the full screen, and whether colour is off.
+// line prompts replace the full screen, and whether color is off.
 type Screen struct {
 	In         io.Reader
 	Out        io.Writer
@@ -105,9 +105,9 @@ func (s Screen) run(ctx context.Context, g *huh.Group) error {
 	opts := slices.Clone(s.options)
 	if s.NoColor {
 		// The full screen goes through Bubble Tea, which writes for the
-		// colour profile it is given: ASCII keeps text attributes and drops
-		// colours, as NO_COLOR does. Line prompts are written by Huh as the
-		// theme renders them: the theme holds no colour.
+		// color profile it is given: ASCII keeps text attributes and drops
+		// colors, as NO_COLOR does. Line prompts are written by Huh as the
+		// theme renders them: the theme holds no color.
 		f = f.WithTheme(huh.ThemeFunc(noColorTheme))
 		opts = append(opts, tea.WithColorProfile(colorprofile.ASCII))
 	}
@@ -123,11 +123,11 @@ func (s Screen) run(ctx context.Context, g *huh.Group) error {
 	return nil
 }
 
-// noColorTheme is Huh's base theme, the one its coloured themes build on,
-// without its few colours: the buttons and the placeholder. The focused
+// noColorTheme is Huh's base theme, the one its colored themes build on,
+// without its few colors: the buttons and the placeholder. The focused
 // button is shown reversed, so that a confirmation still shows which
-// button is chosen. Its help keys keep their colours: line prompts show no
-// help, and the full screen drops colours by its profile.
+// button is chosen. Its help keys keep their colors: line prompts show no
+// help, and the full screen drops colors by its profile.
 func noColorTheme(isDark bool) *huh.Styles {
 	t := huh.ThemeBase(isDark)
 	button := lipgloss.NewStyle().Padding(0, 2).MarginRight(1)

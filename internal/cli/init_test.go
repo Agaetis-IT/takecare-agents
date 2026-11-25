@@ -155,7 +155,7 @@ func TestInitNothingChangedReportsUnknown(t *testing.T) {
 	}
 	answers := strings.Replace(string(raw), "  knowledge: http://runbooks.takecare-system.svc:8080/mcp\n", "", 1) + "unknown: [knowledge]\n"
 	file := filepath.Join(t.TempDir(), "answers.yaml")
-	if err := os.WriteFile(file, []byte(answers), 0o600); err != nil {
+	if err := os.WriteFile(file, []byte(answers), 0o600); err != nil { //nolint:gosec // the test's own temporary file
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
@@ -191,7 +191,7 @@ func TestInitAsksOnlyWhatIsNew(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("TAKECARE_ACCESSIBLE", "1")
-	// --no-color reaches the forms: Huh's line prompts are coloured
+	// --no-color reaches the forms: Huh's line prompts are colored
 	// by its default theme otherwise (spec 13 §3).
 	run := runInitWith(t, "takecare-system/slack-bot:token\n\n", flagDir, dir, flagNoCommit, flagOverwrite, outputFlag, outputJSON,
 		"--no-color")

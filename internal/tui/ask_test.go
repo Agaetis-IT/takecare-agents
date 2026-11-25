@@ -48,6 +48,9 @@ const (
 	idKey    = "key"
 )
 
+// clusterEast is the answer the tests type for the cluster's name.
+const clusterEast = "east"
+
 // A credential-shaped secret string, assembled at run time so that no
 // scanner reads it in the source.
 var tokenShaped = "gh" + "p_" + strings.Repeat("a1B2c3D4e5", 4)
@@ -102,7 +105,7 @@ func TestAskAccessible(t *testing.T) {
 		id, in string
 		want   questionnaire.Answer
 	}{
-		{idName, "BAD\neast\n", questionnaire.Answer{Value: "east"}},
+		{idName, "BAD\neast\n", questionnaire.Answer{Value: clusterEast}},
 		{idSource, "3\n", questionnaire.Answer{Unknown: true}},
 		{idSource, "1\n", questionnaire.Answer{Value: "Alertmanager"}},
 		{"on", "2\n", questionnaire.Answer{Value: false}},
@@ -149,15 +152,15 @@ func TestConfirmAccessible(t *testing.T) {
 	}
 }
 
-// colour matches an SGR sequence that sets a colour: a foreground or a
-// background, in 16, 256 or 24-bit colours. Text attributes (bold,
-// reverse) are not colours.
-var colour = regexp.MustCompile(`\x1b\[(?:[0-9;]*;)?(?:3[0-9]|4[0-9]|9[0-7]|10[0-7])(?:[;m])`)
+// color matches an SGR sequence that sets a color: a foreground or a
+// background, in 16, 256 or 24-bit colors. Text attributes (bold,
+// reverse) are not colors.
+var color = regexp.MustCompile(`\x1b\[(?:[0-9;]*;)?(?:3[0-9]|4[0-9]|9[0-7]|10[0-7])(?:[;m])`)
 
-// Spec 13 §3: --no-color leaves no colour in the forms, in line prompts
-// and in full screen; without it, the same forms are coloured, which
-// proves the check would see colour. The environment forces colour on,
-// as a colour terminal would.
+// Spec 13 §3: --no-color leaves no color in the forms, in line prompts
+// and in full screen; without it, the same forms are colored, which
+// proves the check would see color. The environment forces color on,
+// as a color terminal would.
 func TestNoColor(t *testing.T) {
 	t.Setenv("TERM", "xterm-256color")
 	t.Setenv("COLORTERM", "truecolor")
@@ -185,7 +188,7 @@ func TestNoColor(t *testing.T) {
 				}()
 				// The person types once the question is drawn: a full
 				// screen draws nothing of a form already submitted.
-				_, _ = w.Write([]byte("east"))
+				_, _ = w.Write([]byte(clusterEast))
 				drawn := out.waitFor(t, "The cluster's name")
 				enter := "\r" // a key in full screen
 				if accessible {
@@ -201,12 +204,12 @@ func TestNoColor(t *testing.T) {
 				if res.err != nil {
 					t.Fatal(res.err)
 				}
-				if d := cmp.Diff(questionnaire.Answer{Value: "east"}, res.a); d != "" {
+				if d := cmp.Diff(questionnaire.Answer{Value: clusterEast}, res.a); d != "" {
 					t.Errorf("(-want +got):\n%s", d)
 				}
 				all := drawn + out.String()
-				if has := colour.MatchString(all); has == noColor {
-					t.Errorf("colour in the output %v, want %v:\n%q", has, !noColor, all)
+				if has := color.MatchString(all); has == noColor {
+					t.Errorf("color in the output %v, want %v:\n%q", has, !noColor, all)
 				}
 			})
 		}
