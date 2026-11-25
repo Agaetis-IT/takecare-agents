@@ -146,7 +146,7 @@ Prints the release version, the commit and the Go version the binary was built w
 
 ## Common flags and exit codes
 
-Every command takes `--output text|json`, `--no-color` and `--accessible`. `init` asks with forms, full screen on a terminal, or with line prompts for a screen reader with `--accessible` or `TAKECARE_ACCESSIBLE=1`; `review` asks with line prompts. No command prints color yet. Only `init` and `review` prompt, and only on a terminal: without one, `init` reads `--answers` and `review` reads `--accept` and `--skip`, and each stops with exit code 2 when an answer is missing.
+Every command takes `--output text|json`, `--no-color` and `--accessible`. `init` asks with forms, full screen on a terminal, or with line prompts for a screen reader with `--accessible` or `TAKECARE_ACCESSIBLE=1`; `review` asks with line prompts. Only `init`'s forms print color, and `--no-color` turns it off, in full screen and in line prompts. Only `init` and `review` prompt, and only on a terminal: without one, `init` reads `--answers` and `review` reads `--accept` and `--skip`, and each stops with exit code 2 when an answer is missing.
 
 | Code | Meaning |
 |---|---|

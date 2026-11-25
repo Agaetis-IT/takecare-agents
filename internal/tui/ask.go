@@ -11,9 +11,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 
 	"github.com/agaetis-it/takecare-agents/internal/questionnaire"
 )
@@ -32,12 +36,16 @@ const (
 // ErrInputEnded is returned when the input ends before an answer.
 var ErrInputEnded = errors.New("the input ended before an answer")
 
-// Screen is where the forms run: the person's input and output, and
-// whether line prompts replace the full screen.
+// Screen is where the forms run: the person's input and output, whether
+// line prompts replace the full screen, and whether colour is off.
 type Screen struct {
 	In         io.Reader
 	Out        io.Writer
 	Accessible bool
+	NoColor    bool
+	// options are Bubble Tea's options for the full screen: a test gives
+	// the window size a terminal would.
+	options []tea.ProgramOption
 }
 
 // Ask asks q and returns the answer, checked with CheckAnswer: an answer
@@ -93,7 +101,19 @@ func (s Screen) Confirm(ctx context.Context, title, description string) (bool, e
 // the end of the input from an empty line: the reader says so.
 func (s Screen) run(ctx context.Context, g *huh.Group) error {
 	in := &watched{r: s.In}
-	f := huh.NewForm(g).WithAccessible(s.Accessible).WithInput(in).WithOutput(s.Out).WithShowHelp(!s.Accessible)
+	f := huh.NewForm(g).WithAccessible(s.Accessible).WithShowHelp(!s.Accessible)
+	opts := slices.Clone(s.options)
+	if s.NoColor {
+		// The full screen goes through Bubble Tea, which writes for the
+		// colour profile it is given: ASCII keeps text attributes and drops
+		// colours, as NO_COLOR does. Line prompts are written by Huh as the
+		// theme renders them: the theme holds no colour.
+		f = f.WithTheme(huh.ThemeFunc(noColorTheme))
+		opts = append(opts, tea.WithColorProfile(colorprofile.ASCII))
+	}
+	// WithProgramOptions replaces the options set before it, input and
+	// output included: it comes first.
+	f = f.WithProgramOptions(opts...).WithInput(in).WithOutput(s.Out)
 	if err := f.RunWithContext(ctx); err != nil {
 		return err
 	}
@@ -101,6 +121,22 @@ func (s Screen) run(ctx context.Context, g *huh.Group) error {
 		return ErrInputEnded
 	}
 	return nil
+}
+
+// noColorTheme is Huh's base theme, the one its coloured themes build on,
+// without its few colours: the buttons and the placeholder. The focused
+// button is shown reversed, so that a confirmation still shows which
+// button is chosen. Its help keys keep their colours: line prompts show no
+// help, and the full screen drops colours by its profile.
+func noColorTheme(isDark bool) *huh.Styles {
+	t := huh.ThemeBase(isDark)
+	button := lipgloss.NewStyle().Padding(0, 2).MarginRight(1)
+	for _, f := range []*huh.FieldStyles{&t.Focused, &t.Blurred} {
+		f.FocusedButton = button.Reverse(true)
+		f.BlurredButton = button
+		f.TextInput.Placeholder = lipgloss.NewStyle()
+	}
+	return t
 }
 
 // watched notes when its reader ends.

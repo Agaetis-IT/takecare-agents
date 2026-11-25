@@ -115,7 +115,7 @@ func (a *app) runInit(ctx context.Context, o *initOpts) error {
 		}
 	}
 	// With --output json, stdout holds the result alone.
-	screen := tui.Screen{In: a.stdin, Out: a.stdout, Accessible: o.accessible}
+	screen := tui.Screen{In: a.stdin, Out: a.stdout, Accessible: o.accessible, NoColor: o.noColor}
 	if o.output == outputJSON {
 		screen.Out = a.stderr
 	}

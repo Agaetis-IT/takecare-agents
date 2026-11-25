@@ -7,10 +7,16 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"io"
+	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"testing/iotest"
+	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/agaetis-it/takecare-agents/internal/questionnaire"
@@ -140,5 +146,104 @@ func TestConfirmAccessible(t *testing.T) {
 	yes, err := s.Confirm(context.Background(), "Overwrite map/README.md?", "A person edited it.")
 	if err != nil || !yes {
 		t.Fatalf("yes %v, error %v", yes, err)
+	}
+}
+
+// colour matches an SGR sequence that sets a colour: a foreground or a
+// background, in 16, 256 or 24-bit colours. Text attributes (bold,
+// reverse) are not colours.
+var colour = regexp.MustCompile(`\x1b\[(?:[0-9;]*;)?(?:3[0-9]|4[0-9]|9[0-7]|10[0-7])(?:[;m])`)
+
+// Spec 13 §3: --no-color leaves no colour in the forms, in line prompts
+// and in full screen; without it, the same forms are coloured, which
+// proves the check would see colour. The environment forces colour on,
+// as a colour terminal would.
+func TestNoColor(t *testing.T) {
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("COLORTERM", "truecolor")
+	t.Setenv("CLICOLOR_FORCE", "1")
+	t.Setenv("NO_COLOR", "")
+	set := load(t)
+	for _, accessible := range []bool{true, false} {
+		for _, noColor := range []bool{false, true} {
+			t.Run(fmt.Sprintf("accessible %v no-color %v", accessible, noColor), func(t *testing.T) {
+				out := &syncBuffer{}
+				// A pipe left open: a terminal's input does not end after
+				// the answer.
+				r, w := io.Pipe()
+				defer func() { _ = w.Close() }()
+				s := Screen{In: r, Out: out, Accessible: accessible, NoColor: noColor,
+					options: []tea.ProgramOption{tea.WithWindowSize(80, 24)}}
+				type result struct {
+					a   questionnaire.Answer
+					err error
+				}
+				done := make(chan result, 1)
+				go func() {
+					a, err := s.Ask(context.Background(), set.Question(idName))
+					done <- result{a, err}
+				}()
+				// The person types once the question is drawn: a full
+				// screen draws nothing of a form already submitted.
+				_, _ = w.Write([]byte("east"))
+				drawn := out.waitFor(t, "The cluster's name")
+				enter := "\r" // a key in full screen
+				if accessible {
+					enter = "\n" // a line in line prompts
+				}
+				_, _ = w.Write([]byte(enter))
+				var res result
+				select {
+				case res = <-done:
+				case <-time.After(10 * time.Second):
+					t.Fatal("the form did not end")
+				}
+				if res.err != nil {
+					t.Fatal(res.err)
+				}
+				if d := cmp.Diff(questionnaire.Answer{Value: "east"}, res.a); d != "" {
+					t.Errorf("(-want +got):\n%s", d)
+				}
+				all := drawn + out.String()
+				if has := colour.MatchString(all); has == noColor {
+					t.Errorf("colour in the output %v, want %v:\n%q", has, !noColor, all)
+				}
+			})
+		}
+	}
+}
+
+// syncBuffer is a buffer the form writes while the test reads it.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// waitFor waits, at most ten seconds, until the output holds s, and
+// returns the output so far.
+func (b *syncBuffer) waitFor(t *testing.T, s string) string {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		out := b.String()
+		if strings.Contains(out, s) {
+			return out
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the output never held %q:\n%q", s, out)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
