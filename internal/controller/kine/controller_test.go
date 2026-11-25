@@ -242,11 +242,12 @@ func (f *fixture) waitCondition(t *testing.T, name, condType string, status meta
 	return k
 }
 
-// waitMessage waits for a condition's reason and a phrase of its message.
-func (f *fixture) waitMessage(t *testing.T, name, condType, reason, phrase string) {
+// waitMessage waits for a condition's reason and a phrase of its message,
+// on the Kiné named kineName.
+func (f *fixture) waitMessage(t *testing.T, condType, reason, phrase string) {
 	t.Helper()
-	eventually(t, name+" "+condType+" "+reason+" saying "+phrase, func() (bool, string) {
-		k := f.getKine(t, name)
+	eventually(t, kineName+" "+condType+" "+reason+" saying "+phrase, func() (bool, string) {
+		k := f.getKine(t, kineName)
 		c := meta.FindStatusCondition(k.Status.Conditions, condType)
 		return c != nil && c.Reason == reason && strings.Contains(c.Message, phrase), describe(k)
 	})
@@ -482,7 +483,7 @@ func TestConnectors(t *testing.T) {
 	// The history connector, not ready: its route is rendered (its tools
 	// are known), the Kiné is still not ready to review.
 	f.connector(t, connHist, v1alpha1.ConnectorHistory, history, false)
-	f.waitMessage(t, "kine", v1alpha1.ConditionConnectorsReady, ReasonHistoryMissing, "connector history is not Ready")
+	f.waitMessage(t, v1alpha1.ConditionConnectorsReady, ReasonHistoryMissing, "connector history is not Ready")
 	eventually(t, "the history route", func() (bool, string) {
 		got := f.expression(t, "role-kine-kine-mcp-history")
 		return got == `mcp.tool.name in ["investigation_get", "investigations_list", "reviews_list"]`, got
@@ -541,7 +542,7 @@ func TestConnectors(t *testing.T) {
 		t.Errorf("ConnectorsReady message = %q", msg)
 	}
 	f.update(t, "kine", func(k *v1alpha1.TakeCareKine) { k.Spec.Connectors.Report = connKnow })
-	f.waitMessage(t, "kine", v1alpha1.ConditionConnectorsReady, ReasonConnectorMissing, "connector incidents is bound as report but does not declare that type")
+	f.waitMessage(t, v1alpha1.ConditionConnectorsReady, ReasonConnectorMissing, "connector incidents is bound as report but does not declare that type")
 }
 
 // Two Kinés of one namespace whose scopes overlap: the later one is

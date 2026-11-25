@@ -190,7 +190,7 @@ func TestAgent(t *testing.T) {
 
 	// A model the platform does not declare: nothing in the engine.
 	f.update(t, kineName, func(k *v1alpha1.TakeCareKine) { k.Spec.Model = &v1alpha1.ModelRef{Name: "unknown"} })
-	f.waitMessage(t, kineName, v1alpha1.ConditionEngineReady, ReasonNotRendered, "the Kiné's model is not resolved")
+	f.waitMessage(t, v1alpha1.ConditionEngineReady, ReasonNotRendered, "the Kiné's model is not resolved")
 	f.waitEngineGone(t)
 	f.update(t, kineName, func(k *v1alpha1.TakeCareKine) { k.Spec.Model = nil })
 	f.agentReady(t)
@@ -227,7 +227,7 @@ func TestAgentTooManyToolServers(t *testing.T) {
 		k.Spec.Connectors.Knowledge = knowledge
 		k.Spec.Connectors.Tickets = tickets
 	})
-	f.waitMessage(t, kineName, v1alpha1.ConditionEngineReady, ReasonTooManyToolServers, "21 tool servers, and the engine takes at most 20")
+	f.waitMessage(t, v1alpha1.ConditionEngineReady, ReasonTooManyToolServers, "21 tool servers, and the engine takes at most 20")
 	k := f.waitCondition(t, kineName, v1alpha1.ConditionEngineReady, metav1.ConditionFalse, ReasonTooManyToolServers)
 	if meta.IsStatusConditionTrue(k.Status.Conditions, v1alpha1.ConditionReady) {
 		t.Errorf("Ready with too many tool servers: %s", describe(k))
