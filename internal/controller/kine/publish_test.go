@@ -219,10 +219,16 @@ func TestFailedReviewNotPublished(t *testing.T) {
 	w := newRunner(c, c, newRuns(modeFail, ""))
 	with(w)
 	queue(w, rv)
-	startRunner(t, w)
-	got := waitReview(t, c, rv.Name, "ended", ended)
-	time.Sleep(100 * time.Millisecond) // a publication would have run by now
-	if got = getReview(t, c, rv.Name); got.Status.Phase != v1alpha1.RunFailed || got.Status.Published != nil || len(p.posted()) != 0 {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = w.Start(ctx)
+	}()
+	waitReview(t, c, rv.Name, "ended", ended)
+	cancel()
+	<-done // Start waits for every publication it started
+	if got := getReview(t, c, rv.Name); got.Status.Phase != v1alpha1.RunFailed || got.Status.Published != nil || len(p.posted()) != 0 {
 		t.Errorf("phase %s, published %+v, %d posts", got.Status.Phase, got.Status.Published, len(p.posted()))
 	}
 	if n := testutil.ToFloat64(m.Ended.WithLabelValues(kineName, string(v1alpha1.ReviewTriggerOnDemand), resultFailed)); n != 1 {

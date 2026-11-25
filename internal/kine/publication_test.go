@@ -25,11 +25,11 @@ func completedReview() *v1alpha1.TakeCareReview {
 	march := metav1.NewTime(time.Date(2024, 3, 12, 8, 30, 0, 0, time.UTC))
 	rv.Status.Problem = &v1alpha1.Problem{
 		Statement:   "The **proxy's idle timeout** (600 s) is shorter than the pool's (900 s): the proxy closes idle connections first.",
-		Recurrences: []v1alpha1.Recurrence{{Record: "INC-2024-0312", Date: &march}},
+		Recurrences: []v1alpha1.Recurrence{{Record: incident, Date: &march}},
 	}
 	rv.Status.Actions = []v1alpha1.CorrectiveAction{
-		{ID: "INC-2024-0312/1", Text: "Compare the proxy's idle timeout with the pool's recycling in an automated check.", Kind: v1alpha1.ActionCheck, Origin: v1alpha1.ActionEarlier, State: v1alpha1.ActionOpen, Source: "INC-2024-0312"},
-		{ID: "INC-2024-0312/2", Text: "Document the timeouts in RB-014.", Kind: v1alpha1.ActionRunbook, Origin: v1alpha1.ActionEarlier, State: v1alpha1.ActionDone, Source: "INC-2024-0312"},
+		{ID: incident + "/1", Text: "Compare the proxy's idle timeout with the pool's recycling in an automated check.", Kind: v1alpha1.ActionCheck, Origin: v1alpha1.ActionEarlier, State: v1alpha1.ActionOpen, Source: incident},
+		{ID: incident + "/2", Text: "Document the timeouts in RB-014.", Kind: v1alpha1.ActionRunbook, Origin: v1alpha1.ActionEarlier, State: v1alpha1.ActionDone, Source: incident},
 		{ID: reviewName + "-1", Text: "Alert on connection resets\nfrom the proxy.", Kind: v1alpha1.ActionAlertRule, Origin: v1alpha1.ActionNew, State: v1alpha1.ActionProposed},
 	}
 	rv.Status.PostMortem = "# Post-mortem\nDraft."

@@ -218,9 +218,10 @@ func (p Publication) blocks() []any {
 	blocks = append(blocks, section(report.Escape(strings.Join(p.recurrences(), "\n"))))
 	// One section per group of lines under Block Kit's bound: ten
 	// actions of 512 characters do not fit in one.
-	var group []string
+	lines := p.actions()
+	group := make([]string, 0, len(lines))
 	size := 0
-	for _, line := range p.actions() {
+	for _, line := range lines {
 		line = report.Escape(line)
 		if size+len(line)+1 > report.SectionLimit && len(group) > 0 {
 			blocks, group, size = append(blocks, section(strings.Join(group, "\n"))), nil, 0
