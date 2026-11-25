@@ -105,7 +105,7 @@ func TestRoutes(t *testing.T) {
 	if typ := matchType(route); typ != pathExact {
 		t.Errorf("MCP route match type = %q, want Exact", typ)
 	}
-	if path != "/mcp/takecare-system/doc/kubernetes" {
+	if path != "/mcp/takecare-system/doc.doc/kubernetes" {
 		t.Errorf("route path = %s", path)
 	}
 	expr := func(name string) string {
@@ -268,11 +268,12 @@ func TestCallRule(t *testing.T) {
 // whose routes would conflict and leave one of them served with the
 // other's allow-list.
 func TestMCPPathPerKind(t *testing.T) {
+	const doc, intendant, kine, name = "doc", "intendant", "kine", "main"
 	seen := map[string]string{}
-	for _, kind := range []string{"doc", "intendant", "kine"} {
-		r := Role{Kind: kind, Name: "main", Namespace: ns}
+	for _, kind := range []string{doc, intendant, kine} {
+		r := Role{Kind: kind, Name: name, Namespace: ns}
 		got := MCPPath(r, "prometheus")
-		if want := "/mcp/" + ns + "/" + kind + ".main/prometheus"; got != want {
+		if want := "/mcp/" + ns + "/" + kind + "." + name + "/prometheus"; got != want {
 			t.Errorf("%s: MCPPath = %s, want %s", kind, got, want)
 		}
 		if other, ok := seen[got]; ok {
