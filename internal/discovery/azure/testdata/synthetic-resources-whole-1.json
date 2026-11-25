@@ -1,0 +1,41 @@
+{
+  "$skipToken": "page-2",
+  "count": 4,
+  "data": [
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/RG-Data/providers/Microsoft.Sql/servers/sql-orders/databases/orders",
+      "name": "orders",
+      "type": "microsoft.sql/servers/databases",
+      "subscriptionId": "11111111-1111-1111-1111-111111111111",
+      "resourceGroup": "rg-data",
+      "location": "westeurope"
+    },
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/RG-Data/providers/Microsoft.Web/sites/api",
+      "name": "api",
+      "type": "microsoft.web/sites",
+      "subscriptionId": "11111111-1111-1111-1111-111111111111",
+      "resourceGroup": "rg-data",
+      "location": "westeurope"
+    },
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-shop/providers/Microsoft.Web/sites/api",
+      "name": "api",
+      "type": "microsoft.web/sites",
+      "subscriptionId": "11111111-1111-1111-1111-111111111111",
+      "resourceGroup": "rg-shop",
+      "location": "westeurope"
+    },
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-shop/providers/Microsoft.Compute/virtualMachines/vm-web-1",
+      "name": "vm-web-1",
+      "type": "microsoft.compute/virtualmachines",
+      "subscriptionId": "11111111-1111-1111-1111-111111111111",
+      "resourceGroup": "rg-shop",
+      "location": "westeurope"
+    }
+  ],
+  "facets": [],
+  "resultTruncated": "false",
+  "totalRecords": 8
+}

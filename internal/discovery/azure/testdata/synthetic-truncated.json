@@ -1,0 +1,16 @@
+{
+  "count": 1,
+  "data": [
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-shop/providers/Microsoft.Compute/virtualMachines/vm-web-1",
+      "name": "vm-web-1",
+      "type": "microsoft.compute/virtualmachines",
+      "subscriptionId": "11111111-1111-1111-1111-111111111111",
+      "resourceGroup": "rg-shop",
+      "location": "westeurope"
+    }
+  ],
+  "facets": [],
+  "resultTruncated": "true",
+  "totalRecords": 3
+}
