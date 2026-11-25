@@ -6,15 +6,24 @@ This page covers the commands shipped so far: `init`, `status`, `discover`, `rev
 
 ## Install
 
-At a release that carries it (`<version>` is the tag, for example `v0.5.0`):
+From the release that carries it on, each release attaches the command for Linux, macOS (`darwin`) and Windows, on `amd64` and `arm64`: one archive per platform, `takecare-x.y.z-<os>-<arch>.tar.gz` (`.zip` for Windows), holding the binary, `LICENSE`, `NOTICE` and the third-party license texts under `licenses/`, with one SBOM per binary (`takecare-x.y.z-<os>-<arch>.spdx.json`, SPDX 2.3) and `takecare-x.y.z-checksums.txt`. Check the archive against the checksums file before you unpack it, for example on Linux amd64:
+
+```bash
+gh release download vx.y.z --repo Agaetis-IT/takecare-agents -p 'takecare-x.y.z-linux-amd64.tar.gz' -p 'takecare-x.y.z-checksums.txt'
+sha256sum -c --ignore-missing takecare-x.y.z-checksums.txt
+tar -xzf takecare-x.y.z-linux-amd64.tar.gz
+takecare-x.y.z-linux-amd64/takecare version
+```
+
+On macOS, `shasum -a 256 -c --ignore-missing` does the same check. `gh release verify-asset vx.y.z <archive>` also checks that the archive is the one the release attests.
+
+With Go (the version `go.mod` names, or later; `GOTOOLCHAIN=auto` fetches it), `<version>` being the tag, for example `v0.5.0`:
 
 ```bash
 go install github.com/agaetis-it/takecare-agents/cmd/takecare@<version>
 ```
 
 From a checkout of this repository: `go install ./cmd/takecare`.
-
-Release binaries come with a later lot (spec 13 §8).
 
 ## Reading the cluster
 

@@ -12,7 +12,8 @@
 #       SOURCE is registry:<image>@<digest> (an image, read for PLATFORM) or
 #       file:<binary>; the SBOM is written to OUT, then checked.
 #   sbom.sh check FILE KIND PLATFORM
-#       KIND is image or binary.
+#       KIND is image or binary. PLATFORM is linux/<arch>, or for a binary
+#       also darwin/<arch> or windows/<arch>.
 #
 # A checked SBOM is SPDX-2.3 and lists the Go standard library and at least
 # one other Go module. An image's also lists Debian packages, each of
@@ -24,8 +25,13 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 check() { # FILE KIND PLATFORM
   local file="$1" kind="$2" platform="$3" arch purls go stdlib deb
-  [[ "$platform" =~ ^linux/[a-z0-9]+$ ]] || { echo "${file}: platform ${platform} is not linux/<arch>" >&2; return 1; }
-  arch="${platform#linux/}"
+  # A binary ships for linux, darwin or windows; an image is linux only.
+  [[ "$platform" =~ ^(linux|darwin|windows)/[a-z0-9]+$ ]] || { echo "${file}: platform ${platform} is not <os>/<arch>" >&2; return 1; }
+  if [[ "$kind" != binary && "$platform" != linux/* ]]; then
+    echo "${file}: platform ${platform} is not linux/<arch>" >&2
+    return 1
+  fi
+  arch="${platform#*/}"
   [[ -s "$file" ]] || { echo "${file}: empty SBOM" >&2; return 1; }
   purls="$(jq -r 'if .spdxVersion != "SPDX-2.3" then error("not SPDX-2.3")
     else .packages[]?.externalRefs[]? | select(.referenceType == "purl") | .referenceLocator end' "$file")" ||

@@ -36,5 +36,8 @@ fails "an image without Debian packages fails" "$(variant nodeb '.packages |= ma
 fails "an arm64 image checked as amd64 fails" "$good" image linux/amd64
 fails "a Debian package of another architecture fails" "$(variant debarch '(.packages[] | select(.name == "base-files") | .externalRefs[0].referenceLocator) |= sub("arch=arm64"; "arch=amd64")')" image linux/arm64
 fails "an image without its OCI root fails" "$(variant noroot '.packages |= map(select(.primaryPackagePurpose != "CONTAINER"))')" image linux/arm64
+passes "a binary's SBOM as darwin/arm64" "${tmp}/binary.json" binary darwin/arm64
+passes "a binary's SBOM as windows/amd64" "${tmp}/binary.json" binary windows/amd64
+fails "an image checked as darwin/arm64 fails" "$good" image darwin/arm64
 fails "an unknown kind fails" "$good" chart linux/arm64
 exit "$failed"
