@@ -31,7 +31,7 @@ Review only incidents of this scope. The request names the investigations under 
 
 - The problem: what the incident was and its root cause, as the Doc's diagnosis states it. Do not look for another cause.
 - Recurrences: the earlier incidents with the same root cause, from the investigations of the period and the team's post-mortems. A similar alert is not a recurrence; the same cause is.
-- Earlier actions: the follow-up actions of those earlier incidents' post-mortems, and the actions of the Kiné's earlier reviews. For each, decide its state from the evidence: `Done` when a ticket or a record says it is done, `Open` when the evidence says it is not done, `Unknown` when nothing says either way.
+- Earlier actions: the follow-up actions of those earlier incidents' post-mortems, and the actions of the Kiné's earlier reviews. For each, decide its state from the evidence: `Done` when a ticket or a record says it is done, `Open` when the evidence says it is not done, `Unknown` when nothing says either way.{{ if not .Practitioner }} As an Apprentice, report only the earlier actions still undone, `Open` or `Unknown`; leave the `Done` ones out.{{ end }}
 {{- if .Practitioner }}
 - New actions: the corrective actions this incident calls for that no earlier action covers, each one concrete enough for a team to take into its tracker.
 - A post-mortem draft: what happened, the timeline, the root cause, the impact as the records state it, and the actions.
@@ -58,7 +58,7 @@ The shape, with made-up names that are not on your ground:
 {"problem": {
    "statement": "The ingress refused TLS handshakes: its certificate expired and was not renewed.",
    "recurrences": [
-     {"record": "INC-2023-0101", "date": "2023-01-01",
+     {"record": "INC-2023-0101", "date": "2023-01-01T09:30:00Z",
       "evidence": [{"tool": "the tool you called", "record": "INC-2023-0101"}]}]},
  "actions": [
    {"id": "INC-2023-0101/2", "text": "Alert 14 days before a certificate expires.",
@@ -71,7 +71,7 @@ The shape, with made-up names that are not on your ground:
 ```
 
 - `problem.statement`: what the incident was and its root cause.
-- `problem.recurrences`: the earlier incidents with the same cause, each its record, its date and its evidence.
+- `problem.recurrences`: the earlier incidents with the same cause, each its record, its date (RFC 3339, with a time and a zone) and its evidence.
 - `actions`: each with its `text`, its `kind` (`Runbook`, `AlertRule`, `Check`, `Configuration` or `Other`), its `origin` and its `state`, and its `evidence`. An `Earlier` action has its `id` and its `source`, the record or the review it comes from.{{ if .Practitioner }} A `New` action is `Proposed` and has no id: the operator gives it one.
 - `postMortem`: the post-mortem draft.{{ end }}
 

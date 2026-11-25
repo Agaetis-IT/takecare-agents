@@ -44,7 +44,7 @@ Instructions: |
   {"problem": {
      "statement": "The ingress refused TLS handshakes: its certificate expired and was not renewed.",
      "recurrences": [
-       {"record": "INC-2023-0101", "date": "2023-01-01",
+       {"record": "INC-2023-0101", "date": "2023-01-01T09:30:00Z",
         "evidence": [{"tool": "the tool you called", "record": "INC-2023-0101"}]}]},
    "actions": [
      {"id": "INC-2023-0101/2", "text": "Alert 14 days before a certificate expires.",
@@ -57,7 +57,7 @@ Instructions: |
   ```
 
   - `problem.statement`: what the incident was and its root cause.
-  - `problem.recurrences`: the earlier incidents with the same cause, each its record, its date and its evidence.
+  - `problem.recurrences`: the earlier incidents with the same cause, each its record, its date (RFC 3339, with a time and a zone) and its evidence.
   - `actions`: each with its `text`, its `kind` (`Runbook`, `AlertRule`, `Check`, `Configuration` or `Other`), its `origin` and its `state`, and its `evidence`. An `Earlier` action has its `id` and its `source`, the record or the review it comes from. A `New` action is `Proposed` and has no id: the operator gives it one.
   - `postMortem`: the post-mortem draft.
 

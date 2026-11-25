@@ -4,6 +4,7 @@
 package kine
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -102,16 +103,17 @@ func TestInstructions(t *testing.T) {
 // Practitioner is asked for both. Every level forbids a question and a new
 // investigation, and asks for one JSON object.
 func TestInstructionsByLevel(t *testing.T) {
+	const undoneOnly = "As an Apprentice, report only the earlier actions still undone, `Open` or `Unknown`; leave the `Done` ones out."
 	common := []string{"never call `ask_user`", "You never investigate the incident again", "one fenced JSON block", `"problem"`, `"statement"`, `"recurrences"`, `"actions"`, `"evidence"`, "No other field", "never its output"}
 	for _, tc := range []struct {
 		level         v1alpha1.Level
 		must, mustNot []string
 	}{
-		{v1alpha1.LevelApprentice, []string{"you propose no new action and write no post-mortem", "No `New` action and no `postMortem`."}, []string{postMortemField, `"origin": "New"`, "A post-mortem draft:"}},
-		{v1alpha1.LevelPractitioner, []string{postMortemField, `"origin": "New"`, "A post-mortem draft:", "has no id: the operator gives it one"}, []string{"you propose no new action", "No `New` action"}},
+		{v1alpha1.LevelApprentice, []string{"you propose no new action and write no post-mortem", "No `New` action and no `postMortem`.", undoneOnly}, []string{postMortemField, `"origin": "New"`, "A post-mortem draft:"}},
+		{v1alpha1.LevelPractitioner, []string{postMortemField, `"origin": "New"`, "A post-mortem draft:", "has no id: the operator gives it one"}, []string{"you propose no new action", "No `New` action", undoneOnly}},
 		// Expert works as Practitioner (the controller passes the effective
 		// level); the text is the Practitioner's.
-		{v1alpha1.LevelExpert, []string{postMortemField}, []string{"No `New` action"}},
+		{v1alpha1.LevelExpert, []string{postMortemField}, []string{"No `New` action", undoneOnly}},
 	} {
 		t.Run(string(tc.level), func(t *testing.T) {
 			got, err := Instructions(demoScope, tc.level, allTypes, true)
@@ -169,6 +171,32 @@ func TestInstructionsExampleIsNotTheBench(t *testing.T) {
 			if strings.Contains(lower, s) {
 				t.Errorf("%s: the instructions name %q, part of the bench's expected answer", level, s)
 			}
+		}
+	}
+}
+
+// The example answer in the instructions decodes into the review's status
+// fields (spec 11 §2): a recurrence's date is an RFC 3339 date-time, and
+// every field the example shows exists.
+func TestInstructionsExampleDecodes(t *testing.T) {
+	for _, level := range []v1alpha1.Level{v1alpha1.LevelApprentice, v1alpha1.LevelPractitioner} {
+		got, err := Instructions(demoScope, level, allTypes, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, block, ok := strings.Cut(got, "```json\n")
+		if !ok {
+			t.Fatalf("%s: no JSON example", level)
+		}
+		block, _, _ = strings.Cut(block, "```")
+		var st v1alpha1.TakeCareReviewStatus
+		dec := json.NewDecoder(strings.NewReader(block))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&st); err != nil {
+			t.Fatalf("%s: the example does not decode into a review's status: %v", level, err)
+		}
+		if st.Problem == nil || len(st.Problem.Recurrences) == 0 || st.Problem.Recurrences[0].Date == nil {
+			t.Fatalf("%s: the example's recurrence has no date", level)
 		}
 	}
 }
