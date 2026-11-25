@@ -176,6 +176,10 @@ chart-template: chart-deps kubeconform ## Render both profiles and the workload-
 		> "$(CHART_OUT)/takecare-prod.yaml"
 	$(HELM_RUN) template takecare charts/takecare -n takecare-system -f charts/takecare/values-demo.yaml > "$(CHART_OUT)/takecare-demo.yaml"
 	$(HELM_RUN) template takecare-cluster charts/takecare-cluster -n takecare-cluster $(CLUSTER_CHART_SETS) > "$(CHART_OUT)/takecare-cluster.yaml"
+	# The values takecare init writes from the demo's answers (spec 13 §10);
+	# kagent's database is not one of its questions.
+	$(HELM_RUN) template takecare charts/takecare -n takecare-system -f internal/cli/testdata/init-demo/takecare/values.yaml \
+		--set kagent.database.postgres.urlFile=/etc/kagent-db/url > "$(CHART_OUT)/takecare-init-demo.yaml"
 	# The branch rendered on a cluster that runs Prometheus Operator: the
 	# AlertmanagerConfig (spec 02 §1).
 	$(HELM_RUN) template takecare charts/takecare -n takecare-system -f charts/takecare/values-demo.yaml \

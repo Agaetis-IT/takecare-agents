@@ -1,0 +1,12 @@
+# A runbook source served over MCP, written by takecare init. The chart
+# does not render it: apply it with the chart's release.
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareConnector
+metadata:
+  name: knowledge
+  namespace: takecare-system
+spec:
+  types: [knowledge]
+  description: "Runbook source, served over MCP"
+  mcp:
+    url: "http://runbooks.takecare-system.svc:8080/mcp"

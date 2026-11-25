@@ -1,0 +1,25 @@
+version: 1
+questionSet: 1
+created: "2026-11-24"
+answers:
+  alerts.source: Prometheus Alertmanager
+  cluster.name: ""
+  environments:
+    - demo-apps
+    - ack-system
+  knowledge: http://runbooks.takecare-system.svc:8080/mcp
+  map.repository: https://github.com/agaetis-it/takecare-agents.git main charts/takecare/files/demo-map
+  map.secret:
+    namespace: takecare-system
+    name: takecare-map
+    key: token
+  metrics.service: takecare-system/prometheus-server
+  model.provider: https://openrouter.ai/api/v1 google/gemini-3.7-flash
+  model.secret:
+    namespace: takecare-system
+    name: takecare-model
+    key: apiKey
+  operator.namespace: takecare-system
+  report.kind: The report server's log
+  teams:
+    - platform=demo-apps ack-system

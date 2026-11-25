@@ -1,0 +1,9 @@
+key: environment/demo-apps
+provenance: declared
+status: proposed
+created: 2026-11-24
+owner: team/platform
+sources:
+  - kubernetes: "demo-apps"
+relations:
+  observedBy: [observability/prometheus-server]

@@ -1,0 +1,45 @@
+# Values for the takecare chart, written by takecare init (question set 1).
+# The chart installs in the operator's namespace; the Secrets named here are
+# yours to create there before the install. A TODO marks an answer init did
+# not have: fill it in, or run takecare init again.
+platform:
+  models:
+    - name: default
+      provider: openai-compatible
+      baseURL: "https://openrouter.ai/api/v1"
+      model: "google/gemini-3.7-flash"
+      apiKeySecretRef:
+        name: "takecare-model"
+        key: "apiKey"
+addons:
+  kubernetes:
+    enabled: true
+    namespaces: ["demo-apps", "ack-system"]
+  prometheus:
+    enabled: true
+    # TODO: add the Service's port when it is not 80.
+    url: "http://prometheus-server.takecare-system.svc"
+    egress:
+      namespace: "takecare-system"
+      # TODO: the labels of the pods behind takecare-system/prometheus-server: the egress NetworkPolicy
+      # admits those pods only, and blocks the connector until they match.
+      podSelector:
+        app.kubernetes.io/name: prometheus
+  reportLog:
+    enabled: true
+    destinations:
+      - { name: apprentice, target: log }
+      - { name: practitioner, target: log }
+      - { name: review, target: log }
+  map:
+    enabled: true
+    git:
+      url: "https://github.com/agaetis-it/takecare-agents.git"
+      ref: "main"
+      path: "charts/takecare/files/demo-map"
+      credentialSecret:
+        name: "takecare-map"
+        key: "token"
+# TODO: kagent's database, which init does not ask about: a Secret in the
+# engine's namespace holding the PostgreSQL URL, mounted and named by
+# kagent.database.postgres.urlFile (see values-prod.yaml).
