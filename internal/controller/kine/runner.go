@@ -44,6 +44,9 @@ const (
 	failQuestion    = "the review asked a question, which no one answers during a review; the question is not kept"
 )
 
+// usageNotRun is why a review that never ran has no usage (AC 6).
+const usageNotRun = "the review did not run"
+
 // defaultLookback is review.lookback's default (spec 11 §2).
 const defaultLookback = 30 * 24 * time.Hour
 
@@ -253,6 +256,7 @@ func (w *Runner) adopt(ctx context.Context, rv *v1alpha1.TakeCareReview, owner t
 				return false
 			}
 			st.Phase, st.Reason, st.CompletedAt = v1alpha1.RunFailed, reason[:min(len(reason), maxReason)], &done
+			sayUsage(&st.Conditions, nil, usageNotRun, rv.Generation)
 			return true
 		})
 		if err != nil {
@@ -306,6 +310,15 @@ func (w *Runner) run(ctx context.Context, rv *v1alpha1.TakeCareReview, k *v1alph
 	}
 	if lvl == "" {
 		lvl = v1alpha1.LevelApprentice
+	}
+	// Only this runner takes a Queued review it holds; one ended
+	// meanwhile by another writer gets no span of an empty run.
+	var cur v1alpha1.TakeCareReview
+	if err := w.Reader.Get(ctx, client.ObjectKeyFromObject(rv), &cur); err != nil || cur.Status.Phase != v1alpha1.RunQueued {
+		if err != nil {
+			log.FromContext(ctx).Error(err, "read the review to run", "review", rv.Name)
+		}
+		return
 	}
 	ctx, span := w.tracer().Start(ctx, semconv.OperationInvokeAgent+" "+Kind, trace.WithAttributes(
 		attribute.String(semconv.GenAIOperationName, semconv.OperationInvokeAgent),
@@ -471,8 +484,9 @@ func periodOf(rv *v1alpha1.TakeCareReview, k *v1alpha1.TakeCareKine) v1alpha1.Re
 	return v1alpha1.ReviewPeriod{From: metav1.NewTime(rv.CreationTimestamp.Add(-lookback)), To: rv.CreationTimestamp}
 }
 
-// knownIDs are the action ids the Kiné's other reviews hold: an earlier
-// action keeps its id only when one of them does (spec 11 §2).
+// knownIDs are the action ids the Kiné's other reviews hold, silent ones
+// left out as the history lists leave them out: an earlier action keeps
+// its id only when one of them does (spec 11 §2, §4).
 func (w *Runner) knownIDs(ctx context.Context, rv *v1alpha1.TakeCareReview) (map[string]bool, error) {
 	var list v1alpha1.TakeCareReviewList
 	if err := w.Client.List(ctx, &list, client.InNamespace(rv.Namespace)); err != nil {
@@ -480,8 +494,8 @@ func (w *Runner) knownIDs(ctx context.Context, rv *v1alpha1.TakeCareReview) (map
 	}
 	known := map[string]bool{}
 	for _, o := range list.Items {
-		if o.Name == rv.Name || o.Spec.KineRef.Name != rv.Spec.KineRef.Name {
-			continue
+		if o.Name == rv.Name || o.Spec.KineRef.Name != rv.Spec.KineRef.Name || o.Spec.Silent {
+			continue // a bench's runs are not the Rehab
 		}
 		for _, a := range o.Status.Actions {
 			known[a.ID] = true
