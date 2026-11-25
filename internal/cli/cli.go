@@ -40,7 +40,7 @@ Usage:
 Commands:
   status    show what the install says about itself (reads the cluster)
   review    turn a survey's proposals into Map files, on a local branch
-  validate  check the Map files, offline, with the Map server's checks
+  validate  check the Map files and question files, offline
   version   print the version, the commit and the Go version
 
 Run "takecare <command> -h" for a command's flags.

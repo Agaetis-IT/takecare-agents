@@ -97,6 +97,12 @@ takecare validate --map-dir map
 takecare validate --output json
 ```
 
+With `--questions <dir>`, it also checks the question files of a directory (its `.yaml` and `.yml` files, in name order; the format is spec 13 §4.2) without asking anything or rendering any output. Every fault of every file is reported at once, each with its file: an unknown field or kind, an id defined twice, a `when` naming an unknown question or part of a cycle, a pattern or a template that does not parse, an output path that is absolute, leaves the directory, sits under `.git/` or `.takecare/`, or is not a `.yaml`, `.yml` or `.md` file, and more than 200 outputs. A template may use the predefined functions of Go's `text/template` and `quote`, `toYaml`, `lower`, `join` and `default`; `call` always fails, and a key the answers do not hold stops the rendering. A directory without a question file is a fault.
+
+```bash
+takecare validate --map-dir map --questions questions
+```
+
 ## `takecare version`
 
 Prints the release version, the commit and the Go version the binary was built with. It reads no cluster. `--output json` prints the same as an object.
@@ -107,6 +113,6 @@ Every command takes `--output text|json`, `--no-color` and `--accessible`. No co
 
 | Code | Meaning |
 |---|---|
-| 0 | done; for `status`, the platform, every role and every connector `Ready`; for `validate`, a valid Map |
+| 0 | done; for `status`, the platform, every role and every connector `Ready`; for `validate`, a valid Map and valid question files |
 | 1 | a finding: for `status`, something not `Ready` (or no platform at all); for `validate`, a fault in the files; for `review`, a result that does not validate (nothing is written) |
 | 2 | the command could not run: a usage error, a kubeconfig, a list or a file it could not read, a survey not `Completed`, a dirty working tree on the paths `review` writes, a refused commit |
