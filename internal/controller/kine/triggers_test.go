@@ -460,10 +460,10 @@ func TestReviewAfterResolution(t *testing.T) {
 	if want := reviewName(k.UID, string(inv.UID)); got.Name != want || !slices.Equal(got.Spec.Investigations, []string{inv.Name}) || got.Spec.Incident != "shop.cart" {
 		t.Errorf("review %s %+v, want %s", got.Name, got.Spec, want)
 	}
-	eventually(t, "the Kiné's last review", func() (bool, string) {
-		k := f.getKine(t, kineName)
-		return k.Status.LastReview == got.Name, k.Status.LastReview
-	})
+	// The trigger leaves lastReview to the review lifecycle (lot K5a).
+	if k := f.getKine(t, kineName); k.Status.LastReview != "" {
+		t.Errorf("lastReview %q, want empty", k.Status.LastReview)
+	}
 }
 
 // An investigation whose alert never resolves is reviewed after the grace

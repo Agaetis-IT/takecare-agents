@@ -320,9 +320,6 @@ func (r *Reconciler) writeStatus(ctx context.Context, k *v1alpha1.TakeCareKine, 
 	k.Status.Level = st.level
 	k.Status.RenderPendingSince = st.pendingSince
 	k.Status.NextReviewTime, k.Status.PendingTrigger = t.next, t.pending
-	if t.last != "" {
-		k.Status.LastReview, k.Status.LastReviewTime = t.last, t.lastAt
-	}
 	for _, c := range st.conditions {
 		meta.SetStatusCondition(&k.Status.Conditions, c)
 	}

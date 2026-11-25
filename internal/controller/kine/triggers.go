@@ -86,7 +86,6 @@ type triggered struct {
 	next    *metav1.Time
 	pending v1alpha1.ReviewTrigger
 	last    string
-	lastAt  *metav1.Time
 	// wake is when a trigger is due next (a grace, the schedule), zero
 	// for none.
 	wake time.Time
@@ -144,7 +143,7 @@ func (r *Reconciler) triggers(ctx context.Context, k *v1alpha1.TakeCareKine, st 
 	}
 	rv := r.newReview(k, st.level, reviewName(k.UID, "schedule", due.UTC().Format(time.RFC3339)), v1alpha1.ReviewTriggerSchedule)
 	rv.Spec.Period = &v1alpha1.ReviewPeriod{From: metav1.NewTime(now.Add(-lookbackOf(k))), To: metav1.NewTime(now)}
-	return out, r.create(ctx, rv, now, &out)
+	return out, r.create(ctx, rv, &out)
 }
 
 // incidentReviews creates one review per incident key whose investigations
@@ -220,7 +219,7 @@ func (r *Reconciler) incidentReviews(ctx context.Context, k *v1alpha1.TakeCareKi
 				start = oldest.CreationTimestamp.Time
 			}
 			rv.Spec.Period = &v1alpha1.ReviewPeriod{From: metav1.NewTime(start.Add(-lookbackOf(k))), To: metav1.NewTime(start)}
-			if err := r.create(ctx, rv, now, out); err != nil {
+			if err := r.create(ctx, rv, out); err != nil {
 				return err
 			}
 		}
@@ -299,15 +298,14 @@ func (r *Reconciler) newReview(k *v1alpha1.TakeCareKine, lvl v1alpha1.Level, nam
 
 // create creates a review; one that exists already is the deduplication
 // (spec 06 §2), not an error.
-func (r *Reconciler) create(ctx context.Context, rv *v1alpha1.TakeCareReview, now time.Time, out *triggered) error {
+func (r *Reconciler) create(ctx context.Context, rv *v1alpha1.TakeCareReview, out *triggered) error {
 	switch err := r.Create(ctx, rv); {
 	case apierrors.IsAlreadyExists(err):
 		return nil
 	case err != nil:
 		return fmt.Errorf("create review %s: %w", rv.Name, err)
 	}
-	at := metav1.NewTime(now)
-	out.last, out.lastAt = rv.Name, &at
+	out.last = rv.Name
 	return nil
 }
 
