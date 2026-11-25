@@ -37,6 +37,7 @@ answers:
   ref: { namespace: ns, name: n, key: k }
   extra.id: kept as is
 unknown: [other.id]
+when: { extra.id: other.on }
 `)
 	f, answers, err := DecodeAnswers(set, raw)
 	if err != nil {
@@ -54,7 +55,7 @@ unknown: [other.id]
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, s := range []string{"extra.id: kept as is", "- envs", "- other.id", "ref: pick=a", `created: "2026-11-25"`} {
+	for _, s := range []string{"extra.id: kept as is", "- envs", "- other.id", "ref: pick=a", "extra.id: other.on", `created: "2026-11-25"`} {
 		if !strings.Contains(string(out), s) {
 			t.Errorf("no %q in:\n%s", s, out)
 		}
