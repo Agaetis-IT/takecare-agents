@@ -58,7 +58,7 @@ const (
 	reasonTest = "Test"
 )
 
-var agentGVK = schema.GroupVersionKind{Group: "kagent.dev", Version: "v1alpha2", Kind: "Agent"}
+var agentGVK = kagentGV.WithKind("Agent")
 
 // TestMain gives controller-runtime a logger before envtest starts.
 func TestMain(m *testing.M) {
@@ -242,11 +242,12 @@ func (f *fixture) waitCondition(t *testing.T, name, condType string, status meta
 	return k
 }
 
-// waitMessage waits for a condition's reason and a phrase of its message.
-func (f *fixture) waitMessage(t *testing.T, name, condType, reason, phrase string) {
+// waitMessage waits for a condition's reason and a phrase of its message,
+// on the Kiné named kineName.
+func (f *fixture) waitMessage(t *testing.T, condType, reason, phrase string) {
 	t.Helper()
-	eventually(t, name+" "+condType+" "+reason+" saying "+phrase, func() (bool, string) {
-		k := f.getKine(t, name)
+	eventually(t, kineName+" "+condType+" "+reason+" saying "+phrase, func() (bool, string) {
+		k := f.getKine(t, kineName)
 		c := meta.FindStatusCondition(k.Status.Conditions, condType)
 		return c != nil && c.Reason == reason && strings.Contains(c.Message, phrase), describe(k)
 	})
@@ -351,14 +352,13 @@ func startMap(t *testing.T, entries map[string]string) string {
 // The Kiné's routes (spec 11 §6, §9), as approved for lot K3: its model
 // route, its A2A route, one MCP route per bound connector with the read
 // tools and the listed content tools only, the same at every level, no
-// argument rule, none for report; the agent itself comes with the next
-// lot, so EngineReady is False.
+// argument rule, none for report; and its agent (TestAgent).
 func TestRoutes(t *testing.T) {
 	t.Parallel()
 	f := start(t)
 	f.platform(t)
 	f.connector(t, connHist, v1alpha1.ConnectorHistory, history, true)
-	f.connector(t, connKnow, v1alpha1.ConnectorKnowledge, tools([]string{"search"}), true)
+	f.connector(t, connKnow, v1alpha1.ConnectorKnowledge, tools([]string{toolSearch}), true)
 	f.connector(t, connRep, v1alpha1.ConnectorReport, tools([]string{"post_message"}), true)
 	f.kine(t, "kine", func(k *v1alpha1.TakeCareKine) {
 		k.Spec.Level = v1alpha1.LevelPractitioner
@@ -366,7 +366,8 @@ func TestRoutes(t *testing.T) {
 		k.Spec.Connectors.Report = connRep
 		k.Spec.ContentTools = []string{invGet}
 	})
-	k := f.waitCondition(t, "kine", v1alpha1.ConditionEngineReady, metav1.ConditionFalse, ReasonNotRendered)
+	f.agentReady(t)
+	k := f.waitCondition(t, "kine", v1alpha1.ConditionEngineReady, metav1.ConditionTrue, ReasonReady)
 	for _, c := range []struct {
 		condType string
 		status   metav1.ConditionStatus
@@ -375,14 +376,11 @@ func TestRoutes(t *testing.T) {
 		{v1alpha1.ConditionLevelSupported, metav1.ConditionTrue, ReasonSupported},
 		{v1alpha1.ConditionModelResolved, metav1.ConditionTrue, ReasonResolved},
 		{v1alpha1.ConditionConnectorsReady, metav1.ConditionTrue, ReasonReady},
-		{v1alpha1.ConditionReady, metav1.ConditionFalse, ReasonNotReady},
+		{v1alpha1.ConditionReady, metav1.ConditionTrue, ReasonReady},
 	} {
 		if got := meta.FindStatusCondition(k.Status.Conditions, c.condType); got == nil || got.Status != c.status || got.Reason != c.reason {
 			t.Errorf("%s: want %s %s: %s", c.condType, c.status, c.reason, describe(k))
 		}
-	}
-	if msg := meta.FindStatusCondition(k.Status.Conditions, v1alpha1.ConditionEngineReady).Message; msg != messageNoAgent {
-		t.Errorf("EngineReady message = %q", msg)
 	}
 	if k.Status.Level != v1alpha1.LevelPractitioner || !slices.Contains(k.Finalizers, Finalizer) {
 		t.Errorf("level %s, finalizers %v", k.Status.Level, k.Finalizers)
@@ -414,7 +412,7 @@ func TestRoutes(t *testing.T) {
 		if !strings.Contains(rule, "type:"+c.match+" value:"+c.path+"]") || !strings.Contains(rule, "name:"+c.backend+" ") || strings.Contains(rule, "filters") {
 			t.Errorf("route %s: %s", c.route, rule)
 		}
-		if ref := metav1.GetControllerOf(r); ref == nil || ref.Kind != v1alpha1.KindTakeCareKine || ref.Name != "kine" {
+		if ref := metav1.GetControllerOf(r); ref == nil || ref.Kind != v1alpha1.KindTakeCareKine || ref.Name != kineName {
 			t.Errorf("route %s is not controlled by its Kiné: %v", c.route, r.GetOwnerReferences())
 		}
 		if l := r.GetLabels(); l[v1alpha1.LabelRole] != Kind || l["app.kubernetes.io/part-of"] != "takecare" {
@@ -424,8 +422,8 @@ func TestRoutes(t *testing.T) {
 	if r, _ := f.get(routes.HTTPRouteGVK, "role-kine-kine-model-default"); r.GetLabels()[routes.ModelLabel] != "default" {
 		t.Errorf("the model route has no model label: %v", r.GetLabels())
 	}
-	if _, err := f.get(agentGVK, AgentName(k)); !apierrors.IsNotFound(err) {
-		t.Errorf("an agent was rendered: %v", err)
+	if _, err := f.get(agentGVK, agentKine); err != nil {
+		t.Errorf("no agent was rendered: %v", err)
 	}
 
 	// The same allow-list at Apprentice, and Expert works as Practitioner.
@@ -485,7 +483,7 @@ func TestConnectors(t *testing.T) {
 	// The history connector, not ready: its route is rendered (its tools
 	// are known), the Kiné is still not ready to review.
 	f.connector(t, connHist, v1alpha1.ConnectorHistory, history, false)
-	f.waitMessage(t, "kine", v1alpha1.ConditionConnectorsReady, ReasonHistoryMissing, "connector history is not Ready")
+	f.waitMessage(t, v1alpha1.ConditionConnectorsReady, ReasonHistoryMissing, "connector history is not Ready")
 	eventually(t, "the history route", func() (bool, string) {
 		got := f.expression(t, "role-kine-kine-mcp-history")
 		return got == `mcp.tool.name in ["investigation_get", "investigations_list", "reviews_list"]`, got
@@ -507,7 +505,7 @@ func TestConnectors(t *testing.T) {
 	if !strings.Contains(msg, "connector incidents was never discovered") || strings.Contains(msg, "pods_log") {
 		t.Errorf("ConnectorsReady message = %q", msg)
 	}
-	if c := meta.FindStatusCondition(k.Status.Conditions, v1alpha1.ConditionReady); !strings.HasPrefix(c.Message, "EngineReady: ") {
+	if c := meta.FindStatusCondition(k.Status.Conditions, v1alpha1.ConditionReady); strings.HasPrefix(c.Message, "ConnectorsReady: ") {
 		t.Errorf("a degraded connector stops the Kiné: %s", c.Message)
 	}
 	if objs := strings.Join(f.roleObjects(t, "kine"), " "); strings.Contains(objs, "incidents") {
@@ -518,7 +516,7 @@ func TestConnectors(t *testing.T) {
 	if err := f.c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: connKnow}, &c); err != nil {
 		t.Fatal(err)
 	}
-	c.Status.Tools = tools([]string{"search"})
+	c.Status.Tools = tools([]string{toolSearch})
 	meta.SetStatusCondition(&c.Status.Conditions, metav1.Condition{Type: v1alpha1.ConditionReady, Status: metav1.ConditionTrue, Reason: reasonTest})
 	if err := f.c.Status().Update(context.Background(), &c); err != nil {
 		t.Fatal(err)
@@ -544,7 +542,7 @@ func TestConnectors(t *testing.T) {
 		t.Errorf("ConnectorsReady message = %q", msg)
 	}
 	f.update(t, "kine", func(k *v1alpha1.TakeCareKine) { k.Spec.Connectors.Report = connKnow })
-	f.waitMessage(t, "kine", v1alpha1.ConditionConnectorsReady, ReasonConnectorMissing, "connector incidents is bound as report but does not declare that type")
+	f.waitMessage(t, v1alpha1.ConditionConnectorsReady, ReasonConnectorMissing, "connector incidents is bound as report but does not declare that type")
 }
 
 // Two Kinés of one namespace whose scopes overlap: the later one is
@@ -562,12 +560,12 @@ func TestScopeOverlap(t *testing.T) {
 	f.connector(t, connMap, v1alpha1.ConnectorMap, tools([]string{"entry", "map_at"}), true)
 	setRevision(t, f, "rev1")
 	f.kine(t, "kine", nil)
-	f.waitCondition(t, "kine", v1alpha1.ConditionEngineReady, metav1.ConditionFalse, ReasonNotRendered)
+	f.waitCondition(t, "kine", v1alpha1.ConditionEngineReady, metav1.ConditionFalse, "AgentAcceptedPending")
 	// Without a Map, the entity is not placed: no overlap.
 	f.kine(t, "second", func(k *v1alpha1.TakeCareKine) {
 		k.Spec.Scope = v1alpha1.Scope{Entities: []v1alpha1.EntityKey{shopAPI}}
 	})
-	f.waitCondition(t, "second", v1alpha1.ConditionEngineReady, metav1.ConditionFalse, ReasonNotRendered)
+	f.waitCondition(t, "second", v1alpha1.ConditionEngineReady, metav1.ConditionFalse, "AgentAcceptedPending")
 	f.update(t, "second", func(k *v1alpha1.TakeCareKine) { k.Spec.Connectors.Map = []string{connMap} })
 	second := f.waitCondition(t, "second", v1alpha1.ConditionReady, metav1.ConditionFalse, v1alpha1.ReasonScopeOverlap)
 	if msg := meta.FindStatusCondition(second.Status.Conditions, v1alpha1.ConditionReady).Message; !strings.Contains(msg, "TakeCareKine kine, which came first (entity service/shop-api in namespace shop)") {
@@ -589,7 +587,7 @@ func TestScopeOverlap(t *testing.T) {
 	f.update(t, "second", func(k *v1alpha1.TakeCareKine) {
 		k.Spec.Scope = v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{billing}, Entities: []v1alpha1.EntityKey{"environment/east.billing"}}
 	})
-	f.waitCondition(t, "second", v1alpha1.ConditionEngineReady, metav1.ConditionFalse, ReasonNotRendered)
+	f.waitCondition(t, "second", v1alpha1.ConditionEngineReady, metav1.ConditionFalse, "AgentAcceptedPending")
 	eventually(t, "the disjoint Kiné's routes", func() (bool, string) {
 		objs := strings.Join(f.roleObjects(t, "second"), " ")
 		return strings.Contains(objs, "HTTPRoute/role-kine-second-mcp-history"), objs
