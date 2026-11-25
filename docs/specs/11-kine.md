@@ -45,7 +45,7 @@ It embeds `RoleCommonSpec` (`level`, `scope`, `model`, `suspend`, `contentTools`
 
 `scope` takes `namespaces`, `entities` or both (spec 06 §1), and says which investigations are the Kiné's: an investigation is in scope when its alert's namespace is one of the scope's namespaces, or when its alert resolved to a Map entry the scope names (`spec.alert.entity`). On a named cluster, the namespace is the cluster's (ADR 0016 §5), as for the Doc. Two Kinés of one namespace whose scopes overlap: the later one gets `Ready` False with reason `ScopeOverlap`, naming the other, and starts no review, as two Docs do.
 
-Status: the shared `RoleStatus` (conditions `Ready`, `LevelSupported`, `ModelResolved`, `ConnectorsReady`, `EngineReady`, `ScheduleValid`), plus `lastReview`, `lastReviewTime`, `nextReviewTime`, `pendingTrigger` and `renderPendingSince` (§6).
+Status: the shared `RoleStatus` (conditions `Ready`, `LevelSupported`, `ModelResolved`, `ConnectorsReady`, `EngineReady`, `ScheduleValid`), plus `lastReview`, `lastReviewTime`, `nextReviewTime`, `pendingTrigger` and `renderPendingSince` (§6). `lastReview` and `lastReviewTime` name the last review started and when it started.
 
 `ConnectorsReady` is False (reason `HistoryConnectorMissing`, as an Intendant without its map says `MapConnectorMissing`) without a usable `history` connector: the Kiné cannot see the incidents it reviews. The other slots are optional; a slot whose connector is not ready is a blind spot of each review (§2, `blindSpots`), not a refusal.
 
@@ -179,9 +179,11 @@ The operator publishes, never the model (spec 02 §4), through the `report` conn
 
 Every attempt carries the idempotency key `review/<uid>` (spec 05, "Publishing once"). Retries, `Retry-After`, the 3-minute bound and the recorded failure are the diagnosis's (spec 02 §4).
 
+A review is published at the lower of its `spec.level` and the Kiné's effective level when it is published, and goes to that level's destination (§7): a review made by hand at `Practitioner` on an `Apprentice` Kiné records at `Practitioner`, as the bench needs (§12), but never reaches the `practitioner` destination (invariant 2). A review that posts nothing says why in `status.published`, with a fixed phrase.
+
 The message, in English, Block Kit for the `slack` adapter and the same content as text for `log`, every `mrkdwn` text `verbatim`:
 
-- header: `Kiné · {alertname} on {entity or namespace}` for a per-incident review, `Kiné · periodic review` otherwise, with the Kiné's name unless it is `kine`;
+- header: `Kiné · {alertname} on {entity or namespace}` for a per-incident review, `Kiné · periodic review` for a scheduled one, `Kiné · review on demand` for one made by hand over a period, with the Kiné's name unless it is `kine`;
 - the problem statement;
 - the recurrences, by record id and date;
 - the actions, first 10, each with its id, state and text, then how many more;
@@ -213,8 +215,10 @@ One trace per review (ADR 0006), its ID in `status.traceID`. Its root is `invoke
 
 Metrics:
 
-- `takecare_reviews_total{trigger,result}` (`completed`, `failed`, `abandoned`): reviews ended, counted once by the writer that ended them;
-- `takecare_review_actions{kine,state}`: a gauge from each Kiné's last completed review, the Rehab's state now; its series go with the Kiné.
+- `takecare_reviews_total{kine,trigger,result}` (`completed`, `unreadable`, `failed`, `abandoned`; `unreadable` is a review `Completed` whose answer could not be read): reviews ended per Kiné, counted once by the writer that ended them; its series go with the Kiné;
+- `takecare_review_actions{kine,state}` (`open`, that is `Proposed` or `Open`; `done`; `unknown`): a gauge from each Kiné's last completed review whose answer was read, silent ones left out, the Rehab's state now; its series go with the Kiné.
+
+No label holds an id: a Kiné gives at most a few series.
 
 ## 12. Demo and bench
 
