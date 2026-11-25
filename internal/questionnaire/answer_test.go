@@ -152,6 +152,12 @@ func TestCheckAnswer(t *testing.T) {
 		{q("oncall.secret"), Answer{Value: SecretRef{Namespace: nsOps, Name: secretPager, Key: "token"}}, ""},
 		{q("oncall.secret"), Answer{Value: SecretRef{Name: secretPager}}, "oncall.secret: a Secret reference needs a namespace and a name"},
 		{q("oncall.secret"), Answer{Value: SecretRef{Namespace: nsOps, Name: secretPager, Key: token}}, "oncall.secret: the answer holds a token prefix: " + ErrCredential.Error()},
+		{q("oncall.secret"), Answer{Value: SecretRef{Namespace: "ops) # x\nkind: Secret", Name: secretPager}}, "oncall.secret: the Secret's namespace is not a DNS label"},
+		{q("oncall.secret"), Answer{Value: SecretRef{Namespace: "ops.team", Name: secretPager}}, "oncall.secret: the Secret's namespace is not a DNS label"},
+		{q("oncall.secret"), Answer{Value: SecretRef{Namespace: nsOps, Name: "Pager"}}, "oncall.secret: the Secret's name is not a DNS subdomain"},
+		{q("oncall.secret"), Answer{Value: SecretRef{Namespace: nsOps, Name: "pager\" # x"}}, "oncall.secret: the Secret's name is not a DNS subdomain"},
+		{q("oncall.secret"), Answer{Value: SecretRef{Namespace: nsOps, Name: "pager.v2", Key: "a/b"}}, "oncall.secret: the Secret's key is not a valid data key"},
+		{q("oncall.secret"), Answer{Value: SecretRef{Namespace: nsOps, Name: "pager.v2", Key: "ca.crt"}}, ""},
 		{q("oncall.secret"), Answer{Value: "ops/pager"}, "oncall.secret: a text answer to a secretRef question"},
 		{q("oncall.paged"), Answer{Value: 3}, "oncall.paged: an answer of type int"},
 	}

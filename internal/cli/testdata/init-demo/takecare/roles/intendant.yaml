@@ -1,0 +1,21 @@
+# The Intendant (spec 10), written by takecare init: level Apprentice, it
+# surveys the namespaces below and proposes Map entries for a person to
+# review with takecare review.
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareIntendant
+metadata:
+  name: intendant
+  namespace: takecare-system
+spec:
+  level: Apprentice
+  scope:
+    namespaces: ["demo-apps", "ack-system"]
+  connectors:
+    map: [map]
+    cluster: [kubernetes]
+    metrics: [prometheus]
+    knowledge: [knowledge]
+    report: report
+  report:
+    apprentice: review
+    practitioner: review

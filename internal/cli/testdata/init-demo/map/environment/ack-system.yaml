@@ -1,0 +1,9 @@
+key: environment/ack-system
+provenance: declared
+status: proposed
+created: 2026-11-24
+owner: team/platform
+sources:
+  - kubernetes: "ack-system"
+relations:
+  observedBy: [observability/prometheus-server]

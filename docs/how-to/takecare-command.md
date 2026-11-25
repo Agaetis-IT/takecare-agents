@@ -2,7 +2,7 @@
 
 `takecare` is the command-line tool for the people who set up and keep a TakeCare install ([spec 13](../specs/13-tui.md)). It reads the cluster and works on files in your Git working copy. **It never writes into a cluster**: it has no create, update, patch or delete call, no watch, no exec and no port-forward, and it never changes your kubeconfig.
 
-This page covers the commands shipped so far: `status`, `review`, `validate` and `version`. `init` and `discover` come with the next lots of spec 13.
+This page covers the commands shipped so far: `init`, `status`, `discover`, `review`, `validate` and `version`.
 
 ## Install
 
@@ -25,8 +25,9 @@ It reads with your own rights. The charts ship no role for it: give the people w
 | Command | Rights |
 |---|---|
 | `status` | `get`, `list` on `takecareplatforms`, `takecaredocs`, `takecareintendants`, `takecarerangers`, `takecareconnectors`, `takecaresurveys`, `takecareinvestigations` (`takecare.agaetis.fr`) |
+| `discover` | `get`, `list` on `takecareintendants`, `takecaresurveys`, `takecareconnectors` (`takecare.agaetis.fr`) |
 | `review` | `get`, `list` on `takecareintendants`, `takecaresurveys` (`takecare.agaetis.fr`); `get` on `configmaps` in the operator's namespace, for the survey's full set of proposals |
-| `validate`, `version` | none |
+| `init`, `validate`, `version` | none |
 
 Kubernetes' built-in `view` ClusterRole does not cover the TakeCare kinds. For example:
 
@@ -42,6 +43,43 @@ rules:
 ```
 
 Bind it to a group with a `ClusterRoleBinding`. The platform and the Ranger are cluster-scoped, which is why the example is a ClusterRole.
+
+## `takecare init`
+
+Asks factual questions about your ground and writes the first files of an install into a Git working copy: the Map's first entries, the values for the `takecare` chart, the Doc and the Intendant at level Apprentice, and a connector to a runbook source served over MCP when you name one.
+
+```bash
+takecare init                                        # asks, on a terminal
+takecare init --answers answers.yaml --no-commit     # no question: every answer from the file
+takecare init --accessible                           # line prompts, for a screen reader (also TAKECARE_ACCESSIBLE=1)
+```
+
+The built-in questions ask what is there, where, and who owns it: the cluster's name, the operator's namespace, the application namespaces and their teams, the alert source, the Prometheus service, where results are posted, the model, the Map's repository, a runbook source, and where each credential lives. Each shows why it is asked. A question about a credential asks for a Secret's namespace, name and key, never its value, and an answer shaped like a credential is refused without being echoed. Every question accepts "I don't know" (`?`, or the last choice): the files then hold a `TODO` comment where the answer goes, never a guessed value.
+
+It writes, by default:
+
+| Path | What |
+|---|---|
+| `map/README.md`, `map/environment/<namespace>.yaml`, `map/team/<team>.yaml`, `map/observability/<name>.yaml` | the Map's first entries, `provenance: declared`, `status: proposed`, for a person to validate; a named cluster gives `environment/<cluster>` and `environment/<cluster>.<namespace>` |
+| `takecare/values.yaml` | the chart's values: the platform's model and the four add-ons (kubernetes, prometheus, report, map) |
+| `takecare/roles/doc.yaml`, `takecare/roles/intendant.yaml` | the Doc and the Intendant, level Apprentice |
+| `takecare/connectors/knowledge.yaml` | the runbook source's connector, which the chart does not render |
+| `.takecare/answers.yaml` | the answers, the ids answered "I don't know", and the question set's version; no secret value |
+
+Read every `TODO` before installing: init does not ask for kagent's database, the Prometheus pods' labels or the Service's port, and the chart refuses to render until kagent's database is set.
+
+Run again, it loads `.takecare/answers.yaml` and asks only the questions without an answer and those whose condition changed. It shows the diff of every file it changes. A file a person edited since the last run is kept when init has nothing new for it; otherwise init shows its diff and asks, and without a terminal it stops with exit code 2 unless `--overwrite` is given. It never deletes a file.
+
+| Flag | Meaning |
+|---|---|
+| `--answers <file>` | the answers, in the format of `.takecare/answers.yaml`; nothing is asked, and a missing answer is an error naming it |
+| `--questions <dir>` | extra question files (spec 13 §4.2), checked whole before anything is asked; repeatable |
+| `--dir` | the repository directory, `.` by default |
+| `--map-dir`, `--resources-dir`, `--state-dir` | the directories, inside the repository: `map`, `takecare`, `.takecare` by default |
+| `--overwrite` | replace the files a person edited |
+| `--branch`, `--no-commit` | the branch to create and commit on (`takecare/init-<date>` by default; it must not exist yet), or no branch and no commit |
+
+Every file is rendered and checked before the first is written: the YAML parses, the Map passes the Map server's checks with the files already there, and each TakeCare object passes its kind's schema. One fault stops the run, and nothing is written.
 
 ## `takecare status`
 
@@ -63,6 +101,34 @@ A script can wait for an install with the exit code:
 
 ```bash
 until takecare status >/dev/null; do sleep 10; done
+```
+
+## `takecare discover`
+
+Shows the newest survey of an Intendant (`--intendant`, required when the namespace holds several; the only one by default), whatever its phase:
+
+- its name, phase, trigger and age, and the reason of one that did not complete;
+- the Map revision it surveyed against and the one the Intendant's map connector serves now; when they differ, it says that the survey predates the served Map;
+- its proposals counted by action (add, update, remove, over the full set) and by source (import, agent, over the proposals the survey's status holds; the rest are in its ConfigMap, which `discover` does not read);
+- each layer's seen, matched and proposed counts, with what it could not read and why;
+- its blind spots.
+
+It then prints the command that creates a new survey, with the Intendant's name and namespace filled in, for you to run with your own rights:
+
+```bash
+kubectl -n takecare-system create -f - <<'EOF'
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareSurvey
+metadata: { generateName: intendant-by-hand-, namespace: takecare-system }
+spec: { intendantRef: { kind: TakeCareIntendant, name: intendant } }
+EOF
+```
+
+`discover` creates nothing: running the command is your act, with your rights. Once the new survey is `Completed`, `takecare review` turns its proposals into Map files.
+
+```bash
+takecare discover
+takecare discover --intendant intendant --output json   # a stable shape, versioned by schemaVersion
 ```
 
 ## `takecare review`
@@ -109,10 +175,10 @@ Prints the release version, the commit and the Go version the binary was built w
 
 ## Common flags and exit codes
 
-Every command takes `--output text|json`, `--no-color` and `--accessible`. No command draws a full screen or prints color yet: `review` asks with line prompts, which suit a screen reader, so the last two change nothing yet. Only `review` prompts, and only on a terminal: without one, it reads `--accept` and `--skip`, and stops with exit code 2 when neither is given.
+Every command takes `--output text|json`, `--no-color` and `--accessible`. `init` asks with forms, full screen on a terminal, or with line prompts for a screen reader with `--accessible` or `TAKECARE_ACCESSIBLE=1`; `review` asks with line prompts. Only `init`'s forms print color, and `--no-color` turns it off, in full screen and in line prompts. Only `init` and `review` prompt, and only on a terminal: without one, `init` reads `--answers` and `review` reads `--accept` and `--skip`, and each stops with exit code 2 when an answer is missing.
 
 | Code | Meaning |
 |---|---|
-| 0 | done; for `status`, the platform, every role and every connector `Ready`; for `validate`, a valid Map and valid question files |
+| 0 | done (for `discover`, whatever the survey shows); for `status`, the platform, every role and every connector `Ready`; for `validate`, a valid Map and valid question files |
 | 1 | a finding: for `status`, something not `Ready` (or no platform at all); for `validate`, a fault in the files; for `review`, a result that does not validate (nothing is written) |
-| 2 | the command could not run: a usage error, a kubeconfig, a list or a file it could not read, a survey not `Completed`, a dirty working tree on the paths `review` writes, a refused commit |
+| 2 | the command could not run: a usage error, a kubeconfig, a list or a file it could not read, a survey not `Completed`, a question file or a rendered file with a fault (`init`, nothing written), a file a person edited without `--overwrite`, a dirty working tree on the paths `init` or `review` writes, a refused commit |
