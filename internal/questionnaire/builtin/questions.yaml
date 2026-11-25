@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 Agaetis
+# SPDX-License-Identifier: Apache-2.0
+#
+# The built-in question set of takecare init (spec 13 §4.1): factual
+# questions about the ground only, each with its why. Every question
+# accepts "I don't know". No question asks for a secret value: the secretRef
+# questions ask where a Secret lives. Reviewed like code with every change;
+# a change of meaning bumps builtin.Version.
+version: 1
+questions:
+  - id: cluster.name
+    text: The cluster's name, as a DNS label, or empty for a single-cluster install
+    why: Names the cluster in namespaces and sources (ADR 0016, decision 5)
+    kind: text
+    validate: { pattern: '^([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)?$' }
+  - id: operator.namespace
+    text: The namespace the operator runs in
+    why: Where the roles and connectors are created
+    kind: text
+    validate: { pattern: '^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$' }
+  - id: environments
+    text: The namespaces that hold the applications, one environment each
+    why: environment/* entries and the roles' scope
+    kind: list
+    validate: { pattern: '^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$' }
+  - id: teams
+    text: The teams that own them, with the namespaces of each, as <team>=<namespace> <namespace>...
+    why: team/* entries and owner
+    kind: list
+    validate: { pattern: '^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?=[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?( [a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)*$' }
+  - id: alerts.source
+    text: The alert source
+    why: The Doc's alert intake (spec 02 §1)
+    kind: choice
+    choices: [Prometheus Alertmanager, None yet]
+  - id: metrics.service
+    text: The Prometheus service the alerting rules are loaded in, as <namespace>/<name>, or empty for none
+    why: The metrics connector (spec 10 §4) and observability/*
+    kind: text
+    validate: { pattern: '^([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?/[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)?$' }
+  - id: report.kind
+    text: Where results are posted
+    why: The report connector (spec 05)
+    kind: choice
+    choices: [Slack, The report server's log]
+  - id: report.destinations
+    text: The channel for each level and for reviews, as apprentice=<channel>, practitioner=<channel>, review=<channel>
+    why: The roles' report
+    kind: list
+    when: { id: report.kind, equals: Slack }
+    validate: { pattern: '^(apprentice|practitioner|review)=[#A-Za-z0-9][-_.A-Za-z0-9]{0,79}$' }
+  - id: report.secret
+    text: The Secret that holds the report credential, as <namespace>/<name> and key
+    why: Named in the connector, never read
+    kind: secretRef
+    when: { id: report.kind, equals: Slack }
+  - id: model.provider
+    text: The model provider's OpenAI-compatible API URL and the model name, separated by a space
+    why: The platform's model (spec 01)
+    kind: text
+    validate: { pattern: '^https?://[^\s]+ [^\s]+$' }
+  - id: model.secret
+    text: The Secret that holds the provider key, as <namespace>/<name> and key
+    why: Named in the platform, never read
+    kind: secretRef
+  - id: map.repository
+    text: The Map's Git repository URL, its branch and the directory that holds map/, separated by spaces
+    why: The map connector (spec 08 §5)
+    kind: text
+    validate: { pattern: '^(https://|ssh://|git@)[^\s]+ [^\s]+ [^\s]+$' }
+  - id: map.secret
+    text: The Secret that holds the Map's read-only deploy key or token, as <namespace>/<name>
+    why: Named in the connector, never read
+    kind: secretRef
+  - id: knowledge
+    text: The URL of a runbook source served over MCP, or empty for none
+    why: The Intendant's knowledge connectors
+    kind: text
+    validate: { pattern: '^(https?://[^\s]+)?$' }
