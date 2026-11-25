@@ -330,21 +330,11 @@ func findSurvey(ctx context.Context, r getLister, o *reviewOpts) (*v1alpha1.Take
 		}
 		return &s, nil
 	}
-	name := o.intendant
-	if name == "" {
-		var is v1alpha1.TakeCareIntendantList
-		if err := r.List(ctx, &is, client.InNamespace(o.namespace)); err != nil {
-			return nil, fmt.Errorf("list takecareintendants in namespace %s: %w", o.namespace, err)
-		}
-		switch len(is.Items) {
-		case 0:
-			return nil, fmt.Errorf("no TakeCareIntendant in namespace %s", o.namespace)
-		case 1:
-			name = is.Items[0].Name
-		default:
-			return nil, fmt.Errorf("%d Intendants in namespace %s: pass --intendant", len(is.Items), o.namespace)
-		}
+	in, err := findIntendant(ctx, r, o.namespace, o.intendant)
+	if err != nil {
+		return nil, err
 	}
+	name := in.Name
 	var ss v1alpha1.TakeCareSurveyList
 	if err := r.List(ctx, &ss, client.InNamespace(o.namespace)); err != nil {
 		return nil, fmt.Errorf("list takecaresurveys in namespace %s: %w", o.namespace, err)

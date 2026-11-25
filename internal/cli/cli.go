@@ -39,6 +39,7 @@ Usage:
 
 Commands:
   status    show what the install says about itself (reads the cluster)
+  discover  show an Intendant's newest survey and how to start a new one
   review    turn a survey's proposals into Map files, on a local branch
   validate  check the Map files and question files, offline
   version   print the version, the commit and the Go version
@@ -73,6 +74,8 @@ func (a *app) run(ctx context.Context, args []string) int {
 	switch args[0] {
 	case "status":
 		return a.status(ctx, args[1:])
+	case "discover":
+		return a.discover(ctx, args[1:])
 	case "review":
 		return a.review(ctx, args[1:])
 	case "validate":
