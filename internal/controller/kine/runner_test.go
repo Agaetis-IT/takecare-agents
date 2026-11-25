@@ -315,8 +315,8 @@ func TestRunnerOneReviewPerKine(t *testing.T) {
 	first, second := unitReview("review-1", v1alpha1.RunQueued), unitReview("review-2", v1alpha1.RunQueued)
 	second.CreationTimestamp = metav1.NewTime(unitStart.Add(time.Second))
 	other := unitReview("review-o", v1alpha1.RunQueued)
-	other.Spec.KineRef.Name = "other"
-	c := fakeAPI(t, readyUnitKine(kineName), readyUnitKine("other"), gatewayPlatform(), first, second, other)
+	other.Spec.KineRef.Name = otherKine
+	c := fakeAPI(t, readyUnitKine(kineName), readyUnitKine(otherKine), gatewayPlatform(), first, second, other)
 	er := newRuns(modeHold, answerJSON)
 	w := newRunner(c, c, er)
 	queue(w, first, second, other)

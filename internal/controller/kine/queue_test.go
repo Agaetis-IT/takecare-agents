@@ -147,7 +147,7 @@ func equalStatus(a, b v1alpha1.TakeCareReviewStatus) bool {
 }
 
 // The backstop (spec 11 §6): a Running review nobody holds ends Failed
-// past its start, the Kiné's timeout and a grace; never before, never
+// past its start, the Kiné's timeout, the scrape wait and a grace; never before, never
 // while the runner holds it.
 func TestBackstop(t *testing.T) {
 	k := &v1alpha1.TakeCareKine{Name: kineName, Namespace: ns}
@@ -157,9 +157,10 @@ func TestBackstop(t *testing.T) {
 	rv.Status.StartedAt, rv.Status.Attempts = &start, 1
 	c := fakeAPI(t, k, rv)
 	key := client.ObjectKeyFromObject(rv)
-	bound := unitStart.Add(5*time.Minute + backstopGrace)
+	scrape := 30 * time.Second
+	bound := unitStart.Add(5*time.Minute + scrape + backstopGrace)
 	rec := kevents.NewFakeRecorder(10)
-	q := &ReviewQueuer{Client: c, Queue: runs.NewQueue(4), Recorder: rec}
+	q := &ReviewQueuer{Client: c, Queue: runs.NewQueue(4), Recorder: rec, ScrapeWait: scrape}
 
 	q.Now = func() time.Time { return bound.Add(-time.Minute) }
 	res, err := q.Reconcile(context.Background(), ctrl.Request{NamespacedName: key})

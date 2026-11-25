@@ -270,11 +270,14 @@ func TestIndexedIntakeForgetsADeletedRecord(t *testing.T) {
 	}
 }
 
-// investigationAt is a stored investigation of another incident.
+// investigationAt is a stored investigation of another incident. Its name
+// carries the index: InvestigationName would give these fingerprints, alike
+// in their first ten characters, only a 6-hex digest each, and 2,000 of them
+// collide in about one fixture in nine.
 func investigationAt(i int, at time.Time) *v1alpha1.TakeCareInvestigation {
 	fp := fmt.Sprintf("%016x", 0x1000+i)
 	return &v1alpha1.TakeCareInvestigation{
-		Name: InvestigationName(roleDoc, fp, at), Namespace: ns, CreationTimestamp: metav1.NewTime(at),
+		Name: fmt.Sprintf("%s-other-%05d", roleDoc, i), Namespace: ns, CreationTimestamp: metav1.NewTime(at),
 		Labels: map[string]string{v1alpha1.LabelRole: roleDoc, v1alpha1.LabelFingerprint: fp, LabelIncident: fmt.Sprintf("other-%d", i)},
 		Spec: v1alpha1.TakeCareInvestigationSpec{
 			RoleRef: v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareDoc, Name: roleDoc},
@@ -286,6 +289,20 @@ func investigationAt(i int, at time.Time) *v1alpha1.TakeCareInvestigation {
 
 // keptInvestigations is K1b's default retention count.
 const keptInvestigations = 2000
+
+// The scale fixtures name each record uniquely, at an instant where the
+// names built from the fingerprint and the firing time collided.
+func TestScaleFixtureNamesAreUnique(t *testing.T) {
+	at := time.Date(2026, 11, 25, 10, 0, 3, 703701000, time.UTC)
+	seen := make(map[string]int, keptInvestigations)
+	for i := range keptInvestigations {
+		name := investigationAt(i, at).Name
+		if j, dup := seen[name]; dup {
+			t.Fatalf("records %d and %d are both named %s", j, i, name)
+		}
+		seen[name] = i
+	}
+}
 
 // At the retention count, a firing alert reads one fingerprint's and one
 // incident's records through the index, never the namespace's.
