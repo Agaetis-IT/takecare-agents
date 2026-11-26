@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-26
+
+The Talkie and Kiné release: the `takecare` command, the teams' console (status, discover, review, validate, init), the Kiné, which reviews the Doc's investigations after each incident up to `Practitioner`, and a first step towards grounds without Kubernetes, the `cloud` connector type for Azure, in the API only. The API stays `v1alpha1`; it gains the kinds `TakeCareKine` and `TakeCareReview`, the connector types `history` and `cloud`, and new fields, and refuses nothing it accepted before.
+
+**Before upgrading from 0.4.x**, read the upgrade notes below. In short:
+
+- a role's MCP path on the gateway now holds the role's kind, `/mcp/<namespace>/<kind>.<role>/<connector>`: a client of your own that calls a role's MCP route by its old path gets a 404 (Fixed);
+- ended investigations are kept 90 days instead of 7, and at most 2,000 (`investigations.maxKept`), the oldest deleted first past that count; set `investigations.retention` back to `168h` if etcd's room matters more than the Kiné's view of recurrences (Changed, Added);
+- the operator's rights gain the Kiné's kinds in the release namespace, and its run-time read-only guard now checks every add-on connector's ServiceAccount: a right bound by hand to the history, Map, report or corpus server's account makes its connector not Ready (Added, Changed);
+- a Kiné that sets no `schedule` gets a weekly periodic review (Monday 06:00 UTC); `schedule: none` plans none. The demo's Kiné sets `none` (Added);
+- the `takecare` command warns, on one line of stderr and never as a failure, when it is more than one minor version apart from the cluster's TakeCare (Added);
+- `takecare init` writes `.takecare/answers.yaml` at version 2, where the Secret questions are `map.secretRef`, `report.secretRef` and `model.secretRef`. No release shipped `init` before; an answers file written by a build of `main` before 0.5.0 (version 1, with `map.secret`, `report.secret` and `model.secret`) is refused: rename those three ids and set `version: 2`, or run `init` again (Added).
+
 ### Added
 
 - A Kiné can do without its periodic review: `schedule: none` plans none, leaves `nextReviewTime` empty and reports `ScheduleValid` True with a message saying "no periodic review"; the reviews after an incident and on demand go on (spec 11 §3). A Kiné that sets no schedule keeps the weekly default (`0 6 * * 1`).
