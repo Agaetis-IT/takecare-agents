@@ -154,39 +154,80 @@ At `Practitioner`, the Mécano opens its plan as a **draft pull request**. This 
 
 ### 6.1 The server
 
-**Recommendation: a separate add-on, `takecare-agents-mcp-code-propose`**, the same image as the read server in another mode (as `report-log` is `report-slack`'s image in log mode), with its own Deployment, ServiceAccount, Secret and connector. Its only tool is `propose_change`; it has no read tool, and the read server holds no write credential. Reasons:
+**A separate add-on, `takecare-agents-mcp-code-propose`** (decided by the maintainers): the same image as the read server in another mode (as `report-log` is `report-slack`'s image in log mode), with its own Deployment, ServiceAccount, Secret and connector. It alone holds the write token. Its only tool is `propose_change`; it has no read tool, and the read server holds no write credential. So:
 
 - the read server, which every Apprentice binds, never holds a write token: a fault in a read path cannot write;
 - an Apprentice has no route to the propose server at all, instead of a route whose allow-list leaves the tool out;
 - the read-only guard keeps its meaning for the read add-on, and the write is one place to review.
 
-The alternative, the read server made read-write for this one tool, is one Deployment fewer and one connector fewer, at the cost of a write token in every Mécano's read path. The choice is open question 1.
+The read server made read-write for this one tool would have saved one Deployment and one connector, at the cost of a write token in every Mécano's read path. It was not kept.
 
-The forge in 0.6.0 is **GitHub** (github.com and GitHub Enterprise Server by `apiURL`), through its REST API with the standard library: no new dependency. GitLab comes later (open question 2).
+**The forges in 0.6.0 are GitHub and GitLab** (decided by the maintainers), each through its REST API with the standard library: no new dependency. Each listed repository names its forge and API URL (`addons.codePropose.repositories[]`, each `{forge, apiURL, repository}`, `forge` being `github` or `gitlab`), so one propose server serves both, and a Mécano's single `propose` slot reaches repositories on either:
+
+- **GitHub**: github.com, or GitHub Enterprise Server by `apiURL`; `repository` is `owner/name`. The calls are: read the repository's default branch and its protection (§6.3.3), create a ref, write the files through the Git data API, open the pull request with `draft: true`, and list the pull requests of the branch.
+- **GitLab**: gitlab.com or a self-managed instance by `apiURL`; `repository` is the project's full path (`group/subgroup/project`). The calls are: read the project's default branch and that branch (§6.3.3), create one commit with `branch` and `start_branch` set to the default branch (which creates the branch), never with `force`, open the merge request with its title prefixed `Draft:` (GitLab's way to make it a draft; its create endpoint has no draft parameter), and list the merge requests of the branch.
+
+Where this spec says "pull request", read "merge request" on GitLab.
 
 ### 6.2 The tool
 
 `propose_change(repository, branch, title, body, files[])`, `files` at most 20 entries `{path, content}`, at most 256 KiB in total. The server:
 
 1. refuses a `repository` its configuration does not list (`addons.codePropose.repositories`, which the connector's `spec.propose.repositories` repeats for review);
-2. refuses any path under `.github/workflows/` and any path outside the repository (`..`, absolute, symbolic links);
+2. refuses any path under `.github/workflows/` (GitHub), `.gitlab-ci.yml` or `.gitlab/` (GitLab), and any path outside the repository (`..`, absolute, symbolic links);
 3. refuses a `branch` that does not match `^takecare/mecano/[a-z0-9][a-z0-9-]{0,62}$`: the fixed prefix is the server's, whatever the agent sends. The operator's message names the branch to use, `takecare/mecano/<maintenance name>`, and the answer's parsing keeps only a pull request on that branch (§9);
-4. creates the branch from the default branch's head, or, when the branch exists, refuses unless a pull request the server opened from it is still open, in which case it returns that pull request: a retry never opens a second one;
-5. writes one commit with the files on that branch, never on another ref, never with force;
-6. opens the pull request with `draft: true`, the title and body given, and a fixed footer saying it was opened by the Mécano and is not merged by it;
-7. returns `{repository, url, branch}`.
+4. reads the default branch's protection and refuses when it is not protected, or when it cannot tell (§6.3.3), before any write: checked on every call, since a protection can be removed between two maintenances;
+5. creates the branch from the default branch's head, or, when the branch exists, refuses unless a pull request the server opened from it is still open, in which case it returns that pull request: a retry never opens a second one;
+6. writes one commit with the files on that branch, never on another ref, never with force;
+7. opens the pull request as a draft (§6.1), with the title and body given and a fixed footer saying it was opened by the Mécano and is not merged by it;
+8. returns `{repository, url, branch}`.
 
 It has no merge, no review, no comment, no ref deletion and no other call. Every refusal returns a fixed error the agent reads, and the call is traced.
 
 ### 6.3 The token
 
-One Secret, named in the connector (`spec.propose.tokenSecretRef`), mounted on the propose server's pod only. The agent never reads it: no connector serves Secrets, and the gateway carries no credential to this server. In GitHub terms, a fine-grained token or a GitHub App installation token:
+One Secret, named in the connector (`spec.propose.tokenSecretRef`), with one key per listed repository, mounted on the propose server's pod only. The agent never reads it: no connector serves Secrets, and the gateway carries no credential to this server.
+
+#### 6.3.1 GitHub
+
+A fine-grained token or a GitHub App installation token:
 
 - limited to the repositories listed;
 - with **Contents: write** and **Pull requests: write**, and the Metadata read every such token holds; nothing else (GitHub, "Permissions required for fine-grained personal access tokens": creating a ref and writing a file need Contents write, opening a pull request needs Pull requests write);
 - without **Workflows**: GitHub then refuses any change to `.github/workflows/`, a second lock under §6.2's.
 
-Contents write could merge a pull request or push to an unprotected branch through the API; the server makes neither call, and the customer's branch protection on the default branch (a required review) is the forge's own lock. The add-on's README says so, and an unprotected default branch is named in the connector's `status` when the token can tell (open question 3).
+Contents write could merge a pull request or push to an unprotected branch through the API; the server makes neither call, and the protection of the default branch, which the server checks (§6.3.3), is the forge's own lock.
+
+#### 6.3.2 GitLab
+
+GitLab has no token as narrow as GitHub's two permissions. The narrowest that can push a branch and open a merge request is a **project access token**:
+
+- one per listed project, never a group, personal or service-account token: a project access token reaches its project only;
+- with the **Developer** role: the lowest role that can push to a non-protected branch and create a merge request (GitLab, "Roles and permissions"); never Maintainer, which can manage protected branches and use the pipeline editor;
+- with the **`api`** scope only. `write_repository` pushes over Git but "does not support API authentication", and `read_api` is read-only, so the REST calls of §6.1 need `api` (GitLab, "Access token scopes");
+- with an expiry date: GitLab sets one 365 days ahead by default and caps it there unless the instance raises the cap. The add-on's README says to renew it.
+
+**`api` is wider than what the server uses.** It "grants complete read and write access to the API" within the token's project and role: as a Developer, the token could also delete a non-protected branch, comment, open issues, run pipelines, or merge a merge request into a branch Developers may merge into. GitLab has no Workflows-like permission either, so the token alone does not stop a change to the CI configuration. The other layers hold the line instead:
+
+- **our server** makes only the calls of §6.1, on the listed projects only, on a branch under `takecare/mecano/` only, and opens a draft merge request only; it refuses `.gitlab-ci.yml` and `.gitlab/` (§6.2);
+- **the route rule** (§6.4) admits only `propose_change`, only a listed repository, only a branch under `takecare/mecano/`, and no argument outside the five;
+- **the default branch's protection**, which the server checks (§6.3.3), keeps the token from pushing or merging there.
+
+A pipeline the project's own CI configuration runs on the pushed branch is the customer's; GitLab exposes protected CI variables to protected branches only, and `takecare/mecano/` is not one unless the customer makes it so. The add-on's README says all this, the `api` scope's width first.
+
+#### 6.3.3 The default branch's protection
+
+The server refuses to open a pull request on a repository whose default branch is not protected (decided by the maintainers). It checks with the read rights the token already has, and nothing more is granted for it:
+
+- **GitHub**: `GET /repos/{owner}/{repo}/branches/{branch}` (Contents read) gives `protected`, and `GET /repos/{owner}/{repo}/rules/branches/{branch}` (Metadata read) gives the active rulesets' rules. The branch counts as protected when `protected` is true or a `pull_request` rule applies. The details of a classic protection (`/protection`) need Administration read, which the token does not get: a classic protection is taken as it is, and the README says that its required review is the customer's to set.
+- **GitLab**: `GET /projects/:id/repository/branches/:branch` gives `protected`, `developers_can_push`, `developers_can_merge` and `can_push`. The branch counts as protected when `protected` is true and `can_push`, `developers_can_push` and `developers_can_merge` are all false: the token, a Developer, can then neither push nor merge into it.
+
+When the check refuses, or cannot be made, the plan is still recorded and published, without a pull request for that repository, and the maintenance says why in `blindSpots`:
+
+- `DefaultBranchUnprotected`: the forge answered and the branch is not protected, as defined above;
+- `ProtectionUnknown`: the forge did not answer the check (a 403 or 404 because the token cannot read it, a timeout, an unknown field). The server never takes "unknown" for "protected".
+
+The server returns each as a fixed error; the operator maps it to the blind spot, naming the repository, and emits a warning event on the Mécano when the reason changes. Neither error is retried within the maintenance.
 
 ### 6.4 The gateway
 
@@ -196,7 +237,7 @@ The `propose` class is between `read` and `act` (ADR 0008). `propose_change` shi
 - The gateway enforces the same list on the Mécano's propose route (`backend.mcp.authorization`, tool names).
 - agentgateway's MCP authorization never sees a call's arguments: in v1.7.0, as in v1.6, `mcp.tool.arguments` is not set there (agentgateway docs, CEL variables). A route-level authorization (`traffic.authorization`, action `Require`) does read them on `tools/call`, as the Intendant's metrics route already does (spec 10 §8). The propose route gets one, `<route>-calls`, requiring the `repository` to be one of the Mécano's `maintenance.repositories`, the `branch` to start with `takecare/mecano/`, and refusing any argument outside the five.
 
-So the limits live, in order: in the token's scope (the forge refuses), in our server (it refuses), on the route (the gateway refuses), and in the role's allow-list (the agent is not given the tool). Only the first two hold if the gateway is misconfigured; the spec does not rest on the third.
+So the limits live, in order: in the token's scope (the forge refuses), in our server (it refuses), on the route (the gateway refuses), and in the role's allow-list (the agent is not given the tool). Only the first two hold if the gateway is misconfigured; the spec does not rest on the third. On GitLab the first is wider (§6.3.2), so our server and the default branch's protection carry more of the weight there.
 
 ### 6.5 What it never does
 
@@ -287,7 +328,7 @@ No label holds an id.
 
 ## 16. Demo and bench
 
-**Demo.** The demo profile enables the code add-on over a demo repository served in the cluster (manifests of the demo apps, one on a removed apiVersion, one component behind its supported line), the propose add-on against a fake forge (a small server in the demo namespace speaking the GitHub endpoints §6.2 uses, `apiURL` pointing at it), cert-manager's CRD read through `extraResources` when the demo installs it, `readNodes`, and a Mécano named `mecano` at `Apprentice` with `file_get` in `contentTools`. A second demo namespace is its copy. `make demo-maintenance` creates an on-demand maintenance; `make demo-verdict` reports it.
+**Demo.** The demo profile enables the code add-on over a demo repository served in the cluster (manifests of the demo apps, one on a removed apiVersion, one component behind its supported line), the propose add-on against a fake forge (a small server in the demo namespace speaking the GitHub endpoints §6.1 lists, `apiURL` pointing at it; its GitLab endpoints are used by the e2e only, so the demo shows one forge), cert-manager's CRD read through `extraResources` when the demo installs it, `readNodes`, and a Mécano named `mecano` at `Apprentice` with `file_get` in `contentTools`. A second demo namespace is its copy. `make demo-maintenance` creates an on-demand maintenance; `make demo-verdict` reports it.
 
 **Bench.** `make demo-bench-mecano N=5 BENCH_MIN=5`, on the spec 14 scenario `removed-api-upgrade`:
 
@@ -302,11 +343,11 @@ The bar at a release is **five runs correct out of five** (`BENCH_MIN=5`), writt
 ## 17. Test plan
 
 - **Unit**: the name, schedule and CEL rules; the collector against recorded connector answers (images, charts, removed APIs live and in Git, certificates, GitOps states, drift per kind, the version sources); the dataset's schema and its staleness; the answer's parsing (valid, invalid, oversized, unknown version, foreign pull request); finding ids and "changed since"; the message (golden, both levels).
-- **Code server**: each tool, its bounds, "no value in the index", the content mark. **Propose server**, against a fake forge: every refusal of §6.2 (unlisted repository, workflow path, path escape, existing branch without its open pull request), the draft flag, the reuse on retry, and that no other endpoint is ever called.
+- **Code server**: each tool, its bounds, "no value in the index", the content mark. **Propose server**, against a fake forge: every refusal of §6.2 (unlisted repository, workflow and CI paths, path escape, existing branch without its open pull request), the protection check of §6.3.3 per forge (protected, unprotected, a classic GitHub protection, a GitLab branch Developers may push or merge to, a 403, a timeout), the draft flag (`draft: true` on GitHub, the `Draft:` prefix on GitLab), the reuse on retry, no `force` on GitLab's commit, and that no other endpoint is ever called, for both forges.
 - **Golden**: the rendered Agent, routes and policies per level; no propose route at `Apprentice` or without `maintenance.repositories`.
 - **envtest**, under the operator's own Roles: level transitions; missing `cluster` or `code` connector; `ScopeOverlap`; schedule; on demand; backstop; retention keeping the newest published.
 - **Chart**: the read-only guard over the code, propose, history and kubernetes (`readNodes`) add-ons; the propose route's argument rule refusing an unlisted repository, in the chart smoke.
-- **e2e** (CI): fake LLM and fake forge; one maintenance `Completed`, a draft pull request on the fake forge at `Practitioner`, one publication to the fake Slack, and none the week after when nothing changed.
+- **e2e** (CI): fake LLM and fake forge; one maintenance `Completed`, a draft pull request on the fake forge's GitHub side and a draft merge request on its GitLab side at `Practitioner`, a third repository with an unprotected default branch left without one and named `DefaultBranchUnprotected` in `blindSpots`, one publication to the fake Slack, and none the week after when nothing changed.
 - **Bench** (§16), on a real model, outside CI.
 
 ## 18. Acceptance criteria
@@ -314,35 +355,33 @@ The bar at a release is **five runs correct out of five** (`BENCH_MIN=5`), writt
 1. A `TakeCareMecano` with usable `cluster` and `code` connectors reaches `Ready` with its Agent and routes for its level; without one of them it is not `Ready`.
 2. A maintenance's inventory holds live versions, declared versions and drift per component, removed apiVersions live and in Git, cert-manager certificates near expiry and GitOps tools out of sync, all from the collector.
 3. At `Apprentice` no propose route exists and nothing reaches the `practitioner` destination.
-4. At `Practitioner` the plan opens at most one draft pull request per listed repository, on `takecare/mecano/<name>`, reused on retry; an unlisted repository is refused by the server and by the route; no merge and no other forge call exist.
+4. At `Practitioner` the plan opens at most one draft pull request per listed repository, on `takecare/mecano/<name>`, reused on retry; an unlisted repository is refused by the server and by the route; no merge and no other forge call exist; this holds on GitHub and on GitLab.
 5. The propose token is mounted on the propose server only, and no agent tool can read it.
-6. A plan says `tested on a copy` only with the copy's evidence.
-7. A maintenance is published only when its findings changed or it opened a pull request, once (idempotency key).
-8. Every maintenance ends with an outcome a reader can see and says its usage.
-9. Maintenances are kept 365 days, the newest published kept beyond.
-10. The read-only guard is green over every add-on; the Ranger's cap and deny apply to the Mécano's model route.
-11. The bench meets five out of five.
-12. The CHANGELOG, the chart values and READMEs, `test/bench/README.md`, spec 05 (the `code` type and add-ons), spec 06 §4 (the `propose` slot), spec 11 §4 (the history tools) and the project README are updated.
+6. No pull request is opened on a repository whose default branch is not protected, or whose protection could not be read; the maintenance names the repository in `blindSpots` with `DefaultBranchUnprotected` or `ProtectionUnknown`.
+7. A plan says `tested on a copy` only with the copy's evidence.
+8. A maintenance is published only when its findings changed or it opened a pull request, once (idempotency key).
+9. Every maintenance ends with an outcome a reader can see and says its usage.
+10. Maintenances are kept 365 days, the newest published kept beyond.
+11. The read-only guard is green over every add-on; the Ranger's cap and deny apply to the Mécano's model route.
+12. The bench meets five out of five.
+13. The CHANGELOG, the chart values and READMEs, `test/bench/README.md`, spec 05 (the `code` type and add-ons), spec 06 §4 (the `propose` slot), spec 11 §4 (the history tools) and the project README are updated.
 
 ## 19. Lots
 
-About 4,250 lines of code and 5,000 of tests, in four lots of at most about 1,500 lines of code each, plus this spec. Each lot is one pull request. A lot is split only where a part is useful alone, or where the reviewer would read it less well.
+About 4,550 lines of code and 5,300 of tests, in four lots of at most about 1,500 lines of code each, plus this spec. Each lot is one pull request. A lot is split only where a part is useful alone, or where the reviewer would read it less well.
 
 | Lot | Content | Size (code / tests) | Needs at its build |
 |---|---|---|---|
 | **M0** | This spec, the spec 14 amendment (a scenario without an alert), the dated note on ADR 0022 §4 | docs | the maintainers' review |
-| **M1** | The API: `TakeCareMecano`, `TakeCareMaintenance`, CEL rules and bounds, the `code` type and `propose` slot, the retention value, the role-kind enums; the code server (read) and the propose server, their add-ons, Secrets, NetworkPolicies and connectors, the demo repository and fake forge | ~1,250 / ~1,400 | the operator's generated RBAC; the two add-ons and the propose token's Secret handling; the `propose` override in the chart |
+| **M1** | The API: `TakeCareMecano`, `TakeCareMaintenance`, CEL rules and bounds, the `code` type and `propose` slot, the retention value, the role-kind enums; the code server (read) and the propose server for GitHub and GitLab with the protection check, their add-ons, Secrets, NetworkPolicies and connectors | ~1,350 / ~1,650 | the operator's generated RBAC; the two add-ons and the propose token's Secret handling; the `propose` override in the chart |
 | **M2** | The controller: scope, overlap, connectors, the Agent and routes per level with the `propose` rule in `internal/roleagent`, conditions; the Ranger's cap and deny; the propose route's argument rule; the history add-on's tools and Role for maintenances; the `readNodes` opt-in; the collector and the end-of-support dataset | ~1,350 / ~1,600 | the gateway rules; the history Role; the nodes ClusterRole; the dataset's licences |
-| **M3** | The triggers, the queue, the runner on `internal/runs`, the backstop, the answer's parsing, the status and plan, finding ids; publication on change, telemetry and metrics; the demo profile, `make demo-maintenance`, the e2e step; the scenario file and `make demo-bench-mecano`; docs and CHANGELOG | ~1,250 / ~1,550 | the bench run (model key) |
+| **M3** | The triggers, the queue, the runner on `internal/runs`, the backstop, the answer's parsing, the status and plan, finding ids; publication on change, telemetry and metrics; the demo profile, `make demo-maintenance`, the e2e step; the demo repository and the fake forge (GitHub and GitLab endpoints); the scenario file and `make demo-bench-mecano`; docs and CHANGELOG | ~1,450 / ~1,600 | the bench run (model key) |
 | **M4** | `takecare review` for a maintenance plan (spec 13), after the ADR on human actions from the console | ~400 / ~450 | that ADR |
 
-Seams: M1 first. M2 needs M1's kinds and servers; M3 needs M2's rendered agent and collector. M4 is independent once its ADR is accepted. A lot heading past its size is split at a seam proposed before it is written: the collector and dataset (M2) and the demo and bench (M3) are the parts that stand alone.
+Seams: M1 first. M2 needs M1's kinds and servers; M3 needs M2's rendered agent and collector. M4 is independent once its ADR is accepted. A lot heading past its size is split at a seam proposed before it is written: the collector and dataset (M2), the GitLab side of the propose server (M1), and the demo and bench (M3) are the parts that stand alone.
 
-No new pin is expected: the servers are ours, go-git is already a dependency, and the forge is reached with the standard library. A pin added at the build needs its own approval.
+No new pin is expected: the servers are ours, go-git is already a dependency, and both forges are reached with the standard library. A pin added at the build needs its own approval.
 
 ## Open questions
 
-1. **Where `propose_change` lives.** Recommended: a separate propose add-on, the read server's image in another mode, holding the only write token (§6.1). Alternative: the read server made read-write for that tool.
-2. **The forge.** GitHub only in 0.6.0 (§6.1). GitLab's project access tokens need the `api` scope to open a merge request, which is wider than GitHub's two permissions: its limits would rest more on the project's role and protected branches. GitLab with its own review, later.
-3. **An unprotected default branch.** The server never pushes there, but the token could. Whether the connector checks the default branch's protection (which needs a further read permission on the token) or only documents it.
-4. **The Mécano's default model** is a chart value (spec 06 §8), set from the bench's first report.
+1. **The Mécano's default model** is a chart value (spec 06 §8), set from the bench's first report.
