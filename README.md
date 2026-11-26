@@ -10,9 +10,61 @@
 
 ---
 
-TakeCare Agents is a collection of specialised roles (AI agents and guardrails) that take care of your production alongside your teams: Kubernetes and the managed cloud services around it. They govern every AI agent, prepare for the peaks and heal incidents down to their cause. It installs at the customer's site as a **Kubernetes operator**, on an open source stack (agentgateway, kagent, agentregistry, MCP), with the model of their choice. A built-in **demo mode** runs the same product on a local cluster, with a scenery and replayable incidents.
+TakeCare Agents is a collection of specialised roles (AI agents and guardrails) that take care of your production alongside your teams: Kubernetes and the managed cloud services around it. They govern every AI agent, prepare for the peaks and heal incidents down to their cause. It installs at the customer's site as a **Kubernetes operator**, on an open source stack (agentgateway for every model, tool and agent call, kagent to run the agents, MCP servers as connectors), with the model of their choice. A built-in **demo mode** runs the same product on a local cluster, with a scenery and replayable incidents.
 
-> **Status.** The **Doc** works end to end: an alert in, a sourced diagnosis published, with its trace and its cost, on the demo or on your cluster. The **Ranger** puts the same rules on every agent at the gateway: a journal, masking, filtering, caps and allowed models. The images and charts of the latest release are on `ghcr.io/agaetis-it` (see the [CHANGELOG](CHANGELOG.md)); `make demo-up` installs them. The [`takecare` command](docs/how-to/takecare-command.md) ships with each release as binaries for Linux, macOS and Windows (amd64 and arm64), or through `go install`. The other roles are specified, not coded yet.
+> **Status: 0.5.0.** Four roles ship, each up to `Practitioner`, the highest level the product offers today:
+>
+> - the **Doc** (incident diagnosis): an alert in, a sourced diagnosis published, with its trace and its cost;
+> - the **Ranger** (AI agent governance): the same rules on every agent at the gateway: a journal, masking, filtering, caps and allowed models;
+> - the **Intendant** (infra inventory and mapping): it surveys the ground and proposes what the Map lacks;
+> - the **Kiné** (problem management): after each incident, it finds the recurrences and the corrective actions still undone, and at `Practitioner` drafts the post-mortem.
+>
+> The [`takecare` command](docs/how-to/takecare-command.md), the teams' console, ships with each release: `init`, `status`, `discover`, `review`, `validate` and `version`, read-only on the cluster. The **Mécano** (lifecycle management) is specified for 0.6.0 ([spec 12](docs/specs/12-mecano.md)); the other roles are not built yet. The seven images (the operator; the report, Map, front, history and corpus MCP servers; the demo application) and the three charts are on `ghcr.io/agaetis-it`; the [CHANGELOG](CHANGELOG.md) says what each release brings.
+
+## Installation
+
+### The operator
+
+TakeCare installs with **Helm 4** from OCI charts at `oci://ghcr.io/agaetis-it/charts`, in the namespace `takecare-system`, in this order:
+
+1. [`takecare-crds`](charts/takecare-crds/README.md): the CRDs, TakeCare's and the building blocks'. Install it first, upgrade it first, and never uninstall it while TakeCare runs.
+2. [`takecare`](charts/takecare/README.md): the operator, the gateway and agent engine it configures, and the MCP add-ons. Copy [`values-prod.yaml`](charts/takecare/values-prod.yaml) and fill every value marked `# REQUIRED`; the chart refuses to render until they are set.
+
+```bash
+helm install takecare-crds oci://ghcr.io/agaetis-it/charts/takecare-crds -n takecare-system --create-namespace
+helm install takecare      oci://ghcr.io/agaetis-it/charts/takecare      -n takecare-system -f my-values.yaml
+```
+
+A cluster that an administration cluster supervises installs [`takecare-cluster`](charts/takecare-cluster/README.md) instead: the read-only `kubernetes` MCP server behind its mTLS front, with no operator and no CRD ([ADR 0016](docs/adr/0016-workload-cluster-front-and-registration.md)). Read each chart's README before installing: the prerequisites on your side (a model provider, a PostgreSQL database for kagent, Prometheus, Slack), the security requirements and every value are there, not here.
+
+### The `takecare` command
+
+Each [release](https://github.com/Agaetis-IT/takecare-agents/releases) attaches the command for Linux, macOS (`darwin`) and Windows, on `amd64` and `arm64`: six archives (`.tar.gz`, `.zip` for Windows), one SBOM per binary and `takecare-<version>-checksums.txt`. Check the archive against the checksums file before you unpack it, then put the binary on your `PATH`; for example, version 0.5.0 on Linux amd64:
+
+```bash
+gh release download v0.5.0 --repo Agaetis-IT/takecare-agents -p 'takecare-0.5.0-linux-amd64.tar.gz' -p 'takecare-0.5.0-checksums.txt'
+sha256sum -c --ignore-missing takecare-0.5.0-checksums.txt   # on macOS: shasum -a 256 -c --ignore-missing takecare-0.5.0-checksums.txt
+tar -xzf takecare-0.5.0-linux-amd64.tar.gz
+install -m 0755 takecare-0.5.0-linux-amd64/takecare ~/.local/bin/takecare   # any directory on your PATH
+takecare version
+```
+
+Or with Go (the module path is lower case):
+
+```bash
+go install github.com/agaetis-it/takecare-agents/cmd/takecare@v0.5.0
+```
+
+**macOS**: the binaries are not notarized by Apple yet. When macOS blocks `takecare` with a warning that it cannot verify it, check the archive against the checksums file first, then allow it as Apple documents for an app from an unknown developer: in System Settings, Privacy & Security, click Open Anyway for `takecare`, and confirm with your password ([Apple's guide](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac)). A Homebrew tap and a krew plugin are planned, not available yet.
+
+First use (`status` reads the cluster of your current kube context with your own rights; `init` works on files only):
+
+```bash
+takecare status   # the platform, each role with its level, the connectors, the newest surveys and investigations
+takecare init     # asks about your ground and writes the first files of an install into your Git working copy
+```
+
+[`docs/how-to/takecare-command.md`](docs/how-to/takecare-command.md) gives every command, the rights each one reads with, and its exit codes.
 
 ## The staff
 
@@ -36,7 +88,7 @@ Nine roles, each with its own job, in three pillars of three. Each role has a ni
 
 Agents: Intendant, Coach, Nutri, Guide, Doc, Kiné, Mécano. Guardrails, which are not agents and apply to every agent, vendors' agents included: Ranger and Psy.
 
-Milestone 1 delivers the **Doc** (incident diagnosis): on every alert, it investigates read-only and posts a sourced diagnosis to Slack (the root cause, the ruled-out leads, who should act). You decide on the treatment.
+Delivered so far: the **Doc**, which on every alert investigates read-only and posts a sourced diagnosis to Slack (the root cause, the ruled-out leads, who should act), and you decide on the treatment; the **Ranger**; the **Intendant**; and the **Kiné**, which reviews each incident against the history. Each goes up to `Practitioner`.
 
 ## The principle: the level is declared
 
@@ -46,7 +98,7 @@ Every role is a Kubernetes resource that carries its **intervention level**. The
 |---|---|---|
 | Apprentice | `Apprentice` | It observes, on your history or dry-run, touching nothing |
 | Practitioner | `Practitioner` | It works daily and proposes; you approve and launch |
-| Expert | `Expert` | It acts alone, action by action, only where you decided (after milestone 1) |
+| Expert | `Expert` | It acts alone, action by action, only where you decided (no role offers it yet) |
 
 ```yaml
 apiVersion: takecare.agaetis.fr/v1alpha1
@@ -72,7 +124,7 @@ spec:
 
 Changing level means changing this resource: a reviewed PR, a traced change. `kubectl get takecare -A` lists the whole staff, with each role's level and state.
 
-## Milestone 1 architecture
+## Architecture
 
 ```text
 Alertmanager ──webhook──▶ takecare-operator ──A2A task──▶ kagent agent "doc"
@@ -90,12 +142,12 @@ Alertmanager ──webhook──▶ takecare-operator ──A2A task──▶ ka
 every investigation = one OpenTelemetry trace (GenAI semantic conventions) ──▶ OTLP
 ```
 
-A2A calls, tool calls and model calls all go through agentgateway.
+The diagram follows the Doc; the Intendant and the Kiné run the same way, on kagent behind the gateway. A2A calls, tool calls and model calls all go through agentgateway.
 
 - **`takecare-operator`** (Go, kubebuilder) translates TakeCare resources into building-block configuration and RBAC, triggers investigations and publishes their results. It installs nothing and does not reason itself.
 - **kagent** runs the agents ([ADR 0007](docs/adr/0007-agent-engine-kagent.md), confirmed by [spike 001](docs/spikes/001-kagent-doc-engine.md)). Agents talk to each other over **A2A** ([ADR 0009](docs/adr/0009-agents-talk-over-a2a.md)).
 - **Connectors**: everything an agent reads or writes is an MCP server behind the gateway; the level decides which tools are allowed ([ADR 0008](docs/adr/0008-everything-is-an-mcp-connector.md)).
-- **The `takecare` chart** installs the operator, its CRDs and the third-party building blocks, with a `prod` or `demo` profile.
+- **The charts**: `takecare-crds` installs the CRDs, `takecare` the operator and the third-party building blocks, with a `prod` or `demo` profile (see [Installation](#installation)).
 - **agentgateway** is the single control point: every model call (provider key never exposed, cost measured), every tool call (authorized tool by tool), every agent-to-agent call.
 - **OpenTelemetry** from day one, following the [GenAI semantic conventions](https://github.com/open-telemetry/semantic-conventions-genai): the groundwork for the Psy, which will check the agents' answers.
 
@@ -140,10 +192,12 @@ The demo caps each role's route to its model at 2,000,000 tokens an hour (`range
 | [`docs/specs/08-map.md`](docs/specs/08-map.md) | The Map: ontology, entries, storage in the customer's Git, the `map` connector |
 | [`docs/specs/09-ranger.md`](docs/specs/09-ranger.md) | The Ranger: the same rules for every agent through the gateway (masking, filtering, budgets, allowed models), its Markers by level |
 | [`docs/specs/10-intendant.md`](docs/specs/10-intendant.md) | The Intendant: the survey, discovery through the connectors, proposals for the Map, the inventory of agents and connectors |
-| [`docs/specs/11-kine.md`](docs/specs/11-kine.md) | The Kiné (proposed, 0.5.0): reviews after each incident, recurrences and corrective actions tracked across reviews, the `history` connector |
-| [`docs/specs/12-mecano.md`](docs/specs/12-mecano.md) | The Mécano (draft, 0.6.0): the inventory of what runs live and what Git declares, drift, end of support, and at `Practitioner` the upgrade plan as a draft pull request, the product's first write |
+| [`docs/specs/11-kine.md`](docs/specs/11-kine.md) | The Kiné (shipped in 0.5.0): reviews after each incident, recurrences and corrective actions tracked across reviews, the `history` connector |
+| [`docs/specs/12-mecano.md`](docs/specs/12-mecano.md) | The Mécano (draft, planned for 0.6.0): the inventory of what runs live and what Git declares, drift, end of support, and at `Practitioner` the upgrade plan as a draft pull request, the product's first write |
 | [`docs/specs/13-tui.md`](docs/specs/13-tui.md) | The TUI: the `takecare` command (init, status, review, discover, validate), read-only on the cluster, files and a local commit in the user's Git |
-| [`docs/how-to/takecare-command.md`](docs/how-to/takecare-command.md) | The `takecare` command: install, the rights it reads with, `status`, `review`, `validate` and `version` |
+| [`docs/specs/14-scenarios.md`](docs/specs/14-scenarios.md) | Scenarios (draft): one format for the demo, the benches and the training ground |
+| [`docs/how-to/takecare-command.md`](docs/how-to/takecare-command.md) | The `takecare` command: install, the rights it reads with, `init`, `status`, `discover`, `review`, `validate` and `version` |
+| [`docs/how-to/review-proposals.md`](docs/how-to/review-proposals.md) | Reviewing the Intendant's proposals and turning them into a Map pull request |
 | [`docs/spikes/001-kagent-doc-engine.md`](docs/spikes/001-kagent-doc-engine.md) | Spike 001: can kagent run the Doc as well as HolmesGPT? |
 | [`docs/specs/90-agent-output-localization.md`](docs/specs/90-agent-output-localization.md) | Localized agent output (deferred) |
 | [`docs/adr/`](docs/adr/) | Architecture decisions |
@@ -169,7 +223,7 @@ make docker-buildx   # operator image, amd64 + arm64
 
 Prerequisites: Go (version in `go.mod`), Docker, make. Every pinned version lives in [`hack/versions.env`](hack/versions.env); the linters run from pinned images, the Go tools, Helm 4 and kubeconform are installed into `./bin` (Helm runs with its own repository config there, never yours).
 
-The charts live in [`charts/`](charts/), each with its own README to read before installing: [`takecare-crds`](charts/takecare-crds/README.md) (the CRDs, to install and upgrade first, never uninstalled while TakeCare runs) and [`takecare`](charts/takecare/README.md) (the operator and its building blocks: prerequisites, security requirements, values); a cluster that an administration cluster supervises installs [`takecare-cluster`](charts/takecare-cluster/README.md) instead (the read-only `kubernetes` MCP server behind its mTLS front, ADR 0016). `values-prod.yaml` is the template a customer fills, every value to set marked `# REQUIRED`; `values-demo.yaml` is complete.
+The charts live in [`charts/`](charts/) ([Installation](#installation) says the order). `values-prod.yaml` is the template a customer fills, every value to set marked `# REQUIRED`; `values-demo.yaml` is complete.
 
 ## How we work
 
