@@ -16,7 +16,7 @@ const MaxConnectorName = 63
 const MessageConnectorName = "a connector's name is at most 63 characters unless its only type is report: its gateway backend carries the name as a label"
 
 // ConnectorType says what a connector gives access to (ADR 0008).
-// +kubebuilder:validation:Enum=cluster;metrics;logs;knowledge;changes;tickets;report;map;history;cloud
+// +kubebuilder:validation:Enum=cluster;metrics;logs;knowledge;changes;tickets;report;map;history;cloud;code
 type ConnectorType string
 
 // Connector types.
@@ -36,6 +36,10 @@ const (
 	// ConnectorCloud reads a ground without Kubernetes through its
 	// provider's control plane, within spec.reach (ADR 0021).
 	ConnectorCloud ConnectorType = "cloud"
+	// ConnectorCode reads Git repositories: manifests, charts and GitOps
+	// definitions (spec 12 §5). A code connector with spec.propose set
+	// opens pull requests instead (spec 12 §6).
+	ConnectorCode ConnectorType = "code"
 )
 
 // ToolClass classifies an MCP tool.
@@ -57,6 +61,7 @@ const (
 // +kubebuilder:validation:XValidation:rule="!has(self.kubernetes) || 'cluster' in self.types",message="spec.kubernetes is only valid for a connector of type cluster"
 // +kubebuilder:validation:XValidation:rule="!('cloud' in self.types) || has(self.reach)",message="a connector of type cloud must declare spec.reach"
 // +kubebuilder:validation:XValidation:rule="!has(self.reach) || 'cloud' in self.types",message="spec.reach is only valid for a connector of type cloud"
+// +kubebuilder:validation:XValidation:rule="!has(self.propose) || ('code' in self.types && has(self.mcp.addon))",message="spec.propose is only valid for a connector of type code served by an add-on"
 // +kubebuilder:validation:XValidation:rule="!has(self.cluster) || (has(self.mcp.url) && !has(self.mcp.addon) && self.mcp.url.startsWith('https://') && 'cluster' in self.types)",message="cluster needs an https mcp.url, no addon, and the cluster type"
 type TakeCareConnectorSpec struct {
 	// +kubebuilder:validation:MinItems=1
@@ -91,6 +96,41 @@ type TakeCareConnectorSpec struct {
 	// Adapter and destinations. Type report only.
 	// +optional
 	Report *ReportSpec `json:"report,omitempty"`
+
+	// The forge write of a propose add-on (spec 12 §6): the token's Secret
+	// and the repositories it may open pull requests on, repeated from the
+	// add-on's configuration for review. Type code, add-on only.
+	// +optional
+	Propose *ProposeSpec `json:"propose,omitempty"`
+}
+
+// ProposeSpec declares where a propose add-on may open pull requests.
+type ProposeSpec struct {
+	// The Secret holding one write token per repository, mounted on the
+	// propose server only; the operator never reads it.
+	TokenSecretRef SecretRef `json:"tokenSecretRef"`
+
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=16
+	// +listType=map
+	// +listMapKey=repository
+	Repositories []ProposeRepository `json:"repositories"`
+}
+
+// ProposeRepository is a repository on a forge.
+type ProposeRepository struct {
+	// +kubebuilder:validation:Enum=github;gitlab
+	Forge string `json:"forge"`
+	// The forge's REST API, for example https://api.github.com or
+	// https://gitlab.com/api/v4.
+	// +kubebuilder:validation:MaxLength=2048
+	// +kubebuilder:validation:Pattern=`^https://[^\s]+$`
+	APIURL string `json:"apiURL"`
+	// owner/name on GitHub, the project's full path on GitLab.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=255
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)+$`
+	Repository string `json:"repository"`
 }
 
 // MCPSpec locates the MCP server: an add-on of the chart, or an external URL.

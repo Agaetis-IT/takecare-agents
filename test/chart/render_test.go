@@ -988,8 +988,8 @@ func TestCRDChart(t *testing.T) {
 	}
 	wantCRDs := []string{
 		"takecareconnectors", "takecaredemos", "takecaredocs", "takecareintendants",
-		"takecareinvestigations", "takecarekines", "takecareplatforms", "takecarerangers",
-		"takecarereviews", "takecaresurveys",
+		"takecareinvestigations", "takecarekines", "takecaremaintenances", "takecaremecanos",
+		"takecareplatforms", "takecarerangers", "takecarereviews", "takecaresurveys",
 	}
 	for i, n := range wantCRDs {
 		wantCRDs[i] = n + ".takecare.agaetis.fr"
