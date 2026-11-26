@@ -278,7 +278,7 @@ spec:
               findings:
                 items:
                   description: |-
-                    MaintenanceFinding is the agent's prioritised reading of one fact of
+                    MaintenanceFinding is the agent's prioritized reading of one fact of
                     the inventory.
                   properties:
                     component:
