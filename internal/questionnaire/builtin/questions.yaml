@@ -4,8 +4,11 @@
 # The built-in question set of takecare init (spec 13 §4.1): factual
 # questions about the ground only, each with its why. Every question
 # accepts "I don't know". No question asks for a secret value: the secretRef
-# questions ask where a Secret lives. Reviewed like code with every change;
-# a change of meaning bumps builtin.Version.
+# questions ask where a Secret lives. A default is only prefilled: the
+# person confirms or changes it. Only the questions whose usual answer is
+# known have one; the rest of the ground is the customer's. Reviewed like
+# code with every change; a change of meaning, and the renaming of an id,
+# bump builtin.Version.
 version: 1
 questions:
   - id: cluster.name
@@ -17,6 +20,7 @@ questions:
     text: The namespace the operator runs in
     why: Where the roles and connectors are created
     kind: text
+    default: takecare-system
     validate: { pattern: '^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$' }
   - id: environments
     text: The namespaces that hold the applications, one environment each
@@ -33,10 +37,15 @@ questions:
     why: The Doc's alert intake (spec 02 §1)
     kind: choice
     choices: [Prometheus Alertmanager, None yet]
+    default: Prometheus Alertmanager
   - id: metrics.service
-    text: The Prometheus service the alerting rules are loaded in, as <namespace>/<name>, or empty for none
+    text: >-
+      The Prometheus service the alerting rules are loaded in, as <namespace>/<name>, or empty for none.
+      The default is kube-prometheus-stack's for a release named after the chart, in the monitoring
+      namespace its documentation presumes; with another release name, the service is named after it
     why: The metrics connector (spec 10 §4) and observability/*
     kind: text
+    default: monitoring/kube-prometheus-stack-prometheus
     validate: { pattern: '^([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?/[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)?$' }
   - id: report.kind
     text: Where results are posted
@@ -49,8 +58,8 @@ questions:
     kind: list
     when: { id: report.kind, equals: Slack }
     validate: { pattern: '^(apprentice|practitioner|review)=[#A-Za-z0-9][-_.A-Za-z0-9]{0,79}$' }
-  - id: report.secret
-    text: The Secret that holds the report credential, as <namespace>/<name> and key
+  - id: report.secretRef
+    text: The name of the Kubernetes Secret (not its content) that holds the report credential, with its namespace and key
     why: Named in the connector, never read
     kind: secretRef
     when: { id: report.kind, equals: Slack }
@@ -59,8 +68,8 @@ questions:
     why: The platform's model (spec 01)
     kind: text
     validate: { pattern: '^https?://[^\s]+ [^\s]+$' }
-  - id: model.secret
-    text: The Secret that holds the provider key, as <namespace>/<name> and key
+  - id: model.secretRef
+    text: The name of the Kubernetes Secret (not its content) that holds the provider key, with its namespace and key
     why: Named in the platform, never read
     kind: secretRef
   - id: map.repository
@@ -68,8 +77,8 @@ questions:
     why: The map connector (spec 08 §5)
     kind: text
     validate: { pattern: '^(https://|ssh://|git@)[^\s]+ [^\s]+ [^\s]+$' }
-  - id: map.secret
-    text: The Secret that holds the Map's read-only deploy key or token, as <namespace>/<name>
+  - id: map.secretRef
+    text: The name of the Kubernetes Secret (not its content) that holds the Map's read-only deploy key or token, with its namespace and key
     why: Named in the connector, never read
     kind: secretRef
   - id: knowledge

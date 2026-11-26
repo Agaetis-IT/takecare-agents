@@ -6,6 +6,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/agaetis-it/takecare-agents/internal/golden"
+	"github.com/agaetis-it/takecare-agents/internal/questionnaire/builtin"
 )
 
 const (
@@ -126,7 +128,7 @@ func TestInitRerunAndEditedFiles(t *testing.T) {
 
 	// A new answer changes the values: refused without --overwrite.
 	other := filepath.Join(t.TempDir(), "answers.yaml")
-	if err := os.WriteFile(other, []byte("version: 1\nanswers:\n  model.provider: https://llm.example.com/v1 other-model\n"), 0o600); err != nil {
+	if err := os.WriteFile(other, []byte("version: 2\nanswers:\n  model.provider: https://llm.example.com/v1 other-model\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	before := tree(t, dir)
@@ -185,15 +187,16 @@ func TestInitAsksOnlyWhatIsNew(t *testing.T) {
 	raw = strings.Replace(raw, "  knowledge: http://runbooks.takecare-system.svc:8080/mcp\n", "", 1)
 	raw = strings.Replace(raw, "report.kind: The report server's log", "report.kind: Slack\n"+
 		"  report.destinations: [practitioner=C0123456789]\n"+
-		"  report.secret: {namespace: takecare-system, name: slack, key: token}", 1)
-	raw += "when:\n  report.destinations: report.kind=Slack\n  report.secret: report.kind\n"
+		"  report.secretRef: {namespace: takecare-system, name: slack, key: token}", 1)
+	raw += "when:\n  report.destinations: report.kind=Slack\n  report.secretRef: report.kind\n"
 	if err := os.WriteFile(state, []byte(raw), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("TAKECARE_ACCESSIBLE", "1")
 	// --no-color reaches the forms: Huh's line prompts are colored
 	// by its default theme otherwise (spec 13 §3).
-	run := runInitWith(t, "takecare-system/slack-bot:token\n\n", flagDir, dir, flagNoCommit, flagOverwrite, outputFlag, outputJSON,
+	// The Secret's namespace, name and key, then the knowledge source.
+	run := runInitWith(t, "takecare-system\nslack-bot\ntoken\n\n", flagDir, dir, flagNoCommit, flagOverwrite, outputFlag, outputJSON,
 		"--no-color")
 	if run.code != ExitOK {
 		t.Fatalf("exit %d: %s %s", run.code, run.stdout, run.stderr)
@@ -202,7 +205,7 @@ func TestInitAsksOnlyWhatIsNew(t *testing.T) {
 	if err := json.Unmarshal([]byte(run.stdout), &res); err != nil {
 		t.Fatalf("%v: %s", err, run.stdout)
 	}
-	if want := []string{"report.secret", "knowledge"}; !slices.Equal(res.Asked, want) {
+	if want := []string{"report.secretRef", "knowledge"}; !slices.Equal(res.Asked, want) {
 		t.Errorf("asked %v, want %v", res.Asked, want)
 	}
 	for _, want := range []string{"Why: Named in the connector, never read", "Why: The Intendant's knowledge connectors"} {
@@ -232,12 +235,19 @@ func TestInitRefusals(t *testing.T) {
 		t.Errorf("no terminal: exit %d, %s", run.code, run.stderr)
 	}
 	partial := filepath.Join(t.TempDir(), "answers.yaml")
-	if err := os.WriteFile(partial, []byte("version: 1\nanswers:\n  cluster.name: \"\"\nunknown: [operator.namespace]\n"), 0o600); err != nil {
+	if err := os.WriteFile(partial, []byte("version: 2\nanswers:\n  cluster.name: \"\"\nunknown: [operator.namespace]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	run = runInitWith(t, "", flagAnswers, partial, flagDir, dir, flagNoCommit)
 	if run.code != ExitError || !strings.Contains(run.stderr, "add them to "+partial) || strings.Contains(run.stderr, "operator.namespace") {
 		t.Errorf("a partial answers file: exit %d, %s", run.code, run.stderr)
+	}
+	// A default is never an answer without the person: with --answers, a
+	// question that has one is still missing (spec 13 §4.2).
+	for _, id := range []string{"alerts.source", "metrics.service"} {
+		if !strings.Contains(run.stderr, id) {
+			t.Errorf("%s, which has a default, is not missing: %s", id, run.stderr)
+		}
 	}
 
 	questions := t.TempDir()
@@ -298,7 +308,7 @@ func TestInitCommits(t *testing.T) {
 		t.Errorf("branch %s", got)
 	}
 	log := mustGit(t, "log", "-1", "--format=%an <%ae>%n%B")
-	for _, want := range []string{"Map Keeper <keeper@example.org>", "takecare: init", "Question set version: 1"} {
+	for _, want := range []string{"Map Keeper <keeper@example.org>", "takecare: init", fmt.Sprintf("Question set version: %d", builtin.Version)} {
 		if !strings.Contains(log, want) {
 			t.Errorf("the commit lacks %q:\n%s", want, log)
 		}
