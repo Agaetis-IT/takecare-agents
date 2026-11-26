@@ -2,20 +2,26 @@
 # SPDX-FileCopyrightText: 2026 Agaetis
 # SPDX-License-Identifier: Apache-2.0
 #
-# The accuracy bench (spec 04): N investigations of the ongoing
-# proxy-timeout incident, scored, on the demo brought up by make demo-up.
-# Each run is a synthetic copy of the firing HighErrorRate alert with its
-# own bench_run label and fingerprint, and takecare_silent="true", so
-# nothing is published. Grouping by incident would fold the copies into the
-# incident's investigation: the Doc's cooldown is 1 s while the bench runs,
-# restored on exit. One alert at a time, since the usage is measured by the
-# gateway's deltas, exact only without overlap.
-# Writes report-<date>.json to BENCH_DIR (default test/bench; scores and
-# metrics, never the diagnosis) and prints the table. BENCH_MIN=<k> exits 1
-# below k correct. A run that does not settle in BENCH_SETTLE_SECONDS
-# (default 900) stops the bench after hack/dump.sh has saved the cluster's
-# state; the dump's directory is printed, and only its base name is
-# written in the report (no local path).
+# The accuracy bench (spec 04): N investigations of the ongoing incident,
+# scored against its scenario file (spec 14; SCENARIO, default
+# proxy-timeout, read from SCENARIOS_DIR, default test/scenarios), on the
+# demo brought up by make demo-up. Each run is a synthetic copy of the
+# scenario's firing alert with its own bench_run label and fingerprint,
+# and takecare_silent="true", so nothing is published. Grouping by
+# incident would fold the copies into the incident's investigation: the
+# Doc's cooldown is 1 s while the bench runs, restored on exit. One alert
+# at a time, since the usage is measured by the gateway's deltas, exact
+# only without overlap.
+# If none of the scenario's alerts fires within its window after the
+# injection, the bench is not played: its report says so, never wrong.
+# Writes report-<date>.json to BENCH_DIR (default test/bench; the scenario
+# as <id>@<version>, scores and metrics, never the diagnosis) and prints
+# the table. BENCH_MIN=<k> exits 1 below k passes. BENCH_BASELINE=<report>
+# compares with an earlier report, refused at another scenario version.
+# A run that does not settle in BENCH_SETTLE_SECONDS (default 900) stops
+# the bench after hack/dump.sh has saved the cluster's state; the dump's
+# directory is printed, and only its base name is written in the report
+# (no local path).
 # Usage: hack/bench.sh [N]   (default 5)
 set -euo pipefail
 
@@ -29,11 +35,11 @@ NS=takecare-system
 APP_NS=demo-apps
 DOC=doc
 export KUBECONFIG="${PWD}/bin/takecare-demo.kubeconfig"
-# Spec 04's rule, case-insensitive: correct names the proxy and its idle
-# timeout; the memory lead is measured, not scored.
-CORRECT_PROXY='proxy'
-CORRECT_IDLE='idle|idleClientTimeout|600 s'
-MEMORY_LEAD='memory|OOM|leak'
+# The scenario holds the rule: its causes, evidence, red herrings and
+# dangerous actions (spec 14).
+SCENARIO="${SCENARIO:-proxy-timeout}"
+SCENARIOS_DIR="${SCENARIOS_DIR:-test/scenarios}"
+SCENARIO_FILE="${SCENARIOS_DIR}/${SCENARIO}.yaml"
 ENDED='^(Completed|Failed|TimedOut|Dropped)$'
 SETTLE="${BENCH_SETTLE_SECONDS:-900}"
 [[ "$SETTLE" =~ ^[0-9]+$ ]] || { echo "BENCH_SETTLE_SECONDS must be a number of seconds" >&2; exit 1; }
@@ -58,8 +64,8 @@ die() {
 }
 
 [[ -f "$KUBECONFIG" ]] || die "no demo: make demo-up first"
+[[ -f "$SCENARIO_FILE" ]] || die "no scenario ${SCENARIO_FILE}"
 WORK="$(mktemp -d)"
-dump_armed=true
 pf_pids=()
 
 # restore puts the Doc's cooldown back as it was, on every exit.
@@ -115,6 +121,57 @@ wait_settled() {
   return 1
 }
 
+# The scenario first: nothing is spent on one the player cannot score.
+go build -o "$WORK/player" ./test/scenarios/player || die "the scenario player does not build"
+"$WORK/player" info -scenario "$SCENARIO_FILE" >"$WORK/info.json" || die "the scenario ${SCENARIO_FILE} does not load"
+ref="$(jq -r .ref "$WORK/info.json")"
+"$WORK/player" score -scenario "$SCENARIO_FILE" -investigation <(echo '{}') >/dev/null ||
+  die "the scenario ${ref} cannot be scored on this bench (above)"
+[[ "$(jq -r .driver "$WORK/info.json")" == takecare-demo ]] || die "${ref} is not injected by the demo"
+[[ "$(kubectl -n "$NS" get takecaredemo demo -o jsonpath='{.spec.scenario}')" == "$SCENARIO" ]] ||
+  die "the demo plays another scenario than ${SCENARIO}: kubectl -n ${NS} get takecaredemo demo"
+missing="$(kubectl -n "$NS" get takecaredoc "$DOC" -o json | jq -r --slurpfile i "$WORK/info.json" '
+  [$i[0].connectors[] as $t | select((.spec.connectors[$t] // []) | length == 0) | $t] | join(", ")')"
+[[ -z "$missing" ]] || die "the Doc is bound to no ${missing} connector, which ${ref} needs: a missing source is not scored zero"
+if [[ -n "${BENCH_BASELINE:-}" ]]; then
+  # A report from before the format names the bare id: its rule was the
+  # scenario's first version (spec 14 §4).
+  base_ref="$(jq -r '.scenario | if test("@") then . else . + "@1" end' "$BENCH_BASELINE")" || die "cannot read the baseline ${BENCH_BASELINE}"
+  [[ "$base_ref" == "$ref" ]] || die "the baseline ${BENCH_BASELINE} is at ${base_ref}, this bench plays ${ref}: reports compare only at the same version"
+fi
+dump_armed=true
+
+# not_played writes the report of a bench that could not play, then stops.
+not_played() {
+  mkdir -p "${BENCH_DIR:=test/bench}"
+  report="${BENCH_DIR}/report-$(date -u +%Y-%m-%dT%H%MZ).json"
+  jq -n --arg s "$ref" --arg commit "$(git rev-parse HEAD)" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg why "$1" \
+    '{scenario: $s, date: $date, commit: $commit, played: false, notPlayed: $why, n: 0, correct: null, runs: []}' >"$report"
+  log "report: ${report}"
+  die "${ref} not played: $1"
+}
+
+# The injection's alert: one of the scenario's alerts fires within its
+# window after the incident started, or the bench is not played.
+injected="$(kubectl -n "$NS" get takecaredemo demo -o jsonpath='{.status.incidentStartedAt}')"
+[[ -n "$injected" ]] || die "no incident: make demo-incident first"
+forward alertmanager 18993 9093
+alert=""
+while :; do
+  curl -sf "http://localhost:18993/api/v2/alerts?active=true&filter=namespace%3D%22${APP_NS}%22" >"$WORK/active.json" ||
+    die "Alertmanager cannot be reached"
+  "$WORK/player" signal -scenario "$SCENARIO_FILE" -injected "$injected" \
+    -firing "$(jq -r '[.[].labels.alertname] | unique | join(",")' "$WORK/active.json")" >"$WORK/signal.json" ||
+    die "the scenario's signals cannot be read"
+  case "$(jq -r .state "$WORK/signal.json")" in
+    fired) alert="$(jq -r .alert "$WORK/signal.json")" && break ;;
+    notPlayed) not_played "$(jq -r .reason "$WORK/signal.json")" ;;
+  esac
+  log "waiting for $(jq -r '.alerts | join(" or ")' "$WORK/info.json") until $(jq -r .deadline "$WORK/signal.json")"
+  sleep 10
+done
+log "${alert} fires: playing ${ref}"
+
 # The incident's own investigation first: the bench measures by deltas.
 log "waiting for the incident's investigation to settle"
 for _ in $(seq 120); do
@@ -127,10 +184,9 @@ wait_settled "$SETTLE" || die "the incident's investigation did not settle in ${
 guards_before="$(hack/guardrail-counts.sh)" || die "the gateway's guardrail counters cannot be read"
 
 # The firing alert, copied for every run.
-forward alertmanager 18993 9093
-curl -sf "http://localhost:18993/api/v2/alerts?active=true&filter=alertname%3D%22HighErrorRate%22&filter=namespace%3D%22${APP_NS}%22" >"$WORK/firing.json" ||
+curl -sf "http://localhost:18993/api/v2/alerts?active=true&filter=alertname%3D%22${alert}%22&filter=namespace%3D%22${APP_NS}%22" >"$WORK/firing.json" ||
   die "Alertmanager cannot be reached"
-jq -e 'length > 0' "$WORK/firing.json" >/dev/null || die "HighErrorRate is not firing on ${APP_NS}: make demo-incident first"
+jq -e 'length > 0' "$WORK/firing.json" >/dev/null || die "${alert} no longer fires on ${APP_NS}"
 
 prev_cooldown="$(kubectl -n "$NS" get takecaredoc "$DOC" -o jsonpath='{.spec.investigation.cooldown}')"
 kubectl -n "$NS" patch takecaredoc "$DOC" --type=merge -p '{"spec":{"investigation":{"cooldown":"1s"}}}' >/dev/null
@@ -158,13 +214,22 @@ for i in $(seq "$N"); do
   [[ -n "$inv" ]] || die "bench alert ${i} opened no investigation (grouped or ignored: see the operator's alert metrics)"
   for ((t = 0; t < SETTLE; t += 5)); do settled "$inv" && break; sleep 5; done
   settled "$inv" || die "investigation ${inv} did not settle in ${SETTLE} s"
-  kubectl -n "$NS" get takecareinvestigation "$inv" -o json |
-    jq -c --arg i "$i" --arg proxy "$CORRECT_PROXY" --arg idle "$CORRECT_IDLE" --arg mem "$MEMORY_LEAD" '
-      (.status.diagnosis // "") as $d |
+  kubectl -n "$NS" get takecareinvestigation "$inv" -o json >"$WORK/inv.json"
+  "$WORK/player" score -scenario "$SCENARIO_FILE" -investigation "$WORK/inv.json" >"$WORK/score.json" ||
+    die "investigation ${inv} cannot be scored"
+  # correct: the pass passed (every cause named, no dangerous action);
+  # memoryLead: the red herring memory, kept one release for the reports
+  # from before the format.
+  jq -c --arg i "$i" --slurpfile sc "$WORK/score.json" '
+      (.status.diagnosis // "") as $d | $sc[0] as $s |
       def secs: if . == null then null else sub("\\.[0-9]+"; "") | fromdateiso8601 end;
       {run: ($i | tonumber), investigation: .metadata.name, phase: .status.phase,
-       correct: (($d | test($proxy; "i")) and ($d | test($idle; "i"))),
-       memoryLead: ($d | test($mem; "i")), length: ($d | length),
+       correct: $s.pass, causesNamed: $s.correct,
+       evidence: ($s.evidence | map({key: .id, value: .found}) | from_entries),
+       redHerrings: ($s.redHerrings | map({key: .id, value: .state}) | from_entries),
+       dangerous: $s.dangerous, actionsAboveClass: $s.actionsAboveClass,
+       memoryLead: ([$s.redHerrings[] | select(.id == "memory") | .state != "absent"] | first // null),
+       length: ($d | length),
        durationSeconds: (if .status.completedAt then (.status.completedAt | secs) - (.spec.alert.firedAt | secs) else null end),
        modelCalls: .status.usage.modelCalls, inputTokens: .status.usage.inputTokens, outputTokens: .status.usage.outputTokens,
        cost: (.status.usage.estimatedCost // null | if . then (split(" ")[0] | tonumber) else null end)}' >>"$WORK/runs.jsonl"
@@ -176,12 +241,17 @@ model="$(kubectl get takecareplatform -o json | jq -r --arg m "$(kubectl -n "$NS
 guards_after="$(hack/guardrail-counts.sh)" || die "the gateway's guardrail counters cannot be read"
 mkdir -p "${BENCH_DIR:=test/bench}"
 report="${BENCH_DIR}/report-$(date -u +%Y-%m-%dT%H%MZ).json"
-jq -s --arg model "$model" --arg commit "$(git rev-parse HEAD)" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+jq -s --arg ref "$ref" --arg model "$model" --arg commit "$(git rev-parse HEAD)" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --argjson before "$guards_before" --argjson after "$guards_after" '
   def median: map(select(. != null)) | sort | if length == 0 then null
     elif length % 2 == 1 then .[length / 2 | floor] else (.[length / 2 - 1] + .[length / 2]) / 2 end;
-  {scenario: "proxy-timeout", date: $date, commit: $commit, model: $model, n: length,
-   correct: map(select(.correct)) | length, memoryLead: map(select(.memoryLead)) | length,
+  {scenario: $ref, date: $date, commit: $commit, model: $model, played: true, n: length,
+   correct: map(select(.correct)) | length, causesNamed: map(select(.causesNamed)) | length,
+   memoryLead: map(select(.memoryLead)) | length,
+   evidence: (map(.evidence | to_entries[]) | group_by(.key) | map({key: .[0].key, value: map(select(.value)) | length}) | from_entries),
+   redHerrings: (map(.redHerrings | to_entries[]) | group_by(.key)
+     | map({key: .[0].key, value: (group_by(.value) | map({key: .[0].value, value: length}) | from_entries)}) | from_entries),
+   dangerous: map(select(.dangerous | length > 0)) | length,
    median: {durationSeconds: map(.durationSeconds) | median, modelCalls: map(.modelCalls) | median,
      inputTokens: map(.inputTokens) | median, outputTokens: map(.outputTokens) | median, cost: map(.cost) | median},
    guardrails: {before: $before, after: $after},
@@ -190,13 +260,17 @@ jq -s --arg model "$model" --arg commit "$(git rev-parse HEAD)" --arg date "$(da
 # The table, in Markdown (a workflow's step summary takes it as is).
 jq -r '
   "Bench \(.scenario), model \(.model), commit \(.commit[0:7]), \(.date)\n",
-  "| run | phase | correct | memory lead | length | duration (s) | model calls | tokens in / out | cost |",
-  "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
-  (.runs[] | "| \(.run) | \(.phase) | \(.correct) | \(.memoryLead) | \(.length) | \(.durationSeconds // "-") | \(.modelCalls // "-") | \(.inputTokens // "-") / \(.outputTokens // "-") | \(.cost // "-") |"),
+  "| run | phase | correct | evidence found | red herrings | dangerous | length | duration (s) | model calls | tokens in / out | cost |",
+  "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  (.runs[] | "| \(.run) | \(.phase) | \(.correct) | \([.evidence | to_entries[] | select(.value) | .key] | join(", ") | if . == "" then "-" else . end) | \([.redHerrings | to_entries[] | select(.value != "absent") | "\(.key) \(.value)"] | join(", ") | if . == "" then "-" else . end) | \(.dangerous | join(", ") | if . == "" then "-" else . end) | \(.length) | \(.durationSeconds // "-") | \(.modelCalls // "-") | \(.inputTokens // "-") / \(.outputTokens // "-") | \(.cost // "-") |"),
   "",
-  "Correct: \(.correct)/\(.n) · memory lead: \(.memoryLead)/\(.n) · median duration \(.median.durationSeconds // "-") s · median model calls \(.median.modelCalls // "-") · median cost \(.median.cost // "-")",
+  "Correct: \(.correct)/\(.n) · causes named: \(.causesNamed)/\(.n) · memory lead: \(.memoryLead)/\(.n) · median duration \(.median.durationSeconds // "-") s · median model calls \(.median.modelCalls // "-") · median cost \(.median.cost // "-")",
   "",
   "Guardrail counters (phase/action: before → after): \([.guardrails.after[] as $a | "\($a.phase)/\($a.action) \((.guardrails.before[] | select(.phase == $a.phase and .action == $a.action) | .n) // 0) → \($a.n)"] | join(", "))"' "$report"
+if [[ -n "${BENCH_BASELINE:-}" ]]; then
+  jq -r --slurpfile b "$BENCH_BASELINE" '$b[0] as $b |
+    "\nBaseline \($b.date) (\($b.commit[0:7])): correct \($b.correct)/\($b.n) → \(.correct)/\(.n) · median duration \($b.median.durationSeconds // "-") → \(.median.durationSeconds // "-") s · median model calls \($b.median.modelCalls // "-") → \(.median.modelCalls // "-") · median cost \($b.median.cost // "-") → \(.median.cost // "-")"' "$report"
+fi
 log "report: ${report}"
 if [[ -n "${BENCH_MIN:-}" ]] && (( $(jq .correct "$report") < BENCH_MIN )); then
   die "$(jq .correct "$report")/${N} correct, under BENCH_MIN=${BENCH_MIN}"
