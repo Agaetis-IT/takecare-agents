@@ -369,6 +369,50 @@ func TestScheduleRefused(t *testing.T) {
 	}
 }
 
+// "none" plans no periodic review, even over a due time stored before,
+// and sets ScheduleValid True with its own message; the reviews after an
+// incident are not concerned.
+func TestScheduleNone(t *testing.T) {
+	t.Parallel()
+	due := metav1.NewTime(trigNow.Add(-2 * time.Hour))
+	k := trigKine(func(k *v1alpha1.TakeCareKine) {
+		k.Spec.Schedule = v1alpha1.ScheduleNone
+		k.Status.NextReviewTime, k.Status.PendingTrigger = &due, v1alpha1.ReviewTriggerSchedule
+	})
+	c := indexedAPI(t, k)
+	st := readyStatus(true)
+	out, err := (&Reconciler{Client: c}).triggers(context.Background(), k, st, trigNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.next != nil || out.pending != "" || !out.wake.IsZero() || out.last != "" {
+		t.Errorf("next %v, pending %q, wake %s, review %q; want nothing planned", out.next, out.pending, out.wake, out.last)
+	}
+	c2 := meta.FindStatusCondition(st.conditions, ConditionScheduleValid)
+	if c2 == nil || c2.Status != metav1.ConditionTrue || c2.Reason != ReasonValid || c2.Message != "spec.schedule none: no periodic review" {
+		t.Errorf("ScheduleValid %+v", c2)
+	}
+	var list v1alpha1.TakeCareReviewList
+	if err := c.List(context.Background(), &list); err != nil || len(list.Items) != 0 {
+		t.Errorf("reviews %d, %v; want none", len(list.Items), err)
+	}
+}
+
+// The default schedule, empty in a Kiné stored without the API's default,
+// stays weekly on Mondays at 06:00 UTC.
+func TestScheduleDefault(t *testing.T) {
+	t.Parallel()
+	k := trigKine(func(k *v1alpha1.TakeCareKine) { k.Spec.Schedule = "" })
+	st := readyStatus(true)
+	next := schedule(k, st, trigNow)
+	if want := time.Date(2026, 11, 30, 6, 0, 0, 0, time.UTC); next == nil || !next.Time.Equal(want) {
+		t.Errorf("next %v, want %s", next, want)
+	}
+	if c := meta.FindStatusCondition(st.conditions, ConditionScheduleValid); c == nil || c.Message != "spec.schedule 0 6 * * 1, in UTC" {
+		t.Errorf("ScheduleValid %+v", c)
+	}
+}
+
 // The investigation watch passes what can make one due: its creation, its
 // deletion, a phase change and its resolution.
 func TestInvestigationChanged(t *testing.T) {

@@ -23,6 +23,9 @@ const MaxKineName = 63 - len(KineAgentPrefix)
 // for a Kiné stored before the rule, on its status.
 const MessageKineName = "a Kiné's name is at most 49 characters: its engine agent takecare-kine-<name> is a Kubernetes service name (63)"
 
+// ScheduleNone is the schedule of a Kiné with no periodic review.
+const ScheduleNone = "none"
+
 // TakeCareKineSpec configures the Kiné, the problem management role (spec
 // 11): after an incident, it reviews the Doc's diagnosis against the
 // earlier incidents and follows their corrective actions, read-only.
@@ -37,12 +40,15 @@ type TakeCareKineSpec struct {
 	// +optional
 	Report ReportDestinations `json:"report,omitempty"`
 
-	// When the periodic review runs, as a cron expression in UTC. The
-	// controller parses it; a schedule it cannot parse is reported in status.
+	// When the periodic review runs, as a cron expression in UTC, or
+	// "none" for no periodic review (the reviews after an incident and on
+	// demand go on). The controller parses it; a schedule it cannot parse
+	// is reported in status.
 	// +kubebuilder:default="0 6 * * 1"
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=100
 	// +kubebuilder:validation:XValidation:rule="!self.contains('TZ=')",message="the schedule is in UTC: TZ= and CRON_TZ= are refused"
+	// +kubebuilder:validation:XValidation:rule="self == 'none' || self.trim().lowerAscii() != 'none'",message="no periodic review is written 'none', in lower case"
 	// +optional
 	Schedule string `json:"schedule,omitempty"`
 

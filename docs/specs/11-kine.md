@@ -37,7 +37,7 @@ It embeds `RoleCommonSpec` (`level`, `scope`, `model`, `suspend`, `contentTools`
 
   No `cluster`, `metrics` or `logs` slot: the Kiné does not investigate (§1).
 - `report`: the destinations by level, `apprentice` (optional, a review channel) and `practitioner`, as the Doc's (spec 02 §4).
-- `schedule`: a cron expression in UTC for the periodic review, weekly by default (`0 6 * * 1`). A schedule naming a time zone (`TZ=` or `CRON_TZ=`) is refused at creation, and one stored before the rule sets `ScheduleValid` False (reason `ScheduleTimeZone`), as spec 10 §2 does for the Intendant.
+- `schedule`: a cron expression in UTC for the periodic review, weekly by default (`0 6 * * 1`), or `none` for no periodic review (§3). A schedule naming a time zone (`TZ=` or `CRON_TZ=`) is refused at creation, and one stored before the rule sets `ScheduleValid` False (reason `ScheduleTimeZone`), as spec 10 §2 does for the Intendant.
 - `review`:
   - `timeout`: the run's deadline, 10 minutes by default;
   - `grace`: how long after an investigation's end the review starts when the alert never resolved, 24 hours by default (§3);
@@ -110,7 +110,7 @@ A Kiné that is suspended or not `Ready` creates no review; the investigations t
 
 ### Periodic review (`Schedule`)
 
-At `status.nextReviewTime`, from `schedule`. Its period is the `lookback` up to its creation. A due time stays in `nextReviewTime` until its review is created. A schedule that is refused (`ScheduleValid` False) plans no periodic review; it does not make the Kiné not `Ready`, and the reviews after an incident go on. It looks for recurrences across the period's incidents and follows the open actions, without a triggering investigation. Its name is a hash of the Kiné's UID and the scheduled time. A due schedule that meets a running review waits in `status.pendingTrigger`; triggers that pile up give one periodic review, not several.
+At `status.nextReviewTime`, from `schedule`. Its period is the `lookback` up to its creation. A due time stays in `nextReviewTime` until its review is created. `schedule: none` plans no periodic review: `nextReviewTime` stays empty and `ScheduleValid` is True, with a message saying "no periodic review"; the reviews after an incident and on demand go on. Only the lower-case `none` says it; another case, or spaces around it, are refused at creation. A schedule that is refused (`ScheduleValid` False) plans no periodic review either; it does not make the Kiné not `Ready`, and the reviews after an incident go on. It looks for recurrences across the period's incidents and follows the open actions, without a triggering investigation. Its name is a hash of the Kiné's UID and the scheduled time. A due schedule that meets a running review waits in `status.pendingTrigger`; triggers that pile up give one periodic review, not several.
 
 ### On demand (`OnDemand`)
 

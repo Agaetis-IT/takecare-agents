@@ -95,9 +95,13 @@ type triggered struct {
 var cronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 // schedule sets ScheduleValid and returns the next periodic review's time
-// after now, nil when the schedule is refused.
+// after now, nil when the schedule is refused or says none.
 func schedule(k *v1alpha1.TakeCareKine, st *status, now time.Time) *metav1.Time {
 	spec := cmp.Or(k.Spec.Schedule, defaultSchedule)
+	if spec == v1alpha1.ScheduleNone {
+		st.set(ConditionScheduleValid, true, ReasonValid, "spec.schedule none: no periodic review")
+		return nil
+	}
 	if strings.Contains(spec, "TZ=") {
 		// Stored before the API refused it (the CEL rule says the same).
 		st.set(ConditionScheduleValid, false, ReasonScheduleTimeZone, v1alpha1.MessageScheduleUTC)
