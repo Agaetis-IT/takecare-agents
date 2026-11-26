@@ -271,7 +271,7 @@ None sent anywhere. Logs go to standard error, off by default, `--verbose` to tu
 
 ## 12. Lots and order
 
-Four code lots and the distribution lot, in this order, each a pull request under about 600 lines of code excluding tests and generated files. Estimates are code / tests.
+Four code lots and the distribution lot, in this order, each one pull request up to about 1,000 lines of code, excluding tests and generated files (`AGENTS.md`). Estimates are code / tests.
 
 | Lot | Content | Estimate | Criteria |
 |---|---|---|---|
