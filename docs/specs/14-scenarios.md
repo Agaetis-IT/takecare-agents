@@ -4,7 +4,7 @@
 |---|---|
 | Status | Draft |
 | Date | 2026-11-26 |
-| Related decisions | ADR 0006, 0008, 0014, 0015, 0018, 0021; specs 02, 03, 04 (accuracy bench), 06 (§11, training ground), 08, 10 (§11), 11 (§12) |
+| Related decisions | ADR 0006, 0008, 0014, 0015, 0018, 0021; specs 02, 03, 04 (accuracy bench), 06 (§11, training ground), 08, 10 (§11), 11 (§12), 12 (§16) |
 
 ## 1. Purpose
 
@@ -90,13 +90,16 @@ fault:
     driver: takecare-demo   # who injects it
     steps: [<what the driver does, in order>]
   signals:
-    alerts: [<alert names expected to fire>]
+    trigger: alert          # alert | onDemand
+    alerts: [<alert names expected to fire>]   # [] unless trigger is alert
     window: { from: <duration>, to: <duration> }   # after the injection
 ```
 
 - `mode`: `live` injects the fault on a running ground (the demo's annotations); `replay` plays recorded data of a past incident against read servers that serve it (§3.10).
 - `driver`: what performs the injection. `takecare-demo` is the `TakeCareDemo` controller, through its `incident` annotation (spec 03); the scenario's `id` is the value of `spec.scenario`. Other drivers (a replay server, a script on a test ground) come with their own spec. The steps are documentation of what the driver does, for the reader; the driver's code is the truth, and a test checks the two agree on the objects it touches.
-- `signals.alerts`: the alerts the player waits for before the first pass. If none fires within the window, the pass is **not played** (the injection failed), and the report says so; it is never scored as a wrong answer.
+- `signals.trigger`: what starts the pass. `alert` when an alert of the ground starts it (the Doc). `onDemand` when no alert does: a role that runs on a schedule (the Mécano, spec 12; the Intendant's survey) is played by an on-demand record the player creates once the injection is in place, and `alerts` is `[]`.
+- `signals.alerts`: with `trigger: alert`, the alerts the player waits for before the first pass. If none fires within the window, the pass is **not played** (the injection failed), and the report says so; it is never scored as a wrong answer.
+- `signals.window`: with `trigger: alert`, when the alerts are expected after the injection. Without an alert, the time the player waits after the injection before it creates the record, `from` and `to` equal; the injection is checked in place (the driver's own readiness, for example the demo repository serving the revision the scenario names) before the pass, and a pass whose injection is not in place is **not played**, as above.
 
 ### 3.5 `causes`
 
@@ -238,6 +241,7 @@ fault:
       - deploy billing-api in leaky mode with DB_POOL_IDLE_TIMEOUT_SECONDS=900
       - regenerate the corpus with the incident's dates
   signals:
+    trigger: alert
     alerts: [HighErrorRate]
     window: { from: 2m, to: 3m30s }
 causes:
@@ -321,7 +325,7 @@ Each port also needs its injection in the `TakeCareDemo` controller and its scen
 1. `test/scenarios/schema.json` and `test/scenarios/proxy-timeout.yaml` exist; `make scenarios-check` (in `make lint`) validates them and fails on a missing field, an unknown Map key, a regular expression that does not compile, and `reserved: true`.
 2. `hack/bench.sh` takes its correctness rule from the scenario; a bench of `proxy-timeout@1` scores the same runs as today's rule (replayed on the last committed report's diagnoses, kept outside the repository).
 3. The report names `<id>@<version>` and refuses a baseline at another version.
-4. A pass whose expected alert does not fire is reported not played, never wrong.
+4. A pass whose expected alert does not fire, or, without an alert, whose injection is not in place, is reported not played, never wrong.
 5. A `dangerous` match or an action above `safeAction.class` fails the pass whatever the cause matched; a unit test of the player shows it.
 6. `make demo-verdict` prints the verdict lines.
 7. Spec 03, spec 04, `test/bench/README.md` and the `bench` skill point at the scenario file.

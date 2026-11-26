@@ -141,6 +141,7 @@ The demo caps each role's route to its model at 2,000,000 tokens an hour (`range
 | [`docs/specs/09-ranger.md`](docs/specs/09-ranger.md) | The Ranger: the same rules for every agent through the gateway (masking, filtering, budgets, allowed models), its Markers by level |
 | [`docs/specs/10-intendant.md`](docs/specs/10-intendant.md) | The Intendant: the survey, discovery through the connectors, proposals for the Map, the inventory of agents and connectors |
 | [`docs/specs/11-kine.md`](docs/specs/11-kine.md) | The Kiné (proposed, 0.5.0): reviews after each incident, recurrences and corrective actions tracked across reviews, the `history` connector |
+| [`docs/specs/12-mecano.md`](docs/specs/12-mecano.md) | The Mécano (draft, 0.6.0): the inventory of what runs live and what Git declares, drift, end of support, and at `Practitioner` the upgrade plan as a draft pull request, the product's first write |
 | [`docs/specs/13-tui.md`](docs/specs/13-tui.md) | The TUI: the `takecare` command (init, status, review, discover, validate), read-only on the cluster, files and a local commit in the user's Git |
 | [`docs/how-to/takecare-command.md`](docs/how-to/takecare-command.md) | The `takecare` command: install, the rights it reads with, `status`, `review`, `validate` and `version` |
 | [`docs/spikes/001-kagent-doc-engine.md`](docs/spikes/001-kagent-doc-engine.md) | Spike 001: can kagent run the Doc as well as HolmesGPT? |
