@@ -1,0 +1,168 @@
+{
+  "bench": "intendant",
+  "scenario": "demo-without-documentedBy",
+  "date": "2026-11-26T17:34:24Z",
+  "commit": "c6c1bd51189b9257a8524504851c085eebf2dd30",
+  "model": "google/gemini-3.7-flash",
+  "n": 5,
+  "ok": 4,
+  "median": {
+    "recall": 1,
+    "precision": 1,
+    "durationSeconds": 57,
+    "modelCalls": 12,
+    "inputTokens": 77582,
+    "outputTokens": 819,
+    "cost": 0.0409
+  },
+  "dropped": {},
+  "guardrails": {
+    "before": [
+      {
+        "phase": "Request",
+        "action": "Allow",
+        "n": 174
+      },
+      {
+        "phase": "Response",
+        "action": "Allow",
+        "n": 58
+      }
+    ],
+    "after": [
+      {
+        "phase": "Request",
+        "action": "Allow",
+        "n": 348
+      },
+      {
+        "phase": "Response",
+        "action": "Allow",
+        "n": 116
+      }
+    ]
+  },
+  "runs": [
+    {
+      "run": 1,
+      "survey": "bench-1795714170-1",
+      "phase": "Completed",
+      "seen": 2,
+      "dropped": {},
+      "required": 2,
+      "matched": [],
+      "proposals": 2,
+      "allowed": [
+        "Add runbook/connection-pool-exhaustion",
+        "Update service/billing-api"
+      ],
+      "forbidden": [],
+      "other": [],
+      "recall": 0,
+      "precision": 1,
+      "ok": false,
+      "durationSeconds": 62,
+      "modelCalls": 15,
+      "inputTokens": 133085,
+      "outputTokens": 1108,
+      "cost": "0.0530 USD"
+    },
+    {
+      "run": 2,
+      "survey": "bench-1795714170-2",
+      "phase": "Completed",
+      "seen": 2,
+      "dropped": {},
+      "required": 2,
+      "matched": [
+        "Update runbook/proxy-timeout",
+        "Update service/billing-api"
+      ],
+      "proposals": 2,
+      "allowed": [],
+      "forbidden": [],
+      "other": [],
+      "recall": 1,
+      "precision": 1,
+      "ok": true,
+      "durationSeconds": 55,
+      "modelCalls": 12,
+      "inputTokens": 73014,
+      "outputTokens": 675,
+      "cost": "0.0369 USD"
+    },
+    {
+      "run": 3,
+      "survey": "bench-1795714170-3",
+      "phase": "Completed",
+      "seen": 2,
+      "dropped": {},
+      "required": 2,
+      "matched": [
+        "Update runbook/proxy-timeout",
+        "Update service/billing-api"
+      ],
+      "proposals": 2,
+      "allowed": [],
+      "forbidden": [],
+      "other": [],
+      "recall": 1,
+      "precision": 1,
+      "ok": true,
+      "durationSeconds": 59,
+      "modelCalls": 13,
+      "inputTokens": 82174,
+      "outputTokens": 819,
+      "cost": "0.0422 USD"
+    },
+    {
+      "run": 4,
+      "survey": "bench-1795714170-4",
+      "phase": "Completed",
+      "seen": 2,
+      "dropped": {},
+      "required": 2,
+      "matched": [
+        "Update runbook/proxy-timeout",
+        "Update service/billing-api"
+      ],
+      "proposals": 2,
+      "allowed": [],
+      "forbidden": [],
+      "other": [],
+      "recall": 1,
+      "precision": 1,
+      "ok": true,
+      "durationSeconds": 57,
+      "modelCalls": 12,
+      "inputTokens": 77582,
+      "outputTokens": 837,
+      "cost": "0.0409 USD"
+    },
+    {
+      "run": 5,
+      "survey": "bench-1795714170-5",
+      "phase": "Completed",
+      "seen": 2,
+      "dropped": {},
+      "required": 2,
+      "matched": [
+        "Update runbook/proxy-timeout",
+        "Update service/billing-api"
+      ],
+      "proposals": 2,
+      "allowed": [],
+      "forbidden": [],
+      "other": [],
+      "recall": 1,
+      "precision": 1,
+      "ok": true,
+      "durationSeconds": 44,
+      "modelCalls": 6,
+      "inputTokens": 40826,
+      "outputTokens": 568,
+      "cost": "0.0256 USD"
+    }
+  ],
+  "dump": "/Users/pierre/.timon/tmp/missions/f79e430a-f930-4eaa-a596-0b7f8a3003cf/takecare-dump-20261126T173424Z-Kmbf"
+}
