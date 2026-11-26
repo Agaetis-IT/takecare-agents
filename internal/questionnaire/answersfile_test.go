@@ -26,7 +26,7 @@ func TestAnswersFileRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw := []byte(`version: 1
+	raw := []byte(`version: 2
 questionSet: 1
 created: "2026-11-25"
 answers:
@@ -76,13 +76,13 @@ func TestDecodeAnswersRefusals(t *testing.T) {
 	}
 	token := "gh" + "p_" + strings.Repeat("a1B2c3D4e5", 4)
 	for name, tc := range map[string]struct{ raw, err string }{
-		"version":      {"version: 2\nanswers: {}\n", "version 2"},
-		"unknown key":  {"version: 1\nanswers: {}\nextra: 1\n", "not an answers file"},
-		"wrong type":   {"version: 1\nanswers: { on: maybe }\n", "on: not a bool answer"},
-		"both":         {"version: 1\nanswers: { name: x }\nunknown: [name]\n", "both answered and unknown"},
-		"choice":       {"version: 1\nanswers: { pick: c }\n", "not one of the choices"},
-		"secret field": {"version: 1\nanswers: { ref: { namespace: a, name: b, value: c } }\n", `unknown field "value"`},
-		"credential":   {"version: 1\nanswers: { name: " + token + " }\n", "credential"},
+		"version":      {"version: 1\nanswers: {}\n", "answers file version 1, want 2"},
+		"unknown key":  {"version: 2\nanswers: {}\nextra: 1\n", "not an answers file"},
+		"wrong type":   {"version: 2\nanswers: { on: maybe }\n", "on: not a bool answer"},
+		"both":         {"version: 2\nanswers: { name: x }\nunknown: [name]\n", "both answered and unknown"},
+		"choice":       {"version: 2\nanswers: { pick: c }\n", "not one of the choices"},
+		"secret field": {"version: 2\nanswers: { ref: { namespace: a, name: b, value: c } }\n", `unknown field "value"`},
+		"credential":   {"version: 2\nanswers: { name: " + token + " }\n", "credential"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, _, err := DecodeAnswers(set, []byte(tc.raw))

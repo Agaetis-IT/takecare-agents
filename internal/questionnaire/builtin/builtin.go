@@ -24,7 +24,7 @@ import (
 
 // Version is the version of the built-in question set, recorded in
 // .takecare/answers.yaml and in the commit message.
-const Version = 1
+const Version = 2
 
 // Name is the built-in file's name in faults.
 const Name = "built-in questions"
@@ -212,12 +212,12 @@ func newView(set *questionnaire.Set, answers map[string]questionnaire.Answer, cr
 		use, channel, _ := strings.Cut(d, "=")
 		v.Destinations = append(v.Destinations, [2]string{use, channel})
 	}
-	v.ReportSecret = get("report.secret").secret()
+	v.ReportSecret = get("report.secretRef").secret()
 
 	model := get("model.provider")
 	v.ModelURL, v.ModelName, _ = strings.Cut(model.text(), " ")
 	v.UnknownModel = !model.known
-	v.ModelSecret = get("model.secret").secret()
+	v.ModelSecret = get("model.secretRef").secret()
 
 	repo := get("map.repository")
 	if f := strings.Fields(repo.text()); len(f) == 3 {
@@ -225,7 +225,7 @@ func newView(set *questionnaire.Set, answers map[string]questionnaire.Answer, cr
 		v.MapSSH = !strings.HasPrefix(v.MapURL, "https://")
 	}
 	v.UnknownMap = !repo.known
-	v.MapSecret = get("map.secret").secret()
+	v.MapSecret = get("map.secretRef").secret()
 
 	k := get("knowledge")
 	v.Knowledge, v.UnknownKnowledge = k.text(), !k.known

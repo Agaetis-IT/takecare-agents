@@ -12,8 +12,11 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// AnswersVersion is the version of the answers file format.
-const AnswersVersion = 1
+// AnswersVersion is the version of the answers file format. Version 2
+// renamed the secretRef ids (map.secret became map.secretRef); from then
+// on, a version that renames an id keeps reading the previous version's
+// names (spec 13 §4.2).
+const AnswersVersion = 2
 
 // AnswersFile is .takecare/answers.yaml (spec 13 §5), and the file
 // takecare init --answers reads: the answers keyed by id, the ids answered

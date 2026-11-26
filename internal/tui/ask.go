@@ -49,17 +49,34 @@ type Screen struct {
 }
 
 // Ask asks q and returns the answer, checked with CheckAnswer: an answer
-// shaped like a credential is refused at input, without echoing it.
+// shaped like a credential is refused at input, without echoing it. A
+// question's default is prefilled, never answered in the person's place:
+// they confirm it, change it, or say they don't know.
 func (s Screen) Ask(ctx context.Context, q *questionnaire.Question) (questionnaire.Answer, error) {
+	if q.Kind == questionnaire.KindSecretRef {
+		return s.askSecretRef(ctx, q)
+	}
 	var (
 		input string
 		field huh.Field
 	)
+	def, hasDef := defaultInput(q)
 	hint := "Type " + DontKnow + " if you don't know."
+	// In line prompts an empty line keeps the default, and None stands for
+	// an empty answer when the question accepts one.
+	none := false
+	if hasDef && s.Accessible {
+		_, err := Parse(q, "")
+		none = err == nil
+	}
 	validate := func(in string) error {
+		if hasDef && s.Accessible && strings.TrimSpace(in) == "" || none && strings.TrimSpace(in) == None {
+			return nil
+		}
 		_, err := Parse(q, in)
 		return err
 	}
+	input = def
 	switch q.Kind {
 	case questionnaire.KindChoice, questionnaire.KindBool:
 		values := q.Choices
@@ -76,17 +93,117 @@ func (s Screen) Ask(ctx context.Context, q *questionnaire.Question) (questionnai
 	case questionnaire.KindList:
 		hint = "Separate the items with commas. " + hint
 		field = huh.NewInput().Title(">").Value(&input).Validate(validate)
-	case questionnaire.KindSecretRef:
-		hint = "As <namespace>/<name>, or <namespace>/<name>:<key>; never the value. " + hint
-		field = huh.NewInput().Title(">").Value(&input).Validate(validate)
 	default:
 		field = huh.NewInput().Title(">").Value(&input).Validate(validate)
+	}
+	if hasDef {
+		hint = defaultHint(def, s.Accessible, none) + "\n" + hint
 	}
 	note := huh.NewNote().Title(q.Text).Description("Why: " + q.Why + "\n" + hint)
 	if err := s.run(ctx, huh.NewGroup(note, field)); err != nil {
 		return questionnaire.Answer{}, fmt.Errorf("%s: %w", q.ID, err)
 	}
+	if none && strings.TrimSpace(input) == None {
+		input = ""
+	}
 	return Parse(q, input)
+}
+
+// None is what a person types in line prompts for an empty answer to a
+// question whose default an empty line would keep.
+const None = "-"
+
+// defaultInput is q's default as the form shows it, and false without one.
+func defaultInput(q *questionnaire.Question) (string, bool) {
+	a, ok := q.DefaultAnswer()
+	if !ok {
+		return "", false
+	}
+	switch v := a.Value.(type) {
+	case string:
+		return v, true
+	case []string:
+		return strings.Join(v, ", "), true
+	case bool:
+		if v {
+			return yes, true
+		}
+		return no, true
+	}
+	return "", false
+}
+
+// defaultHint tells the person the default is theirs to confirm.
+func defaultHint(def string, accessible, none bool) string {
+	switch {
+	case !accessible:
+		return "Prefilled with the usual answer: " + def + ". Confirm it or change it."
+	case none:
+		return "The usual answer is " + def + ". Press Enter to keep it, type another answer, or " + None + " for none."
+	}
+	return "The usual answer is " + def + ". Press Enter to keep it, or type another answer."
+}
+
+// The labels of the three fields of a secretRef question.
+const (
+	labelNamespace = "Secret namespace"
+	labelName      = "Secret name"
+	labelKey       = "Key in the Secret"
+)
+
+// askSecretRef asks where a Secret lives in three fields: its namespace,
+// its name and the key in it. DontKnow in the namespace is "I don't
+// know"; the name and the key may then stay empty.
+func (s Screen) askSecretRef(ctx context.Context, q *questionnaire.Question) (questionnaire.Answer, error) {
+	var ns, name, key string
+	unknown := func() bool { return strings.TrimSpace(ns) == DontKnow }
+	// Each field is checked alone, the other parts standing in valid.
+	part := func(r questionnaire.SecretRef) error {
+		return questionnaire.CheckAnswer(q, questionnaire.Answer{Value: r})
+	}
+	const stand = "x"
+	note := huh.NewNote().Title(q.Text).Description("Why: " + q.Why + "\n" +
+		"Name the Secret, never write its value. Type " + DontKnow + " as the namespace if you don't know.")
+	fields := []huh.Field{
+		note,
+		huh.NewInput().Title(labelNamespace).Value(&ns).Validate(func(in string) error {
+			if strings.TrimSpace(in) == DontKnow {
+				return nil
+			}
+			return part(questionnaire.SecretRef{Namespace: strings.TrimSpace(in), Name: stand})
+		}),
+		huh.NewInput().Title(labelName).Value(&name).Validate(func(in string) error {
+			if unknown() && (strings.TrimSpace(in) == "" || strings.TrimSpace(in) == DontKnow) {
+				return nil
+			}
+			return part(questionnaire.SecretRef{Namespace: stand, Name: strings.TrimSpace(in)})
+		}),
+		huh.NewInput().Title(labelKey).Value(&key).Validate(func(in string) error {
+			if unknown() && strings.TrimSpace(in) == DontKnow {
+				return nil
+			}
+			return part(questionnaire.SecretRef{Namespace: stand, Name: stand, Key: strings.TrimSpace(in)})
+		}),
+	}
+	if err := s.run(ctx, huh.NewGroup(fields...)); err != nil {
+		return questionnaire.Answer{}, fmt.Errorf("%s: %w", q.ID, err)
+	}
+	return ParseSecretRef(q, ns, name, key)
+}
+
+// ParseSecretRef turns the three fields of a secretRef question into an
+// answer, checked with CheckAnswer. DontKnow as the namespace is "I don't
+// know".
+func ParseSecretRef(q *questionnaire.Question, namespace, name, key string) (questionnaire.Answer, error) {
+	if strings.TrimSpace(namespace) == DontKnow {
+		return questionnaire.Answer{Unknown: true}, nil
+	}
+	a := questionnaire.Answer{Value: questionnaire.SecretRef{
+		Namespace: strings.TrimSpace(namespace), Name: strings.TrimSpace(name), Key: strings.TrimSpace(key)}}
+	if err := questionnaire.CheckAnswer(q, a); err != nil {
+		return questionnaire.Answer{}, err
+	}
+	return a, nil
 }
 
 // Confirm asks a yes or no question.
@@ -155,7 +272,7 @@ func (w *watched) Read(p []byte) (int, error) {
 
 // Parse turns what a person typed for q into an answer, checked with
 // CheckAnswer. DontKnow is "I don't know". A list is comma-separated; a
-// Secret reference is <namespace>/<name>[:<key>].
+// Secret reference is asked in three fields (ParseSecretRef).
 func Parse(q *questionnaire.Question, in string) (questionnaire.Answer, error) {
 	in = strings.TrimSpace(in)
 	if in == DontKnow {
@@ -177,12 +294,7 @@ func Parse(q *questionnaire.Question, in string) (questionnaire.Answer, error) {
 		}
 		v = items
 	case questionnaire.KindSecretRef:
-		ref, key, _ := strings.Cut(in, ":")
-		ns, name, ok := strings.Cut(ref, "/")
-		if !ok {
-			return questionnaire.Answer{}, fmt.Errorf("%s: write <namespace>/<name>[:<key>]", q.ID)
-		}
-		v = questionnaire.SecretRef{Namespace: ns, Name: name, Key: key}
+		return questionnaire.Answer{}, fmt.Errorf("%s: a Secret is named in three fields", q.ID)
 	}
 	a := questionnaire.Answer{Value: v}
 	if err := questionnaire.CheckAnswer(q, a); err != nil {
