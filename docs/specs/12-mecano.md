@@ -16,7 +16,9 @@ It looks at two things and compares them:
 - **what runs live** on the cluster, read through the `cluster` connector: the images and their tags, the apiVersions in use, the charts' labels, cert-manager's Certificates, and the GitOps tools' sync status;
 - **what Git declares**, read through the `code` connector (§5): manifests, charts and their values' chart versions, GitOps definitions.
 
-The difference between the two is **drift**, and it is part of both outputs: the inventory says where live and Git disagree, and the plan says which of the two it changes and why. Neither source alone is the truth: a version in Git that never reached the cluster is not running, and a version running that Git does not hold is lost at the next sync.
+Both are compared with **what exists**: the versions published and the end of support of each line, read through an optional `releases` connector on the public sources or the customer's mirror, or, without one, from a dataset shipped with each release (§7).
+
+The difference between live and Git is **drift**, and it is part of both outputs: the inventory says where live and Git disagree, and the plan says which of the two it changes and why. Neither source alone is the truth: a version in Git that never reached the cluster is not running, and a version running that Git does not hold is lost at the next sync.
 
 At each level:
 
@@ -46,6 +48,7 @@ It embeds `RoleCommonSpec` (`level`, `scope`, `model`, `suspend`, `contentTools`
   - `code`: required, at least one, at most 16 (what Git declares, §5);
   - `propose`: optional, at most one: the connector whose `propose` tool opens the plan's pull request (§6). Used at `Practitioner` only;
   - `copy`: optional, at most one: a read-only `cluster` connector on the team's staging, read after the team applied a plan (§8);
+  - `releases`: optional, at most 4: the version watch, what exists upstream or in the customer's mirror (§7.1). Read by the collector only, never given to the agent;
   - `knowledge`, `changes` and `history`: optional, at most 16 each, `history` at most one (release notes and the customer's end-of-support dates, what was deployed, the Kiné's reviews);
   - `map`: optional, at most one;
   - `report`: the report connector.
@@ -124,6 +127,7 @@ What it reads:
 | GitOps sync | Argo CD `Application` (`argoproj.io/v1alpha1`): `status.sync.status` (`Synced`, `OutOfSync`, `Unknown`), `status.sync.revision`, `status.health.status`; Flux `Kustomization` (`kustomize.toolkit.fluxcd.io/v1`): the `Ready` condition, `status.lastAppliedRevision` and `status.lastAttemptedRevision` | `resources_list`, through `extraResources` |
 | The cluster's version | the nodes' `status.nodeInfo.kubeletVersion` when the opt-in below is set; the control plane's static pod images (`kube-apiserver`) when `kube-system` is in the connector's namespaces and the cluster is self-managed; otherwise a blind spot | `resources_list` |
 | What Git declares | per document: path, apiVersion, kind, namespace, name, the images and the chart name and version it names; never a value | `manifests_index` on `code` (§5) |
+| What exists: newer versions and end-of-support dates | per component of the inventory, the versions its image repository, chart repository or project publishes, and its release cycles; the shipped dataset when no `releases` connector answers (§7) | `versions_list`, `cycles_get` on `releases` (§7.1) |
 
 **Drift** is computed per object (kind, namespace, name): the image or chart version differs (`Version`), the object runs but no manifest of the repository declares it (`NotInGit`), or a manifest declares it and it does not run (`NotLive`). A chart whose objects are templated is compared by chart name and version only: the collector does not render templates, and says so in `blindSpots`. A GitOps tool's own drift is its sync status: an Application `OutOfSync` or a Kustomization whose last attempted revision is not its last applied one is reported in `gitops[]`, whatever the per-object comparison says.
 
@@ -243,13 +247,55 @@ So the limits live, in order: in the token's scope (the forge refuses), in our s
 
 Never a merge, never a push to the default branch or a protected one, never a branch outside `takecare/`, never a non-draft pull request, never a repository not listed, never a cluster write. A `silent` maintenance (the bench) is told not to call it: its message names no repository, and a pull request it opens anyway is dropped from its status and fails the pass. Routes belong to the Mécano, not to a run, so the bench's Mécano binds the demo's propose connector, whose forge is a fake one (§16): a silent run never reaches a real forge.
 
-## 7. The end-of-support dataset
+## 7. Versions: the watch and the end-of-support dataset
 
-A YAML file versioned with each release, `internal/mecano/eos/dataset.yaml`, embedded in the operator: for each Kubernetes minor, its end of life (kubernetes.io, "Releases"; the project supports the three newest minors) and the apiVersions removed in it (the Kubernetes deprecation guide); for each component TakeCare ships or reads (agentgateway, kagent, cert-manager, Argo CD, Flux), its supported lines. Each entry names its source page. No online lookup: the operator has no egress for it, and a dataset in the release is reviewable.
+What runs live and what Git declares are compared with **what exists**: the versions published, and when each line stops being supported (decided by the maintainers: an optional `releases` connector, pointed at the public sources or at the customer's internal mirror, and the offline dataset shipped with each release as the fallback). The collector fills `components[].latest` and `components[].supportEnds` from them (§2).
 
-The customer's own dates (an internal support policy, a vendor contract) come through `knowledge`: the agent reads them, and a customer date wins over the dataset's, with the record it came from as evidence.
+### 7.1 The `releases` connector
 
-Licences: kubernetes.io's documentation is CC BY 4.0, so the dataset credits it in `NOTICE`. A dataset taken from a third-party collection (endoflife.date is MIT for its data) is copied with its licence in `NOTICE`; the build lot checks each source before copying.
+The connector type `releases` joins the enum (spec 06 §4). It is optional. Its read server is an add-on, `takecare-agents-mcp-releases` (ours, Go: `cmd/mcp-releases`, `internal/releasesserver`), rendered when `addons.releases.enabled` is set (off by default). It is reached through the gateway like every connector (ADR 0008).
+
+**Sources.** The add-on lists its sources in `addons.releases.sources[]`, at most 32, each `{name, kind, url, tokenSecretRef, components[]}`, `kind` one of:
+
+| Kind | What it reads | Upstream interface |
+|---|---|---|
+| `oci` | a container registry's tags for an image repository | OCI distribution API, `GET /v2/<name>/tags/list`, paged with `n` and the `Link` header |
+| `helm` | a Helm repository's chart versions | the repository's `index.yaml` (`entries.<chart>[].version`, `created`) |
+| `github` | a project's releases | GitHub REST, `GET /repos/{owner}/{repo}/releases` (published releases are public; `draft` skipped, `prerelease` flagged) |
+| `gitlab` | a project's releases | GitLab REST, `GET /projects/:id/releases` (`tag_name`, `released_at`) |
+| `endoflife` | a product's release cycles and their end-of-support dates | endoflife.date API v1, `GET /api/v1/products/{product}` (`releases[]` with `name`, `isMaintained`, `isEol`, `eolFrom`, `latest`); its data is MIT |
+
+**Tools**, all `read`, `state`:
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `sources_list` | — | per source: name, kind, host, last refresh time and outcome |
+| `versions_list` | `source`, `name` (an image repository, a chart, a project) | at most 200 versions, newest first, only those that parse as semantic versions, pre-releases flagged, with their publication date when the source gives one |
+| `cycles_get` | `source`, `product` | the product's release cycles: name, latest version, maintained or not, end of support date |
+
+**Read by the collector, not by the model.** The collector (§4) calls these tools for each component of the inventory, through the gateway, on a route the Mécano's Agent does not get: the `releases` slot is never rendered on the Agent, and the agent reads the result as facts in its message. The mapping from a component to a source is deterministic: an image's registry host to the `oci` source with that host, a chart's repository URL (from Git, §5) to the `helm` source with that URL, and a component listed in a source's `components[]` (`{match, name}`, `match` being a Map key, an image repository or a chart name) to that `github`, `gitlab` or `endoflife` source and name. A component that maps to no source keeps the dataset's answer (§7.2).
+
+**Once a day, cached.** The server answers from a cache and refreshes a `(source, name)` at most once a day, whatever the number of Mécanos and maintenances: an upstream is called at most once a day per name. A refresh that fails keeps the last answer, with its date, and the tool says it is stale; past 7 days stale the answer is dropped and the collector falls back to the dataset for it, with a blind spot naming the source.
+
+**Egress.** The server calls only the hosts of its listed sources: any other URL, a redirect to another host included, is refused in the server. Kubernetes NetworkPolicies select peers by pod, namespace or IP block, never by host name (Kubernetes docs, "Network Policies"), so the add-on's NetworkPolicy allows DNS and TCP 443 only, to the CIDRs given in `addons.releases.egressCIDRs` when set, or to the proxy pods when the chart's proxy is configured (as for the code add-on, §5); the host list is then held by the server and, where there is one, by the customer's egress proxy. The add-on's README says that a NetworkPolicy alone does not list hosts.
+
+**Tokens.** Public sources need none, and none is configured. A private source (an internal mirror, a private registry) names a Secret in `tokenSecretRef`, mounted on the releases server's pod only, never read by the operator or the agent: the connector shows the Secret's name, not its content. The token needs read access to the tags, index or releases, nothing more.
+
+**Without egress.** A customer whose clusters reach no public host points the same connector at its internal mirror: an `oci` source on Harbor or Artifactory, a `helm` source on its Helm proxy or mirror, a `gitlab` source on its own GitLab. Release cycles (`endoflife`) usually have no mirror: those dates come from the dataset (§7.2) and the customer's `knowledge`.
+
+**Blind spots.** A source that does not answer, or answers stale past 7 days, is a blind spot of the maintenance naming the source; the facts it would have given come from the dataset.
+
+### 7.2 The end-of-support dataset
+
+A YAML file versioned with each release, `internal/mecano/eos/dataset.yaml`, embedded in the operator: for each Kubernetes minor, its end of life (kubernetes.io, "Releases"; the project supports the three newest minors) and the apiVersions removed in it (the Kubernetes deprecation guide); for each component TakeCare ships or reads (agentgateway, kagent, cert-manager, Argo CD, Flux), its supported lines. Each entry names its source page. The operator itself makes no online lookup: it has no egress, and a dataset in the release is reviewable. Online facts come only through a `releases` connector (§7.1).
+
+The removed apiVersions always come from the dataset, connector or not: they drive the collector's reads (§4) and are reviewed with each release.
+
+**Without any `releases` connector**, the dataset is the only source of supported lines and end-of-support dates, `latest` is the newest version it knows, and each maintenance declares the blind spot "offline watch, current as of <the release's date>".
+
+The customer's own dates (an internal support policy, a vendor contract) come through `knowledge`: the agent reads them, and a customer date wins over the dataset's and the connector's, with the record it came from as evidence.
+
+Licences: kubernetes.io's documentation is CC BY 4.0, so the dataset credits it in `NOTICE`. A dataset taken from a third-party collection (endoflife.date is MIT for its data) is copied with its licence in `NOTICE`; the build lot checks each source before copying. Data read at run time through `releases` is not copied into the repository.
 
 A dataset older than its release by more than 6 months is a blind spot of each maintenance ("the end-of-support dataset is from <date>"): the dates go stale, and the Mécano says so.
 
@@ -305,7 +351,7 @@ These are new gateway rules: their exact text is approved at the build, not in t
 Approved at the build with the exact rules, not in this spec. Expected:
 
 - **The operator**: on `takecaremecanos`, the verbs it holds on the other roles' kinds, with `status` and `finalizers`; on `takecaremaintenances`, create, get, list, watch and delete, with `status`. No new right on the customer's resources: the collector reads through connectors.
-- **The code add-on**: a ServiceAccount with no Role and no token mounted. **The propose add-on**: the same.
+- **The code add-on**: a ServiceAccount with no Role and no token mounted. **The propose add-on** and **the releases add-on**: the same.
 - **The history add-on**: get, list and watch on `takecaremaintenances` (§3).
 - **The kubernetes add-on**: on the `readNodes` opt-in only, a ClusterRole with get, list and watch on `nodes`.
 - The read-only guard test (spec 04) covers every add-on above and stays green and unweakened. The propose add-on writes nothing in Kubernetes: its guard is the same as the read add-on's.
@@ -328,7 +374,7 @@ No label holds an id.
 
 ## 16. Demo and bench
 
-**Demo.** The demo profile enables the code add-on over a demo repository served in the cluster (manifests of the demo apps, one on a removed apiVersion, one component behind its supported line), the propose add-on against a fake forge (a small server in the demo namespace speaking the GitHub endpoints §6.1 lists, `apiURL` pointing at it; its GitLab endpoints are used by the e2e only, so the demo shows one forge), cert-manager's CRD read through `extraResources` when the demo installs it, `readNodes`, and a Mécano named `mecano` at `Apprentice` with `file_get` in `contentTools`. A second demo namespace is its copy. `make demo-maintenance` creates an on-demand maintenance; `make demo-verdict` reports it.
+**Demo.** The demo profile enables the code add-on over a demo repository served in the cluster (manifests of the demo apps, one on a removed apiVersion, one component behind its supported line), the propose add-on against a fake forge (a small server in the demo namespace speaking the GitHub endpoints §6.1 lists, `apiURL` pointing at it; its GitLab endpoints are used by the e2e only, so the demo shows one forge), cert-manager's CRD read through `extraResources` when the demo installs it, `readNodes`, no `releases` connector (the demo needs no egress, so it shows the offline watch and its blind spot, §7.2), and a Mécano named `mecano` at `Apprentice` with `file_get` in `contentTools`. A second demo namespace is its copy. `make demo-maintenance` creates an on-demand maintenance; `make demo-verdict` reports it.
 
 **Bench.** `make demo-bench-mecano N=5 BENCH_MIN=5`, on the spec 14 scenario `removed-api-upgrade`:
 
@@ -342,11 +388,11 @@ The bar at a release is **five runs correct out of five** (`BENCH_MIN=5`), writt
 
 ## 17. Test plan
 
-- **Unit**: the name, schedule and CEL rules; the collector against recorded connector answers (images, charts, removed APIs live and in Git, certificates, GitOps states, drift per kind, the version sources); the dataset's schema and its staleness; the answer's parsing (valid, invalid, oversized, unknown version, foreign pull request); finding ids and "changed since"; the message (golden, both levels).
-- **Code server**: each tool, its bounds, "no value in the index", the content mark. **Propose server**, against a fake forge: every refusal of §6.2 (unlisted repository, workflow and CI paths, path escape, existing branch without its open pull request), the protection check of §6.3.3 per forge (protected, unprotected, a classic GitHub protection, a GitLab branch Developers may push or merge to, a 403, a timeout), the draft flag (`draft: true` on GitHub, the `Draft:` prefix on GitLab), the reuse on retry, no `force` on GitLab's commit, and that no other endpoint is ever called, for both forges.
-- **Golden**: the rendered Agent, routes and policies per level; no propose route at `Apprentice` or without `maintenance.repositories`.
+- **Unit**: the name, schedule and CEL rules; the collector against recorded connector answers (images, charts, removed APIs live and in Git, certificates, GitOps states, drift per kind, the version sources); the dataset's schema and its staleness; the component-to-source mapping and the fallback to the dataset per component, per stale source and with no `releases` connector ("offline watch, current as of <date>"); the answer's parsing (valid, invalid, oversized, unknown version, foreign pull request); finding ids and "changed since"; the message (golden, both levels).
+- **Code server**: each tool, its bounds, "no value in the index", the content mark. **Propose server**, against a fake forge: every refusal of §6.2 (unlisted repository, workflow and CI paths, path escape, existing branch without its open pull request), the protection check of §6.3.3 per forge (protected, unprotected, a classic GitHub protection, a GitLab branch Developers may push or merge to, a 403, a timeout), the draft flag (`draft: true` on GitHub, the `Draft:` prefix on GitLab), the reuse on retry, no `force` on GitLab's commit, and that no other endpoint is ever called, for both forges. **Releases server**, against fake upstreams: each source kind (OCI tags with `Link` paging, a Helm `index.yaml`, GitHub and GitLab releases, endoflife.date cycles), the once-a-day cache, the stale answer and its drop after 7 days, the refusal of an unlisted host and of a redirect to one, the version bounds, and the token sent only to its own source.
+- **Golden**: the rendered Agent, routes and policies per level; no propose route at `Apprentice` or without `maintenance.repositories`; no `releases` tool on the Agent at any level.
 - **envtest**, under the operator's own Roles: level transitions; missing `cluster` or `code` connector; `ScopeOverlap`; schedule; on demand; backstop; retention keeping the newest published.
-- **Chart**: the read-only guard over the code, propose, history and kubernetes (`readNodes`) add-ons; the propose route's argument rule refusing an unlisted repository, in the chart smoke.
+- **Chart**: the read-only guard over the code, propose, releases, history and kubernetes (`readNodes`) add-ons; the releases add-on's NetworkPolicy (DNS and 443 only, to `egressCIDRs` or the proxy when set); the propose route's argument rule refusing an unlisted repository, in the chart smoke.
 - **e2e** (CI): fake LLM and fake forge; one maintenance `Completed`, a draft pull request on the fake forge's GitHub side and a draft merge request on its GitLab side at `Practitioner`, a third repository with an unprotected default branch left without one and named `DefaultBranchUnprotected` in `blindSpots`, one publication to the fake Slack, and none the week after when nothing changed.
 - **Bench** (§16), on a real model, outside CI.
 
@@ -357,28 +403,30 @@ The bar at a release is **five runs correct out of five** (`BENCH_MIN=5`), writt
 3. At `Apprentice` no propose route exists and nothing reaches the `practitioner` destination.
 4. At `Practitioner` the plan opens at most one draft pull request per listed repository, on `takecare/mecano/<name>`, reused on retry; an unlisted repository is refused by the server and by the route; no merge and no other forge call exist; this holds on GitHub and on GitLab.
 5. The propose token is mounted on the propose server only, and no agent tool can read it.
-6. No pull request is opened on a repository whose default branch is not protected, or whose protection could not be read; the maintenance names the repository in `blindSpots` with `DefaultBranchUnprotected` or `ProtectionUnknown`.
-7. A plan says `tested on a copy` only with the copy's evidence.
-8. A maintenance is published only when its findings changed or it opened a pull request, once (idempotency key).
-9. Every maintenance ends with an outcome a reader can see and says its usage.
-10. Maintenances are kept 365 days, the newest published kept beyond.
-11. The read-only guard is green over every add-on; the Ranger's cap and deny apply to the Mécano's model route.
-12. The bench meets five out of five.
-13. The CHANGELOG, the chart values and READMEs, `test/bench/README.md`, spec 05 (the `code` type and add-ons), spec 06 §4 (the `propose` slot), spec 11 §4 (the history tools) and the project README are updated.
+6. With a `releases` connector, `latest` and `supportEnds` come from its sources, each upstream called at most once a day per name and only on listed hosts; without one, they come from the dataset and each maintenance declares "offline watch, current as of <the release's date>". The agent never gets a `releases` tool.
+7. No pull request is opened on a repository whose default branch is not protected, or whose protection could not be read; the maintenance names the repository in `blindSpots` with `DefaultBranchUnprotected` or `ProtectionUnknown`.
+8. A plan says `tested on a copy` only with the copy's evidence.
+9. A maintenance is published only when its findings changed or it opened a pull request, once (idempotency key).
+10. Every maintenance ends with an outcome a reader can see and says its usage.
+11. Maintenances are kept 365 days, the newest published kept beyond.
+12. The read-only guard is green over every add-on; the Ranger's cap and deny apply to the Mécano's model route.
+13. The bench meets five out of five.
+14. The CHANGELOG, the chart values and READMEs, `test/bench/README.md`, spec 05 (the `code` and `releases` types and add-ons), spec 06 §4 (the `code` and `releases` types, the `propose` slot), spec 11 §4 (the history tools) and the project README are updated.
 
 ## 19. Lots
 
-About 4,550 lines of code and 5,300 of tests, in four lots of at most about 1,500 lines of code each, plus this spec. Each lot is one pull request. A lot is split only where a part is useful alone, or where the reviewer would read it less well.
+About 5,150 lines of code and 6,050 of tests, in five lots of at most about 1,500 lines of code each, plus this spec. Each lot is one pull request. A lot is split only where a part is useful alone, or where the reviewer would read it less well.
 
 | Lot | Content | Size (code / tests) | Needs at its build |
 |---|---|---|---|
 | **M0** | This spec, the spec 14 amendment (a scenario without an alert), the dated note on ADR 0022 §4 | docs | the maintainers' review |
 | **M1** | The API: `TakeCareMecano`, `TakeCareMaintenance`, CEL rules and bounds, the `code` type and `propose` slot, the retention value, the role-kind enums; the code server (read) and the propose server for GitHub and GitLab with the protection check, their add-ons, Secrets, NetworkPolicies and connectors | ~1,350 / ~1,650 | the operator's generated RBAC; the two add-ons and the propose token's Secret handling; the `propose` override in the chart |
-| **M2** | The controller: scope, overlap, connectors, the Agent and routes per level with the `propose` rule in `internal/roleagent`, conditions; the Ranger's cap and deny; the propose route's argument rule; the history add-on's tools and Role for maintenances; the `readNodes` opt-in; the collector and the end-of-support dataset | ~1,350 / ~1,600 | the gateway rules; the history Role; the nodes ClusterRole; the dataset's licences |
+| **M2** | The controller: scope, overlap, connectors, the Agent and routes per level with the `propose` rule in `internal/roleagent`, conditions; the Ranger's cap and deny; the propose route's argument rule; the history add-on's tools and Role for maintenances; the `readNodes` opt-in; the collector and the end-of-support dataset, with the collector's side of the version watch (the mapping to sources, the fallback to the dataset, the blind spots) | ~1,500 / ~1,800 | the gateway rules; the history Role; the nodes ClusterRole; the dataset's licences |
+| **M2b** | The version watch's server: the `releases` type, `takecare-agents-mcp-releases` with its five source kinds, cache and host list, its add-on, connector, token Secret handling and NetworkPolicy | ~450 / ~550 | the releases add-on and its NetworkPolicy egress |
 | **M3** | The triggers, the queue, the runner on `internal/runs`, the backstop, the answer's parsing, the status and plan, finding ids; publication on change, telemetry and metrics; the demo profile, `make demo-maintenance`, the e2e step; the demo repository and the fake forge (GitHub and GitLab endpoints); the scenario file and `make demo-bench-mecano`; docs and CHANGELOG | ~1,450 / ~1,600 | the bench run (model key) |
 | **M4** | `takecare review` for a maintenance plan (spec 13), after the ADR on human actions from the console | ~400 / ~450 | that ADR |
 
-Seams: M1 first. M2 needs M1's kinds and servers; M3 needs M2's rendered agent and collector. M4 is independent once its ADR is accepted. A lot heading past its size is split at a seam proposed before it is written: the collector and dataset (M2), the GitLab side of the propose server (M1), and the demo and bench (M3) are the parts that stand alone.
+Seams: M1 first. M2 needs M1's kinds and servers; M2b needs M1's kinds and may be built beside M2: until it lands, the collector runs on the dataset alone, the offline watch; M3 needs M2's rendered agent and collector. M4 is independent once its ADR is accepted. A lot heading past its size is split at a seam proposed before it is written: the collector and dataset (M2), the GitLab side of the propose server (M1), and the demo and bench (M3) are the parts that stand alone.
 
 No new pin is expected: the servers are ours, go-git is already a dependency, and both forges are reached with the standard library. A pin added at the build needs its own approval.
 
