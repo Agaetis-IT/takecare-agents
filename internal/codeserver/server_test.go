@@ -254,6 +254,37 @@ func TestToolsAreReadOnly(t *testing.T) {
 	}
 }
 
+// Every tool's input schema is a JSON Schema object as the server sends
+// it: "required" absent or an array, never null (a client or a model
+// provider that validates schemas would refuse the whole tool list).
+func TestToolSchemas(t *testing.T) {
+	s := newServer(t, Repository{Name: repoShop, URL: remoteHTTPS})
+	session, _ := connect(t, s)
+	res, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Tools) != 4 {
+		t.Fatalf("%d tools, want 4", len(res.Tools))
+	}
+	for _, tool := range res.Tools {
+		raw, err := json.Marshal(tool.InputSchema)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var schema map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &schema); err != nil {
+			t.Fatalf("%s: schema %s: %v", tool.Name, raw, err)
+		}
+		if string(schema["type"]) != `"object"` {
+			t.Errorf("%s: schema %s, want an object", tool.Name, raw)
+		}
+		if req, ok := schema["required"]; ok && !strings.HasPrefix(string(req), "[") {
+			t.Errorf("%s: required = %s, want absent or an array", tool.Name, req)
+		}
+	}
+}
+
 // loaded serves the shop repository, loaded, beside a repository whose
 // clone fails.
 func loaded(t *testing.T) (*sdk.ClientSession, *Server, *remote, string) {

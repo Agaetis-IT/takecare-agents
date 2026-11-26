@@ -109,7 +109,12 @@ func New(cfg Config) (*Server, error) {
 		{ToolFileGet, fmt.Sprintf("A file's content, %d KiB at most. Values files and manifests may hold credentials.", maxFileSize>>10),
 			map[string]any{argRepo: repository, argPath: file}, []string{argRepo, argPath}, s.fileGet},
 	} {
-		schema := map[string]any{keyType: "object", "properties": t.props, "required": t.required, "additionalProperties": false}
+		schema := map[string]any{keyType: "object", "properties": t.props, "additionalProperties": false}
+		// JSON Schema wants "required" to be an array: a tool with no
+		// required argument leaves it out rather than send null.
+		if len(t.required) > 0 {
+			schema["required"] = t.required
+		}
 		s.mcp.AddTool(&sdk.Tool{Name: t.name, Description: t.description, InputSchema: schema, Annotations: ro}, serve(t.handler))
 	}
 	return s, nil
