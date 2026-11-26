@@ -101,3 +101,5 @@ Azure is the first such ground. These facts from its documentation bound the ans
 - **A reach as a free list of ARM scope strings.** There is no structure to validate, and case and trailing-slash traps.
 - **A reach by management group.** Reader at a management group is wide, and coverage would need the hierarchy, a Resource Graph read at reconcile time. Reopened with the Resource Graph importer.
 - **A sovereign-cloud field now.** Nothing needs it yet, and adding it later breaks nothing.
+
+> **Note (2026-11-26)**: the alert relay is now called the Whistle; the Talkie names the teams' console.

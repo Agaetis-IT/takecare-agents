@@ -81,7 +81,7 @@ Template: nature · business name · the promise (recto of the card) · trigger 
   - the session model in `engine.Engine`; how a conversation is scoped (channel, thread); the retention of conversations;
   - two modes, chosen team by team: the full mode, where the conversation lives with TakeCare on the customer's model, and the lead-climber mode, where the team's own assistant delegates its question to the Guide. The level says what the Guide does; the mode says where the conversation lives. Which mode is built first is the product owner's call (the lead-climber mode needs no multi-turn run);
   - delegation only: the Map and the Topo are never exposed directly to a third-party assistant, so that levels and traces cover the reasoning;
-  - the Rope (la Corde), the Guide's equipment card, is how assistants call the Guide, as the Talkie is how a ground calls TakeCare (ADR 0018);
+  - the Rope (la Corde), the Guide's equipment card, is how assistants call the Guide, as the Whistle (le Sifflet, the alert relay) is how a ground calls TakeCare (ADR 0018);
   - each caller has an identity: the Bib, extended from agents to the teams' assistants;
   - under delegation, `TakeCareConversation` records the question received and the answer returned, and the Guide's reasoning is traced like any role's;
   - what a team's assistants may be equipped with comes from the same approved list as the agents' Bags (ADR 0019): the team installs, never the Guide.
