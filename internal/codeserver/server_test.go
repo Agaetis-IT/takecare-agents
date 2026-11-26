@@ -144,6 +144,7 @@ spec:
 kind: Application
 metadata: {name: ingress, namespace: argocd}
 spec:
+  # Ignored by Argo CD when sources is set.
   source: {repoURL: https://kubernetes.github.io/ingress-nginx, chart: ingress-nginx, targetRevision: 4.11.2}
   sources:
     - {repoURL: https://git.example.org/ops.git, path: overlays/prod}
@@ -394,7 +395,6 @@ func TestManifestsIndex(t *testing.T) {
 				{Name: "billing", Version: "0.3.1"}, {Name: "postgresql", Version: "15.5.0", Repository: "https://charts.example.org"},
 			}},
 			{Path: "gitops/argo.yaml", APIVersion: "argoproj.io/v1alpha1", Kind: "Application", Namespace: "argocd", Name: "ingress", Charts: []ChartRef{
-				{Name: "ingress-nginx", Version: "4.11.2", Repository: "https://kubernetes.github.io/ingress-nginx"},
 				{Name: "kube-prometheus-stack", Version: "62.3.0", Repository: "https://prometheus-community.github.io/helm-charts"},
 			}},
 			{Path: "gitops/flux.yaml", APIVersion: "helm.toolkit.fluxcd.io/v2", Kind: "HelmRelease", Namespace: "flux-system", Name: "cert-manager", Charts: []ChartRef{
@@ -463,5 +463,13 @@ func TestFilesListBound(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(got), &out); isErr || err != nil || len(out.Files) != maxFiles || out.Omitted != 2 {
 		t.Errorf("files_list: %d files, %d omitted (%v), want %d and 2", len(out.Files), out.Omitted, err, maxFiles)
+	}
+}
+
+// An Application with spec.source alone gives its chart.
+func TestArgoSingleSource(t *testing.T) {
+	got := argoCharts(map[string]any{"source": map[string]any{"repoURL": "https://charts.example.org", "chart": "shop", "targetRevision": "1.2.0"}})
+	if diff := cmp.Diff([]ChartRef{{Name: "shop", Version: "1.2.0", Repository: "https://charts.example.org"}}, got); diff != "" {
+		t.Errorf("charts (-want +got):\n%s", diff)
 	}
 }

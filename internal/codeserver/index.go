@@ -158,12 +158,13 @@ func fluxChart(spec map[string]any) []ChartRef {
 }
 
 // argoCharts are an Application's Helm sources (Argo CD
-// argoproj.io/v1alpha1, spec.source and spec.sources): those naming a
-// chart, with targetRevision as its version.
+// argoproj.io/v1alpha1): those naming a chart, with targetRevision as its
+// version. Argo CD ignores spec.source when spec.sources is set, and so
+// does the index.
 func argoCharts(spec map[string]any) []ChartRef {
 	sources := list(spec, "sources")
-	if src, ok := spec["source"]; ok {
-		sources = append([]any{src}, sources...)
+	if src, ok := spec["source"]; ok && len(sources) == 0 {
+		sources = []any{src}
 	}
 	var out []ChartRef
 	for _, s := range sources {
