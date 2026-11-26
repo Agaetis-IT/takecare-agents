@@ -38,7 +38,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=55
+CHECKS_EXPECTED=61
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s %s\n' "$(date +%H:%M:%S)" "$*"; }
@@ -428,9 +428,9 @@ run() {
   trap - ERR
   kubectl apply -f test/e2e/doc-ops.yaml >/dev/null
   # The demo Kiné (spec 11 §12) would review the run's investigations two
-  # minutes after they complete, and the fake model has no fixture for a
-  # review yet: suspended, it creates none. Its end-to-end step comes with
-  # its fixture (spec 11 §13).
+  # minutes after they complete, its model calls mixing with the checks
+  # that read the fake model's last request: suspended until its own step,
+  # last (kine_review).
   kubectl -n "$NS" patch takecarekine kine --type=merge -p '{"spec":{"suspend":true}}' >/dev/null
   # An Agent in the demo Intendant's scope, for its inventory: no pod.
   kubectl apply -f test/e2e/inventory-agent.yaml >/dev/null
@@ -558,8 +558,10 @@ run() {
   intendant
   resumed
   check "each Registration survey says what changed: the install's additions, then the Doc east's agent removed (spec 10 §3)" survey_reasons
-  # Last: the bench's cooldown patch and restore touch the demo Doc.
+  # The bench's cooldown patch and restore touch the demo Doc.
   check "a bench run that does not settle stops after a dump with every file, and no content in any (spec 04)" bench_dump
+  # Last: the Kiné's reviews call the fake model.
+  kine_review "$inv"
   if [[ "$checks" -ne "$CHECKS_EXPECTED" || "$failed" -ne 0 ]]; then
     echo "checks: ${checks} run (expected ${CHECKS_EXPECTED}), ${failed} failed"
     local d
@@ -570,6 +572,50 @@ run() {
     exit 1
   fi
   echo "checks: ${checks} run, all passed"
+}
+
+# kine_review INV lifts the demo Kiné's suspension at Practitioner, bound
+# to the report connector's review destination (a patch: a second Kiné on
+# demo-apps would be refused, ScopeOverlap), and checks its review of the
+# Doc's investigation (spec 11 §13): Completed with the fixture's answer,
+# its usage attributed, published once to the fake Slack, matching the
+# golden. The run's other investigation of demo-apps, the masked alert's,
+# gets its own review; both are waited for.
+kine_review() {
+  local inv="$1" kine="kubectl -n $NS get takecarekine kine -o jsonpath" n="" phase="" review rv
+  log "reviewing the run's investigations with the demo Kiné, at Practitioner"
+  kubectl -n "$NS" patch takecarekine kine --type=merge \
+    -p '{"spec":{"suspend":false,"level":"Practitioner","connectors":{"report":"report"},"report":{"practitioner":"review"}}}' >/dev/null
+  check "the demo Kiné is Ready at Practitioner, bound to the report connector (spec 11 §7)" \
+    bash -c "for _ in \$(seq 60); do [[ \$($kine='{.status.level} {.status.conditions[?(@.type==\"Ready\")].status}') == 'Practitioner True' ]] && exit 0; sleep 5; done; exit 1"
+  rv="kubectl -n $NS get takecarereviews -o json"
+  for _ in $(seq 120); do
+    read -r n phase < <($rv | jq -r --arg i "${inv:-none}" '
+      [.items[] | select(.spec.kineRef.name == "kine" and ((.spec.investigations // []) | index($i)))]
+      | "\(length) \(map(.status.phase // "") | join(","))"')
+    # One review naming it, ended, and none of the Kiné's left to run.
+    if [[ "$n" == 1 && "$phase" =~ ^(Completed|Failed|Dropped)$ ]] &&
+      [[ "$($rv | jq '[.items[] | select(.spec.kineRef.name == "kine" and ((.status.phase // "") | test("^(Queued|Running)?$")))] | length')" == 0 ]]; then
+      break
+    fi
+    sleep 5
+  done
+  review="$($rv | jq -r --arg i "${inv:-none}" '[.items[] | select(.spec.kineRef.name == "kine" and ((.spec.investigations // []) | index($i)))][0].metadata.name // "none"')"
+  local get="kubectl -n $NS get takecarereview $review -o jsonpath"
+  check "one review of the Doc's investigation, by the Kiné, Investigation-triggered, Completed with its answer read (spec 11 §3, §6)" \
+    bash -c "[[ \$($get='{.spec.trigger} {.spec.level} {.status.phase} {.status.reason}') == 'Investigation Practitioner Completed ' && -n \$($get='{.status.problem.statement}') ]]"
+  check "at Practitioner it records the recurrence, the earlier undone action, a new one and the post-mortem draft (spec 11 §7, AC 5)" \
+    bash -c "[[ \$($get='{.status.problem.recurrences[0].record} {.status.actionCounts.total} {.status.actionCounts.open} {.status.actions[?(@.origin==\"New\")].state}') == 'INC-2024-0312 3 2 Proposed' && -n \$($get='{.status.postMortem}') ]]"
+  check "its usage is attributed and measured (spec 11 AC 6)" \
+    bash -c "for _ in \$(seq 24); do s=\$($get='{.status.conditions[?(@.type==\"UsageAttributed\")].status}'); [[ -n \$s ]] && { [[ \$s == True && \$($get='{.status.usage.modelCalls}') -ge 1 ]]; exit; }; sleep 5; done; exit 1"
+  for _ in $(seq 30); do
+    [[ -n "$(kubectl -n "$NS" get takecarereview "$review" -o jsonpath='{.status.published}')" ]] && break
+    sleep 2
+  done
+  fake_get fake-slack /messages >bin/demo/slack-review.json
+  check "published once to the review destination, matching the golden (spec 11 §8, AC 5)" \
+    bash -c "[[ \$($get='{.status.published.ok}') == true ]] && E2E_SLACK_MESSAGES='${PWD}/bin/demo/slack-review.json' E2E_REVIEW_CHANNEL='$TAKECARE_SLACK_REVIEW_CHANNEL' E2E_INVESTIGATION='${inv:-none}' E2E_REVIEW='$review' go test -tags e2e -count=1 ./test/e2e/ -run 'TestSlackReview\$'"
+  check "the operator's log has no forbidden line after the Kiné's reviews" operator_not_forbidden
 }
 
 # survey_reasons: the operator says why it created each Registration
