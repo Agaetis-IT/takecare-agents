@@ -49,6 +49,7 @@ N="${1:-5}"
 NS=takecare-system
 APP_NS=demo-apps
 KINE=kine
+ENGINE_NS=kagent
 FIXTURE=test/bench/kine/investigation.yaml
 EXPECTED=test/bench/kine/expected.yaml
 ENDED='^(Completed|Failed|Dropped)$'
@@ -167,6 +168,9 @@ log "waiting for the Kiné's reviews to end"
 idle "$SETTLE" || die "a review of the Kiné did not end in ${SETTLE} s"
 # The Kiné at Practitioner for the series: Ready at that level, its agent
 # rendered for it.
+AGENT_DEPLOY="deployment/takecare-kine-${KINE}"
+deploy_gen() { kubectl -n "$ENGINE_NS" get "$AGENT_DEPLOY" -o jsonpath='{.metadata.generation}'; }
+gen_before="$(deploy_gen)" || die "the demo Kiné's agent has no Deployment in ${ENGINE_NS}"
 RESTORE="$(kubectl -n "$NS" get takecarekine "$KINE" -o json |
   jq -c '{spec: {level: .spec.level, connectors: {report: (.spec.connectors.report // null)}}}')"
 kubectl -n "$NS" patch takecarekine "$KINE" --type=merge \
@@ -181,6 +185,18 @@ for _ in $(seq 60); do
   sleep 5
 done
 [[ "$raised" == true ]] || die "the demo Kiné is not Ready at Practitioner after 5 minutes"
+# The engine rolls the agent's Deployment on the new rendering, and its
+# Agent can be Ready while the old pod still serves: a review sent then
+# goes to a pod about to stop. Wait for the new Deployment, then for its
+# rollout.
+for _ in $(seq 60); do
+  (($(deploy_gen) > gen_before)) && break
+  sleep 2
+done
+(($(deploy_gen) > gen_before)) || die "the demo Kiné's agent Deployment did not change in 2 minutes after the raise"
+kubectl -n "$ENGINE_NS" rollout status "$AGENT_DEPLOY" --timeout=300s >/dev/null ||
+  die "the demo Kiné's agent did not roll out at Practitioner in 5 minutes"
+log "the demo Kiné's agent runs at Practitioner"
 guards_before="$(hack/guardrail-counts.sh)" || die "the gateway's guardrail counters cannot be read"
 
 stamp="$(date -u +%s)"
