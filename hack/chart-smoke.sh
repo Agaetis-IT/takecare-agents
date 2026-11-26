@@ -10,7 +10,8 @@
 # is reachable through the gateway only. Never touches the user's kube
 # context: the cluster's kubeconfig is written under ./bin.
 # Then installs the workload-cluster chart (ADR 0016) and reads its front.
-# Usage: hack/chart-smoke.sh [up|install|upgrade|url|cluster|status|down|all]
+# Usage: hack/chart-smoke.sh [up|install|fixtures|upgrade|url|cluster|job-a|job-b|status|mask-test|down|all]
+# job-a and job-b are the two halves of all, one per CI job (see the end).
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -146,13 +147,23 @@ assert_checks() { # EXPECTED
 
 install() {
   checks=0 failed=0
+  install_charts check
+  verify
+}
+
+# install_charts [check] installs both charts as the install phase does.
+# With "check", the two hook checks run; without, the charts are only
+# installed (job B, whose install job A checks on its own cluster).
+install_charts() {
   log "takecare-crds (hook job installs the Gateway API CRDs)"
   "$HELM" upgrade --install takecare-crds charts/takecare-crds -n "$NS" --create-namespace \
     --set image.tag="$IMAGE_TAG" --set image.pullPolicy=IfNotPresent --set demo.enabled=true --wait --timeout 5m
-  check "gateway API CRDs at ${GATEWAY_API_VERSION}" \
-    test "$(kubectl get crd gateways.gateway.networking.k8s.io -o jsonpath='{.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version}')" = "$GATEWAY_API_VERSION"
-  check "hook objects deleted after success" \
-    test -z "$(kubectl get job,sa -n "$NS" -o name | grep gateway-api-crds)$(kubectl get clusterrole,clusterrolebinding -o name | grep gateway-api-crds)"
+  if [[ "${1:-}" == check ]]; then
+    check "gateway API CRDs at ${GATEWAY_API_VERSION}" \
+      test "$(kubectl get crd gateways.gateway.networking.k8s.io -o jsonpath='{.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version}')" = "$GATEWAY_API_VERSION"
+    check "hook objects deleted after success" \
+      test -z "$(kubectl get job,sa -n "$NS" -o name | grep gateway-api-crds)$(kubectl get clusterrole,clusterrolebinding -o name | grep gateway-api-crds)"
+  fi
   log "takecare, demo profile"
   # The provider key Secret the demo platform names; a placeholder here, the
   # gateway never gets a request in this run.
@@ -175,7 +186,38 @@ install() {
     exit 1
   fi
   kubectl -n kagent rollout status deploy/kagent-controller --timeout=180s >/dev/null
-  verify
+}
+
+# upgrade_fixtures leaves on the chart's own objects what the install
+# pass's checks leave there, with the same kubectl gestures and no check
+# (job B): the upgrade then server-side applies the charts over the same
+# field managers as when it follows the install pass. The install pass's
+# other objects (demo, Doc, Intendant, Kiné, pods, namespaces, grants) are
+# deleted by that pass, and its empty corpora are the ones install wrote.
+upgrade_fixtures() {
+  log "fixtures: the install pass's writes on the chart's objects, without its checks"
+  # The Ranger's caps: the gateway-cap check's patch, then its restore.
+  RANGER_CAPS_SAVED="$(kubectl get takecareranger main -o jsonpath='{.spec.caps}')"
+  kubectl patch takecareranger main --type=merge \
+    -p '{"spec":{"caps":{"gateway":{"requestsPerMinute":30,"burst":30},"models":[{"name":"default","requestsPerMinute":1000,"burst":1000}]}}}' >/dev/null
+  kubectl patch takecareranger main --type=json -p "[{\"op\":\"replace\",\"path\":\"/spec/caps\",\"value\":${RANGER_CAPS_SAVED}}]" >/dev/null
+  [[ "$(kubectl get takecareranger main -o jsonpath='{.spec.caps}')" == "$RANGER_CAPS_SAVED" ]] || { echo "fixtures: the Ranger's caps were not restored" >&2; exit 1; }
+  RANGER_CAPS_SAVED=""
+  # The Ranger's models: the Kiné's deny, then its restore.
+  RANGER_MODELS_SAVED="$(kubectl get takecareranger main -o jsonpath='{.spec.models}')"
+  RANGER_MODELS_TOUCHED=1
+  kubectl patch takecareranger main --type=merge -p '{"spec":{"models":[{"kind":"TakeCareKine","allowed":["smoke-other"]}]}}' >/dev/null
+  ranger_models_restore
+  [[ "$(kubectl get takecareranger main -o jsonpath='{.spec.models}')" == "$RANGER_MODELS_SAVED" ]] || { echo "fixtures: the Ranger's models were not restored" >&2; exit 1; }
+  # The kubernetes connector: pods_log reclassified act, then the chart's
+  # overrides put back (AC 4), and the two discovery annotations.
+  local tools
+  tools="$(kubectl -n "$NS" get takecareconnector kubernetes -o jsonpath='{.spec.tools}')"
+  kubectl -n "$NS" patch takecareconnector kubernetes --type=merge -p '{"spec":{"tools":[{"name":"pods_log","class":"act"}]}}' >/dev/null
+  kubectl -n "$NS" patch takecareconnector kubernetes --type=merge -p "{\"spec\":{\"tools\":${tools:-null}}}" >/dev/null
+  [[ "$(kubectl -n "$NS" get takecareconnector kubernetes -o jsonpath='{.spec.tools}')" == "$tools" ]] || { echo "fixtures: the kubernetes connector's tools were not restored" >&2; exit 1; }
+  kubectl -n "$NS" annotate takecareconnector kubernetes takecare.agaetis.fr/discover="$(date +%s)" --overwrite >/dev/null
+  kubectl -n "$NS" annotate takecareconnector kubernetes takecare.agaetis.fr/discover="$(date +%s)-cleared" --overwrite >/dev/null
 }
 
 # connector_ready NAME waits for a connector's Ready condition.
@@ -1639,15 +1681,31 @@ down() {
   rm -f "$KUBECONFIG"
 }
 
+# The checks each phase runs. The chart-smoke workflow splits them over two
+# parallel jobs: job-a (install, then the check list) and job-b (install,
+# the fixtures, the upgrade, the check list again, the customer connector
+# and the front). Together they run every check of all.
+CHECKS_INSTALL=226 CHECKS_UPGRADE=226 CHECKS_URL=8 CHECKS_CLUSTER=5
+CHECKS_JOB_A=$CHECKS_INSTALL
+CHECKS_JOB_B=$((CHECKS_UPGRADE + CHECKS_URL + CHECKS_CLUSTER))
+CHECKS_ALL=$((CHECKS_INSTALL + CHECKS_UPGRADE + CHECKS_URL + CHECKS_CLUSTER))
+split_total() { # JOB COUNT
+  echo "checks: ${2} in ${1}, $((CHECKS_JOB_A + CHECKS_JOB_B)) in job-a and job-b together, ${CHECKS_ALL} in all"
+  [[ $((CHECKS_JOB_A + CHECKS_JOB_B)) -eq "$CHECKS_ALL" ]]
+}
+
 case "${1:-all}" in
   up) up ;;
-  install) CHECKS_EXPECTED=226 install ;;
-  upgrade) CHECKS_EXPECTED=226 upgrade ;;
+  install) CHECKS_EXPECTED=$CHECKS_INSTALL install ;;
+  fixtures) install_charts; upgrade_fixtures ;;
+  upgrade) CHECKS_EXPECTED=$CHECKS_UPGRADE upgrade ;;
   status) status ;;
   mask-test) mask_test ;;
   down) down ;;
-  cluster) CHECKS_EXPECTED=5 cluster_chart ;;
-  url) CHECKS_EXPECTED=8 url_connector ;;
-  all) mask_test; up; CHECKS_EXPECTED=226 install; CHECKS_EXPECTED=226 upgrade; CHECKS_EXPECTED=8 url_connector; CHECKS_EXPECTED=5 cluster_chart ;;
-  *) echo "usage: $0 [up|install|upgrade|url|cluster|status|mask-test|down|all]"; exit 2 ;;
+  cluster) CHECKS_EXPECTED=$CHECKS_CLUSTER cluster_chart ;;
+  url) CHECKS_EXPECTED=$CHECKS_URL url_connector ;;
+  job-a) mask_test; up; CHECKS_EXPECTED=$CHECKS_INSTALL install; split_total job-a "$CHECKS_JOB_A" ;;
+  job-b) mask_test; up; install_charts; upgrade_fixtures; CHECKS_EXPECTED=$CHECKS_UPGRADE upgrade; CHECKS_EXPECTED=$CHECKS_URL url_connector; CHECKS_EXPECTED=$CHECKS_CLUSTER cluster_chart; split_total job-b "$CHECKS_JOB_B" ;;
+  all) mask_test; up; CHECKS_EXPECTED=$CHECKS_INSTALL install; CHECKS_EXPECTED=$CHECKS_UPGRADE upgrade; CHECKS_EXPECTED=$CHECKS_URL url_connector; CHECKS_EXPECTED=$CHECKS_CLUSTER cluster_chart ;;
+  *) echo "usage: $0 [up|install|fixtures|upgrade|url|cluster|job-a|job-b|status|mask-test|down|all]"; exit 2 ;;
 esac
