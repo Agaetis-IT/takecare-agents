@@ -29,21 +29,24 @@ import (
 )
 
 const (
-	repoShop        = "shop"
-	deployFile      = "apps/billing/deployment.yaml"
-	hiddenValue     = "do-not-index-this-value"
-	billingImage    = "ghcr.io/acme/billing-api:1.4.2"
-	migrateImage    = "ghcr.io/acme/billing-migrate:1.4.2"
-	reportImage     = "ghcr.io/acme/report:2.0.0"
-	wantNotLoaded   = "is not loaded yet"
-	wantRelative    = "a relative path inside the repository"
-	wantNotRegular  = "not a regular file"
-	repoUnreachable = "unreachable"
-	readme          = "README.md"
-	remoteHTTPS     = "https://git.example.com/r.git"
+	repoShop           = "shop"
+	deployFile         = "apps/billing/deployment.yaml"
+	hiddenValue        = "do-not-index-this-value"
+	billingImage       = "ghcr.io/acme/billing-api:1.4.2"
+	migrateImage       = "ghcr.io/acme/billing-migrate:1.4.2"
+	reportImage        = "ghcr.io/acme/report:2.0.0"
+	wantNotLoaded      = "is not loaded yet"
+	wantRelative       = "a relative path inside the repository"
+	wantNotRegular     = "not a regular file"
+	repoUnreachable    = "unreachable"
+	readme             = "README.md"
+	remoteHTTPS        = "https://git.example.com/r.git"
+	billingOverrideTag = "1.5.0"
+	billingAPI         = "ghcr.io/acme/billing-api"
 )
 
 var (
+	reportDigest  = "sha256:" + strings.Repeat("0a", 32)
 	fileTransport sync.Once
 	fetchedAt     = time.Date(2026, 11, 26, 9, 0, 0, 0, time.UTC)
 )
@@ -149,6 +152,24 @@ spec:
   sources:
     - {repoURL: https://git.example.org/ops.git, path: overlays/prod}
     - {repoURL: https://prometheus-community.github.io/helm-charts, chart: kube-prometheus-stack, targetRevision: 62.3.0}
+`)
+	r.write("overlays/prod/kustomization.yaml", `apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: [../../apps/billing]
+images:
+  - {name: ghcr.io/acme/billing-api, newTag: `+billingOverrideTag+`}
+  - {name: ghcr.io/acme/report, newName: registry.example.org/acme/report, digest: `+reportDigest+`}
+  - {newTag: "9.9.9"}
+`)
+	r.write("overlays/staging/kustomization.yml", "resources: [../../apps/billing]\nimages: [{name: ghcr.io/acme/billing-api, newTag: 1.5.0-rc.1}]\n")
+	r.write("overlays/dev/Kustomization", "resources: [../../apps/billing]\nimages: [{name: ghcr.io/acme/billing-api, newName: ghcr.io/acme/billing-api-dev}]\n")
+	r.write("gitops/flux-kustomization.yaml", `apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: billing, namespace: flux-system}
+spec:
+  path: ./overlays/prod
+  sourceRef: {kind: GitRepository, name: shop}
+  images: [{name: ghcr.io/acme/billing-api, newTag: 1.5.1}]
 `)
 	r.write(readme, "# shop\n")
 	r.write("big.txt", strings.Repeat("x", maxFileSize+1))
@@ -431,9 +452,19 @@ func TestManifestsIndex(t *testing.T) {
 			{Path: "gitops/argo.yaml", APIVersion: "argoproj.io/v1alpha1", Kind: "Application", Namespace: "argocd", Name: "ingress", Charts: []ChartRef{
 				{Name: "kube-prometheus-stack", Version: "62.3.0", Repository: "https://prometheus-community.github.io/helm-charts"},
 			}},
+			{Path: "gitops/flux-kustomization.yaml", APIVersion: "kustomize.toolkit.fluxcd.io/v1", Kind: "Kustomization", Namespace: "flux-system", Name: "billing",
+				ImageOverrides: []ImageOverride{{Name: billingAPI, NewTag: "1.5.1"}}},
 			{Path: "gitops/flux.yaml", APIVersion: "helm.toolkit.fluxcd.io/v2", Kind: "HelmRelease", Namespace: "flux-system", Name: "cert-manager", Charts: []ChartRef{
 				{Name: "cert-manager", Version: "v1.15.3", Repository: "HelmRepository/jetstack"},
 			}},
+			{Path: "overlays/dev/Kustomization", Kind: "Kustomization",
+				ImageOverrides: []ImageOverride{{Name: billingAPI, NewName: "ghcr.io/acme/billing-api-dev"}}},
+			{Path: "overlays/prod/kustomization.yaml", APIVersion: "kustomize.config.k8s.io/v1beta1", Kind: "Kustomization", ImageOverrides: []ImageOverride{
+				{Name: billingAPI, NewTag: billingOverrideTag},
+				{Name: "ghcr.io/acme/report", NewName: "registry.example.org/acme/report", Digest: reportDigest},
+			}},
+			{Path: "overlays/staging/kustomization.yml", Kind: "Kustomization",
+				ImageOverrides: []ImageOverride{{Name: billingAPI, NewTag: "1.5.0-rc.1"}}},
 		},
 		Skipped: []Skipped{{Path: "charts/billing/templates/deployment.yaml", Reason: "not YAML (a template?)"}},
 	}
@@ -523,7 +554,7 @@ func TestChartRepositoryRedacted(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.want, func(t *testing.T) {
 			chart := map[string]any{"name": repoShop, "dependencies": []any{map[string]any{"name": "db", "repository": c.raw}}}
-			d, _ := document("Chart.yaml", chart, true)
+			d, _ := document("Chart.yaml", chart, true, false)
 			argo := argoCharts(map[string]any{"source": map[string]any{"repoURL": c.raw, "chart": repoShop}})
 			for _, got := range []string{d.Charts[1].Repository, argo[0].Repository} {
 				if got != c.want || strings.Contains(got, pass) {

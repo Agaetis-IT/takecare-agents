@@ -74,7 +74,7 @@ Spec, immutable after creation:
 - `mecanoRef`: its Mécano (`{kind: TakeCareMecano, name}`), in the record's namespace;
 - `trigger`: `Schedule` or `OnDemand` (`OnDemand` by default);
 - `components`: optional, at most 20 Map keys or image repositories, to narrow an on-demand maintenance to the components named; empty for the whole scope;
-- `level`: the Mécano's effective level when the record was created;
+- `level`: the Mécano's effective level when the record was created; empty on a maintenance made by hand, which then runs at the Mécano's effective level when it starts;
 - `silent`: never published and never proposed (status only), for the bench (§16).
 
 Status, besides `RunStatus`:
@@ -126,7 +126,7 @@ What it reads:
 | Certificates | cert-manager `Certificate` (`cert-manager.io/v1`): `status.notAfter`, `status.renewalTime` and the `Ready` condition | `resources_list`, through the connector's `extraResources` |
 | GitOps sync | Argo CD `Application` (`argoproj.io/v1alpha1`): `status.sync.status` (`Synced`, `OutOfSync`, `Unknown`), `status.sync.revision`, `status.health.status`; Flux `Kustomization` (`kustomize.toolkit.fluxcd.io/v1`): the `Ready` condition, `status.lastAppliedRevision` and `status.lastAttemptedRevision` | `resources_list`, through `extraResources` |
 | The cluster's version | the nodes' `status.nodeInfo.kubeletVersion` when the opt-in below is set; the control plane's static pod images (`kube-apiserver`) when `kube-system` is in the connector's namespaces and the cluster is self-managed; otherwise a blind spot | `resources_list` |
-| What Git declares | per document: path, apiVersion, kind, namespace, name, the images and the chart name and version it names; never a value | `manifests_index` on `code` (§5) |
+| What Git declares | per document: path, apiVersion, kind, namespace, name, the images and the chart name and version it names, and a Kustomization's image overrides (Kustomize `images`, Flux `spec.images`), which the collector applies to the images of the manifests it builds; never a value | `manifests_index` on `code` (§5) |
 | What exists: newer versions and end-of-support dates | per component of the inventory, the versions its image repository, chart repository or project publishes, and its release cycles; the shipped dataset when no `releases` connector answers (§7) | `versions_list`, `cycles_get` on `releases` (§7.1) |
 
 **Drift** is computed per object (kind, namespace, name): the image or chart version differs (`Version`), the object runs but no manifest of the repository declares it (`NotInGit`), or a manifest declares it and it does not run (`NotLive`). A chart whose objects are templated is compared by chart name and version only: the collector does not render templates, and says so in `blindSpots`. A GitOps tool's own drift is its sync status: an Application `OutOfSync` or a Kustomization whose last attempted revision is not its last applied one is reported in `gitops[]`, whatever the per-object comparison says.
@@ -146,7 +146,7 @@ Tools, all `read`, none taking a free path outside the repositories it serves:
 | Tool | Arguments | Returns | Class |
 |---|---|---|---|
 | `repositories_list` | — | per repository: name, branch, served revision | read, state |
-| `manifests_index` | `repository`, optional `path` prefix | per YAML document: path, apiVersion, kind, namespace, name, images, chart name and version; Helm `Chart.yaml` and Flux `HelmRelease` / Argo `Application` chart references included; **never a value** | read, state |
+| `manifests_index` | `repository`, optional `path` prefix | per YAML document: path, apiVersion, kind, namespace, name, images, chart name and version; Helm `Chart.yaml` and Flux `HelmRelease` / Argo `Application` chart references included; `imageOverrides` (name, newName, newTag, digest) of a `kustomization.yaml`, `kustomization.yml` or `Kustomization` file, with or without its apiVersion and kind, and of a Flux `Kustomization`'s `spec.images`; **never a value** | read, state |
 | `files_list` | `repository`, optional `path` prefix | paths and sizes, at most 1,000 | read, state |
 | `file_get` | `repository`, `path` | the file's content, at most 256 KiB | read, **content** |
 

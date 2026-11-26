@@ -102,7 +102,7 @@ func New(cfg Config) (*Server, error) {
 	}{
 		{ToolRepositoriesList, "The repositories served: name, url, branch, the revision served and when it was fetched.",
 			map[string]any{}, nil, s.repositoriesList},
-		{ToolManifestsIndex, fmt.Sprintf("Per YAML document of the repository: path, apiVersion, kind, namespace, name, the images its pod templates run and the Helm charts it names (Chart.yaml, Flux HelmRelease, Argo CD Application), never a value; %d documents at most.", maxDocuments),
+		{ToolManifestsIndex, fmt.Sprintf("Per YAML document of the repository: path, apiVersion, kind, namespace, name, the images its pod templates run, the Helm charts it names (Chart.yaml, Flux HelmRelease, Argo CD Application) and a Kustomization's image overrides (kustomization.yaml images, Flux Kustomization spec.images), never a value; %d documents at most.", maxDocuments),
 			map[string]any{argRepo: repository, argPath: prefix}, []string{argRepo}, s.manifestsIndex},
 		{ToolFilesList, fmt.Sprintf("The repository's files, paths and sizes, %d at most.", maxFiles),
 			map[string]any{argRepo: repository, argPath: prefix}, []string{argRepo}, s.filesList},

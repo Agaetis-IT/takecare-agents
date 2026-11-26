@@ -28,8 +28,9 @@ const (
 )
 
 // Document is one YAML document of a repository as manifests_index
-// gives it: where it is, what it is, the images and charts it names.
-// Never a value: no data, no env, no Helm values.
+// gives it: where it is, what it is, the images and charts it names, and
+// the image overrides of a Kustomization. Never a value: no data, no env,
+// no Helm values.
 type Document struct {
 	Path       string     `json:"path"`
 	APIVersion string     `json:"apiVersion,omitempty"`
@@ -38,6 +39,20 @@ type Document struct {
 	Name       string     `json:"name,omitempty"`
 	Images     []string   `json:"images,omitempty"`
 	Charts     []ChartRef `json:"charts,omitempty"`
+	// ImageOverrides are a Kustomization's images: Kustomize's own
+	// (kustomization.yaml) or a Flux Kustomization's spec.images. They
+	// change the images of the manifests it builds, which list the image
+	// before the override: the reader applies them.
+	ImageOverrides []ImageOverride `json:"imageOverrides,omitempty"`
+}
+
+// ImageOverride is one entry of a Kustomization's images: the images
+// named Name run NewName, at NewTag or Digest, when set.
+type ImageOverride struct {
+	Name    string `json:"name"`
+	NewName string `json:"newName,omitempty"`
+	NewTag  string `json:"newTag,omitempty"`
+	Digest  string `json:"digest,omitempty"`
 }
 
 // ChartRef is a Helm chart a document names: a chart's own Chart.yaml or
@@ -70,14 +85,25 @@ type Index struct {
 
 func isYAML(p string) bool {
 	ext := strings.ToLower(path.Ext(p))
-	return ext == ".yaml" || ext == ".yml"
+	return ext == ".yaml" || ext == ".yml" || isKustomization(p)
+}
+
+// isKustomization is a file Kustomize reads as a kustomization: the names
+// it recognises, whose apiVersion and kind are optional.
+func isKustomization(p string) bool {
+	switch path.Base(p) {
+	case "kustomization.yaml", "kustomization.yml", "Kustomization":
+		return true
+	}
+	return false
 }
 
 // add indexes one YAML file: each of its documents that is a Kubernetes
-// object or a Chart.yaml; anything else (a values file, a kustomization
-// without a kind) is not a manifest and is left out.
+// object, a Chart.yaml or a kustomization; anything else (a values file)
+// is not a manifest and is left out.
 func (ix *Index) add(p string, raw []byte) {
 	isChart := path.Base(p) == "Chart.yaml"
+	isKust := isKustomization(p)
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	for {
 		var doc map[string]any
@@ -89,7 +115,7 @@ func (ix *Index) add(p string, raw []byte) {
 			ix.skip(p, "not YAML (a template?)")
 			return
 		}
-		d, ok := document(p, doc, isChart)
+		d, ok := document(p, doc, isChart, isKust)
 		if !ok {
 			continue
 		}
@@ -110,7 +136,7 @@ func (ix *Index) skip(p, reason string) {
 }
 
 // document reads what is not a value from one document.
-func document(p string, doc map[string]any, isChart bool) (Document, bool) {
+func document(p string, doc map[string]any, isChart, isKust bool) (Document, bool) {
 	if isChart {
 		name := str(doc, "name")
 		if name == "" {
@@ -125,7 +151,11 @@ func document(p string, doc map[string]any, isChart bool) (Document, bool) {
 		return d, true
 	}
 	apiVersion, kind := str(doc, "apiVersion"), str(doc, "kind")
-	if apiVersion == "" || kind == "" {
+	if isKust && kind == "" {
+		// Kustomize's default kind when a kustomization names none.
+		kind = "Kustomization"
+	}
+	if (apiVersion == "" && !isKust) || kind == "" {
 		return Document{}, false
 	}
 	meta, _ := doc["metadata"].(map[string]any)
@@ -137,6 +167,10 @@ func document(p string, doc map[string]any, isChart bool) (Document, bool) {
 		d.Charts = fluxChart(spec)
 	case kind == "Application" && group == "argoproj.io":
 		d.Charts = argoCharts(spec)
+	case kind == "Kustomization" && group == "kustomize.toolkit.fluxcd.io":
+		d.ImageOverrides = imageOverrides(list(spec, "images"))
+	case isKust:
+		d.ImageOverrides = imageOverrides(list(doc, "images"))
 	}
 	d.Images = images(doc)
 	return d, true
@@ -173,6 +207,21 @@ func argoCharts(spec map[string]any) []ChartRef {
 			continue
 		}
 		out = append(out, ChartRef{Name: str(m, "chart"), Version: str(m, "targetRevision"), Repository: repoURL(str(m, "repoURL"))})
+	}
+	return out
+}
+
+// imageOverrides reads a Kustomization's images (Kustomize's images
+// field; Flux kustomize.toolkit.fluxcd.io/v1, spec.images): name, newName,
+// newTag, digest. An entry without a name matches nothing and is left out.
+func imageOverrides(entries []any) []ImageOverride {
+	var out []ImageOverride
+	for _, e := range entries {
+		m, ok := e.(map[string]any)
+		if !ok || str(m, "name") == "" {
+			continue
+		}
+		out = append(out, ImageOverride{Name: str(m, "name"), NewName: str(m, "newName"), NewTag: str(m, "newTag"), Digest: str(m, "digest")})
 	}
 	return out
 }
