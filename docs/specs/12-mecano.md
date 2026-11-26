@@ -154,7 +154,7 @@ Tools, all `read`, none taking a free path outside the repositories it serves:
 
 ## 6. `propose`: the first write
 
-At `Practitioner`, the Mécano opens its plan as a **draft pull request**. This is the product's first write, outside Kubernetes. It is bounded by four independent layers; each one alone refuses what the others would let through.
+At `Practitioner`, the Mécano opens its plan as a **draft pull request**. This is the product's first write, outside Kubernetes. It is bounded by four independent layers, so that a fault in one is caught by another. They are not equally narrow: on GitLab the token's own layer is wider than on GitHub (§6.3.2, §6.4).
 
 ### 6.1 The server
 
@@ -168,7 +168,7 @@ The read server made read-write for this one tool would have saved one Deploymen
 
 **The forges in 0.6.0 are GitHub and GitLab** (decided by the maintainers), each through its REST API with the standard library: no new dependency. Each listed repository names its forge and API URL (`addons.codePropose.repositories[]`, each `{forge, apiURL, repository}`, `forge` being `github` or `gitlab`), so one propose server serves both, and a Mécano's single `propose` slot reaches repositories on either:
 
-- **GitHub**: github.com, or GitHub Enterprise Server by `apiURL`; `repository` is `owner/name`. The calls are: read the repository's default branch and its protection (§6.3.3), create a ref, write the files through the Git data API, open the pull request with `draft: true`, and list the pull requests of the branch.
+- **GitHub**: github.com, or GitHub Enterprise Server by `apiURL`; `repository` is `owner/name`. The calls are: read the repository's default branch and its protection (§6.3.3), create a ref, write the files through the Git data API, open the pull request with `draft: true`, and list the pull requests of the branch. Draft pull requests are not offered on every GitHub plan for private repositories: when the forge refuses `draft: true`, the server returns the fixed error `DraftUnavailable` and never opens a non-draft pull request instead (§6.5); the maintenance names the repository in `blindSpots`. The branch and its commit are then left without a pull request: the server deletes no ref, a retry within the maintenance is refused by step 5 of §6.2, and the next maintenance uses a branch of its own name. The README says that such a branch is the customer's to delete.
 - **GitLab**: gitlab.com or a self-managed instance by `apiURL`; `repository` is the project's full path (`group/subgroup/project`). The calls are: read the project's default branch and that branch (§6.3.3), create one commit with `branch` and `start_branch` set to the default branch (which creates the branch), never with `force`, open the merge request with its title prefixed `Draft:` (GitLab's way to make it a draft; its create endpoint has no draft parameter), and list the merge requests of the branch.
 
 Where this spec says "pull request", read "merge request" on GitLab.
@@ -178,7 +178,7 @@ Where this spec says "pull request", read "merge request" on GitLab.
 `propose_change(repository, branch, title, body, files[])`, `files` at most 20 entries `{path, content}`, at most 256 KiB in total. The server:
 
 1. refuses a `repository` its configuration does not list (`addons.codePropose.repositories`, which the connector's `spec.propose.repositories` repeats for review);
-2. refuses any path under `.github/workflows/` (GitHub), `.gitlab-ci.yml` or `.gitlab/` (GitLab), and any path outside the repository (`..`, absolute, symbolic links);
+2. refuses any path under `.github/workflows/` (GitHub), `.gitlab-ci.yml` or `.gitlab/` (GitLab), any file of the project's CI configuration on GitLab (§6.3.2: a custom configuration path and the files it includes locally), and any path outside the repository (`..`, absolute, symbolic links);
 3. refuses a `branch` that does not match `^takecare/mecano/[a-z0-9][a-z0-9-]{0,62}$`: the fixed prefix is the server's, whatever the agent sends. The operator's message names the branch to use, `takecare/mecano/<maintenance name>`, and the answer's parsing keeps only a pull request on that branch (§9);
 4. reads the default branch's protection and refuses when it is not protected, or when it cannot tell (§6.3.3), before any write: checked on every call, since a protection can be removed between two maintenances;
 5. creates the branch from the default branch's head, or, when the branch exists, refuses unless a pull request the server opened from it is still open, in which case it returns that pull request: a retry never opens a second one;
@@ -211,11 +211,21 @@ GitLab has no token as narrow as GitHub's two permissions. The narrowest that ca
 - with the **`api`** scope only. `write_repository` pushes over Git but "does not support API authentication", and `read_api` is read-only, so the REST calls of §6.1 need `api` (GitLab, "Access token scopes");
 - with an expiry date: GitLab sets one 365 days ahead by default and caps it there unless the instance raises the cap. The add-on's README says to renew it.
 
+**Availability.** On GitLab.com, project access tokens require a Premium or Ultimate subscription (one token during a trial); on GitLab Self-Managed and GitLab Dedicated they are available with any licence (GitLab, "Project access tokens"). A project on GitLab.com Free therefore has no token this spec allows: it is not listed in the propose add-on, and the Mécano's plans for it are recorded and published without a merge request, as when the `propose` connector is missing (§2). The add-on's README says so. Whether another kind of token should serve that case is an open question, not decided here.
+
 **`api` is wider than what the server uses.** It "grants complete read and write access to the API" within the token's project and role: as a Developer, the token could also delete a non-protected branch, comment, open issues, run pipelines, or merge a merge request into a branch Developers may merge into. GitLab has no Workflows-like permission either, so the token alone does not stop a change to the CI configuration. The other layers hold the line instead:
 
-- **our server** makes only the calls of §6.1, on the listed projects only, on a branch under `takecare/mecano/` only, and opens a draft merge request only; it refuses `.gitlab-ci.yml` and `.gitlab/` (§6.2);
+- **our server** makes only the calls of §6.1, on the listed projects only, on a branch under `takecare/mecano/` only, and opens a draft merge request only; it refuses every file of the project's CI configuration (below);
 - **the route rule** (§6.4) admits only `propose_change`, only a listed repository, only a branch under `takecare/mecano/`, and no argument outside the five;
 - **the default branch's protection**, which the server checks (§6.3.3), keeps the token from pushing or merging there.
+
+**The CI configuration is not only `.gitlab-ci.yml`.** A project may set another configuration file: a path in the same project, a file in another project, or a URL (GitLab, "CI/CD pipelines settings", custom CI/CD configuration file). The configuration may also include files of the repository, by `include: local`, by the short form `include: '<path>'`, with wildcards (`*`, `**`), and nested up to 150 files (GitLab, "Use CI/CD configuration from other files"). So, on every call, before any write, the server:
+
+- reads the project (`GET /projects/:id`) and its `ci_config_path` (GitLab, "Projects API"): empty means `.gitlab-ci.yml`; a path in the same project is refused like `.gitlab-ci.yml`; a file in another project or a URL is outside this repository, and the token, scoped to this project, cannot write it;
+- reads that file at the default branch's head, follows its local includes, nested ones included, and refuses any file they name; a wildcard is refused as the pattern, so a file the pattern matches is refused;
+- refuses to propose, with the fixed error `CIConfigUnknown`, whenever it cannot tell: `ci_config_path` absent from the answer (the API does not document which roles see it), a file it cannot read or parse, an include whose path holds a variable (`$`), an include of a kind it does not know, or more than 150 included files.
+
+The branch is created from that same head and its one commit changes no file the configuration names, so the configuration a pipeline reads on the branch is the default branch's. `CIConfigUnknown` is a blind spot of the maintenance, as `ProtectionUnknown` is (§6.3.3), naming the repository; it is never taken for "no CI configuration".
 
 A pipeline the project's own CI configuration runs on the pushed branch is the customer's; GitLab exposes protected CI variables to protected branches only, and `takecare/mecano/` is not one unless the customer makes it so. The add-on's README says all this, the `api` scope's width first.
 
@@ -229,7 +239,8 @@ The server refuses to open a pull request on a repository whose default branch i
 When the check refuses, or cannot be made, the plan is still recorded and published, without a pull request for that repository, and the maintenance says why in `blindSpots`:
 
 - `DefaultBranchUnprotected`: the forge answered and the branch is not protected, as defined above;
-- `ProtectionUnknown`: the forge did not answer the check (a 403 or 404 because the token cannot read it, a timeout, an unknown field). The server never takes "unknown" for "protected".
+- `ProtectionUnknown`: the forge did not answer the check (a 403 or 404 because the token cannot read it, a timeout, an unknown field). The server never takes "unknown" for "protected";
+- `CIConfigUnknown` (GitLab): the server could not tell which files make the project's CI configuration (§6.3.2).
 
 The server returns each as a fixed error; the operator maps it to the blind spot, naming the repository, and emits a warning event on the Mécano when the reason changes. Neither error is retried within the maintenance.
 
@@ -389,7 +400,7 @@ The bar at a release is **five runs correct out of five** (`BENCH_MIN=5`), writt
 ## 17. Test plan
 
 - **Unit**: the name, schedule and CEL rules; the collector against recorded connector answers (images, charts, removed APIs live and in Git, certificates, GitOps states, drift per kind, the version sources); the dataset's schema and its staleness; the component-to-source mapping and the fallback to the dataset per component, per stale source and with no `releases` connector ("offline watch, current as of <date>"); the answer's parsing (valid, invalid, oversized, unknown version, foreign pull request); finding ids and "changed since"; the message (golden, both levels).
-- **Code server**: each tool, its bounds, "no value in the index", the content mark. **Propose server**, against a fake forge: every refusal of §6.2 (unlisted repository, workflow and CI paths, path escape, existing branch without its open pull request), the protection check of §6.3.3 per forge (protected, unprotected, a classic GitHub protection, a GitLab branch Developers may push or merge to, a 403, a timeout), the draft flag (`draft: true` on GitHub, the `Draft:` prefix on GitLab), the reuse on retry, no `force` on GitLab's commit, and that no other endpoint is ever called, for both forges. **Releases server**, against fake upstreams: each source kind (OCI tags with `Link` paging, a Helm `index.yaml`, GitHub and GitLab releases, endoflife.date cycles), the once-a-day cache, the stale answer and its drop after 7 days, the refusal of an unlisted host and of a redirect to one, the version bounds, and the token sent only to its own source.
+- **Code server**: each tool, its bounds, "no value in the index", the content mark. **Propose server**, against a fake forge: every refusal of §6.2 (unlisted repository, workflow and CI paths, path escape, existing branch without its open pull request), the protection check of §6.3.3 per forge (protected, unprotected, a classic GitHub protection, a GitLab branch Developers may push or merge to, a 403, a timeout), GitLab's CI configuration (a custom `ci_config_path` in the project refused, one in another project or a URL not, a file named by a nested `include: local`, by the short form and by a wildcard refused, and `CIConfigUnknown` for an absent `ci_config_path`, an unreadable or unparsable file, a `$` in an include path and more than 150 includes), the draft flag (`draft: true` on GitHub and a refused draft giving `DraftUnavailable` with no non-draft pull request, the `Draft:` prefix on GitLab), the reuse on retry, no `force` on GitLab's commit, and that no other endpoint is ever called, for both forges. **Releases server**, against fake upstreams: each source kind (OCI tags with `Link` paging, a Helm `index.yaml`, GitHub and GitLab releases, endoflife.date cycles), the once-a-day cache, the stale answer and its drop after 7 days, the refusal of an unlisted host and of a redirect to one, the version bounds, and the token sent only to its own source.
 - **Golden**: the rendered Agent, routes and policies per level; no propose route at `Apprentice` or without `maintenance.repositories`; no `releases` tool on the Agent at any level.
 - **envtest**, under the operator's own Roles: level transitions; missing `cluster` or `code` connector; `ScopeOverlap`; schedule; on demand; backstop; retention keeping the newest published.
 - **Chart**: the read-only guard over the code, propose, releases, history and kubernetes (`readNodes`) add-ons; the releases add-on's NetworkPolicy (DNS and 443 only, to `egressCIDRs` or the proxy when set); the propose route's argument rule refusing an unlisted repository, in the chart smoke.
@@ -404,7 +415,7 @@ The bar at a release is **five runs correct out of five** (`BENCH_MIN=5`), writt
 4. At `Practitioner` the plan opens at most one draft pull request per listed repository, on `takecare/mecano/<name>`, reused on retry; an unlisted repository is refused by the server and by the route; no merge and no other forge call exist; this holds on GitHub and on GitLab.
 5. The propose token is mounted on the propose server only, and no agent tool can read it.
 6. With a `releases` connector, `latest` and `supportEnds` come from its sources, each upstream called at most once a day per name and only on listed hosts; without one, they come from the dataset and each maintenance declares "offline watch, current as of <the release's date>". The agent never gets a `releases` tool.
-7. No pull request is opened on a repository whose default branch is not protected, or whose protection could not be read; the maintenance names the repository in `blindSpots` with `DefaultBranchUnprotected` or `ProtectionUnknown`.
+7. No pull request is opened on a repository whose default branch is not protected, or whose protection could not be read, nor on a GitLab project whose CI configuration files the server could not determine; the maintenance names the repository in `blindSpots` with `DefaultBranchUnprotected`, `ProtectionUnknown` or `CIConfigUnknown`. No proposed change touches a file of the project's CI configuration.
 8. A plan says `tested on a copy` only with the copy's evidence.
 9. A maintenance is published only when its findings changed or it opened a pull request, once (idempotency key).
 10. Every maintenance ends with an outcome a reader can see and says its usage.
@@ -415,12 +426,12 @@ The bar at a release is **five runs correct out of five** (`BENCH_MIN=5`), writt
 
 ## 19. Lots
 
-About 5,150 lines of code and 6,050 of tests, in five lots of at most about 1,500 lines of code each, plus this spec. Each lot is one pull request. A lot is split only where a part is useful alone, or where the reviewer would read it less well.
+About 5,250 lines of code and 6,100 of tests, in five lots of at most about 1,500 lines of code each, plus this spec. Each lot is one pull request. A lot is split only where a part is useful alone, or where the reviewer would read it less well.
 
 | Lot | Content | Size (code / tests) | Needs at its build |
 |---|---|---|---|
 | **M0** | This spec, the spec 14 amendment (a scenario without an alert), the dated note on ADR 0022 §4 | docs | the maintainers' review |
-| **M1** | The API: `TakeCareMecano`, `TakeCareMaintenance`, CEL rules and bounds, the `code` type and `propose` slot, the retention value, the role-kind enums; the code server (read) and the propose server for GitHub and GitLab with the protection check, their add-ons, Secrets, NetworkPolicies and connectors | ~1,350 / ~1,650 | the operator's generated RBAC; the two add-ons and the propose token's Secret handling; the `propose` override in the chart |
+| **M1** | The API: `TakeCareMecano`, `TakeCareMaintenance`, CEL rules and bounds, the `code` type and the `propose` and `releases` slots, the retention value, the role-kind enums; the code server (read) and the propose server for GitHub and GitLab with the protection check, their add-ons, Secrets, NetworkPolicies and connectors | ~1,450 / ~1,700 | the operator's generated RBAC; the two add-ons and the propose token's Secret handling; the `propose` override in the chart |
 | **M2** | The controller: scope, overlap, connectors, the Agent and routes per level with the `propose` rule in `internal/roleagent`, conditions; the Ranger's cap and deny; the propose route's argument rule; the history add-on's tools and Role for maintenances; the `readNodes` opt-in; the collector and the end-of-support dataset, with the collector's side of the version watch (the mapping to sources, the fallback to the dataset, the blind spots) | ~1,500 / ~1,800 | the gateway rules; the history Role; the nodes ClusterRole; the dataset's licences |
 | **M2b** | The version watch's server: the `releases` type, `takecare-agents-mcp-releases` with its five source kinds, cache and host list, its add-on, connector, token Secret handling and NetworkPolicy | ~450 / ~550 | the releases add-on and its NetworkPolicy egress |
 | **M3** | The triggers, the queue, the runner on `internal/runs`, the backstop, the answer's parsing, the status and plan, finding ids; publication on change, telemetry and metrics; the demo profile, `make demo-maintenance`, the e2e step; the demo repository and the fake forge (GitHub and GitLab endpoints); the scenario file and `make demo-bench-mecano`; docs and CHANGELOG | ~1,450 / ~1,600 | the bench run (model key) |
@@ -428,8 +439,10 @@ About 5,150 lines of code and 6,050 of tests, in five lots of at most about 1,50
 
 Seams: M1 first. M2 needs M1's kinds and servers; M2b needs M1's kinds and may be built beside M2: until it lands, the collector runs on the dataset alone, the offline watch; M3 needs M2's rendered agent and collector. M4 is independent once its ADR is accepted. A lot heading past its size is split at a seam proposed before it is written: the collector and dataset (M2), the GitLab side of the propose server (M1), and the demo and bench (M3) are the parts that stand alone.
 
-No new pin is expected: the servers are ours, go-git is already a dependency, and both forges are reached with the standard library. A pin added at the build needs its own approval.
+No new pin is expected: the servers are ours, go-git is already a dependency, both forges are reached with the standard library, and GitLab's CI configuration is read with the YAML library the operator already uses. A pin added at the build needs its own approval.
 
 ## Open questions
 
 1. **The Mécano's default model** is a chart value (spec 06 §8), set from the bench's first report.
+2. **A token for GitLab.com Free projects.** Project access tokens need Premium or Ultimate on GitLab.com (§6.3.2), so a Free project gets no merge request. A personal access token of a dedicated user who is a Developer of the listed projects only would work there, but reaches every project that user is added to; whether to allow it, and with which bounds, is the maintainers' call.
+3. **`[skip ci]` on the Mécano's commits and merge requests.** GitLab skips the push pipeline when the commit message holds `[skip ci]`, and merge request pipelines when the title does (GitLab, "Pipelines", skip a pipeline). It would keep the customer's jobs from running on a proposal, which also removes their validation of it; the spec leaves the pipelines to the customer until the maintainers decide.
