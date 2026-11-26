@@ -70,23 +70,40 @@ jobs:
     timeout-minutes: ${{ matrix.timeout }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          fetch-depth: 0
+      # The steps below run unless every file of this push, or of the whole
+      # pull request, is one no Go test, image or cluster reads (bench
+      # reports, docs, the root's Markdown, the site; hack/ci-changes.sh).
+      - id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.pull_request.head.sha }}
+        run: hack/ci-changes.sh go >>"$GITHUB_OUTPUT"
+      - if: steps.changes.outputs.heavy == 'true'
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       # The pinned chart archives, restored when the pins are the same (spec
       # 04): make chart-deps then downloads only what is missing.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - if: steps.changes.outputs.heavy == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: charts/*/charts
           key: chart-deps-${{ hashFiles('hack/versions.env', 'charts/*/Chart.lock') }}
       # The Docker Hub images of the demo profile, pulled once and kept when
       # the pins are the same; each is checked against the Id recorded at
       # its pull before it is imported into k3d (hack/preload-images.sh).
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - if: steps.changes.outputs.heavy == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: bin/preload
           key: preload-images-${{ hashFiles('hack/versions.env', 'charts/*/Chart.lock', 'hack/preload-images.sh') }}
-      - name: install k3d (version and checksum from hack/versions.env)
+      - if: steps.changes.outputs.heavy == 'true'
+        name: install k3d (version and checksum from hack/versions.env)
         run: |
           set -euo pipefail
           source hack/versions.env
@@ -99,7 +116,8 @@ jobs:
       # the room is short (the removal takes about two minutes, and the
       # runner image of 2026-11 starts with about 88 GB free), and stop
       # early with a clear message if the room is still short.
-      - name: free the runner's disk
+      - if: steps.changes.outputs.heavy == 'true'
+        name: free the runner's disk
         run: |
           set -euo pipefail
           df -h /
@@ -118,11 +136,15 @@ jobs:
       # The images' layers in the Actions cache, in the image job's scopes
       # (Makefile, DOCKER_BUILD): the runner's Docker exports a type=gha
       # cache only through a buildx builder.
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - if: steps.changes.outputs.heavy == 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       # The Actions cache's URL and token, for buildx's type=gha cache.
-      - uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
-      - run: make helm
-      - run: hack/chart-smoke.sh ${{ matrix.phase }}
+      - if: steps.changes.outputs.heavy == 'true'
+        uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
+      - if: steps.changes.outputs.heavy == 'true'
+        run: make helm
+      - if: steps.changes.outputs.heavy == 'true'
+        run: hack/chart-smoke.sh ${{ matrix.phase }}
       - name: cluster state on failure
-        if: failure()
+        if: failure() && steps.changes.outputs.heavy == 'true'
         run: hack/chart-smoke.sh status || true

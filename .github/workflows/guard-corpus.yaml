@@ -35,14 +35,27 @@ jobs:
         with:
           fetch-depth: 0
       # The replay's inputs (hack/guard-corpus-paths.sh, which fails when it
-      # cannot tell instead of passing with nothing replayed).
+      # cannot tell instead of passing with nothing replayed). Nothing to
+      # replay either when every file of this push, or of the whole pull
+      # request, is one no gateway reads (bench reports, docs, the root's
+      # Markdown, the site; hack/ci-changes.sh).
       - id: paths
         env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
           BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           if [[ "${GITHUB_EVENT_NAME}" != pull_request ]]; then
             echo replay=true >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          heavy="$(hack/ci-changes.sh go)"
+          if [[ "$heavy" != heavy=true ]]; then
+            echo replay=false >>"$GITHUB_OUTPUT"
+            echo "only bench reports, docs or the site changed: nothing to replay" >>"$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           out="$(hack/guard-corpus-paths.sh "$BASE" HEAD)"

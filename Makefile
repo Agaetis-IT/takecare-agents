@@ -95,6 +95,7 @@ TEST_TIMEOUT ?= 20m
 test: setup-envtest chart-deps ## Run unit, golden, envtest and chart tests.
 	hack/power-window-test.sh
 	hack/demo-images-test.sh
+	hack/ci-changes-test.sh
 	@# setup-envtest installs its binaries read-only: writable, a worktree's bin/ can be removed.
 	"$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(abspath $(LOCALBIN))" >/dev/null && chmod -R u+w "$(LOCALBIN)/k8s"
 	@# The path is captured on its own, so that a failed setup-envtest stops
@@ -213,6 +214,10 @@ power-window-test: ## Check hack/power-window.sh (did the machine sleep during a
 .PHONY: demo-images-test
 demo-images-test: ## Check that make demo-up stops when building or importing its images fails (stubs, no cluster).
 	hack/demo-images-test.sh
+
+.PHONY: ci-changes-test
+ci-changes-test: ## Check which pull requests skip CI's heavy jobs (hack/ci-changes.sh).
+	hack/ci-changes-test.sh
 
 .PHONY: release-notes-test
 release-notes-test: ## Check hack/release-notes.sh against its fixture.
