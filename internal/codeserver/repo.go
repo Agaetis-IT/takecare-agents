@@ -5,10 +5,10 @@ package codeserver
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
+	"slices"
 	"sync"
 	"time"
 
@@ -16,6 +16,7 @@ import (
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/storage/memory"
 
 	"github.com/agaetis-it/takecare-agents/internal/gitauth"
@@ -52,22 +53,30 @@ const (
 
 var repoName = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
 
-// repo keeps a single-branch clone in memory, fetches the branch on an
-// interval, and serves the tree of its head.
+// repo serves the tree of a branch's head from memory. It keeps one
+// shallow clone of the head served and nothing of the history: on every
+// poll it lists the branch's head on the remote, and when the head moved
+// it clones the new one, at depth 1, into a fresh storage that replaces
+// the old one. Its memory is the size of the head's files, about twice
+// that while a new head is cloned, whatever the branch's history.
 type repo struct {
 	cfg    Repository
 	logger *slog.Logger
 	now    func() time.Time
 	auth   gitauth.Method
 	retry  time.Duration
+	// depth is 1, except over file:// (tests and local runs), which
+	// go-git's own server serves only whole (it has no shallow support).
+	depth int
 
-	// gitMu guards git: go-git's in-memory storage is not safe for
-	// concurrent use, so a fetch and a read wait for each other.
+	// gitMu serialises the reads of the storage served: go-git's
+	// in-memory storage is not safe for concurrent use. A clone fills a
+	// storage of its own, read by nobody until it is served.
 	gitMu sync.Mutex
-	git   *git.Repository
 
 	mu        sync.Mutex
 	head      *object.Commit
+	store     *memory.Storage
 	lastFetch time.Time
 	fetchErr  error
 }
@@ -92,7 +101,15 @@ func newRepo(cfg Repository, logger *slog.Logger, now func() time.Time) (*repo, 
 	if err != nil {
 		return nil, fmt.Errorf("repository %s: %w", cfg.Name, err)
 	}
-	return &repo{cfg: cfg, logger: logger, now: now, auth: auth, retry: cloneRetry}, nil
+	ep, err := transport.NewEndpoint(cfg.URL)
+	if err != nil {
+		return nil, fmt.Errorf("repository %s: %w", cfg.Name, err)
+	}
+	depth := 1
+	if ep.Protocol == "file" {
+		depth = 0
+	}
+	return &repo{cfg: cfg, logger: logger, now: now, auth: auth, retry: cloneRetry, depth: depth}, nil
 }
 
 // run clones, then fetches every poll interval; a clone that fails is
@@ -112,12 +129,10 @@ func (r *repo) run(ctx context.Context) {
 	}
 }
 
-// sync fetches the branch and serves its head; a failed fetch keeps the
-// last head served.
+// sync serves the branch's head, cloned again when it moved; a failed
+// fetch keeps the last head served.
 func (r *repo) sync(ctx context.Context) {
-	r.gitMu.Lock()
-	defer r.gitMu.Unlock()
-	head, err := r.fetch(ctx)
+	head, store, err := r.fetch(ctx, r.served())
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.lastFetch = r.now()
@@ -126,44 +141,57 @@ func (r *repo) sync(ctx context.Context) {
 		r.logger.Error("repository fetch failed", "repository", r.cfg.Name, "error", err)
 		return
 	}
-	if r.head == nil || r.head.Hash != head.Hash {
-		r.logger.Info("repository loaded", "repository", r.cfg.Name, "revision", head.Hash.String())
+	if store == nil {
+		return // the head served is still the branch's
 	}
-	r.head = head
+	r.logger.Info("repository loaded", "repository", r.cfg.Name, "revision", head.Hash.String())
+	// The old storage goes with the old head: a read in flight keeps it
+	// until it ends, nothing after.
+	r.head, r.store = head, store
 }
 
-func (r *repo) fetch(ctx context.Context) (*object.Commit, error) {
+// fetch lists the branch's head on the remote and, when it is not the
+// head served, clones it into a fresh storage. A nil storage means the
+// head served is current.
+func (r *repo) fetch(ctx context.Context, served *object.Commit) (*object.Commit, *memory.Storage, error) {
 	auth, err := r.auth()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, gitTimeout)
 	defer cancel()
-	if r.git == nil {
-		g, err := git.CloneContext(ctx, memory.NewStorage(), nil, &git.CloneOptions{
-			URL: r.cfg.URL, Auth: auth, ReferenceName: plumbing.NewBranchReferenceName(r.cfg.Ref),
-			SingleBranch: true, Tags: git.NoTags,
-		})
+	branch := plumbing.NewBranchReferenceName(r.cfg.Ref)
+	if served != nil {
+		remote := git.NewRemote(memory.NewStorage(), &config.RemoteConfig{Name: git.DefaultRemoteName, URLs: []string{r.cfg.URL}})
+		refs, err := remote.ListContext(ctx, &git.ListOptions{Auth: auth})
 		if err != nil {
-			return nil, fmt.Errorf("clone %s: %w", gitauth.Redact(r.cfg.URL), err)
+			return nil, nil, fmt.Errorf("list %s: %w", gitauth.Redact(r.cfg.URL), err)
 		}
-		r.git = g
-	} else {
-		spec := config.RefSpec("+refs/heads/" + r.cfg.Ref + ":refs/remotes/origin/" + r.cfg.Ref)
-		err := r.git.FetchContext(ctx, &git.FetchOptions{Auth: auth, RefSpecs: []config.RefSpec{spec}, Tags: git.NoTags, Force: true})
-		if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
-			return nil, fmt.Errorf("fetch %s: %w", r.cfg.Ref, err)
+		i := slices.IndexFunc(refs, func(ref *plumbing.Reference) bool { return ref.Name() == branch })
+		if i < 0 {
+			return nil, nil, fmt.Errorf("branch %s: %w", r.cfg.Ref, plumbing.ErrReferenceNotFound)
+		}
+		if refs[i].Hash() == served.Hash {
+			return served, nil, nil
 		}
 	}
-	ref, err := r.git.Reference(plumbing.NewRemoteReferenceName("origin", r.cfg.Ref), true)
+	store := memory.NewStorage()
+	g, err := git.CloneContext(ctx, store, nil, &git.CloneOptions{
+		URL: r.cfg.URL, Auth: auth, ReferenceName: branch,
+		SingleBranch: true, Tags: git.NoTags, Depth: r.depth,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("branch %s: %w", r.cfg.Ref, err)
+		return nil, nil, fmt.Errorf("clone %s: %w", gitauth.Redact(r.cfg.URL), err)
 	}
-	head, err := r.git.CommitObject(ref.Hash())
+	ref, err := g.Reference(plumbing.NewRemoteReferenceName(git.DefaultRemoteName, r.cfg.Ref), true)
 	if err != nil {
-		return nil, fmt.Errorf("commit %s: %w", ref.Hash(), err)
+		return nil, nil, fmt.Errorf("branch %s: %w", r.cfg.Ref, err)
 	}
-	return head, nil
+	head, err := g.CommitObject(ref.Hash())
+	if err != nil {
+		return nil, nil, fmt.Errorf("commit %s: %w", ref.Hash(), err)
+	}
+	return head, store, nil
 }
 
 func (r *repo) served() *object.Commit {

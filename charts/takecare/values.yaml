@@ -465,8 +465,13 @@ addons:
     contentTools: [file_get]
     # -- Tool overrides (spec 05), as for the kubernetes add-on.
     tools: []
-    # -- Requests and limits of the code server container. It keeps each
-    # repository's branch in memory.
+    # -- Requests and limits of the code server container. It keeps in
+    # memory the files of each repository's branch head (a depth-1 clone,
+    # none of the history), and twice them while a moved head is cloned
+    # again. Size limits.memory at about 32Mi plus twice the sum of the
+    # repositories' files at their head (uncompressed, .git excluded): the
+    # default 256Mi holds about 100Mi of files; raise it for larger
+    # repositories, or the pod is killed out of memory.
     resources:
       requests: { cpu: 10m, memory: 64Mi }
       limits: { memory: 256Mi }
