@@ -28,6 +28,8 @@ on:
       - hack/versions.env
       - Makefile
       - .github/workflows/site.yaml
+      - hack/ci-changes.sh
+      - hack/ci-changes-test.sh
       - hack/site-deploy.sh
       - hack/site-deploy-test.sh
   workflow_dispatch: {}
@@ -38,6 +40,11 @@ permissions:
 jobs:
   build:
     name: build the site
+    # checks: read for hack/ci-changes.sh, which reads this job's run at
+    # the previous head; nothing else beyond the workflow's contents: read.
+    permissions:
+      contents: read
+      checks: read
     runs-on: ubuntu-24.04
     # A newer build of the same ref replaces an older one.
     concurrency:
@@ -53,7 +60,24 @@ jobs:
           fetch-depth: 0
           filter: blob:none
           persist-credentials: false
-      - run: make site-deploy-test
+      # The checks and the build run unless every file of this push, or of
+      # the whole pull request, is one the site does not read (bench
+      # reports, docs, the root's Markdown but CHANGELOG.md;
+      # hack/ci-changes.sh). A tag or a manual run always builds.
+      - id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.pull_request.head.sha }}
+          # The previous head's run of this job (hack/ci-changes.sh).
+          CHECK: build the site
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: hack/ci-changes.sh site >>"$GITHUB_OUTPUT"
+      - if: steps.changes.outputs.heavy == 'true'
+        run: make site-deploy-test
       - id: decide
         env:
           EVENT: ${{ github.event_name }}
@@ -64,7 +88,8 @@ jobs:
           deploy="$(hack/site-deploy.sh "$EVENT" "$REF_NAME" "$REF_TYPE" "$COMMIT")"
           echo "site deploy decided: ${deploy} (event ${EVENT}, ref ${REF_NAME}, ${REF_TYPE} ${COMMIT})"
           echo "deploy=${deploy}" >> "$GITHUB_OUTPUT"
-      - run: make site
+      - if: steps.changes.outputs.heavy == 'true'
+        run: make site
       - if: steps.decide.outputs.deploy == 'true'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
