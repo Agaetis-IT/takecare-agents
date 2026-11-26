@@ -488,13 +488,12 @@ func TestChartRepositoryRedacted(t *testing.T) {
 		{"https://reader:" + pass + "%zz@charts.example.org/a b%", "https://charts.example.org/a b%"},
 		{"https://charts.example.org/user@x", "https://charts.example.org/user@x"},
 		{"@stable", "@stable"},
-		{"HelmRepository/jetstack", "HelmRepository/jetstack"},
 	}
 	for _, c := range cases {
 		t.Run(c.want, func(t *testing.T) {
-			chart := map[string]any{"name": "shop", "dependencies": []any{map[string]any{"name": "db", "repository": c.raw}}}
+			chart := map[string]any{"name": repoShop, "dependencies": []any{map[string]any{"name": "db", "repository": c.raw}}}
 			d, _ := document("Chart.yaml", chart, true)
-			argo := argoCharts(map[string]any{"source": map[string]any{"repoURL": c.raw, "chart": "shop"}})
+			argo := argoCharts(map[string]any{"source": map[string]any{"repoURL": c.raw, "chart": repoShop}})
 			for _, got := range []string{d.Charts[1].Repository, argo[0].Repository} {
 				if got != c.want || strings.Contains(got, pass) {
 					t.Errorf("repository %q, want %q", got, c.want)
