@@ -38,7 +38,7 @@ REAL_MODEL_API_KEY="${TAKECARE_MODEL_API_KEY:-}"
 export DEMO_NO_DOTENV=1
 export TAKECARE_MODEL_API_KEY=e2e-placeholder TAKECARE_SLACK_BOT_TOKEN=xoxb-e2e-fake
 export TAKECARE_SLACK_ONCALL_CHANNEL=C0E2EONCALL TAKECARE_SLACK_REVIEW_CHANNEL=C0E2EREVIEW
-CHECKS_EXPECTED=61
+CHECKS_EXPECTED=62
 FIXTURES=test/fakellm/testdata/e2e
 
 log() { printf '\033[1;34m==>\033[0m %s %s\n' "$(date +%H:%M:%S)" "$*"; }
@@ -574,8 +574,13 @@ run() {
   echo "checks: ${checks} run, all passed"
 }
 
-# kine_review INV lifts the demo Kiné's suspension at Practitioner, bound
-# to the report connector's review destination (a patch: a second Kiné on
+# kine_review INV first brings the demo back: the Intendant's removal
+# check deleted the TakeCareDemo, and its corpus ConfigMaps with it, so the
+# corpus servers the Kiné reads (its knowledge, tickets and changes
+# connectors) stop answering and its tools change from call to call. A
+# TakeCareDemo applied without the reset annotation deletes no
+# investigation. Then it lifts the demo Kiné's suspension at Practitioner,
+# bound to the report connector's review destination (a patch: a second Kiné on
 # demo-apps would be refused, ScopeOverlap), and checks its review of the
 # Doc's investigation (spec 11 §13): Completed with the fixture's answer,
 # its usage attributed, published once to the fake Slack, matching the
@@ -592,6 +597,9 @@ kine_review() {
   local mine='.spec.kineRef.name == "kine" and ((.spec.investigations // []) | index($i)) and
     ((.status.phase == "Failed" and ((.status.reason // "") | test("^the (Kiné is not ready to review|gateway is not ready)$"))) | not)'
   log "reviewing the run's investigations with the demo Kiné, at Practitioner"
+  kubectl apply -f demo/manifests/demo.yaml >/dev/null
+  check "the demo is back with its corpus: the Kiné's incidents, runbooks, support and deployments connectors are Ready (spec 11 §13)" \
+    bash -c "for c in incidents runbooks support deployments; do ok=''; for _ in \$(seq 60); do [[ \$(kubectl -n $NS get takecareconnector \$c -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}') == True ]] && { ok=1; break; }; sleep 5; done; [[ -n \$ok ]] || { echo \"connector \$c is not Ready\" >&2; exit 1; }; done"
   kubectl -n "$NS" patch takecarekine kine --type=merge \
     -p '{"spec":{"suspend":false,"level":"Practitioner","connectors":{"report":"report"},"report":{"practitioner":"review"}}}' >/dev/null
   check "the demo Kiné is Ready at Practitioner, bound to the report connector (spec 11 §7)" \
