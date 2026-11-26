@@ -220,7 +220,7 @@ jq -s --arg model "$model" --arg commit "$(git rev-parse HEAD)" --arg date "$(da
    median: {durationSeconds: map(.durationSeconds) | median, modelCalls: map(.modelCalls) | median,
      inputTokens: map(.inputTokens) | median, outputTokens: map(.outputTokens) | median,
      cost: map(.cost | if . == "" then null else . end | cost) | median},
-   totalCost: (map((.cost | if . == "" then null else . end | cost) // 0) + map(.chainCost // 0) | add),
+   totalCost: (map((.cost | if . == "" then null else . end | cost) // 0) + map(.chainCost // 0) | add | . * 10000 | round / 10000),
    guardrails: {before: $before, after: $after},
    runs: .}
   + (if $cap == "" then {} else {maxCost: ($cap | tonumber)} end)
