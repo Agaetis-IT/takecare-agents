@@ -32,6 +32,9 @@ type Discover struct {
 	ServedRevision string            `json:"servedRevision"`
 	Survey         *DiscoveredSurvey `json:"survey"`
 	Command        string            `json:"command"`
+	// VersionSkew is set when takecare and the cluster are more than one
+	// minor version apart.
+	VersionSkew *VersionSkew `json:"versionSkew,omitempty"`
 }
 
 // DiscoveredSurvey is a survey as discover shows it. PredatesServedMap is
@@ -99,6 +102,8 @@ func (a *app) discover(ctx context.Context, args []string) int {
 	if err != nil {
 		return a.fail("discover: %v", err)
 	}
+	d.VersionSkew = a.clusterSkew(ctx, r)
+	a.warnSkew(c, d.VersionSkew)
 	if c.output == outputJSON {
 		err = a.printJSON(d)
 	} else {
