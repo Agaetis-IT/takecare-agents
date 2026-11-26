@@ -67,7 +67,7 @@ Status: the shared `RoleStatus` (conditions `Ready`, `LevelSupported`, `ModelRes
 
 ### `TakeCareMaintenance`
 
-One record per maintenance, built on `RunStatus` (spec 06 §3), owned by its Mécano (controller reference).
+One record per maintenance, built on `RunStatus` (spec 06 §3), owned by its Mécano (controller reference). Its name is at most 63 characters, without a dot, refused at creation: it names the pull request's branch `takecare/mecano/<name>` (§6.2).
 
 Spec, immutable after creation:
 
@@ -97,7 +97,7 @@ The model's text is kept in `findings[].text` and `plan.steps[].text`, at most 5
 
 **Finding ids** are stable across maintenances: `<kind>/<component>` (for a removed API, `RemovedAPI/<apiVersion>/<kind>`), so that the Service log is the set of finding ids across a Mécano's maintenances, and "changed since the last one" (§11) is a comparison of sets.
 
-Printer columns: `PHASE`, `TRIGGER`, `FINDINGS`, `NOW`, `PR`, `PUBLISHED`, `AGE`.
+Printer columns: `PHASE`, `TRIGGER`, `FINDINGS`, `NOW`, `PR`, `PUBLISHED`, `AGE`. They read `status.counts` (`findings`, `now`, `pullRequests`), which the operator writes with the findings and the plan; the findings past their bound are counted in `findingsOmitted`, and a plan `tested: OnCopy` carries the copy's evidence in `plan.evidence`.
 
 **Waiting.** A `Queued` maintenance that cannot start says why in `status.reason` (`MecanoBusy`, `QueueFull`), written only when it changes.
 

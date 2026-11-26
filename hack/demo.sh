@@ -93,7 +93,7 @@ images() {
   local tag ref node missing=() refs=()
   # What the images are built from, untracked files included.
   tag="$(demo_tag)" || die "cannot compute the images' tag"
-  for ref in operator mcp-report-slack mcp-corpus mcp-map mcp-front mcp-history demo-app; do
+  for ref in operator mcp-report-slack mcp-corpus mcp-map mcp-front mcp-history mcp-code demo-app; do
     refs+=("${IMAGE_REGISTRY}/takecare-agents-${ref}:${tag}")
   done
   # The stamp is a build cache only: a missing local image builds again.

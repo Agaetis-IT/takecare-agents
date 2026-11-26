@@ -21,6 +21,8 @@ MCP_MAP_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-mcp-map:$(VERSION)
 MCP_FRONT_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-mcp-front:$(VERSION)
 # The history server (spec 11).
 MCP_HISTORY_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-mcp-history:$(VERSION)
+# The code server (spec 12).
+MCP_CODE_IMG ?= $(IMAGE_REGISTRY)/takecare-agents-mcp-code:$(VERSION)
 # docker-buildx pushes only when PUSH=true (the release workflow, from PR 6).
 PUSH ?= false
 
@@ -310,7 +312,7 @@ LOCAL_LABELS ?=
 DOCKER_BUILD = $(if $(ACTIONS_RUNTIME_TOKEN),docker buildx build --load $(call BUILDX_CACHE,$(1)),docker build)
 
 .PHONY: docker-build
-docker-build: ## Build every image (operator, report server, demo app, corpus server, Map server, front, history server) for the local platform.
+docker-build: ## Build every image (operator, report server, demo app, corpus server, Map server, front, history server, code server) for the local platform.
 	$(call DOCKER_BUILD,operator) $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=operator -t $(OPERATOR_IMG) .
 	$(call DOCKER_BUILD,mcp-report-slack) $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-report-slack -t $(REPORT_SLACK_IMG) .
 	$(call DOCKER_BUILD,demo-app) $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=demo-app -t $(DEMO_APP_IMG) .
@@ -318,6 +320,7 @@ docker-build: ## Build every image (operator, report server, demo app, corpus se
 	$(call DOCKER_BUILD,mcp-map) $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-map -t $(MCP_MAP_IMG) .
 	$(call DOCKER_BUILD,mcp-front) $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-front -t $(MCP_FRONT_IMG) .
 	$(call DOCKER_BUILD,mcp-history) $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-history -t $(MCP_HISTORY_IMG) .
+	$(call DOCKER_BUILD,mcp-code) $(DOCKER_BUILD_ARGS) $(LOCAL_LABELS) --build-arg COMPONENT=mcp-code -t $(MCP_CODE_IMG) .
 
 .PHONY: clean-local
 clean-local: ## List the images the demo, the e2e and the smoke built here; CLEAN_LOCAL=remove removes them (never the current tree's).
@@ -348,6 +351,8 @@ docker-buildx: ## Build every image for IMAGE_PLATFORMS (amd64 and arm64; pushed
 	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-front $(call BUILDX_CACHE,mcp-front) -t $(MCP_FRONT_IMG) \
 		$(if $(filter true,$(PUSH)),--push,) .
 	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-history $(call BUILDX_CACHE,mcp-history) -t $(MCP_HISTORY_IMG) \
+		$(if $(filter true,$(PUSH)),--push,) .
+	docker buildx build --platform $(IMAGE_PLATFORMS) $(DOCKER_BUILD_ARGS) --build-arg COMPONENT=mcp-code $(call BUILDX_CACHE,mcp-code) -t $(MCP_CODE_IMG) \
 		$(if $(filter true,$(PUSH)),--push,) .
 
 
