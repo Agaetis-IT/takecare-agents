@@ -53,3 +53,5 @@ The Map already describes `azure`, `aws`, `vsphere` and `url` sources (spec 08 ย
 - **The Talkie posts to the intake directly** (one adapter per source, ADR 0015 ยง4). That loses Alertmanager's silences, inhibition and grouping, which customers already rely on.
 - **Mail parsing:** fragile and unauthenticated.
 - **A `TakeCareAlertSource` kind now:** no status is needed yet, and the kind can be added later without breaking anything.
+
+> **Note (2026-11-26)**: the alert relay is now called the Whistle; the Talkie names the teams' console.
