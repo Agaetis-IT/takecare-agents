@@ -189,14 +189,18 @@ spec:
               schedule:
                 default: 0 6 * * 1
                 description: |-
-                  When the periodic review runs, as a cron expression in UTC. The
-                  controller parses it; a schedule it cannot parse is reported in status.
+                  When the periodic review runs, as a cron expression in UTC, or
+                  "none" for no periodic review (the reviews after an incident and on
+                  demand go on). The controller parses it; a schedule it cannot parse
+                  is reported in status.
                 maxLength: 100
                 minLength: 1
                 type: string
                 x-kubernetes-validations:
                 - message: 'the schedule is in UTC: TZ= and CRON_TZ= are refused'
                   rule: '!self.contains(''TZ='')'
+                - message: no periodic review is written 'none', in lower case
+                  rule: self == 'none' || self.trim().lowerAscii() != 'none'
               scope:
                 description: |-
                   What the role works on: namespaces, Map entries, or both. Each kind

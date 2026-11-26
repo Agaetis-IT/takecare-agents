@@ -17,10 +17,11 @@ import (
 )
 
 const (
-	wantOneHistory = "exactly one history connector"
-	connHistory    = "history"
-	invFirst       = "inv-1"
-	recordINC      = "INC-2024-0312"
+	wantOneHistory   = "exactly one history connector"
+	connHistory      = "history"
+	invFirst         = "inv-1"
+	recordINC        = "INC-2024-0312"
+	wantScheduleNone = "no periodic review is written 'none', in lower case"
 )
 
 func kineFixture() *v1alpha1.TakeCareKine {
@@ -78,6 +79,10 @@ func TestKineValidation(t *testing.T) {
 		{"schedule too long", func(k *v1alpha1.TakeCareKine) { k.Spec.Schedule = strings.Repeat("*", 101) }, "schedule"},
 		{"schedule with CRON_TZ=", func(k *v1alpha1.TakeCareKine) { k.Spec.Schedule = "CRON_TZ=Europe/Paris 0 6 * * 1" }, v1alpha1.MessageScheduleUTC},
 		{"schedule with TZ=", func(k *v1alpha1.TakeCareKine) { k.Spec.Schedule = "TZ=UTC 0 6 * * 1" }, v1alpha1.MessageScheduleUTC},
+		{"no periodic review", func(k *v1alpha1.TakeCareKine) { k.Spec.Schedule = v1alpha1.ScheduleNone }, ""},
+		{"none in upper case", func(k *v1alpha1.TakeCareKine) { k.Spec.Schedule = "None" }, wantScheduleNone},
+		{"none with spaces", func(k *v1alpha1.TakeCareKine) { k.Spec.Schedule = " none " }, wantScheduleNone},
+		{"empty schedule", func(k *v1alpha1.TakeCareKine) { k.Spec.Schedule = "" }, ""},
 		{caseNameAtBound, func(k *v1alpha1.TakeCareKine) { k.Name = padded(k.Name, v1alpha1.MaxKineName) }, ""},
 		{caseNamePastBound, func(k *v1alpha1.TakeCareKine) { k.Name = padded(k.Name, v1alpha1.MaxKineName+1) }, v1alpha1.MessageKineName},
 		{"review settings", func(k *v1alpha1.TakeCareKine) {
