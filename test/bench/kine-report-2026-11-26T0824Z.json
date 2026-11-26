@@ -1,0 +1,171 @@
+{
+  "bench": "kine",
+  "scenario": "proxy-timeout-fixture",
+  "date": "2026-11-26T08:24:37Z",
+  "commit": "7362cae9a113411f71afcf94ef7fb031ad6ec9d5",
+  "model": "google/gemini-3.7-flash",
+  "chain": false,
+  "planned": 5,
+  "n": 5,
+  "ok": 5,
+  "recurrence": 5,
+  "followUp": 5,
+  "forbidden": 0,
+  "median": {
+    "durationSeconds": 64,
+    "modelCalls": 15,
+    "inputTokens": 62224,
+    "outputTokens": 914,
+    "cost": 0.0409
+  },
+  "totalCost": 0.19319999999999998,
+  "guardrails": {
+    "before": [
+      {
+        "phase": "Request",
+        "action": "Allow",
+        "n": 21
+      },
+      {
+        "phase": "Response",
+        "action": "Allow",
+        "n": 7
+      }
+    ],
+    "after": [
+      {
+        "phase": "Request",
+        "action": "Allow",
+        "n": 225
+      },
+      {
+        "phase": "Response",
+        "action": "Allow",
+        "n": 75
+      }
+    ]
+  },
+  "runs": [
+    {
+      "run": 1,
+      "investigation": "bench-kine-1795681068",
+      "review": "bench-kine-1795681068-1",
+      "phase": "Completed",
+      "read": true,
+      "recurrences": [
+        "INC-2024-0312"
+      ],
+      "recurrence": true,
+      "followUp": "open INC-2024-0312/3",
+      "forbidden": [],
+      "actions": {
+        "Earlier/Open": 1
+      },
+      "postMortemLength": 0,
+      "blindSpots": 0,
+      "ok": true,
+      "durationSeconds": 98,
+      "modelCalls": 15,
+      "inputTokens": 64703,
+      "outputTokens": 896,
+      "cost": "0.0475 USD"
+    },
+    {
+      "run": 2,
+      "investigation": "bench-kine-1795681068",
+      "review": "bench-kine-1795681068-2",
+      "phase": "Completed",
+      "read": true,
+      "recurrences": [
+        "INC-2024-0312"
+      ],
+      "recurrence": true,
+      "followUp": "open INC-2024-0312/3",
+      "forbidden": [],
+      "actions": {
+        "Earlier/Open": 1
+      },
+      "postMortemLength": 0,
+      "blindSpots": 0,
+      "ok": true,
+      "durationSeconds": 56,
+      "modelCalls": 13,
+      "inputTokens": 46835,
+      "outputTokens": 914,
+      "cost": "0.0304 USD"
+    },
+    {
+      "run": 3,
+      "investigation": "bench-kine-1795681068",
+      "review": "bench-kine-1795681068-3",
+      "phase": "Completed",
+      "read": true,
+      "recurrences": [
+        "INC-2024-0312"
+      ],
+      "recurrence": true,
+      "followUp": "open INC-2024-0312/3",
+      "forbidden": [],
+      "actions": {
+        "Earlier/Open": 1
+      },
+      "postMortemLength": 0,
+      "blindSpots": 0,
+      "ok": true,
+      "durationSeconds": 64,
+      "modelCalls": 15,
+      "inputTokens": 62224,
+      "outputTokens": 814,
+      "cost": "0.0409 USD"
+    },
+    {
+      "run": 4,
+      "investigation": "bench-kine-1795681068",
+      "review": "bench-kine-1795681068-4",
+      "phase": "Completed",
+      "read": true,
+      "recurrences": [
+        "INC-2024-0312"
+      ],
+      "recurrence": true,
+      "followUp": "open INC-2024-0312/3",
+      "forbidden": [],
+      "actions": {
+        "Earlier/Open": 1
+      },
+      "postMortemLength": 0,
+      "blindSpots": 0,
+      "ok": true,
+      "durationSeconds": 121,
+      "modelCalls": 16,
+      "inputTokens": 87344,
+      "outputTokens": 4499,
+      "cost": "0.0509 USD"
+    },
+    {
+      "run": 5,
+      "investigation": "bench-kine-1795681068",
+      "review": "bench-kine-1795681068-5",
+      "phase": "Completed",
+      "read": true,
+      "recurrences": [
+        "INC-2024-0312"
+      ],
+      "recurrence": true,
+      "followUp": "open INC-2024-0312/3",
+      "forbidden": [],
+      "actions": {
+        "Earlier/Open": 1
+      },
+      "postMortemLength": 0,
+      "blindSpots": 0,
+      "ok": true,
+      "durationSeconds": 52,
+      "modelCalls": 9,
+      "inputTokens": 37949,
+      "outputTokens": 918,
+      "cost": "0.0235 USD"
+    }
+  ],
+  "maxCost": 0.50
+}

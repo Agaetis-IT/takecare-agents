@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 Agaetis
+# SPDX-License-Identifier: Apache-2.0
+#
+# The Kiné bench's expected set (spec 11 §12), for a review at Practitioner
+# of the fixture investigation.yaml against the demo corpus. A run is ok
+# when its review ended Completed with its answer read and all three items
+# hold. Text rules are lists of groups: a text matches when every group has
+# one of its words (case-insensitive, as a prefix of a word).
+scenario: proxy-timeout-fixture
+# 1. The recurrences name the earlier incident with the same root cause.
+recurrence: INC-2024-0312
+# 2. The actions hold that incident's undone follow-up, the automated check
+# comparing the proxy's idle timeout with the pool's recycling: as an
+# Earlier action Open from the record (its id is <record>/<rank>, the
+# third item of the record's follow-up list), or as a New one, Proposed.
+# Either way its text names it.
+followUp:
+  record: INC-2024-0312
+  id: INC-2024-0312/3
+  text:
+    - [idle, timeout]
+    - [pool, recycl, application]
+    - [check, compar, verif, validat, lint, test, guard, alert, detect, ensur]
+# 3. No action proposes raising the memory limit, the corpus's false lead.
+# An action that rules it out ("instead of raising the memory limit") does
+# not count: a match of unless (a regular expression, case-insensitive)
+# before the first raise word clears it.
+forbidden:
+  text:
+    - [rais, increas, bump, doubl, higher, larger]
+    - [memory]
+    - [limit, request, allocat, 1gi]
+  unless: "\\b(not|never|avoid|instead of|rather than|no need)\\b|n't\\b"

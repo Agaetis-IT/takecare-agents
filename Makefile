@@ -367,7 +367,7 @@ fakellm-record: ## Replace the fake model's fixtures with a real model's convers
 
 ##@ Demo (spec 03; never changes your kube context)
 
-.PHONY: demo-up demo-incident demo-verdict demo-bench demo-bench-intendant demo-screens demo-screens-stop demo-reset demo-down
+.PHONY: demo-up demo-incident demo-verdict demo-bench demo-bench-intendant demo-bench-kine demo-screens demo-screens-stop demo-reset demo-down
 demo-up: ## Create the k3d demo and install everything (TAKECARE_MODEL_API_KEY; DEMO_IMAGES=build until the first release).
 	hack/demo.sh up
 demo-incident: ## Start the proxy-timeout incident and print the expected alert window.
@@ -379,6 +379,8 @@ demo-bench: ## Accuracy bench: N silent investigations of the ongoing incident, 
 	hack/bench.sh $(N)
 demo-bench-intendant: ## Intendant bench: N surveys of the demo against the bench's Map, scored against test/bench/intendant/expected.yaml (BENCH_MIN=k fails under k).
 	hack/bench-intendant.sh $(N)
+demo-bench-kine: ## Kiné bench: N silent reviews at Practitioner of a fixed investigation, scored against test/bench/kine/expected.yaml (BENCH_MIN=k fails under k; BENCH_CHAIN=1 reviews live Doc runs, not counted; BENCH_MAX_COST=usd stops before the cap).
+	hack/bench-kine.sh $(N)
 demo-screens: ## Port-forward Prometheus, Alertmanager and Jaeger, and print the URLs.
 	hack/demo.sh screens
 demo-screens-stop: ## Stop the port-forwards demo-screens started.
