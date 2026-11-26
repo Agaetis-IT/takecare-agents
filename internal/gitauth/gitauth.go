@@ -123,12 +123,13 @@ func SSH(user, keyFile, knownHosts string) (transport.AuthMethod, error) {
 	return keys, nil
 }
 
-// Redact drops a password or token written into a URL.
+// Redact drops the user information written into a URL, username
+// included: a token may be written as the username alone.
 func Redact(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.User == nil {
 		return raw
 	}
-	u.User = url.User(u.User.Username())
+	u.User = nil
 	return u.String()
 }

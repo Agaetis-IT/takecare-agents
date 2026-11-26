@@ -84,14 +84,18 @@ func TestAuth(t *testing.T) {
 // tokenRemote carries a made-up token, the point of TestRedact.
 const (
 	tokenRemote    = "https://x-access-token:s3cret@git.example.com/map.git" //nolint:gosec // made up
-	redactedRemote = "https://x-access-token@git.example.com/map.git"        //nolint:gosec // a username, no token
+	redactedRemote = "https://git.example.com/map.git"
 )
 
+// Redact drops the whole user information: a token may be written as the
+// username, with no password.
 func TestRedact(t *testing.T) {
 	for in, want := range map[string]string{
-		tokenRemote: redactedRemote,
-		httpsRemote: httpsRemote,
-		sshRemote:   sshRemote,
+		tokenRemote:                                redactedRemote,
+		"https://s3cret@git.example.com/map.git":   redactedRemote,
+		"ssh://git:s3cret@git.example.com/map.git": "ssh://git.example.com/map.git",
+		httpsRemote:                                httpsRemote,
+		sshRemote:                                  sshRemote,
 	} {
 		if got := Redact(in); got != want {
 			t.Errorf("Redact(%s) = %s, want %s", in, got, want)
