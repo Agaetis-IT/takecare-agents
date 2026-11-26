@@ -60,3 +60,29 @@ make demo-bench-intendant N=5    # BENCH_MIN=k makes it fail under k runs ok
 The report also gives each run's duration, model calls, tokens and cost. The bench counts the runs ok out of N; there is no default threshold yet, and the first reports will set one.
 
 `intendant-report-<date>.json` holds keys, counts, fixed phrases and metrics: never an entry or its evidence. The scorer (`test/bench/intendant`) is tested on synthetic sets by `make test`.
+
+## The Kiné bench
+
+The Kiné bench of spec 11 §12: N on-demand, silent reviews at `Practitioner` by the demo Kiné, with a real model, each scored against the hand-written expected set `test/bench/kine/expected.yaml`. `hack/bench-kine.sh` runs it.
+
+```bash
+make demo-up                                     # TAKECARE_MODEL_API_KEY set; no incident needed
+make demo-bench-kine N=5 BENCH_MIN=5             # BENCH_MIN=k makes it fail under k runs ok
+make demo-bench-kine N=5 BENCH_MAX_COST=0.50     # stops, with its report, before 0.50 USD
+```
+
+**The input.** Every run reviews the same investigation, `test/bench/kine/investigation.yaml`: the Doc's diagnosis of the proxy-timeout incident, recorded from a real model, so that only the Kiné varies. The bench creates it once, silent, naming a Doc that does not exist (`bench-kine-no-doc`), so the operator ends it `Failed` without a run; it then writes the fixture's status over it with `kubectl patch --subresource=status`: `Completed`, with its diagnosis, its times moved to the bench's start. A terminal investigation is never touched again, a silent one is never published, never reviewed by a trigger, and left out of the history server's lists. Each review names it, at `Practitioner` although the demo Kiné is an `Apprentice`: the review records at its own level, and being silent it is never published.
+
+**The score of a run:** the review ended `Completed` with its answer read, and
+
+1. its recurrences name `INC-2024-0312`, the corpus's earlier incident with the same root cause;
+2. its actions hold that incident's undone follow-up, the automated check comparing the proxy's idle timeout with the pool's recycling: `Open`, from the record (`INC-2024-0312/3`, or another rank whose text names it), or `Proposed` anew with a text that names it;
+3. no action proposes raising the memory limit, the corpus's false lead; an action that rules it out ("instead of raising the memory limit") does not count.
+
+A run is `ok` when all three hold. The report also gives each run's recurrences (record ids), the id of the action that matched, the ids of the forbidden ones, its actions counted by origin and state, the post-mortem's length, the blind spots' count, its duration, model calls, tokens and cost, and the gateway's guard counters before and after. It holds no statement, action text or post-mortem.
+
+**Chain mode.** `BENCH_CHAIN=1` reviews live Doc runs instead: each run first takes a silent investigation of the ongoing incident with `hack/bench.sh 1` (`make demo-incident` first), then reviews it. It measures the chain, with the Doc's variance, and its cost includes the Doc's; it does not count for the bar, so `BENCH_MIN` is refused with it.
+
+**The cost cap.** `BENCH_MAX_COST=<USD>` stops the bench after a run when the next one could take the total past the cap, the dearest run so far as the guess, or when a run's cost is not measured. The report says so in `stopped` and keeps the runs done.
+
+`kine-report-<date>.json` holds ids, counts, fixed phrases and metrics. The scorer (`test/bench/kine`) is tested on synthetic reviews by `make test`. The bar at a release is five runs ok out of five (`docs/release.md`).

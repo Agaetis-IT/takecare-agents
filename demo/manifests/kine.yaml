@@ -1,0 +1,28 @@
+# The demo's Kiné (spec 11 §12): it reviews the Doc's investigations of the
+# scenery's namespace once they are over, at Apprentice: the problem, its
+# recurrences and the earlier actions still undone, in the review's status
+# only (no destination at Apprentice). It reads TakeCare's history, the
+# corpus's post-mortems and runbooks, the support tickets and the
+# deployment log; the two content tools give it the Doc's diagnosis and
+# the earlier reviews.
+#
+# review.grace is 2 minutes here only (24 hours by default): the demo's
+# alert resolves only at make demo-reset, which deletes the investigations,
+# so without it no review would follow make demo-incident.
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareKine
+metadata:
+  name: kine
+  namespace: takecare-system
+spec:
+  level: Apprentice
+  scope:
+    namespaces: [demo-apps]
+  contentTools: [investigation_get, review_get]
+  connectors:
+    history: [history]
+    knowledge: [incidents, runbooks]
+    tickets: [support]
+    changes: [deployments]
+  review:
+    grace: 2m

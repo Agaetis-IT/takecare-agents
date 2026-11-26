@@ -200,14 +200,15 @@ up() {
   tag="$(images)"
   secrets
   install "$tag"
-  log "applying the Doc, the Intendant and the TakeCareDemo (demo/manifests)"
+  log "applying the Doc, the Intendant, the Kiné and the TakeCareDemo (demo/manifests)"
   kubectl apply -f demo/manifests/ >/dev/null
   wait_ready takecareplatform main 300
-  for c in kubernetes prometheus report incidents runbooks deployments vendor support; do
+  for c in kubernetes prometheus report incidents runbooks deployments vendor support history; do
     wait_ready takecareconnector "$c" 300
   done
   wait_ready takecaredemo demo 300
   wait_ready takecaredoc doc 300
+  wait_ready takecarekine kine 300
   log "the demo is ready: make demo-incident, then make demo-verdict (KUBECONFIG=${KUBECONFIG})"
 }
 

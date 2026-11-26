@@ -427,6 +427,11 @@ run() {
   [[ "$up_rc" -eq 0 && "$watch_rc" -eq 0 ]] || { echo "the demo did not come up (demo.sh exit ${up_rc}, pull watch exit ${watch_rc})" >&2; false; }
   trap - ERR
   kubectl apply -f test/e2e/doc-ops.yaml >/dev/null
+  # The demo Kiné (spec 11 §12) would review the run's investigations two
+  # minutes after they complete, and the fake model has no fixture for a
+  # review yet: suspended, it creates none. Its end-to-end step comes with
+  # its fixture (spec 11 §13).
+  kubectl -n "$NS" patch takecarekine kine --type=merge -p '{"spec":{"suspend":true}}' >/dev/null
   # An Agent in the demo Intendant's scope, for its inventory: no pod.
   kubectl apply -f test/e2e/inventory-agent.yaml >/dev/null
   workload_cluster
