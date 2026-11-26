@@ -109,13 +109,15 @@ The same product on a local k3d cluster, with the `billing-api` scenery and the 
 export TAKECARE_MODEL_API_KEY=...   # or in a .env file (git-ignored), never written to the repository
 make demo-up DEMO_IMAGES=build      # k3d cluster, TakeCare with the demo profile, the scenery and the Doc
 make demo-incident                  # triggers the failure and prints the expected alert window (about 2 min 30 later)
-make demo-verdict                   # waits for the Doc's diagnosis and its usage (read 30 s after the end), prints both
+make demo-verdict                   # waits for the Doc's diagnosis and its usage (read 30 s after the end), then the Kiné's review of it, prints them
 make demo-screens                   # Prometheus, Alertmanager and Jaeger on localhost; demo-screens-stop
 make demo-reset                     # puts the scenery back in shape, ready for another incident
 make demo-down                      # deletes the cluster and the demo's working files
 ```
 
 The demo also runs an Intendant ([spec 10](docs/specs/10-intendant.md)), which surveys the scenery and proposes what the demo's Map lacks. It surveys on each new Map revision and on demand: create a `TakeCareSurvey` naming it (`intendantRef: {kind: TakeCareIntendant, name: intendant}`), then read `kubectl -n takecare-system get takecaresurveys` and the survey's status. The first proposals are in its status, the full set in the ConfigMap that `status.proposalsConfigMap` names. After the import, the Intendant's agent reads the cluster and the runbooks and adds what a listing cannot see (dependencies, owners, runbooks); its proposals carry the source `Agent`. Each survey with proposals is also posted as a digest (counts and keys) to the review destination, in Slack or in the report server's log. [`docs/how-to/review-proposals.md`](docs/how-to/review-proposals.md) shows how to review the proposals and turn them into a Map pull request.
+
+And it runs a Kiné ([spec 11](docs/specs/11-kine.md)) at `Apprentice`: two minutes after the Doc's investigation ends, it reviews the incident against TakeCare's history, the post-mortems, the runbooks and the support tickets, and records in the review's status the root cause, whether the incident happened before, and the earlier corrective actions still undone. `make demo-verdict` prints it after the diagnosis; `kubectl -n takecare-system get takecarereviews` lists the reviews. At `Apprentice` nothing is posted. `make demo-bench-kine N=5` runs its bench at `Practitioner` with a real model (see `test/bench/README.md`).
 
 `DEMO_IMAGES=build` builds the images from this tree and imports them into the cluster. Without it, `demo-up` pulls the images of the version the charts name, the latest release, from the registry. A second `make demo-up` changes nothing and takes seconds. With `TAKECARE_SLACK_BOT_TOKEN` and `TAKECARE_SLACK_ONCALL_CHANNEL` (and optionally `TAKECARE_SLACK_REVIEW_CHANNEL`), diagnoses are posted to Slack; without them they go to the report server's log, and `make demo-verdict` reads them from the investigation. `make demo-bench N=5` runs the accuracy bench on the ongoing incident (see `test/bench/README.md`).
 

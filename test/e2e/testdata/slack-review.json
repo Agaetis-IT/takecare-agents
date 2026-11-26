@@ -1,0 +1,54 @@
+{
+  "blocks": [
+    {
+      "text": {
+        "text": "Kiné · HighErrorRate on service/billing-api",
+        "type": "plain_text"
+      },
+      "type": "header"
+    },
+    {
+      "text": {
+        "text": "The database connection pool of billing-api recycles idle connections after 900 s, later than the DBProxy's idle client timeout of 600 s: the proxy closed connections the pool still used, and requests on them failed with 504s.",
+        "type": "mrkdwn",
+        "verbatim": true
+      },
+      "type": "section"
+    },
+    {
+      "text": {
+        "text": "Recurrences:\n• INC-2024-0312 (2024-03-12)",
+        "type": "mrkdwn",
+        "verbatim": true
+      },
+      "type": "section"
+    },
+    {
+      "text": {
+        "text": "Corrective actions: 2 to do, 3 in all\n• Open · INC-2024-0312/3 · Add an automatic check comparing the proxy's idle timeout with the pool's recycling at each deployment.\n• Done · INC-2024-0312/1 · Write a dedicated runbook for the proxy and pool timeouts.\n• Proposed · <review>-1 · Set the pool's idle recycling of billing-api below the DBProxy's idle client timeout.",
+        "type": "mrkdwn",
+        "verbatim": true
+      },
+      "type": "section"
+    },
+    {
+      "text": {
+        "text": "Post-mortem draft: kubectl -n takecare-system get takecarereview <review> -o jsonpath='{.status.postMortem}'",
+        "type": "mrkdwn",
+        "verbatim": true
+      },
+      "type": "section"
+    },
+    {
+      "elements": [
+        {
+          "text": "investigation <investigation> · <n> model calls · <n> tokens · <n> USD · trace <trace>",
+          "type": "mrkdwn",
+          "verbatim": true
+        }
+      ],
+      "type": "context"
+    }
+  ],
+  "text": "Kiné · HighErrorRate on service/billing-api\nThe database connection pool of billing-api recycles idle connections after 900 s, later than the DBProxy's idle client timeout of 600 s: the proxy closed connections the pool still used, and requests on them failed with 504s.\nRecurrences:\n• INC-2024-0312 (2024-03-12)\nCorrective actions: 2 to do, 3 in all\n• Open · INC-2024-0312/3 · Add an automatic check comparing the proxy's idle timeout with the pool's recycling at each deployment.\n• Done · INC-2024-0312/1 · Write a dedicated runbook for the proxy and pool timeouts.\n• Proposed · <review>-1 · Set the pool's idle recycling of billing-api below the DBProxy's idle client timeout.\nPost-mortem draft: kubectl -n takecare-system get takecarereview <review> -o jsonpath='{.status.postMortem}'\ninvestigation <investigation> · <n> model calls · <n> tokens · <n> USD · trace <trace>"
+}
