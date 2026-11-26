@@ -45,6 +45,12 @@ type Status struct {
 	Connectors     []Connector `json:"connectors"`
 	Surveys        []RunRecord `json:"surveys"`
 	Investigations []RunRecord `json:"investigations"`
+	// VersionSkew is set when takecare and the cluster are more than one
+	// minor version apart.
+	VersionSkew *VersionSkew `json:"versionSkew,omitempty"`
+
+	// clusterVersion is the version label of the platform, if any.
+	clusterVersion string
 }
 
 // Condition is a condition as the API holds it.
@@ -132,6 +138,8 @@ func (a *app) status(ctx context.Context, args []string) int {
 	if err != nil {
 		return a.fail("status: %v", err)
 	}
+	s.VersionSkew = skew(a.cliVersion, s.clusterVersion)
+	a.warnSkew(c, s.VersionSkew)
 	if c.output == outputJSON {
 		err = a.printJSON(s)
 	} else {
@@ -184,6 +192,7 @@ func readStatus(ctx context.Context, r lister, ns string) (*Status, error) {
 		}
 	}
 
+	s.clusterVersion = platformVersion(platforms.Items)
 	if len(platforms.Items) == 0 {
 		s.NotReady = append(s.NotReady, "TakeCarePlatform (none found)")
 	}

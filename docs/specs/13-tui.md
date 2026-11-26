@@ -44,6 +44,8 @@ Exit codes, the same for every command:
 | 1 | a finding: something not Ready (`status`), a fault in the files (`validate`), a review whose result does not validate (`review`) |
 | 2 | the command could not run: a usage error, a cluster or file it could not read, a dirty working tree (§7) |
 
+The commands that read the cluster (`status`, `discover`, `review`) compare their version with the `app.kubernetes.io/version` label the chart puts on the `TakeCarePlatform`, kubectl-style: more than one minor version apart, they print one warning line on stderr, or a `versionSkew` field with `--output json`, and go on; a dev build, a platform without the label, or a platform the user cannot list (`discover` and `review` do not need that right otherwise) gives no warning, and the warning never changes the exit code.
+
 ### 3.1 `takecare version`
 
 Prints the release version, the commit and the Go version it was built with. `--output json` prints the same as an object. No cluster call.
