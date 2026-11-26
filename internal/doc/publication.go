@@ -5,24 +5,20 @@ package doc
 
 import (
 	"fmt"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/report"
 )
 
 // ApprenticeBanner opens every message at the Apprentice level (spec 02 §4).
 const ApprenticeBanner = "Apprentice: shadow diagnosis, no one was paged by TakeCare."
 
-// sectionLimit is Slack's limit on a section's text; keyText is Block
-// Kit's text field.
+// keyText and keyType are Block Kit's text and type fields.
 const (
-	sectionLimit = 3000
-	keyText      = "text"
-	keyType      = "type"
+	keyText = "text"
+	keyType = "type"
 )
 
 // Destination is where a completed investigation is published (spec 02
@@ -106,7 +102,7 @@ func (p Publication) context() string {
 	if p.Usage != nil {
 		parts = append(parts,
 			fmt.Sprintf("%d model calls", p.Usage.ModelCalls),
-			thousands(p.Usage.InputTokens+p.Usage.OutputTokens)+" tokens")
+			report.Thousands(p.Usage.InputTokens+p.Usage.OutputTokens)+" tokens")
 		if p.Usage.EstimatedCost != "" {
 			cost := p.Usage.EstimatedCost
 			if p.Usage.Approximate {
@@ -149,26 +145,14 @@ func (p Publication) Blocks() []any {
 	if p.Apprentice {
 		blocks = append(blocks, map[string]any{keyType: "context", "elements": []any{mrkdwnText(":warning: *" + ApprenticeBanner + "*")}})
 	}
-	body := mrkdwn(p.Diagnosis)
-	if len(body) > sectionLimit {
-		// Cut on a rune boundary, leaving room for the ellipsis' 3 bytes,
-		// and never inside an escape such as &amp;.
-		cut := sectionLimit - len("…")
-		for cut > 0 && !utf8.RuneStart(body[cut]) {
-			cut--
-		}
-		if i := strings.LastIndexByte(body[:cut], '&'); i >= 0 && cut-i < len("&amp;") && !strings.Contains(body[i:cut], ";") {
-			cut = i
-		}
-		body = body[:cut] + "…"
-	}
+	body := report.Section(report.Mrkdwn(p.Diagnosis))
 	blocks = append(blocks, map[string]any{keyType: "section", keyText: mrkdwnText(body)})
 	notes := p.notes()
 	elements := make([]any, 0, 1+len(notes))
-	elements = append(elements, mrkdwnText(mrkdwnEscape.Replace(p.context())))
+	elements = append(elements, mrkdwnText(report.Escape(p.context())))
 	for _, n := range notes {
 		// An alert's name comes from Alertmanager, not from TakeCare.
-		elements = append(elements, mrkdwnText(mrkdwnEscape.Replace(n)))
+		elements = append(elements, mrkdwnText(report.Escape(n)))
 	}
 	blocks = append(blocks, map[string]any{keyType: "context", "elements": elements})
 	return blocks
@@ -182,98 +166,10 @@ func (p Publication) Text() string {
 	if p.Apprentice {
 		b.WriteString(ApprenticeBanner + "\n")
 	}
-	b.WriteString(plain(p.Diagnosis) + "\n")
+	b.WriteString(report.Plain(p.Diagnosis) + "\n")
 	b.WriteString(p.context() + "\n")
 	for _, n := range p.notes() {
 		b.WriteString(n + "\n")
 	}
 	return b.String()
-}
-
-// The model writes Markdown; Slack's mrkdwn is another syntax
-// (https://docs.slack.dev/messaging/formatting-message-text).
-var (
-	// Slack shows no headings: a heading becomes a bold line.
-	mdHeading = regexp.MustCompile(`^#{1,6}[ \t]+(.+?)[ \t#]*$`)
-	// Slack's bold is one asterisk; Markdown's is two, or two underscores.
-	mdBold = regexp.MustCompile(`\*\*(\S(?:.*?\S)??)\*\*`)
-	// Underscores only between word boundaries: A__B__C is an identifier.
-	mdBoldUnder = regexp.MustCompile(`(^|[^\pL\pN_])__(\S(?:.*?\S)??)__([^\pL\pN_]|$)`)
-	// Slack renders no Markdown list: a dash or an asterisk becomes a bullet.
-	mdBullet = regexp.MustCompile(`^([ \t]*)[-*][ \t]+`)
-	// Slack's link is <url|text>.
-	mdLink = regexp.MustCompile(`\[([^\]]+)\]\(([^)\s]+)\)`)
-	// Slack requires &, < and > to be escaped in mrkdwn text, code included.
-	mrkdwnEscape = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
-)
-
-// fence reports whether a line opens or closes a fenced code block, whose
-// content is only escaped.
-func fence(line string) bool {
-	return strings.HasPrefix(strings.TrimSpace(line), "```")
-}
-
-// unbold replaces bold markers with mark on each side. The underscore
-// form runs until stable: a match consumes the character after it, which
-// may open the next one (__a__ __b__).
-func unbold(line, mark string) string {
-	line = mdBold.ReplaceAllString(line, mark+"$1"+mark)
-	for {
-		next := mdBoldUnder.ReplaceAllString(line, "$1"+mark+"$2"+mark+"$3")
-		if next == line {
-			return line
-		}
-		line = next
-	}
-}
-
-// mrkdwn renders the model's Markdown as Slack mrkdwn, line by line.
-func mrkdwn(s string) string {
-	lines := strings.Split(s, "\n")
-	out := make([]string, 0, len(lines))
-	code := false
-	for _, line := range lines {
-		line = strings.TrimRight(mrkdwnEscape.Replace(line), " \t\r")
-		if fence(line) || code {
-			code = code != fence(line)
-			out = append(out, line)
-			continue
-		}
-		line = unbold(line, "*")
-		if m := mdHeading.FindStringSubmatch(line); m != nil {
-			if len(out) > 0 && out[len(out)-1] != "" {
-				out = append(out, "")
-			}
-			line = "*" + strings.Trim(m[1], "*") + "*"
-		}
-		line = mdBullet.ReplaceAllString(line, "$1• ")
-		out = append(out, mdLink.ReplaceAllString(line, "<$2|$1>"))
-	}
-	return strings.Join(out, "\n")
-}
-
-// plain drops the Markdown markers a reader would see in plain text:
-// heading marks, bold marks; a link becomes "text (url)".
-func plain(s string) string {
-	lines := strings.Split(s, "\n")
-	code := false
-	for i, line := range lines {
-		if fence(line) || code {
-			code = code != fence(line)
-			continue
-		}
-		line = unbold(line, "")
-		line = mdHeading.ReplaceAllString(line, "$1")
-		lines[i] = mdLink.ReplaceAllString(line, "$1 ($2)")
-	}
-	return strings.Join(lines, "\n")
-}
-
-// thousands writes 42560 as 42,560.
-func thousands(n int64) string {
-	s := strconv.FormatInt(n, 10)
-	for i := len(s) - 3; i > 0; i -= 3 {
-		s = s[:i] + "," + s[i:]
-	}
-	return s
 }

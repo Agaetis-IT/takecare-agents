@@ -78,6 +78,8 @@ type Reconciler struct {
 	Lookup *coverage.Lookup
 	// Now is time.Now when nil; tests inject a clock.
 	Now func() time.Time
+	// Metrics are the Kiné's; their series go when the Kiné goes.
+	Metrics *ReviewMetrics
 
 	mu sync.Mutex
 	// said holds, per Kiné and event reason, what an event last said: a
@@ -274,6 +276,7 @@ func (r *Reconciler) remove(ctx context.Context, k *v1alpha1.TakeCareKine) error
 		return err
 	}
 	r.unsay(k, ReasonLevelChanged, v1alpha1.ReasonScopeOverlap, ReasonContentToolUnknown)
+	r.Metrics.Forget(k.Name)
 	controllerutil.RemoveFinalizer(k, Finalizer)
 	if err := r.Update(ctx, k); err != nil {
 		return fmt.Errorf("remove the finalizer of %s: %w", k.Name, err)

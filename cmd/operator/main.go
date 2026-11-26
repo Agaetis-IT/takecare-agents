@@ -209,6 +209,10 @@ type kineRuns struct {
 // triggers of its reviews), and its reviews, queued as they come and run
 // one per Kiné at a time.
 func setupKine(mgr ctrl.Manager, cfg config, mcpClient *http.Client, rr kineRuns) error {
+	metrics, err := kine.NewReviewMetrics(crmetrics.Registry)
+	if err != nil {
+		return err
+	}
 	if err := mgr.Add(&kine.Sweeper{
 		Client: mgr.GetClient(), Namespace: cfg.operatorNamespace, Retention: cfg.reviewRetention,
 	}); err != nil {
@@ -218,7 +222,7 @@ func setupKine(mgr ctrl.Manager, cfg config, mcpClient *http.Client, rr kineRuns
 		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("takecare-operator"),
 		OperatorNamespace: cfg.operatorNamespace, EngineNamespace: cfg.engineNamespace,
 		Engine: &kagent0103.Agents{Client: mgr.GetClient()}, Models: &kagent0103.Models{Client: mgr.GetClient()},
-		Lookup: &coverage.Lookup{MCP: &mcp.Client{HTTP: mcpClient}},
+		Lookup: &coverage.Lookup{MCP: &mcp.Client{HTTP: mcpClient}}, Metrics: metrics,
 	}).SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("set up the Kiné controller: %w", err)
 	}
@@ -228,12 +232,14 @@ func setupKine(mgr ctrl.Manager, cfg config, mcpClient *http.Client, rr kineRuns
 		Runs: &kagent0103.Runs{HTTP: rr.a2a}, EngineKind: kagent0103.Kind, EngineNamespace: cfg.engineNamespace,
 		RunMetrics: rr.metrics, Tracer: rr.tracer, Usage: rr.usage, ScrapeWait: cfg.usageScrapeWait,
 		Retention: cfg.investigationRetention,
+		// The publication (spec 11 §8), posted as the Doc's diagnoses are.
+		Poster: &mcp.Client{HTTP: mcpClient}, Recorder: mgr.GetEventRecorder("takecare-operator"), Metrics: metrics,
 	}
 	// The queuer ends a Running review the runner does not hold at its
 	// bound (spec 11 §6).
 	if err := (&kine.ReviewQueuer{
 		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: reviews,
-		Recorder: mgr.GetEventRecorder("takecare-operator"), Runs: runner, ScrapeWait: cfg.usageScrapeWait,
+		Recorder: mgr.GetEventRecorder("takecare-operator"), Runs: runner, ScrapeWait: cfg.usageScrapeWait, Metrics: metrics,
 	}).SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("set up the review queue: %w", err)
 	}
