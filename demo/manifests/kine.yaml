@@ -11,7 +11,7 @@
 # so without it no review would follow make demo-incident.
 #
 # The demo has no periodic review of its own: schedule: none plans none
-# (a Kiné that sets no schedule is reviewed weekly). The reviews after an
+# (a Kiné that sets no schedule gets a weekly review). The reviews after an
 # incident and on demand go on.
 apiVersion: takecare.agaetis.fr/v1alpha1
 kind: TakeCareKine
