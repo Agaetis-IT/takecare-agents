@@ -26,6 +26,8 @@ A `TakeCareFinding` written by the Doc's controller for each investigation would
 3. **No A2A call between roles in 0.5.0.** The Kiné does not consult the Doc. The first consultation, its gateway allow-list and its budgets (ADR 0009 §4, §7) come with a later role or a later spec.
 4. **`TakeCareFinding` waits for the Mécano.** It is specified with the Mécano's spec, for the Kiné → Mécano hand-off, under ADR 0009 §3 unchanged.
 
+   _Note (2026-11-26):_ the Mécano's spec (spec 12 §3) does not specify it. In 0.6.0 the Mécano reads the Kiné's reviews through `history` on each maintenance, with no upstream-record trigger. `TakeCareFinding` is specified, with its own ADR, when the chain incident → cause → upgrade is built.
+
 ADR 0009's other points hold: agents talk over A2A through the gateway, the callee's level applies, calls are traced and budgeted.
 
 ## Consequences
