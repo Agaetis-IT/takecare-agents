@@ -122,14 +122,19 @@ type ProposeRepository struct {
 	// +kubebuilder:validation:Enum=github;gitlab
 	Forge string `json:"forge"`
 	// The forge's REST API, for example https://api.github.com or
-	// https://gitlab.com/api/v4.
+	// https://gitlab.com/api/v4. No user information: a credential has no
+	// place in a connector's spec.
 	// +kubebuilder:validation:MaxLength=2048
-	// +kubebuilder:validation:Pattern=`^https://[^\s]+$`
+	// +kubebuilder:validation:Pattern=`^https://[^\s/?#@]+([/?#][^\s]*)?$`
 	APIURL string `json:"apiURL"`
-	// owner/name on GitHub, the project's full path on GitLab.
+	// owner/name on GitHub, the project's full path on GitLab. A segment
+	// is never . or .. (on a forge's REST path it would change the
+	// endpoint called), and the name has no .git suffix, which GitLab
+	// refuses in a project path.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=255
-	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)+$`
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9_.-]*[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_.-]*[A-Za-z0-9_-][A-Za-z0-9_.-]*)+$`
+	// +kubebuilder:validation:XValidation:rule="!self.endsWith('.git')",message="repository is the forge's path, without a .git suffix"
 	Repository string `json:"repository"`
 }
 

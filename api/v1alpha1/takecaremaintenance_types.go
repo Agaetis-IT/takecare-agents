@@ -348,8 +348,9 @@ type PullRequestRef struct {
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=255
 	Repository string `json:"repository"`
+	// No user information: a status field never holds a credential.
 	// +kubebuilder:validation:MaxLength=2048
-	// +kubebuilder:validation:Pattern=`^https://[^\s]+$`
+	// +kubebuilder:validation:Pattern=`^https://[^\s/?#@]+([/?#][^\s]*)?$`
 	URL string `json:"url"`
 	// +kubebuilder:validation:MaxLength=80
 	// +kubebuilder:validation:Pattern=`^takecare/mecano/[a-z0-9][a-z0-9-]{0,62}$`

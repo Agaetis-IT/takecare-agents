@@ -599,8 +599,10 @@ spec:
                           minLength: 1
                           type: string
                         url:
+                          description: 'No user information: a status field never
+                            holds a credential.'
                           maxLength: 2048
-                          pattern: ^https://[^\s]+$
+                          pattern: ^https://[^\s/?#@]+([/?#][^\s]*)?$
                           type: string
                       required:
                       - branch

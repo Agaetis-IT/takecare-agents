@@ -132,6 +132,15 @@ func TestMecanoValidation(t *testing.T) {
 		{"repositories without a propose connector", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Propose = nil }, wantRepoPropose},
 		{"a propose connector and no repository", func(m *v1alpha1.TakeCareMecano) { m.Spec.Maintenance.Repositories = nil }, ""},
 		{"empty repository", func(m *v1alpha1.TakeCareMecano) { m.Spec.Maintenance.Repositories[0].Repository = "" }, wantRepository},
+		{"maintenance repository without an owner", func(m *v1alpha1.TakeCareMecano) {
+			m.Spec.Maintenance.Repositories[0].Repository = "shop"
+		}, wantRepository},
+		{"maintenance repository with a .. segment", func(m *v1alpha1.TakeCareMecano) {
+			m.Spec.Maintenance.Repositories[0].Repository = "acme/.."
+		}, wantRepository},
+		{"maintenance repository with a .git suffix", func(m *v1alpha1.TakeCareMecano) {
+			m.Spec.Maintenance.Repositories[0].Repository = "acme/shop.git"
+		}, wantRepository},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -373,6 +382,9 @@ func TestMaintenanceIsARecord(t *testing.T) {
 		{"a pull request over http", func(st *v1alpha1.TakeCareMaintenanceStatus) {
 			st.Plan.PullRequests[0].URL = "http://github.com/acme/shop-deploy/pull/12"
 		}, "url"},
+		{"a pull request URL with user information", func(st *v1alpha1.TakeCareMaintenanceStatus) {
+			st.Plan.PullRequests[0].URL = "https://ops@github.com/acme/shop-deploy/pull/12"
+		}, "url"},
 		{"21 blind spots", func(st *v1alpha1.TakeCareMaintenanceStatus) {
 			for range 20 {
 				st.BlindSpots = append(st.BlindSpots, v1alpha1.NotSeen{Ref: "r", Reason: "x"})
@@ -445,6 +457,21 @@ func TestCodeConnectorValidation(t *testing.T) {
 		{"repository escaping its path", func(c *v1alpha1.TakeCareConnector) {
 			c.Spec.Propose.Repositories[0].Repository = "acme/shop?ref=main"
 		}, wantRepository},
+		{"api with user information", func(c *v1alpha1.TakeCareConnector) {
+			c.Spec.Propose.Repositories[0].APIURL = "https://ops@api.github.com"
+		}, "apiURL"},
+		{"api with a password", func(c *v1alpha1.TakeCareConnector) {
+			c.Spec.Propose.Repositories[0].APIURL = "https://ops:" + "made-up" + "@api.github.com/"
+		}, "apiURL"},
+		{"api with a path", func(c *v1alpha1.TakeCareConnector) {
+			c.Spec.Propose.Repositories[0].APIURL = "https://gitlab.example.org/api/v4"
+		}, ""},
+		{"a dot repository", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories[0].Repository = "acme/.github" }, ""},
+		{"a GitLab subgroup", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories[0].Repository = "acme/ops/shop" }, ""},
+		{"repository with a .. segment", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories[0].Repository = "acme/.." }, wantRepository},
+		{"repository of dots only", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories[0].Repository = "../.." }, wantRepository},
+		{"repository with a . segment", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories[0].Repository = "acme/./shop" }, wantRepository},
+		{"repository with a .git suffix", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories[0].Repository = "acme/shop.git" }, wantRepository},
 		{"no token Secret", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.TokenSecretRef.Name = "" }, wantName},
 	}
 	for _, tt := range tests {

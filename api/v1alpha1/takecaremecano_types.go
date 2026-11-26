@@ -154,9 +154,15 @@ type MaintenanceRepository struct {
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
 	Connector string `json:"connector"`
-	// owner/name on GitHub, the project's full path on GitLab.
+	// owner/name on GitHub, the project's full path on GitLab, as the
+	// propose connector lists it. A segment
+	// is never . or .. (on a forge's REST path it would change the
+	// endpoint called), and the name has no .git suffix, which GitLab
+	// refuses in a project path.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=255
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9_.-]*[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_.-]*[A-Za-z0-9_-][A-Za-z0-9_.-]*)+$`
+	// +kubebuilder:validation:XValidation:rule="!self.endsWith('.git')",message="repository is the forge's path, without a .git suffix"
 	Repository string `json:"repository"`
 }
 

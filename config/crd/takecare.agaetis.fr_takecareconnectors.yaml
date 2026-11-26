@@ -225,9 +225,10 @@ spec:
                         apiURL:
                           description: |-
                             The forge's REST API, for example https://api.github.com or
-                            https://gitlab.com/api/v4.
+                            https://gitlab.com/api/v4. No user information: a credential has no
+                            place in a connector's spec.
                           maxLength: 2048
-                          pattern: ^https://[^\s]+$
+                          pattern: ^https://[^\s/?#@]+([/?#][^\s]*)?$
                           type: string
                         forge:
                           enum:
@@ -235,12 +236,19 @@ spec:
                           - gitlab
                           type: string
                         repository:
-                          description: owner/name on GitHub, the project's full path
-                            on GitLab.
+                          description: |-
+                            owner/name on GitHub, the project's full path on GitLab. A segment
+                            is never . or .. (on a forge's REST path it would change the
+                            endpoint called), and the name has no .git suffix, which GitLab
+                            refuses in a project path.
                           maxLength: 255
                           minLength: 1
-                          pattern: ^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)+$
+                          pattern: ^[A-Za-z0-9_.-]*[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_.-]*[A-Za-z0-9_-][A-Za-z0-9_.-]*)+$
                           type: string
+                          x-kubernetes-validations:
+                          - message: repository is the forge's path, without a .git
+                              suffix
+                            rule: '!self.endsWith(''.git'')'
                       required:
                       - apiURL
                       - forge
