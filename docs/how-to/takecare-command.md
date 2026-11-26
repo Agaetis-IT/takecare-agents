@@ -65,7 +65,7 @@ takecare init --answers answers.yaml --no-commit     # no question: every answer
 takecare init --accessible                           # line prompts, for a screen reader (also TAKECARE_ACCESSIBLE=1)
 ```
 
-The built-in questions ask what is there, where, and who owns it: the cluster's name, the operator's namespace, the application namespaces and their teams, the alert source, the Prometheus service, where results are posted, the model, the Map's repository, a runbook source, and where each credential lives. Each shows why it is asked. A question about a credential asks for a Secret's namespace, name and key, never its value, and an answer shaped like a credential is refused without being echoed. Every question accepts "I don't know" (`?`, or the last choice): the files then hold a `TODO` comment where the answer goes, never a guessed value.
+The built-in questions ask what is there, where, and who owns it: the cluster's name, the operator's namespace, the application namespaces and their teams, the alert source, the Prometheus service, where results are posted, the model, the Map's repository, a runbook source, and where each credential lives. Each shows why it is asked. A question about a credential asks for the name of a Kubernetes Secret, not its content, in three fields: the Secret's namespace, its name and the key in it; an answer shaped like a credential is refused without being echoed. Three questions come prefilled with the usual answer, for you to confirm or change: the operator's namespace (`takecare-system`), the alert source (Prometheus Alertmanager) and the Prometheus service (`monitoring/kube-prometheus-stack-prometheus`, the kube-prometheus-stack chart's service for a release named after the chart; with another release name, the service is named after it). With `--accessible`, an empty line keeps the prefilled answer and `-` gives an empty one. Every question accepts "I don't know" (`?`, or the last choice; `?` as the Secret's namespace): the files then hold a `TODO` comment where the answer goes, never a guessed value.
 
 It writes, by default:
 
@@ -83,7 +83,7 @@ Run again, it loads `.takecare/answers.yaml` and asks only the questions without
 
 | Flag | Meaning |
 |---|---|
-| `--answers <file>` | the answers, in the format of `.takecare/answers.yaml`; nothing is asked, and a missing answer is an error naming it |
+| `--answers <file>` | the answers, in the format of `.takecare/answers.yaml`; nothing is asked, a prefilled answer is never used, and a missing answer is an error naming it |
 | `--questions <dir>` | extra question files (spec 13 §4.2), checked whole before anything is asked; repeatable |
 | `--dir` | the repository directory, `.` by default |
 | `--map-dir`, `--resources-dir`, `--state-dir` | the directories, inside the repository: `map`, `takecare`, `.takecare` by default |

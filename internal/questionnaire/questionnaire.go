@@ -63,9 +63,24 @@ type Question struct {
 	Choices  []string  `yaml:"choices,omitempty"`
 	When     *When     `yaml:"when,omitempty"`
 	Validate *Validate `yaml:"validate,omitempty"`
+	// Default is the answer the form prefills, which the person confirms
+	// or changes: a string for text and choice, a list of strings, a
+	// boolean. It is checked like an answer; a secretRef question has
+	// none. Nothing is ever answered with it without the person.
+	Default any `yaml:"default,omitempty"`
 
 	file    string
 	pattern *regexp.Regexp
+	// def is Default typed by the kind and checked, nil without one.
+	def any
+}
+
+// DefaultAnswer returns the answer q prefills, and false when it has none.
+func (q *Question) DefaultAnswer() (Answer, bool) {
+	if q.def == nil {
+		return Answer{}, false
+	}
+	return Answer{Value: q.def}, true
 }
 
 // When shows a question only when an earlier answer has a value, or the
@@ -315,7 +330,30 @@ func (q *Question) check() Faults {
 		}
 		q.pattern = p
 	}
+	switch {
+	case q.Default != nil && q.Kind == KindSecretRef:
+		bad("a secretRef question takes no default: a Secret is named by the person")
+	case q.Default != nil && len(faults) == 0:
+		if err := q.checkDefault(); err != nil {
+			// Its errors never hold the value.
+			bad("default refused: %s", strings.TrimPrefix(err.Error(), q.ID+": "))
+		}
+	}
 	return faults
+}
+
+// checkDefault types the default by the kind and checks it as an answer:
+// its type, its choice or pattern, no credential shape.
+func (q *Question) checkDefault() error {
+	v, err := typed(q, q.Default)
+	if err != nil {
+		return err
+	}
+	if err := CheckAnswer(q, Answer{Value: v}); err != nil {
+		return err
+	}
+	q.def = v
+	return nil
 }
 
 // checkIDs refuses an id that is a segment prefix of another: {{ .a }}

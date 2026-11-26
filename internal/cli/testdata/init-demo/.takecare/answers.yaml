@@ -1,5 +1,5 @@
-version: 1
-questionSet: 1
+version: 2
+questionSet: 2
 created: "2026-11-24"
 answers:
   alerts.source: Prometheus Alertmanager
@@ -9,13 +9,13 @@ answers:
     - ack-system
   knowledge: http://runbooks.takecare-system.svc:8080/mcp
   map.repository: https://github.com/agaetis-it/takecare-agents.git main charts/takecare/files/demo-map
-  map.secret:
+  map.secretRef:
     namespace: takecare-system
     name: takecare-map
     key: token
   metrics.service: takecare-system/prometheus-server
   model.provider: https://openrouter.ai/api/v1 google/gemini-3.7-flash
-  model.secret:
+  model.secretRef:
     namespace: takecare-system
     name: takecare-model
     key: apiKey

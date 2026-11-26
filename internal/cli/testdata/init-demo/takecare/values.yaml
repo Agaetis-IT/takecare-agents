@@ -1,4 +1,4 @@
-# Values for the takecare chart, written by takecare init (question set 1).
+# Values for the takecare chart, written by takecare init (question set 2).
 # The chart installs in the operator's namespace; the Secrets named here are
 # yours to create there before the install. A TODO marks an answer init did
 # not have: fill it in, or run takecare init again.

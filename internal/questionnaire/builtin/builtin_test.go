@@ -17,6 +17,9 @@ const (
 	intendantFile = "takecare/roles/intendant.yaml"
 	valuesFile    = "takecare/values.yaml"
 	promFile      = "map/observability/prometheus.yaml"
+	alertsSource  = "alerts.source"
+	metricsSvc    = "metrics.service"
+	operatorNSID  = "operator.namespace"
 )
 
 func load(t *testing.T) *questionnaire.Set {
@@ -32,9 +35,9 @@ func load(t *testing.T) *questionnaire.Set {
 // asking for a secret value.
 func TestQuestions(t *testing.T) {
 	set := load(t)
-	want := []string{"cluster.name", "operator.namespace", "environments", "teams", "alerts.source", "metrics.service",
-		"report.kind", "report.destinations", "report.secret", "model.provider", "model.secret", "map.repository",
-		"map.secret", "knowledge"}
+	want := []string{"cluster.name", operatorNSID, "environments", "teams", alertsSource, metricsSvc,
+		"report.kind", "report.destinations", "report.secretRef", "model.provider", "model.secretRef", "map.repository",
+		"map.secretRef", "knowledge"}
 	got := make([]string, 0, len(set.Questions))
 	for _, q := range set.Questions {
 		got = append(got, q.ID)
@@ -50,22 +53,47 @@ func TestQuestions(t *testing.T) {
 	}
 }
 
+// Spec 13 §4.1: three questions have a default, the usual answer; the
+// rest of the ground is the customer's, and no Secret is ever prefilled.
+// The Secret questions say they want a name, not a content.
+func TestDefaults(t *testing.T) {
+	set := load(t)
+	want := map[string]any{
+		operatorNSID: operatorNS,
+		alertsSource: "Prometheus Alertmanager",
+		metricsSvc:   "monitoring/kube-prometheus-stack-prometheus",
+	}
+	for _, q := range set.Questions {
+		got, ok := q.DefaultAnswer()
+		w, has := want[q.ID]
+		switch {
+		case ok != has:
+			t.Errorf("%s: a default %v, want %v", q.ID, ok, has)
+		case ok && got.Value != w:
+			t.Errorf("%s: default %v, want %v", q.ID, got.Value, w)
+		}
+		if q.Kind == questionnaire.KindSecretRef && !strings.HasPrefix(q.Text, "The name of the Kubernetes Secret (not its content)") {
+			t.Errorf("%s: text %q does not say it wants a name", q.ID, q.Text)
+		}
+	}
+}
+
 func answers(t *testing.T, set *questionnaire.Set, unknown ...string) map[string]questionnaire.Answer {
 	t.Helper()
 	all := map[string]questionnaire.Answer{
 		"cluster.name":        {Value: "east"},
-		"operator.namespace":  {Value: operatorNS},
+		operatorNSID:          {Value: operatorNS},
 		"environments":        {Value: []string{"shop", "pay"}},
 		"teams":               {Value: []string{"web=shop", "money=pay shop"}},
-		"alerts.source":       {Value: "None yet"},
-		"metrics.service":     {Value: "monitoring/prometheus"},
+		alertsSource:          {Value: "None yet"},
+		metricsSvc:            {Value: "monitoring/prometheus"},
 		"report.kind":         {Value: "Slack"},
 		"report.destinations": {Value: []string{"practitioner=C0123456789", "review=#map-review"}},
-		"report.secret":       {Value: questionnaire.SecretRef{Namespace: operatorNS, Name: "slack", Key: "token"}},
+		"report.secretRef":    {Value: questionnaire.SecretRef{Namespace: operatorNS, Name: "slack", Key: "token"}},
 		"model.provider":      {Value: "https://llm.example.com/v1 some-model"},
-		"model.secret":        {Value: questionnaire.SecretRef{Namespace: "other", Name: "model"}},
+		"model.secretRef":     {Value: questionnaire.SecretRef{Namespace: "other", Name: "model"}},
 		"map.repository":      {Value: "git@git.example.com:sre/map.git main ."},
-		"map.secret":          {Value: questionnaire.SecretRef{Namespace: operatorNS, Name: "map-key", Key: "id_ed25519"}},
+		"map.secretRef":       {Value: questionnaire.SecretRef{Namespace: operatorNS, Name: "map-key", Key: "id_ed25519"}},
 		"knowledge":           {Value: ""},
 	}
 	for _, id := range unknown {
@@ -139,8 +167,8 @@ func TestSkeletonNamedCluster(t *testing.T) {
 // never a guessed value.
 func TestSkeletonUnknown(t *testing.T) {
 	set := load(t)
-	files := render(t, set, answers(t, set, "cluster.name", "operator.namespace", "environments", "teams", "metrics.service",
-		"report.kind", "model.provider", "model.secret", "map.repository", "knowledge"))
+	files := render(t, set, answers(t, set, "cluster.name", operatorNSID, "environments", "teams", metricsSvc,
+		"report.kind", "model.provider", "model.secretRef", "map.repository", "knowledge"))
 	for p, holds := range map[string][]string{
 		"map/README.md": {"TODO: init did not know the cluster's name", "qualify each\nenvironment key",
 			"TODO: init did not know the application namespaces (environment/*), the teams (team/*), the Prometheus service"},

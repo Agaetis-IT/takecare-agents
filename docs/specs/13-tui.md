@@ -111,24 +111,26 @@ Run again, it loads `.takecare/answers.yaml`, asks only the questions without an
 
 Factual questions about the ground only: what is there, where, and who owns it. No question asks for a judgement, a priority or a method, and no question asks for a secret value. Every question carries a "why" line, shown with it, and accepts "I don't know", recorded as `unknown`; a writer that needs an unknown answer leaves a `TODO` comment in the file, never a guessed value.
 
-| Id | Question | Why |
-|---|---|---|
-| `cluster.name` | The cluster's name, as a DNS label, or empty for a single-cluster install | Names the cluster in namespaces and sources (ADR 0016, decision 5) |
-| `operator.namespace` | The namespace the operator runs in | Where the roles and connectors are created |
-| `environments` | The namespaces that hold the applications, one environment each | `environment/*` entries and the roles' scope |
-| `teams` | The teams that own them, with the namespaces of each | `team/*` entries and `owner` |
-| `alerts.source` | The alert source: Prometheus Alertmanager, or none yet | The Doc's alert intake (spec 02 §1) |
-| `metrics.service` | The Prometheus service the alerting rules are loaded in, as `<namespace>/<name>`, or none | The `metrics` connector (spec 10 §4) and `observability/*` |
-| `report.kind` | Where results are posted: Slack, or the report server's log | The `report` connector (spec 05) |
-| `report.destinations` | The destination for each level and for reviews (channel names) | The roles' `report` |
-| `report.secret` | The Secret that holds the report credential, as `<namespace>/<name>` and key | Named in the connector, never read |
-| `model.provider` | The model provider and model name | The platform's model (spec 01) |
-| `model.secret` | The Secret that holds the provider key, as `<namespace>/<name>` and key | Named in the platform, never read |
-| `map.repository` | The Map's Git repository URL, its branch and the directory that holds `map/` | The `map` connector (spec 08 §5) |
-| `map.secret` | The Secret that holds the Map's read-only deploy key or token, as `<namespace>/<name>` | Named in the connector, never read |
-| `knowledge` | A runbook source served over MCP, or none | The Intendant's `knowledge` connectors |
+| Id | Question | Why | Default |
+|---|---|---|---|
+| `cluster.name` | The cluster's name, as a DNS label, or empty for a single-cluster install | Names the cluster in namespaces and sources (ADR 0016, decision 5) | |
+| `operator.namespace` | The namespace the operator runs in | Where the roles and connectors are created | `takecare-system`, the namespace `status` and `discover` read by default |
+| `environments` | The namespaces that hold the applications, one environment each | `environment/*` entries and the roles' scope | |
+| `teams` | The teams that own them, with the namespaces of each | `team/*` entries and `owner` | |
+| `alerts.source` | The alert source: Prometheus Alertmanager, or none yet | The Doc's alert intake (spec 02 §1) | Prometheus Alertmanager |
+| `metrics.service` | The Prometheus service the alerting rules are loaded in, as `<namespace>/<name>`, or none | The `metrics` connector (spec 10 §4) and `observability/*` | `monitoring/kube-prometheus-stack-prometheus` |
+| `report.kind` | Where results are posted: Slack, or the report server's log | The `report` connector (spec 05) | |
+| `report.destinations` | The destination for each level and for reviews (channel names) | The roles' `report` | |
+| `report.secretRef` | The name of the Kubernetes Secret (not its content) that holds the report credential, with its namespace and key | Named in the connector, never read | |
+| `model.provider` | The model provider and model name | The platform's model (spec 01) | |
+| `model.secretRef` | The name of the Kubernetes Secret (not its content) that holds the provider key, with its namespace and key | Named in the platform, never read | |
+| `map.repository` | The Map's Git repository URL, its branch and the directory that holds `map/` | The `map` connector (spec 08 §5) | |
+| `map.secretRef` | The name of the Kubernetes Secret (not its content) that holds the Map's read-only deploy key or token, with its namespace and key | Named in the connector, never read | |
+| `knowledge` | A runbook source served over MCP, or none | The Intendant's `knowledge` connectors | |
 
 The set and its texts are factual and reviewed like code with every change.
+
+Only the questions whose usual answer is known have a default; the rest of the ground is the customer's, and no Secret is ever prefilled. The default of `metrics.service` is the Prometheus service of the kube-prometheus-stack chart: the chart names it `<fullname>-prometheus`, where the full name is the release name when it holds the chart's name, so a release named `kube-prometheus-stack` gives `kube-prometheus-stack-prometheus`; the chart's documentation presumes the `monitoring` namespace. With another release name the service is named after it, which the question's text says.
 
 ### 4.2 Question files
 
@@ -143,6 +145,7 @@ questions:
     kind: text            # text, choice, list, bool, secretRef
     when: { id: report.kind, equals: Slack }
     validate: { pattern: '^#[a-z0-9-]{1,79}$' }
+    default: '#on-call'   # optional: prefilled, never answered alone
 outputs:
   - path: takecare/oncall-notes.md
     template: |
@@ -150,9 +153,11 @@ outputs:
 ```
 
 - `id` is unique across all files; a file reusing an id, or redefining a built-in one, is refused.
-- `kind: secretRef` asks for a Secret's namespace, name and key. No kind takes a secret value.
+- `kind: secretRef` asks for a Secret's namespace, name and key, in three fields labeled "Secret namespace", "Secret name" and "Key in the Secret"; `?` as the namespace is "I don't know". No kind takes a secret value.
+- `default` is optional: a string for `text` and `choice`, a list of strings for `list`, a boolean for `bool`. The form prefills it, in full screen and in line prompts (where an empty line keeps it and `-` stands for an empty answer the question accepts), and shows it in the prompt; the person confirms or changes it, and "I don't know" stays available. Nothing is ever answered with a default without the person: a run with `--answers` reads only the file, and a question missing from it is an error even when it has a default. A default is checked like an answer when the file is loaded (its type, its choice or pattern, the credential shapes below), and a `secretRef` question takes none: a faulty default is a fault of its file, reported with the others.
+- Renaming a question's id changes the question set: it bumps the set's version and the answers file's, and `init` keeps reading the previous version's names, so that a `.takecare/answers.yaml` written before still loads. Version 2 of the built-in set renamed `map.secret`, `report.secret` and `model.secret` to `…secretRef` before anyone had used `init`, and reads no earlier name.
 - `when` shows a question only when an earlier answer has a value; a cycle is refused.
-- A file is checked whole before any question is asked: every fault of every file is reported at once (unknown field, unknown kind, duplicate id, cycle, a `when` naming an unknown id, a template that does not parse), and nothing is asked or written.
+- A file is checked whole before any question is asked: every fault of every file is reported at once (unknown field, unknown kind, duplicate id, cycle, a `when` naming an unknown id, a refused default, a template that does not parse), and nothing is asked or written.
 
 Answers that look like a credential are refused at input, in every kind: a private key header, the token prefixes the repository's secret scanner knows, and long high-entropy strings in a field that does not expect them. The answer is not echoed back in the refusal.
 
