@@ -21,6 +21,8 @@ const (
 	connCode         = "code"
 	connPropose      = "code-propose"
 	repoShop         = "acme/shop-deploy"
+	repoNoOwner      = "shop"
+	fieldAPIURL      = "apiURL"
 	repoPlatform     = "acme/platform/charts"
 	githubAPI        = "https://api.github.com"
 	wantOneCluster   = "the Mécano needs at least one cluster connector"
@@ -133,7 +135,7 @@ func TestMecanoValidation(t *testing.T) {
 		{"a propose connector and no repository", func(m *v1alpha1.TakeCareMecano) { m.Spec.Maintenance.Repositories = nil }, ""},
 		{"empty repository", func(m *v1alpha1.TakeCareMecano) { m.Spec.Maintenance.Repositories[0].Repository = "" }, wantRepository},
 		{"maintenance repository without an owner", func(m *v1alpha1.TakeCareMecano) {
-			m.Spec.Maintenance.Repositories[0].Repository = "shop"
+			m.Spec.Maintenance.Repositories[0].Repository = repoNoOwner
 		}, wantRepository},
 		{"maintenance repository with a .. segment", func(m *v1alpha1.TakeCareMecano) {
 			m.Spec.Maintenance.Repositories[0].Repository = "acme/.."
@@ -452,17 +454,17 @@ func TestCodeConnectorValidation(t *testing.T) {
 		{"17 repositories", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories = repos(17) }, wantRepositories},
 		{"repository twice", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories[1].Repository = repoShop }, wantDuplicate},
 		{"unknown forge", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories[0].Forge = "gitea" }, "forge"},
-		{"api over http", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories[0].APIURL = "http://api.github.com" }, "apiURL"},
-		{"repository without an owner", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories[0].Repository = "shop" }, wantRepository},
+		{"api over http", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories[0].APIURL = "http://api.github.com" }, fieldAPIURL},
+		{"repository without an owner", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories[0].Repository = repoNoOwner }, wantRepository},
 		{"repository escaping its path", func(c *v1alpha1.TakeCareConnector) {
 			c.Spec.Propose.Repositories[0].Repository = "acme/shop?ref=main"
 		}, wantRepository},
 		{"api with user information", func(c *v1alpha1.TakeCareConnector) {
 			c.Spec.Propose.Repositories[0].APIURL = "https://ops@api.github.com"
-		}, "apiURL"},
+		}, fieldAPIURL},
 		{"api with a password", func(c *v1alpha1.TakeCareConnector) {
 			c.Spec.Propose.Repositories[0].APIURL = "https://ops:" + "made-up" + "@api.github.com/"
-		}, "apiURL"},
+		}, fieldAPIURL},
 		{"api with a path", func(c *v1alpha1.TakeCareConnector) {
 			c.Spec.Propose.Repositories[0].APIURL = "https://gitlab.example.org/api/v4"
 		}, ""},

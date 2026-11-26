@@ -6,7 +6,7 @@ package codeserver
 import (
 	"context"
 	"encoding/pem"
-	"net/http/cgi"
+	"net/http/cgi" //nolint:gosec // G504 is about Go before 1.6.3; the test runs git http-backend on its own loopback server
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -62,7 +62,7 @@ func TestShallowClone(t *testing.T) {
 		rp.mu.Lock()
 		store := rp.store
 		rp.mu.Unlock()
-		if n := len(store.ObjectStorage.Commits); n != 1 {
+		if n := len(store.Commits); n != 1 {
 			t.Errorf("%s: %d commits in memory, want the head only", when, n)
 		}
 		if shallow, err := store.Shallow(); err != nil || len(shallow) != 1 {

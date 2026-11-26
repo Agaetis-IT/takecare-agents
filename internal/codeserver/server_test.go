@@ -165,7 +165,7 @@ images:
 	r.write("overlays/dev/Kustomization", "resources: [../../apps/billing]\nimages: [{name: ghcr.io/acme/billing-api, newName: ghcr.io/acme/billing-api-dev}]\n")
 	r.write("gitops/flux-kustomization.yaml", `apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
-metadata: {name: billing, namespace: flux-system}
+metadata: {name: billing-prod, namespace: flux-system}
 spec:
   path: ./overlays/prod
   sourceRef: {kind: GitRepository, name: shop}
@@ -452,18 +452,18 @@ func TestManifestsIndex(t *testing.T) {
 			{Path: "gitops/argo.yaml", APIVersion: "argoproj.io/v1alpha1", Kind: "Application", Namespace: "argocd", Name: "ingress", Charts: []ChartRef{
 				{Name: "kube-prometheus-stack", Version: "62.3.0", Repository: "https://prometheus-community.github.io/helm-charts"},
 			}},
-			{Path: "gitops/flux-kustomization.yaml", APIVersion: "kustomize.toolkit.fluxcd.io/v1", Kind: "Kustomization", Namespace: "flux-system", Name: "billing",
+			{Path: "gitops/flux-kustomization.yaml", APIVersion: "kustomize.toolkit.fluxcd.io/v1", Kind: kindKustomization, Namespace: "flux-system", Name: "billing-prod",
 				ImageOverrides: []ImageOverride{{Name: billingAPI, NewTag: "1.5.1"}}},
 			{Path: "gitops/flux.yaml", APIVersion: "helm.toolkit.fluxcd.io/v2", Kind: "HelmRelease", Namespace: "flux-system", Name: "cert-manager", Charts: []ChartRef{
 				{Name: "cert-manager", Version: "v1.15.3", Repository: "HelmRepository/jetstack"},
 			}},
-			{Path: "overlays/dev/Kustomization", Kind: "Kustomization",
+			{Path: "overlays/dev/Kustomization", Kind: kindKustomization,
 				ImageOverrides: []ImageOverride{{Name: billingAPI, NewName: "ghcr.io/acme/billing-api-dev"}}},
-			{Path: "overlays/prod/kustomization.yaml", APIVersion: "kustomize.config.k8s.io/v1beta1", Kind: "Kustomization", ImageOverrides: []ImageOverride{
+			{Path: "overlays/prod/kustomization.yaml", APIVersion: "kustomize.config.k8s.io/v1beta1", Kind: kindKustomization, ImageOverrides: []ImageOverride{
 				{Name: billingAPI, NewTag: billingOverrideTag},
 				{Name: "ghcr.io/acme/report", NewName: "registry.example.org/acme/report", Digest: reportDigest},
 			}},
-			{Path: "overlays/staging/kustomization.yml", Kind: "Kustomization",
+			{Path: "overlays/staging/kustomization.yml", Kind: kindKustomization,
 				ImageOverrides: []ImageOverride{{Name: billingAPI, NewTag: "1.5.0-rc.1"}}},
 		},
 		Skipped: []Skipped{{Path: "charts/billing/templates/deployment.yaml", Reason: "not YAML (a template?)"}},

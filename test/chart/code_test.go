@@ -174,19 +174,19 @@ func TestCodeAddonGuards(t *testing.T) {
 	for name, tc := range map[string]struct {
 		repos, want string
 	}{
-		"no repository":              {"    repositories: []\n", "addons.code.repositories is REQUIRED"},
-		"17 repositories":            {"    repositories:\n" + many.String(), "addons.code.repositories is REQUIRED"},
-		"a name with a slash":        {"    repositories:\n      - {name: acme/shop, url: https://x}\n", "repositories[].name is REQUIRED"},
-		"a repository twice":         {"    repositories:\n      - {name: shop, url: https://x}\n      - {name: shop, url: https://y}\n", "shop is listed twice"},
-		"no URL":                     {"    repositories:\n      - {name: shop}\n", "repositories[shop].url is REQUIRED"},
-		"an http URL":                {"    repositories:\n      - {name: shop, url: http://git.example.com/shop.git}\n", "no other scheme"},
-		"a file URL":                 {"    repositories:\n      - {name: shop, url: file:///srv/shop.git}\n", "no other scheme"},
-		"a user in an https URL":     {"    repositories:\n      - {name: shop, url: https://reader@git.example.com/shop.git}\n", "never the URL"},
-		"two credentials":            {"    repositories:\n      - {name: shop, url: ssh://git@git.example.com/shop.git, credentialSecret: {name: t}, sshKeySecret: {name: k}, knownHostsConfigMap: {name: h}}\n", "are exclusive"},
-		"SSH without a key":          {"    repositories:\n      - {name: shop, url: ssh://git@git.example.com/shop.git}\n", wantSSHGuard},
-		"a key without hosts":        {"    repositories:\n      - {name: shop, url: git@git.example.com:shop.git, sshKeySecret: {name: k}}\n", wantSSHGuard},
-		"an HTTPS URL with a key":    {"    repositories:\n      - {name: shop, url: https://x, sshKeySecret: {name: k}, knownHostsConfigMap: {name: h}}\n", "goes with an SSH remote"},
-		"a password in an SSH URL":   {"    repositories:\n      - {name: shop, url: ssh://git:made-up@git.example.com/shop.git, sshKeySecret: {name: k}, knownHostsConfigMap: {name: h}}\n", "carries a password"},
+		"no repository":            {"    repositories: []\n", "addons.code.repositories is REQUIRED"},
+		"17 repositories":          {"    repositories:\n" + many.String(), "addons.code.repositories is REQUIRED"},
+		"a name with a slash":      {"    repositories:\n      - {name: acme/shop, url: https://x}\n", "repositories[].name is REQUIRED"},
+		"a repository twice":       {"    repositories:\n      - {name: shop, url: https://x}\n      - {name: shop, url: https://y}\n", "shop is listed twice"},
+		"no URL":                   {"    repositories:\n      - {name: shop}\n", "repositories[shop].url is REQUIRED"},
+		"an http URL":              {"    repositories:\n      - {name: shop, url: http://git.example.com/shop.git}\n", "no other scheme"},
+		"a file URL":               {"    repositories:\n      - {name: shop, url: file:///srv/shop.git}\n", "no other scheme"},
+		"a user in an https URL":   {"    repositories:\n      - {name: shop, url: https://reader@git.example.com/shop.git}\n", "never the URL"},
+		"two credentials":          {"    repositories:\n      - {name: shop, url: ssh://git@git.example.com/shop.git, credentialSecret: {name: t}, sshKeySecret: {name: k}, knownHostsConfigMap: {name: h}}\n", "are exclusive"},
+		"SSH without a key":        {"    repositories:\n      - {name: shop, url: ssh://git@git.example.com/shop.git}\n", wantSSHGuard},
+		"a key without hosts":      {"    repositories:\n      - {name: shop, url: git@git.example.com:shop.git, sshKeySecret: {name: k}}\n", wantSSHGuard},
+		"an HTTPS URL with a key":  {"    repositories:\n      - {name: shop, url: https://x, sshKeySecret: {name: k}, knownHostsConfigMap: {name: h}}\n", "goes with an SSH remote"},
+		"a password in an SSH URL": {"    repositories:\n      - {name: shop, url: ssh://git:made-up@git.example.com/shop.git, sshKeySecret: {name: k}, knownHostsConfigMap: {name: h}}\n", "carries a password"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			p := filepath.Join(t.TempDir(), "code.yaml")

@@ -69,7 +69,7 @@ type repo struct {
 	// go-git's own server serves only whole (it has no shallow support).
 	depth int
 
-	// gitMu serialises the reads of the storage served: go-git's
+	// gitMu serializes the reads of the storage served: go-git's
 	// in-memory storage is not safe for concurrent use. A clone fills a
 	// storage of its own, read by nobody until it is served.
 	gitMu sync.Mutex

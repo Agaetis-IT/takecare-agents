@@ -83,16 +83,19 @@ type Index struct {
 	SkippedOmitted int `json:"skippedOmitted,omitempty"`
 }
 
+// kindKustomization is Kustomize's kind and Flux's.
+const kindKustomization = "Kustomization"
+
 func isYAML(p string) bool {
 	ext := strings.ToLower(path.Ext(p))
 	return ext == ".yaml" || ext == ".yml" || isKustomization(p)
 }
 
 // isKustomization is a file Kustomize reads as a kustomization: the names
-// it recognises, whose apiVersion and kind are optional.
+// it recognizes, whose apiVersion and kind are optional.
 func isKustomization(p string) bool {
 	switch path.Base(p) {
-	case "kustomization.yaml", "kustomization.yml", "Kustomization":
+	case "kustomization.yaml", "kustomization.yml", kindKustomization:
 		return true
 	}
 	return false
@@ -153,7 +156,7 @@ func document(p string, doc map[string]any, isChart, isKust bool) (Document, boo
 	apiVersion, kind := str(doc, "apiVersion"), str(doc, "kind")
 	if isKust && kind == "" {
 		// Kustomize's default kind when a kustomization names none.
-		kind = "Kustomization"
+		kind = kindKustomization
 	}
 	if (apiVersion == "" && !isKust) || kind == "" {
 		return Document{}, false
@@ -167,7 +170,7 @@ func document(p string, doc map[string]any, isChart, isKust bool) (Document, boo
 		d.Charts = fluxChart(spec)
 	case kind == "Application" && group == "argoproj.io":
 		d.Charts = argoCharts(spec)
-	case kind == "Kustomization" && group == "kustomize.toolkit.fluxcd.io":
+	case kind == kindKustomization && group == "kustomize.toolkit.fluxcd.io":
 		d.ImageOverrides = imageOverrides(list(spec, "images"))
 	case isKust:
 		d.ImageOverrides = imageOverrides(list(doc, "images"))
