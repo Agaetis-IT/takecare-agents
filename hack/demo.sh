@@ -33,6 +33,11 @@ MIN_DOCKER_MEMORY=$((5 * 1024 * 1024 * 1024))
 # How long demo-verdict waits for an ended investigation's usage: the
 # operator reads it one scrape wait (30 s) after the end, then publishes.
 USAGE_WAIT_SECONDS="${USAGE_WAIT_SECONDS:-120}"
+# How long demo-verdict waits for the Kiné's review of the investigation:
+# its grace (2 minutes in the demo, as the alert resolves only at reset),
+# then the review's run (spec 11 §12).
+REVIEW_WAIT_SECONDS="${REVIEW_WAIT_SECONDS:-600}"
+KINE=kine
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -273,6 +278,57 @@ published: {.status.published}
       echo "usage: not recorded ${USAGE_WAIT_SECONDS} s after the end (kubectl -n ${NS} get takecareinvestigation ${inv} -o yaml)"
       ;;
   esac
+  review_verdict "$inv"
+}
+
+# review_verdict INV waits for the demo Kiné's review naming the
+# investigation, then for its usage, and prints its phase, problem, action
+# counts and usage (spec 11 §12).
+review_verdict() {
+  local inv="$1" suspended out name="" phase="" attributed=""
+  echo
+  if ! suspended="$(kubectl -n "$NS" get takecarekine "$KINE" -o jsonpath='{.spec.suspend}' 2>/dev/null)"; then
+    echo "review: no Kiné ${KINE} in ${NS}"
+    return 0
+  fi
+  if [[ "$suspended" == true ]]; then
+    echo "review: none, the Kiné ${KINE} is suspended"
+    return 0
+  fi
+  if [[ "$(kubectl -n "$NS" get takecareinvestigation "$inv" -o jsonpath='{.status.phase}')" != Completed ]]; then
+    echo "review: none, the Kiné reviews Completed investigations only"
+    return 0
+  fi
+  log "waiting for the Kiné's review of ${inv} (its grace, then its run; Ctrl-C to stop)"
+  for _ in $(seq "$((REVIEW_WAIT_SECONDS / 5))"); do
+    out="$(kubectl -n "$NS" get takecarereviews -o json | jq -r --arg k "$KINE" --arg i "$inv" '
+      [.items[] | select(.spec.kineRef.name == $k and ((.spec.investigations // []) | index($i)))]
+      | sort_by(.metadata.creationTimestamp) | last // empty | "\(.metadata.name) \(.status.phase // "")"')"
+    read -r name phase <<<"$out"
+    [[ "$phase" =~ ^(Completed|Failed|Dropped)$ ]] && break
+    sleep 5
+  done
+  if [[ ! "$phase" =~ ^(Completed|Failed|Dropped)$ ]]; then
+    echo "review: ${name:-none} ${phase:-not created} ${REVIEW_WAIT_SECONDS} s on (kubectl -n ${NS} get takecarereviews)"
+    return 0
+  fi
+  log "waiting for the usage of ${name}"
+  for _ in $(seq "$((USAGE_WAIT_SECONDS / 5))"); do
+    attributed="$(kubectl -n "$NS" get takecarereview "$name" -o jsonpath='{.status.conditions[?(@.type=="UsageAttributed")].status}')"
+    [[ -n "$attributed" ]] && break
+    sleep 5
+  done
+  kubectl -n "$NS" get takecarereview "$name" -o json | jq -r --arg a "$attributed" '
+    .status as $s | ($s.usage // {}) as $u
+    | "review \(.metadata.name): \($s.phase) \($s.reason // "")",
+      "level: \(.spec.level // "the Kiné'"'"'s") · trace: \($s.traceID // "-")",
+      "problem: \($s.problem.statement // "none")",
+      "recurrences: \([$s.problem.recurrences[]?.record] | if length == 0 then "none" else join(", ") end)",
+      "actions: \($s.actionCounts.total // 0) in all, \($s.actionCounts.open // 0) to do",
+      "published: \(if $s.published then ($s.published | tojson) elif $s.phase == "Completed" then "not yet" else "never, the review did not complete" end)",
+      (if $a == "True" then "usage: \($u.inputTokens) input tokens, \($u.outputTokens) output, \($u.modelCalls) model calls, \($u.estimatedCost // "no cost")"
+       elif $a == "False" then "usage: not measured: \([$s.conditions[]? | select(.type == "UsageAttributed") | .message] | first)"
+       else "usage: not recorded yet (kubectl -n takecare-system get takecarereview \(.metadata.name) -o yaml)" end)'
 }
 
 screens() {

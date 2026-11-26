@@ -24,6 +24,8 @@ import (
 var (
 	traceID = regexp.MustCompile(`\b[0-9a-f]{32}\b`)
 	digits  = regexp.MustCompile(`[0-9]+(\.[0-9]+)?`)
+	// A number as the context line prints it: 4,612 or 0.0047.
+	number = regexp.MustCompile(`[0-9][0-9,]*(\.[0-9]+)?`)
 )
 
 // The Doc's message as Slack received it (spec 02 §4, AC 9): one message,
@@ -78,14 +80,8 @@ func TestSlackMessage(t *testing.T) {
 		text = text[:i+1] + digits.ReplaceAllString(traceID.ReplaceAllString(text[i+1:], "<trace>"), "<n>")
 	}
 	// Unescaped, so that the masks read <n> and <trace> in the golden.
-	var out bytes.Buffer
-	enc := json.NewEncoder(&out)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(map[string]any{"text": text, "blocks": blocks}); err != nil {
-		t.Fatal(err)
-	}
-	golden.Assert(t, "slack-message.json", out.Bytes())
+	out := encode(t, text, blocks)
+	golden.Assert(t, "slack-message.json", out)
 }
 
 // The Intendant's digest of one survey as Slack received it (spec 10 §6):
@@ -114,19 +110,13 @@ func TestSlackDigest(t *testing.T) {
 	if err := json.Unmarshal(found[0].Blocks, &blocks); err != nil {
 		t.Fatal(err)
 	}
-	var out bytes.Buffer
-	enc := json.NewEncoder(&out)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(map[string]any{"text": found[0].Text, "blocks": blocks}); err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Contains(out.Bytes(), []byte("status: ")) || bytes.Contains(out.Bytes(), []byte("provenance")) {
-		t.Errorf("the digest holds an entry's content:\n%s", out.Bytes())
+	out := encode(t, found[0].Text, blocks)
+	if bytes.Contains(out, []byte("status: ")) || bytes.Contains(out, []byte("provenance")) {
+		t.Errorf("the digest holds an entry's content:\n%s", out)
 	}
 	// The survey whose digest stands depends on the startup surveys'
 	// timing: its name is masked, its keys and counts are not.
-	masked := bytes.ReplaceAll(out.Bytes(), []byte(os.Getenv("E2E_SURVEY")), []byte("<survey>"))
+	masked := bytes.ReplaceAll(out, []byte(os.Getenv("E2E_SURVEY")), []byte("<survey>"))
 	golden.Assert(t, "slack-digest.json", masked)
 }
 
@@ -168,4 +158,81 @@ func TestSlackDigestsOnChange(t *testing.T) {
 	if !slices.Equal(names, want) {
 		t.Errorf("digests posted for %v, want one for each survey published: %v", names, want)
 	}
+}
+
+// The Kiné's review of the e2e's investigation as Slack received it (spec
+// 11 §8, AC 5): at Practitioner, exactly one message to the review
+// channel naming the investigation (published once, whatever the
+// retries), its structure against a golden file. The review's and the
+// investigation's names are masked, and the context line's usage and trace
+// ID; the problem and the actions come from the fake model's fixture.
+func TestSlackReview(t *testing.T) {
+	raw, err := os.ReadFile(os.Getenv("E2E_SLACK_MESSAGES")) //nolint:gosec // the file hack/e2e.sh wrote for this test
+	if err != nil {
+		t.Fatalf("E2E_SLACK_MESSAGES: %v (run through hack/e2e.sh)", err)
+	}
+	var all []fakeslack.Message
+	if err := json.Unmarshal(raw, &all); err != nil {
+		t.Fatal(err)
+	}
+	inv, review := os.Getenv("E2E_INVESTIGATION"), os.Getenv("E2E_REVIEW")
+	if inv == "" || review == "" {
+		t.Fatal("E2E_INVESTIGATION and E2E_REVIEW are required (run through hack/e2e.sh)")
+	}
+	var found []fakeslack.Message
+	for _, m := range all {
+		if !strings.HasPrefix(m.Text, "Kiné ") {
+			continue
+		}
+		if m.Channel != os.Getenv("E2E_REVIEW_CHANNEL") {
+			t.Errorf("a review posted to %s, not to the review channel", m.Channel)
+		}
+		if strings.Contains(m.Text, "\ninvestigation "+inv+" ") {
+			found = append(found, m)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("%d reviews of %s posted, want exactly one", len(found), inv)
+	}
+	var blocks []map[string]any
+	if err := json.Unmarshal(found[0].Blocks, &blocks); err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range blocks {
+		if b["type"] != "context" {
+			continue
+		}
+		for _, e := range b["elements"].([]any) {
+			el := e.(map[string]any)
+			el["text"] = maskContext(el["text"].(string), inv)
+		}
+	}
+	text := strings.TrimSuffix(found[0].Text, "\n")
+	if i := strings.LastIndex(text, "\n"); i >= 0 {
+		text = text[:i+1] + maskContext(text[i+1:], inv)
+	}
+	out := encode(t, text, blocks)
+	golden.Assert(t, "slack-review.json", bytes.ReplaceAll(out, []byte(review), []byte("<review>")))
+}
+
+// maskContext masks a review's context line: the investigation's name,
+// its counts and cost (approximate when the Kiné's other review of the run
+// was still measured as it started), and the trace ID.
+func maskContext(line, inv string) string {
+	line = strings.ReplaceAll(strings.ReplaceAll(line, inv, "<investigation>"), " (approximate)", "")
+	return number.ReplaceAllString(traceID.ReplaceAllString(line, "<trace>"), "<n>")
+}
+
+// encode is a message as the goldens hold it: its text and its blocks,
+// indented, unescaped so that the masks read <n> and <trace>.
+func encode(t *testing.T, text string, blocks []map[string]any) []byte {
+	t.Helper()
+	var out bytes.Buffer
+	enc := json.NewEncoder(&out)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(map[string]any{"text": text, "blocks": blocks}); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
 }

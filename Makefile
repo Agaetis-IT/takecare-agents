@@ -372,7 +372,7 @@ demo-up: ## Create the k3d demo and install everything (TAKECARE_MODEL_API_KEY; 
 	hack/demo.sh up
 demo-incident: ## Start the proxy-timeout incident and print the expected alert window.
 	hack/demo.sh incident
-demo-verdict: ## Wait for the Doc's diagnosis of the incident and its usage (read one scrape wait after the end), and print both.
+demo-verdict: ## Wait for the Doc's diagnosis of the incident and its usage (read one scrape wait after the end), then the Kiné's review of it, and print them.
 	hack/demo.sh verdict
 N ?= 5
 demo-bench: ## Accuracy bench: N silent investigations of the ongoing incident, scored (the Doc's cooldown is 1 s meanwhile; BENCH_MIN=k fails under k).

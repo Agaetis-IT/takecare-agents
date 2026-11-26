@@ -222,11 +222,11 @@ No label holds an id: a Kiné gives at most a few series.
 
 ## 12. Demo and bench
 
-**Demo.** The demo profile enables the history add-on and ships a Kiné named `kine` on the demo's namespaces, at `Apprentice`, with the corpus's `incidents`, `runbooks` and `support` connectors as `knowledge` and `tickets` and the `deployments` connector as `changes`, and `investigation_get` and `review_get` in `contentTools`. After `make demo-incident` resolves, a review follows; `make demo-verdict` reports it beside the investigation.
+**Demo.** The demo profile enables the history add-on and ships a Kiné named `kine` on the demo's namespaces, at `Apprentice`, with the corpus's `incidents`, `runbooks` and `support` connectors as `knowledge` and `tickets` and the `deployments` connector as `changes`, and `investigation_get` and `review_get` in `contentTools`. Its `review.grace` is 2 minutes, since the demo's alert resolves only at `make demo-reset`, and it has no periodic review of its own (a yearly schedule until the API can leave it out). After `make demo-incident`, a review follows; `make demo-verdict` reports it beside the investigation: its phase, problem, recurrences, action counts, publication and usage.
 
 **Bench.** `make demo-bench-kine N=5 BENCH_MIN=5`, described in `test/bench/README.md`:
 
-- Input: a fixed investigation fixture, `test/bench/kine/investigation.yaml`, the recorded diagnosis of the proxy-timeout scenario, applied as a `silent` investigation with its status. Each run is an on-demand, `silent` review at `Practitioner` naming it, so that only the Kiné varies.
+- Input: a fixed investigation fixture, `test/bench/kine/investigation.yaml`, the recorded diagnosis of the proxy-timeout scenario, applied as a `silent` investigation with its status. Each run is an on-demand, `silent` review at `Practitioner` naming it, so that only the Kiné varies. The bench raises the demo Kiné to `Practitioner` for the series, bound to the report connector with no destination, so that it runs with that level's instructions, and restores it on every exit.
 - Optional chain mode, `BENCH_CHAIN=1`: a live `silent` Doc run of the ongoing incident, then the review naming it. It measures the chain, with the Doc's variance; its result does not count for the bar.
 - Scoring, per run, from `test/bench/kine/expected.yaml`:
   1. the recurrences name `INC-2024-0312`, the earlier incident with the same root cause in the demo corpus;
@@ -242,7 +242,7 @@ No label holds an id: a Kiné gives at most a few series.
 - **envtest**, under the operator's own Roles (not as admin): level transitions; a Kiné without a history connector; `ScopeOverlap`; a review from an investigation that resolves; a review after the grace; the schedule; on demand; the backstop; retention by age and by count.
 - **History server**: unit tests of each tool, its filters and bounds, "no diagnosis in a list", and the content classes; a chart render test of its Role through the read-only guard.
 - **Ranger**: the cap and the deny on the Kiné's model route, in the chart smoke.
-- **e2e** (CI): fake LLM; one investigation that completes and resolves, then one review `Completed` and published to the fake Slack at `Practitioner`.
+- **e2e** (CI): fake LLM; one investigation that completes, then, once the demo Kiné is raised to `Practitioner` with a destination and its grace has passed, one review `Completed` with the fixture's answer and published once to the fake Slack, against a golden file.
 - **Bench** (§12), on a real model, outside CI.
 
 ## 14. Acceptance criteria
@@ -261,7 +261,7 @@ No label holds an id: a Kiné gives at most a few series.
 
 ## 15. Lots
 
-About 3,000 lines of code and 3,500 of tests in five lots of at most about 600 lines of code each, plus this spec. Each lot is one pull request.
+About 3,000 lines of code and 3,500 of tests in five lots, plus this spec. Each lot is one pull request, up to about 1,000 lines of code (`AGENTS.md`).
 
 | Lot | Content | Size (code / tests) | Needs at its build |
 |---|---|---|---|

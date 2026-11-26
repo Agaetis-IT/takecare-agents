@@ -19,6 +19,13 @@
 # measures the chain with the Doc's variance and never counts for the bar:
 # BENCH_MIN is refused with it.
 #
+# The demo Kiné is an Apprentice: for the series it is raised to
+# Practitioner, bound to the demo's report connector as that level
+# requires, with no Practitioner destination (the reviews are silent
+# anyway), so that the reviews run with the Practitioner's instructions
+# and agent. Its level and report connector are restored on every exit,
+# after the dump when the bench stops.
+#
 # One review at a time, as the Kiné runs them anyway: the usage is exact
 # only without overlap. BENCH_MAX_COST=<USD> stops the bench, with its
 # report, when the next run could take the total past it (the dearest run
@@ -42,6 +49,7 @@ N="${1:-5}"
 NS=takecare-system
 APP_NS=demo-apps
 KINE=kine
+ENGINE_NS=kagent
 FIXTURE=test/bench/kine/investigation.yaml
 EXPECTED=test/bench/kine/expected.yaml
 ENDED='^(Completed|Failed|Dropped)$'
@@ -79,7 +87,20 @@ die() {
 [[ -f "$KUBECONFIG" ]] || die "no demo: make demo-up first"
 WORK="$(mktemp -d)"
 dump_armed=true
+# The demo Kiné's level and report connector before the bench, as a merge
+# patch that puts them back (null removes a field the Kiné did not set).
+RESTORE=""
+REPORT_CONNECTOR=report
+restore() {
+  [[ -n "$RESTORE" ]] || return 0
+  if kubectl -n "$NS" patch takecarekine "$KINE" --type=merge -p "$RESTORE" >/dev/null; then
+    log "the demo Kiné is restored: ${RESTORE}"
+  else
+    log "could not restore the demo Kiné: kubectl -n ${NS} patch takecarekine ${KINE} --type=merge -p '${RESTORE}'"
+  fi
+}
 finish() {
+  restore
   rm -rf "$WORK"
   # Last: whether the machine slept during the run (the report marked).
   power_guard "${report:-}"
@@ -145,6 +166,37 @@ chained() {
 go build -o "$WORK/score" ./test/bench/kine
 log "waiting for the Kiné's reviews to end"
 idle "$SETTLE" || die "a review of the Kiné did not end in ${SETTLE} s"
+# The Kiné at Practitioner for the series: Ready at that level, its agent
+# rendered for it.
+AGENT_DEPLOY="deployment/takecare-kine-${KINE}"
+deploy_gen() { kubectl -n "$ENGINE_NS" get "$AGENT_DEPLOY" -o jsonpath='{.metadata.generation}'; }
+gen_before="$(deploy_gen)" || die "the demo Kiné's agent has no Deployment in ${ENGINE_NS}"
+RESTORE="$(kubectl -n "$NS" get takecarekine "$KINE" -o json |
+  jq -c '{spec: {level: .spec.level, connectors: {report: (.spec.connectors.report // null)}}}')"
+kubectl -n "$NS" patch takecarekine "$KINE" --type=merge \
+  -p "{\"spec\":{\"level\":\"Practitioner\",\"connectors\":{\"report\":\"${REPORT_CONNECTOR}\"}}}" >/dev/null
+log "the demo Kiné is raised to Practitioner for the series"
+raised=""
+for _ in $(seq 60); do
+  raised="$(kubectl -n "$NS" get takecarekine "$KINE" -o json | jq -r '
+    (.metadata.generation == .status.observedGeneration) and .status.level == "Practitioner"
+    and ([.status.conditions[]? | select(.type == "Ready") | .status] == ["True"])')"
+  [[ "$raised" == true ]] && break
+  sleep 5
+done
+[[ "$raised" == true ]] || die "the demo Kiné is not Ready at Practitioner after 5 minutes"
+# The engine rolls the agent's Deployment on the new rendering, and its
+# Agent can be Ready while the old pod still serves: a review sent then
+# goes to a pod about to stop. Wait for the new Deployment, then for its
+# rollout.
+for _ in $(seq 60); do
+  (($(deploy_gen) > gen_before)) && break
+  sleep 2
+done
+(($(deploy_gen) > gen_before)) || die "the demo Kiné's agent Deployment did not change in 2 minutes after the raise"
+kubectl -n "$ENGINE_NS" rollout status "$AGENT_DEPLOY" --timeout=300s >/dev/null ||
+  die "the demo Kiné's agent did not roll out at Practitioner in 5 minutes"
+log "the demo Kiné's agent runs at Practitioner"
 guards_before="$(hack/guardrail-counts.sh)" || die "the gateway's guardrail counters cannot be read"
 
 stamp="$(date -u +%s)"

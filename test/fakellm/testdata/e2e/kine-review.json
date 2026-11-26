@@ -1,0 +1,39 @@
+{
+  "source": "hand-written",
+  "date": "2026-11-26",
+  "description": "The demo Kiné's review of the e2e's investigation at Practitioner (spec 11 §13): the answer at the first call, no tool call. offered is the hash of the Kiné's 17 tools: the corpus's incidents, runbooks, support and deployments tools, the history's two lists and two content gets, and kagent's ask_user.",
+  "exchanges": [
+    {
+      "fingerprint": {
+        "model": "e2e-doc",
+        "roles": [
+          "system",
+          "user"
+        ],
+        "called": [],
+        "offered": "79bc0299c3682e46"
+      },
+      "response": {
+        "id": "e2e-kine-1",
+        "object": "chat.completion",
+        "created": 1795680000,
+        "model": "e2e-doc",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "```json\n{\"problem\": {\"statement\": \"The database connection pool of billing-api recycles idle connections after 900 s, later than the DBProxy's idle client timeout of 600 s: the proxy closed connections the pool still used, and requests on them failed with 504s.\", \"recurrences\": [{\"record\": \"INC-2024-0312\", \"date\": \"2024-03-12T03:40:00Z\", \"evidence\": [{\"tool\": \"incidents_search\", \"record\": \"INC-2024-0312\"}]}]}, \"actions\": [{\"id\": \"INC-2024-0312/3\", \"text\": \"Add an automatic check comparing the proxy's idle timeout with the pool's recycling at each deployment.\", \"kind\": \"Check\", \"origin\": \"Earlier\", \"state\": \"Open\", \"source\": \"INC-2024-0312\", \"evidence\": [{\"tool\": \"incidents_get\", \"record\": \"INC-2024-0312\"}]}, {\"id\": \"INC-2024-0312/1\", \"text\": \"Write a dedicated runbook for the proxy and pool timeouts.\", \"kind\": \"Runbook\", \"origin\": \"Earlier\", \"state\": \"Done\", \"source\": \"INC-2024-0312\", \"evidence\": [{\"tool\": \"runbooks_get\", \"record\": \"RB-014\"}]}, {\"text\": \"Set the pool's idle recycling of billing-api below the DBProxy's idle client timeout.\", \"kind\": \"Configuration\", \"origin\": \"New\", \"state\": \"Proposed\", \"evidence\": [{\"tool\": \"investigation_get\"}]}], \"postMortem\": \"# HighErrorRate on billing-api\\n\\nThe pool recycled idle connections after the proxy had closed them. Same root cause as INC-2024-0312, whose automatic check was never done.\"}\n```"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 4210,
+          "completion_tokens": 402,
+          "total_tokens": 4612
+        }
+      }
+    }
+  ]
+}
