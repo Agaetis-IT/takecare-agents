@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Scenario files (spec 14): a scenario's truth in one file, `test/scenarios/<id>.yaml`, read by the demo and the benches: its ground, fault, alerts and their window, causes, expected evidence, red herrings, blind spots, safe-action class and dangerous actions. `test/scenarios/proxy-timeout.yaml` holds the demo's scenario, its rules unchanged. `make scenarios-check`, part of `make lint`, validates every file against `test/scenarios/schema.json` and checks its Map keys, its corpus records and its regular expressions; a reserved scenario is refused there.
+- `make demo-verdict` prints the scenario's verdict lines after the diagnosis: the cause named or not, the evidence found, each red herring absent, mentioned or concluded, the dangerous actions matched.
+
+### Changed
+
+- The accuracy bench (`make demo-bench`) takes its rule from the scenario file: a run is correct when it names the scenario's causes and matches none of its dangerous actions. The report names the scenario as `proxy-timeout@1` and gives, per run, the evidence found and the red herrings' states; `memoryLead` stays for one release. `BENCH_BASELINE=<report>` compares with an earlier report and refuses one at another scenario version. A bench whose scenario alert does not fire within its window is reported not played, never wrong.
+
 ## [0.5.0] - 2026-11-26
 
 The Talkie and Kiné release: the `takecare` command, the teams' console (status, discover, review, validate, init), the Kiné, which reviews the Doc's investigations after each incident up to `Practitioner`, and a first step towards grounds without Kubernetes, the `cloud` connector type for Azure, in the API only. The API stays `v1alpha1`; it gains the kinds `TakeCareKine` and `TakeCareReview`, the connector types `history` and `cloud`, and new fields, and refuses nothing it accepted before.
