@@ -21,6 +21,8 @@ on:
   pull_request:
     paths:
       - .github/workflows/release.yaml
+      - hack/ci-changes.sh
+      - hack/ci-changes-test.sh
       - hack/release-notes.sh
       - hack/release-notes-test.sh
       - hack/sbom.sh
@@ -44,6 +46,11 @@ concurrency:
 jobs:
   dry-run:
     name: release dry run (charts packaged and linted, notes read, SBOMs and takecare binaries written)
+    # checks: read for hack/ci-changes.sh, which reads this job's run at
+    # the previous head; nothing else beyond the workflow's contents: read.
+    permissions:
+      contents: read
+      checks: read
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     steps:
@@ -60,6 +67,10 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.event.pull_request.head.sha }}
+          # The previous head's run of this job (hack/ci-changes.sh).
+          CHECK: release dry run (charts packaged and linted, notes read, SBOMs and takecare binaries written)
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: hack/ci-changes.sh release >>"$GITHUB_OUTPUT"
       # The pinned chart archives, restored when the pins are the same (spec
       # 04): make chart-deps then downloads only what is missing.

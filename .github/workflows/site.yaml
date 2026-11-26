@@ -28,6 +28,8 @@ on:
       - hack/versions.env
       - Makefile
       - .github/workflows/site.yaml
+      - hack/ci-changes.sh
+      - hack/ci-changes-test.sh
       - hack/site-deploy.sh
       - hack/site-deploy-test.sh
   workflow_dispatch: {}
@@ -38,6 +40,11 @@ permissions:
 jobs:
   build:
     name: build the site
+    # checks: read for hack/ci-changes.sh, which reads this job's run at
+    # the previous head; nothing else beyond the workflow's contents: read.
+    permissions:
+      contents: read
+      checks: read
     runs-on: ubuntu-24.04
     # A newer build of the same ref replaces an older one.
     concurrency:
@@ -64,6 +71,10 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.event.pull_request.head.sha }}
+          # The previous head's run of this job (hack/ci-changes.sh).
+          CHECK: build the site
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: hack/ci-changes.sh site >>"$GITHUB_OUTPUT"
       - if: steps.changes.outputs.heavy == 'true'
         run: make site-deploy-test
