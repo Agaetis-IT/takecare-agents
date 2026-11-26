@@ -5,10 +5,7 @@ package mapserver
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -24,10 +21,9 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/client"
-	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/go-git/go-git/v5/plumbing/transport/server"
-	"golang.org/x/crypto/ssh"
 
+	"github.com/agaetis-it/takecare-agents/internal/gitauth"
 	"github.com/agaetis-it/takecare-agents/internal/golden"
 )
 
@@ -198,7 +194,7 @@ func TestGitSource(t *testing.T) {
 
 	t.Run("a credential that cannot be read keeps the Map served", func(t *testing.T) {
 		g.auth = func() (transport.AuthMethod, error) {
-			return tokenAuth("x-access-token", filepath.Join(t.TempDir(), "missing"))
+			return gitauth.Token("x-access-token", filepath.Join(t.TempDir(), "missing"))
 		}
 		g.sync(ctx)
 		if _, err := s.snapshot(); err != nil || g.status()["fetchError"] == nil {
@@ -231,63 +227,6 @@ func TestGitConfigRefusals(t *testing.T) {
 				t.Errorf("err = %v, want %q", err, tc.want)
 			}
 		})
-	}
-}
-
-func TestAuth(t *testing.T) {
-	dir := t.TempDir()
-	token := filepath.Join(dir, "token")
-	if err := os.WriteFile(token, []byte("s3cret\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	a, err := tokenAuth("oauth2", token)
-	if b, ok := a.(*githttp.BasicAuth); err != nil || !ok || b.Username != "oauth2" || b.Password != "s3cret" {
-		t.Errorf("token auth = %#v, %v", a, err)
-	}
-
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	block, err := ssh.MarshalPrivateKey(priv, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	key, hosts := filepath.Join(dir, "key"), filepath.Join(dir, "known_hosts")
-	sshPub, err := ssh.NewPublicKey(pub)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(key, pem.EncodeToMemory(block), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(hosts, []byte("git.example.com "+string(ssh.MarshalAuthorizedKey(sshPub))), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	a, err = sshAuth("git", key, hosts)
-	if err != nil || a.Name() != "ssh-public-keys" {
-		t.Errorf("ssh auth = %v, %v", a, err)
-	}
-	if _, err := sshAuth("git", key, filepath.Join(dir, "none")); err == nil {
-		t.Error("a missing known_hosts file is accepted")
-	}
-}
-
-// tokenRemote carries a made-up token, the point of TestRedact.
-const (
-	tokenRemote    = "https://x-access-token:s3cret@git.example.com/map.git" //nolint:gosec // made up
-	redactedRemote = "https://x-access-token@git.example.com/map.git"        //nolint:gosec // a username, no token
-)
-
-func TestRedact(t *testing.T) {
-	for in, want := range map[string]string{
-		tokenRemote: redactedRemote,
-		httpsRemote: httpsRemote,
-		sshRemote:   sshRemote,
-	} {
-		if got := redact(in); got != want {
-			t.Errorf("redact(%s) = %s, want %s", in, got, want)
-		}
 	}
 }
 
