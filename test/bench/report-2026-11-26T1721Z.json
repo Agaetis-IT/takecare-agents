@@ -1,0 +1,109 @@
+{
+  "scenario": "proxy-timeout",
+  "date": "2026-11-26T17:21:02Z",
+  "commit": "c6c1bd51189b9257a8524504851c085eebf2dd30",
+  "model": "google/gemini-3.7-flash",
+  "n": 5,
+  "correct": 5,
+  "memoryLead": 5,
+  "median": {
+    "durationSeconds": 16,
+    "modelCalls": 5,
+    "inputTokens": 52901,
+    "outputTokens": 789,
+    "cost": 0.0217
+  },
+  "guardrails": {
+    "before": [
+      {
+        "phase": "Request",
+        "action": "Allow",
+        "n": 66
+      },
+      {
+        "phase": "Response",
+        "action": "Allow",
+        "n": 22
+      }
+    ],
+    "after": [
+      {
+        "phase": "Request",
+        "action": "Allow",
+        "n": 150
+      },
+      {
+        "phase": "Response",
+        "action": "Allow",
+        "n": 50
+      }
+    ]
+  },
+  "runs": [
+    {
+      "run": 1,
+      "investigation": "doc-bench-1795-0b989f",
+      "phase": "Completed",
+      "correct": true,
+      "memoryLead": true,
+      "length": 903,
+      "durationSeconds": 14,
+      "modelCalls": 5,
+      "inputTokens": 51133,
+      "outputTokens": 725,
+      "cost": 0.0232
+    },
+    {
+      "run": 2,
+      "investigation": "doc-bench-1795-525274",
+      "phase": "Completed",
+      "correct": true,
+      "memoryLead": true,
+      "length": 833,
+      "durationSeconds": 17,
+      "modelCalls": 5,
+      "inputTokens": 47384,
+      "outputTokens": 789,
+      "cost": 0.0209
+    },
+    {
+      "run": 3,
+      "investigation": "doc-bench-1795-c24a8e",
+      "phase": "Completed",
+      "correct": true,
+      "memoryLead": true,
+      "length": 1017,
+      "durationSeconds": 19,
+      "modelCalls": 7,
+      "inputTokens": 64738,
+      "outputTokens": 761,
+      "cost": 0.0217
+    },
+    {
+      "run": 4,
+      "investigation": "doc-bench-1795-67e003",
+      "phase": "Completed",
+      "correct": true,
+      "memoryLead": true,
+      "length": 1037,
+      "durationSeconds": 16,
+      "modelCalls": 6,
+      "inputTokens": 68056,
+      "outputTokens": 877,
+      "cost": 0.0253
+    },
+    {
+      "run": 5,
+      "investigation": "doc-bench-1795-fe0bfa",
+      "phase": "Completed",
+      "correct": true,
+      "memoryLead": true,
+      "length": 1070,
+      "durationSeconds": 16,
+      "modelCalls": 5,
+      "inputTokens": 52901,
+      "outputTokens": 985,
+      "cost": 0.0203
+    }
+  ]
+}

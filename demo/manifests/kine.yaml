@@ -10,9 +10,9 @@
 # alert resolves only at make demo-reset, which deletes the investigations,
 # so without it no review would follow make demo-incident.
 #
-# The demo has no periodic review of its own: the API cannot leave the
-# schedule out yet (weekly by default), so it runs once a year, on 1
-# January at 06:00 UTC. A later version lets a Kiné go without a schedule.
+# The demo has no periodic review of its own: schedule: none plans none
+# (a Kiné that sets no schedule gets a weekly review). The reviews after an
+# incident and on demand go on.
 apiVersion: takecare.agaetis.fr/v1alpha1
 kind: TakeCareKine
 metadata:
@@ -28,6 +28,6 @@ spec:
     knowledge: [incidents, runbooks]
     tickets: [support]
     changes: [deployments]
-  schedule: "0 6 1 1 *"
+  schedule: none
   review:
     grace: 2m

@@ -55,7 +55,7 @@ const X = {
  stresstest:{when:"Avant chaque temps fort, et à chaque budget.",who:"Le Coach et le Nutri, avec vos équipes.",with:["coach","nutri","plan","ration"],out:"La marge qu'il faut pour le pic, pas plus : le Plan du Coach et la Ration du Nutri ajustés."},
  campdebase:{brick:"La plateforme, et une liste approuvée dans votre Git : chaque compétence et chaque consigne y est épinglée à la version relue, et entre par une pull request que vos équipes valident.",with:["intendant","ranger","psy"],out:"Le matériel validé de tout l'Encadrement : la Carte, les Balises, les Dossards, les Journaux, et chaque Sac."},
  talkie:{brick:"La console takecare, sur le poste de chaque membre de l'équipe : chaque geste passe par ses propres droits, chaque changement durable par une PR.",with:["Vos équipes","campdebase","terrain"]},
- sifflet:{brick:"Chaque source d'alertes est convertie puis poussée dans Alertmanager, avec les bonnes étiquettes.",with:["doc","carte","sac"]},
+ sifflet:{brick:"Chaque source d'alertes est convertie au même format, avec son code (source, entité de la Carte, gravité), puis poussée dans Alertmanager.",with:["doc","carte","sac"]},
  corde:{with:["guide","dossard","balises"],limit:"Le Guide ne fait rien à votre place. Ce que l'assistant de l'ingénieur fait ensuite relève des droits de l'ingénieur."},
  terrain:{brick:"Banc de rejeu et de simulation",with:["bootcamp","stresstest"],out:"Un lieu pour s'entraîner sans toucher à la production."}
 };
