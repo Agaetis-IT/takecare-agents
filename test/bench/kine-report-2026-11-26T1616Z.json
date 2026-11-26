@@ -1,0 +1,181 @@
+{
+  "bench": "kine",
+  "scenario": "proxy-timeout-fixture",
+  "date": "2026-11-26T16:16:12Z",
+  "commit": "ea9846650c662f71680b9892dffa458259fc6beb",
+  "model": "google/gemini-3.7-flash",
+  "chain": false,
+  "planned": 5,
+  "n": 5,
+  "ok": 5,
+  "recurrence": 5,
+  "followUp": 5,
+  "forbidden": 0,
+  "median": {
+    "durationSeconds": 73,
+    "modelCalls": 18,
+    "inputTokens": 82095,
+    "outputTokens": 1803,
+    "cost": 0.0505
+  },
+  "totalCost": 0.2703,
+  "guardrails": {
+    "before": [
+      {
+        "phase": "Request",
+        "action": "Allow",
+        "n": 18
+      },
+      {
+        "phase": "Response",
+        "action": "Allow",
+        "n": 6
+      }
+    ],
+    "after": [
+      {
+        "phase": "Request",
+        "action": "Allow",
+        "n": 297
+      },
+      {
+        "phase": "Response",
+        "action": "Allow",
+        "n": 99
+      }
+    ]
+  },
+  "runs": [
+    {
+      "run": 1,
+      "investigation": "bench-kine-1795709380",
+      "review": "bench-kine-1795709380-1",
+      "phase": "Completed",
+      "read": true,
+      "recurrences": [
+        "INC-2024-0312"
+      ],
+      "recurrence": true,
+      "followUp": "open INC-2024-0312/3",
+      "forbidden": [],
+      "actions": {
+        "Earlier/Done": 2,
+        "Earlier/Open": 1,
+        "New/Proposed": 2
+      },
+      "postMortemLength": 1945,
+      "blindSpots": 0,
+      "ok": true,
+      "durationSeconds": 90,
+      "modelCalls": 24,
+      "inputTokens": 119679,
+      "outputTokens": 2085,
+      "cost": "0.0668 USD"
+    },
+    {
+      "run": 2,
+      "investigation": "bench-kine-1795709380",
+      "review": "bench-kine-1795709380-2",
+      "phase": "Completed",
+      "read": true,
+      "recurrences": [
+        "INC-2024-0312"
+      ],
+      "recurrence": true,
+      "followUp": "open INC-2024-0312/3",
+      "forbidden": [],
+      "actions": {
+        "Earlier/Done": 2,
+        "Earlier/Open": 1,
+        "New/Proposed": 1
+      },
+      "postMortemLength": 1321,
+      "blindSpots": 0,
+      "ok": true,
+      "durationSeconds": 64,
+      "modelCalls": 15,
+      "inputTokens": 67123,
+      "outputTokens": 1604,
+      "cost": "0.0430 USD"
+    },
+    {
+      "run": 3,
+      "investigation": "bench-kine-1795709380",
+      "review": "bench-kine-1795709380-3",
+      "phase": "Completed",
+      "read": true,
+      "recurrences": [
+        "INC-2024-0312"
+      ],
+      "recurrence": true,
+      "followUp": "open INC-2024-0312/3",
+      "forbidden": [],
+      "actions": {
+        "Earlier/Done": 2,
+        "Earlier/Open": 1,
+        "New/Proposed": 1
+      },
+      "postMortemLength": 1880,
+      "blindSpots": 0,
+      "ok": true,
+      "durationSeconds": 65,
+      "modelCalls": 15,
+      "inputTokens": 64661,
+      "outputTokens": 1800,
+      "cost": "0.0441 USD"
+    },
+    {
+      "run": 4,
+      "investigation": "bench-kine-1795709380",
+      "review": "bench-kine-1795709380-4",
+      "phase": "Completed",
+      "read": true,
+      "recurrences": [
+        "INC-2024-0312"
+      ],
+      "recurrence": true,
+      "followUp": "open INC-2024-0312/3",
+      "forbidden": [],
+      "actions": {
+        "Earlier/Done": 2,
+        "Earlier/Open": 1,
+        "New/Proposed": 1
+      },
+      "postMortemLength": 1585,
+      "blindSpots": 0,
+      "ok": true,
+      "durationSeconds": 73,
+      "modelCalls": 18,
+      "inputTokens": 82095,
+      "outputTokens": 1803,
+      "cost": "0.0505 USD"
+    },
+    {
+      "run": 5,
+      "investigation": "bench-kine-1795709380",
+      "review": "bench-kine-1795709380-5",
+      "phase": "Completed",
+      "read": true,
+      "recurrences": [
+        "INC-2024-0312"
+      ],
+      "recurrence": true,
+      "followUp": "open INC-2024-0312/3",
+      "forbidden": [],
+      "actions": {
+        "Earlier/Done": 2,
+        "Earlier/Open": 1,
+        "New/Proposed": 1
+      },
+      "postMortemLength": 1759,
+      "blindSpots": 0,
+      "ok": true,
+      "durationSeconds": 80,
+      "modelCalls": 21,
+      "inputTokens": 110490,
+      "outputTokens": 3125,
+      "cost": "0.0659 USD"
+    }
+  ],
+  "maxCost": 0.50
+}
