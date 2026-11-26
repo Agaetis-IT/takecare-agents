@@ -17,39 +17,41 @@ import (
 )
 
 const (
-	connCluster     = "kubernetes"
-	connCode        = "code"
-	connPropose     = "code-propose"
-	repoShop        = "acme/shop-deploy"
-	repoPlatform    = "acme/platform/charts"
-	githubAPI       = "https://api.github.com"
-	wantOneCluster  = "the Mécano needs at least one cluster connector"
-	wantOneCode     = "the Mécano needs at least one code connector"
-	wantRepoPropose = "each maintenance repository names the propose connector"
-	wantNoneLower   = "no scheduled maintenance is written 'none', in lower case"
-	compBilling     = "service/billing-api"
-	branchOfRecord  = "takecare/mecano/maintenance-0123456789"
-	wantPropose     = "spec.propose is only valid for a connector of type code served by an add-on"
+	connCluster      = "kubernetes"
+	connCode         = "code"
+	connPropose      = "code-propose"
+	repoShop         = "acme/shop-deploy"
+	repoPlatform     = "acme/platform/charts"
+	githubAPI        = "https://api.github.com"
+	wantOneCluster   = "the Mécano needs at least one cluster connector"
+	wantOneCode      = "the Mécano needs at least one code connector"
+	wantRepoPropose  = "each maintenance repository names the propose connector"
+	wantNoneLower    = "no scheduled maintenance is written 'none', in lower case"
+	compBilling      = "service/billing-api"
+	branchOfRecord   = "takecare/mecano/maintenance-0123456789"
+	wantPropose      = "spec.propose is only valid for a connector of type code served by an add-on"
+	connReleases     = "releases"
+	wantRepositories = "repositories"
+	wantRepository   = "repository"
+	wantComponents   = "components"
 )
 
 func mecanoFixture() *v1alpha1.TakeCareMecano {
 	return &v1alpha1.TakeCareMecano{
-		ObjectMeta: metav1.ObjectMeta{Name: uniqueName("mecano"), Namespace: testNamespace},
+		Name: uniqueName("mecano"), Namespace: testNamespace,
 		Spec: v1alpha1.TakeCareMecanoSpec{
-			RoleCommonSpec: v1alpha1.RoleCommonSpec{
-				Level:        v1alpha1.LevelPractitioner,
-				Scope:        v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{nsDemoApps}},
-				ContentTools: []string{"file_get"},
-			},
+			Level:        v1alpha1.LevelPractitioner,
+			Scope:        v1alpha1.Scope{Namespaces: []v1alpha1.Namespace{nsDemoApps}},
+			ContentTools: []string{"file_get"},
 			Connectors: v1alpha1.MecanoConnectors{
 				Cluster:   []string{connCluster},
 				Code:      []string{connCode},
 				Propose:   []string{connPropose},
 				Copy:      []string{"staging"},
-				Releases:  []string{"releases"},
+				Releases:  []string{connReleases},
 				Knowledge: []string{connRunbooks},
 				Changes:   []string{"deployments"},
-				History:   []string{"history"},
+				History:   []string{connHistory},
 				Map:       []string{connMap},
 				Report:    connReport,
 			},
@@ -82,8 +84,8 @@ func TestMecanoValidation(t *testing.T) {
 		{"complete Mécano", func(*v1alpha1.TakeCareMecano) {}, ""},
 		{"minimal Mécano", func(m *v1alpha1.TakeCareMecano) {
 			m.Spec = v1alpha1.TakeCareMecanoSpec{
-				RoleCommonSpec: v1alpha1.RoleCommonSpec{Scope: m.Spec.Scope},
-				Connectors:     v1alpha1.MecanoConnectors{Cluster: []string{connCluster}, Code: []string{connCode}},
+				Scope:      m.Spec.Scope,
+				Connectors: v1alpha1.MecanoConnectors{Cluster: []string{connCluster}, Code: []string{connCode}},
 			}
 		}, ""},
 		{"scope by entity", func(m *v1alpha1.TakeCareMecano) {
@@ -92,24 +94,24 @@ func TestMecanoValidation(t *testing.T) {
 		{"no cluster connector", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Cluster = nil }, wantOneCluster},
 		{"no code connector", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Code = nil }, wantOneCode},
 		{"16 cluster connectors", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Cluster = names(16) }, ""},
-		{"17 cluster connectors", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Cluster = names(17) }, "cluster"},
+		{"cluster slot past 16", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Cluster = names(17) }, "connectors.cluster"},
 		{"17 code connectors", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Code = names(17) }, connCode},
-		{"two propose connectors", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Propose = []string{connPropose, "other"} }, "propose"},
+		{"two propose connectors", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Propose = []string{connPropose, "second-propose"} }, "propose"},
 		{"two copy connectors", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Copy = []string{"a", "b"} }, "copy"},
 		{"4 releases connectors", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Releases = names(4) }, ""},
 		{"5 releases connectors", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Releases = names(5) }, "releases"},
 		{case17Knowledge, func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Knowledge = names(17) }, wantKnowledge},
-		{"17 changes connectors", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Changes = names(17) }, "changes"},
-		{"two history connectors", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.History = []string{"a", "b"} }, "history"},
-		{"two map connectors", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Map = []string{connMap, "other-map"} }, connMap},
+		{"changes slot past 16", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Changes = names(17) }, "connectors.changes"},
+		{"two history connectors", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.History = []string{"a", "b"} }, "connectors.history"},
+		{"map slot past 1", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Map = []string{connMap, "second-map"} }, connMap},
 		{"code name past 253", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Code = []string{strings.Repeat("c", 254)} }, connCode},
-		{"report connector past 253", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Report = strings.Repeat("r", 254) }, connReport},
+		{"report name past 253", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Report = strings.Repeat("r", 254) }, connReport},
 		{caseUnknownLevel, func(m *v1alpha1.TakeCareMecano) { m.Spec.Level = badLevel }, wantLevel},
 		{caseEmptyScope, func(m *v1alpha1.TakeCareMecano) { m.Spec.Scope.Namespaces = nil }, wantSelector},
 		{"schedule with CRON_TZ=", func(m *v1alpha1.TakeCareMecano) { m.Spec.Schedule = "CRON_TZ=Europe/Paris 0 5 * * 1" }, v1alpha1.MessageScheduleUTC},
 		{"no scheduled maintenance", func(m *v1alpha1.TakeCareMecano) { m.Spec.Schedule = v1alpha1.ScheduleNone }, ""},
 		{"none in upper case", func(m *v1alpha1.TakeCareMecano) { m.Spec.Schedule = "NONE" }, wantNoneLower},
-		{"schedule too long", func(m *v1alpha1.TakeCareMecano) { m.Spec.Schedule = strings.Repeat("*", 101) }, "schedule"},
+		{"schedule past 100", func(m *v1alpha1.TakeCareMecano) { m.Spec.Schedule = strings.Repeat("*", 101) }, "spec.schedule"},
 		{caseNameAtBound, func(m *v1alpha1.TakeCareMecano) { m.Name = padded(m.Name, v1alpha1.MaxMecanoName) }, ""},
 		{caseNamePastBound, func(m *v1alpha1.TakeCareMecano) { m.Name = padded(m.Name, v1alpha1.MaxMecanoName+1) }, v1alpha1.MessageMecanoName},
 		{"maintenance settings", func(m *v1alpha1.TakeCareMecano) {
@@ -120,7 +122,7 @@ func TestMecanoValidation(t *testing.T) {
 			m.Spec.Maintenance.CertificateWarning = duration(0)
 		}, "maintenance.certificateWarning must be positive"},
 		{"16 repositories", func(m *v1alpha1.TakeCareMecano) { m.Spec.Maintenance.Repositories = repositories(16) }, ""},
-		{"17 repositories", func(m *v1alpha1.TakeCareMecano) { m.Spec.Maintenance.Repositories = repositories(17) }, "repositories"},
+		{"17 repositories", func(m *v1alpha1.TakeCareMecano) { m.Spec.Maintenance.Repositories = repositories(17) }, wantRepositories},
 		{"repository twice", func(m *v1alpha1.TakeCareMecano) {
 			m.Spec.Maintenance.Repositories[1].Repository = repoShop
 		}, wantDuplicate},
@@ -129,7 +131,7 @@ func TestMecanoValidation(t *testing.T) {
 		}, wantRepoPropose},
 		{"repositories without a propose connector", func(m *v1alpha1.TakeCareMecano) { m.Spec.Connectors.Propose = nil }, wantRepoPropose},
 		{"a propose connector and no repository", func(m *v1alpha1.TakeCareMecano) { m.Spec.Maintenance.Repositories = nil }, ""},
-		{"empty repository", func(m *v1alpha1.TakeCareMecano) { m.Spec.Maintenance.Repositories[0].Repository = "" }, "repository"},
+		{"empty repository", func(m *v1alpha1.TakeCareMecano) { m.Spec.Maintenance.Repositories[0].Repository = "" }, wantRepository},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -143,8 +145,8 @@ func TestMecanoValidation(t *testing.T) {
 func TestMecanoDefaults(t *testing.T) {
 	m := mecanoFixture()
 	m.Spec = v1alpha1.TakeCareMecanoSpec{
-		RoleCommonSpec: v1alpha1.RoleCommonSpec{Scope: m.Spec.Scope},
-		Connectors:     v1alpha1.MecanoConnectors{Cluster: []string{connCluster}, Code: []string{connCode}},
+		Scope:      m.Spec.Scope,
+		Connectors: v1alpha1.MecanoConnectors{Cluster: []string{connCluster}, Code: []string{connCode}},
 	}
 	checkError(t, create(t, m), "")
 	var got v1alpha1.TakeCareMecano
@@ -174,7 +176,7 @@ func TestMecanoDefaults(t *testing.T) {
 
 func maintenanceFixture() *v1alpha1.TakeCareMaintenance {
 	return &v1alpha1.TakeCareMaintenance{
-		ObjectMeta: metav1.ObjectMeta{Name: uniqueName("maintenance"), Namespace: testNamespace},
+		Name: uniqueName("maintenance"), Namespace: testNamespace,
 		Spec: v1alpha1.TakeCareMaintenanceSpec{
 			MecanoRef:  v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareMecano, Name: "mecano"},
 			Trigger:    v1alpha1.MaintenanceTriggerSchedule,
@@ -201,14 +203,14 @@ func TestMaintenanceValidation(t *testing.T) {
 		{"on demand, nothing named", func(m *v1alpha1.TakeCareMaintenance) {
 			m.Spec = v1alpha1.TakeCareMaintenanceSpec{MecanoRef: m.Spec.MecanoRef, Silent: true}
 		}, ""},
-		{"unknown trigger", func(m *v1alpha1.TakeCareMaintenance) { m.Spec.Trigger = "Investigation" }, "trigger"},
+		{"a trigger it does not know", func(m *v1alpha1.TakeCareMaintenance) { m.Spec.Trigger = "Investigation" }, "spec.trigger"},
 		{"a review's kind", func(m *v1alpha1.TakeCareMaintenance) { m.Spec.MecanoRef.Kind = v1alpha1.KindTakeCareKine }, "a maintenance belongs to a TakeCareMecano"},
 		{caseUnknownRoleKind, func(m *v1alpha1.TakeCareMaintenance) { m.Spec.MecanoRef.Kind = kindRanger }, wantKind},
 		{"Mécano without a name", func(m *v1alpha1.TakeCareMaintenance) { m.Spec.MecanoRef.Name = "" }, wantName},
 		{"20 components", func(m *v1alpha1.TakeCareMaintenance) { m.Spec.Components = components(20) }, ""},
-		{"21 components", func(m *v1alpha1.TakeCareMaintenance) { m.Spec.Components = components(21) }, "components"},
-		{"component past 253", func(m *v1alpha1.TakeCareMaintenance) { m.Spec.Components = []string{strings.Repeat("c", 254)} }, "components"},
-		{"empty component", func(m *v1alpha1.TakeCareMaintenance) { m.Spec.Components = []string{""} }, "components"},
+		{"21 components", func(m *v1alpha1.TakeCareMaintenance) { m.Spec.Components = components(21) }, wantComponents},
+		{"component past 253", func(m *v1alpha1.TakeCareMaintenance) { m.Spec.Components = []string{strings.Repeat("c", 254)} }, wantComponents},
+		{"empty component", func(m *v1alpha1.TakeCareMaintenance) { m.Spec.Components = []string{""} }, wantComponents},
 		{"unknown level", func(m *v1alpha1.TakeCareMaintenance) { m.Spec.Level = badLevel }, wantLevel},
 		{caseNameAtBound, func(m *v1alpha1.TakeCareMaintenance) { m.Name = padded(m.Name, v1alpha1.MaxMaintenanceName) }, ""},
 		{caseNamePastBound, func(m *v1alpha1.TakeCareMaintenance) {
@@ -229,7 +231,7 @@ func maintenanceStatus() v1alpha1.TakeCareMaintenanceStatus {
 	ends := metav1.NewTime(time.Date(2027, 2, 28, 0, 0, 0, 0, time.UTC))
 	ev := []v1alpha1.Evidence{{Tool: "resources_list", Record: "demo-apps/billing-api"}}
 	return v1alpha1.TakeCareMaintenanceStatus{
-		RunStatus: v1alpha1.RunStatus{Phase: v1alpha1.RunCompleted},
+		Phase: v1alpha1.RunCompleted,
 		Inventory: &v1alpha1.MaintenanceInventory{
 			Components: []v1alpha1.InventoryComponent{{
 				Key: compBilling, Live: "1.4.2", Declared: "1.5.0", Latest: "1.6.1", SupportEnds: &ends,
@@ -322,10 +324,10 @@ func TestMaintenanceIsARecord(t *testing.T) {
 		mutate func(*v1alpha1.TakeCareMaintenanceStatus)
 		want   string
 	}{
-		{"a complete status", func(*v1alpha1.TakeCareMaintenanceStatus) {}, ""},
+		{"a complete maintenance status", func(*v1alpha1.TakeCareMaintenanceStatus) {}, ""},
 		{"unknown phase", func(st *v1alpha1.TakeCareMaintenanceStatus) { st.Phase = v1alpha1.PhaseTimedOut }, "phase must be"},
 		{"200 components", func(st *v1alpha1.TakeCareMaintenanceStatus) { st.Inventory.Components = components(200) }, ""},
-		{"201 components", func(st *v1alpha1.TakeCareMaintenanceStatus) { st.Inventory.Components = components(201) }, "components"},
+		{"201 components", func(st *v1alpha1.TakeCareMaintenanceStatus) { st.Inventory.Components = components(201) }, wantComponents},
 		{"100 certificates", func(st *v1alpha1.TakeCareMaintenanceStatus) { st.Inventory.Certificates = certificates(100) }, ""},
 		{"101 certificates", func(st *v1alpha1.TakeCareMaintenanceStatus) { st.Inventory.Certificates = certificates(101) }, "certificates"},
 		{"unknown drift", func(st *v1alpha1.TakeCareMaintenanceStatus) { st.Inventory.Components[0].Drift = "Diverged" }, "drift"},
@@ -343,7 +345,7 @@ func TestMaintenanceIsARecord(t *testing.T) {
 		{"51 findings", func(st *v1alpha1.TakeCareMaintenanceStatus) { st.Findings = findings(51) }, "findings"},
 		{"duplicate finding id", func(st *v1alpha1.TakeCareMaintenanceStatus) { st.Findings[1].ID = st.Findings[0].ID }, wantDuplicate},
 		{"unknown finding kind", func(st *v1alpha1.TakeCareMaintenanceStatus) { st.Findings[0].Kind = "Security" }, wantKind},
-		{"unknown severity", func(st *v1alpha1.TakeCareMaintenanceStatus) { st.Findings[0].Severity = critical }, "severity"},
+		{"unknown severity", func(st *v1alpha1.TakeCareMaintenanceStatus) { st.Findings[0].Severity = critical }, "findings[0].severity"},
 		{"finding text at 512", func(st *v1alpha1.TakeCareMaintenanceStatus) {
 			st.Findings[0].Text = strings.Repeat("t", v1alpha1.MaxFindingText)
 		}, ""},
@@ -393,7 +395,7 @@ func TestMaintenanceIsARecord(t *testing.T) {
 
 func codeConnector() *v1alpha1.TakeCareConnector {
 	return &v1alpha1.TakeCareConnector{
-		ObjectMeta: metav1.ObjectMeta{Name: uniqueName(connPropose), Namespace: testNamespace},
+		Name: uniqueName(connPropose), Namespace: testNamespace,
 		Spec: v1alpha1.TakeCareConnectorSpec{
 			Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorCode},
 			MCP:   v1alpha1.MCPSpec{Addon: connPropose},
@@ -433,16 +435,16 @@ func TestCodeConnectorValidation(t *testing.T) {
 		{"propose by url", func(c *v1alpha1.TakeCareConnector) {
 			c.Spec.MCP = v1alpha1.MCPSpec{URL: "https://forge-mcp.example.org/mcp"}
 		}, wantPropose},
-		{"no repository", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories = nil }, "repositories"},
+		{"no repository", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories = nil }, wantRepositories},
 		{"16 repositories", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories = repos(16) }, ""},
-		{"17 repositories", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories = repos(17) }, "repositories"},
+		{"17 repositories", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories = repos(17) }, wantRepositories},
 		{"repository twice", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories[1].Repository = repoShop }, wantDuplicate},
 		{"unknown forge", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories[0].Forge = "gitea" }, "forge"},
 		{"api over http", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories[0].APIURL = "http://api.github.com" }, "apiURL"},
-		{"repository without an owner", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories[0].Repository = "shop" }, "repository"},
+		{"repository without an owner", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.Repositories[0].Repository = "shop" }, wantRepository},
 		{"repository escaping its path", func(c *v1alpha1.TakeCareConnector) {
 			c.Spec.Propose.Repositories[0].Repository = "acme/shop?ref=main"
-		}, "repository"},
+		}, wantRepository},
 		{"no token Secret", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose.TokenSecretRef.Name = "" }, wantName},
 	}
 	for _, tt := range tests {
@@ -458,7 +460,7 @@ func TestCodeConnectorValidation(t *testing.T) {
 // enum is checked with its other kinds (ranger_test.go).
 func TestRoleRefTakesTheMecano(t *testing.T) {
 	inv := &v1alpha1.TakeCareInvestigation{
-		ObjectMeta: metav1.ObjectMeta{Name: uniqueName("inv"), Namespace: testNamespace},
+		Name: uniqueName("inv"), Namespace: testNamespace,
 		Spec: v1alpha1.TakeCareInvestigationSpec{
 			RoleRef: v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareMecano, Name: "mecano"},
 			Alert:   v1alpha1.AlertRecord{Name: "HighErrorRate"},

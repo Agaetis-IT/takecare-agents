@@ -65,6 +65,7 @@ const (
 	wantKnowledge       = "knowledge"
 	wantKind            = "kind"
 	caseUnknownRoleKind = "unknown role kind"
+	colTrigger          = "Trigger"
 )
 
 var (
@@ -160,11 +161,11 @@ func TestCRDsExposeTheStaff(t *testing.T) {
 		{"takecaredemos.takecare.agaetis.fr", "tcdemo", apiextensionsv1.NamespaceScoped, []string{"Scenario", colPhase, colReady, colAge}},
 		{"takecarerangers.takecare.agaetis.fr", "tcranger", apiextensionsv1.ClusterScoped, []string{colLevel, "Enforcing", colReady, colAge}},
 		{"takecareintendants.takecare.agaetis.fr", "tcintendant", apiextensionsv1.NamespaceScoped, []string{colLevel, colReady, "Last survey", colAge}},
-		{"takecaresurveys.takecare.agaetis.fr", "tcsurvey", apiextensionsv1.NamespaceScoped, []string{"Intendant", "Trigger", colPhase, "Revision", "Proposals", colPublished, colAge}},
+		{"takecaresurveys.takecare.agaetis.fr", "tcsurvey", apiextensionsv1.NamespaceScoped, []string{"Intendant", colTrigger, colPhase, "Revision", "Proposals", colPublished, colAge}},
 		{"takecarekines.takecare.agaetis.fr", "tckine", apiextensionsv1.NamespaceScoped, []string{colLevel, colReady, "Last review", colAge}},
-		{"takecarereviews.takecare.agaetis.fr", "tcreview", apiextensionsv1.NamespaceScoped, []string{colPhase, "Trigger", "Incident", "Actions", "Open", colPublished, colAge}},
+		{"takecarereviews.takecare.agaetis.fr", "tcreview", apiextensionsv1.NamespaceScoped, []string{colPhase, colTrigger, "Incident", "Actions", "Open", colPublished, colAge}},
 		{"takecaremecanos.takecare.agaetis.fr", "tcmecano", apiextensionsv1.NamespaceScoped, []string{colLevel, colReady, "Last maintenance", colAge}},
-		{"takecaremaintenances.takecare.agaetis.fr", "", apiextensionsv1.NamespaceScoped, []string{colPhase, "Trigger", "Findings", "Now", "PR", colPublished, colAge}},
+		{"takecaremaintenances.takecare.agaetis.fr", "", apiextensionsv1.NamespaceScoped, []string{colPhase, colTrigger, "Findings", "Now", "PR", colPublished, colAge}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.crd, func(t *testing.T) {

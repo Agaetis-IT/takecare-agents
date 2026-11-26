@@ -275,7 +275,7 @@ type MaintenanceOmitted struct {
 	GitOps int32 `json:"gitops,omitempty"`
 }
 
-// MaintenanceFinding is the agent's prioritised reading of one fact of
+// MaintenanceFinding is the agent's prioritized reading of one fact of
 // the inventory.
 type MaintenanceFinding struct {
 	// Stable across maintenances: <kind>/<component>, or
