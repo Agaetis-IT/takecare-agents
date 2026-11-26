@@ -81,6 +81,12 @@ reverse path order, so this file, last by name, is evaluated first.
 {{- if regexMatch "^https://[^/]*@" $url }}
 {{- fail (printf "addons.code.repositories[%s].url carries user information: the credential comes from credentialSecret, never the URL" .name) }}
 {{- end }}
+{{- if regexMatch "^ssh://[^/@]*:[^/@]*@" $url }}
+{{- fail (printf "addons.code.repositories[%s].url carries a password: the credential comes from sshKeySecret, never the URL" .name) }}
+{{- end }}
+{{- if and (hasPrefix "https://" $url) (dig "sshKeySecret" "name" "" .) }}
+{{- fail (printf "addons.code.repositories[%s]: sshKeySecret goes with an SSH remote, not an https URL: use credentialSecret" .name) }}
+{{- end }}
 {{- if and (dig "credentialSecret" "name" "" .) (dig "sshKeySecret" "name" "" .) }}
 {{- fail (printf "addons.code.repositories[%s]: credentialSecret and sshKeySecret are exclusive: one credential" .name) }}
 {{- end }}
