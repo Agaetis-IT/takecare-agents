@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"strings"
 	"time"
 )
@@ -49,12 +50,14 @@ Run "takecare <command> -h" for a command's flags.
 `
 
 // app is one run: its streams and its clock. terminal tells whether
-// stdin is one: without it, no command prompts.
+// stdin is one: without it, no command prompts. cliVersion is this
+// takecare's version, compared with the cluster's (skew.go).
 type app struct {
 	stdin          io.Reader
 	stdout, stderr io.Writer
 	terminal       bool
 	now            func() time.Time
+	cliVersion     string
 }
 
 // Run runs the command line args (without the program name) and returns
@@ -63,7 +66,8 @@ type app struct {
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	info, err := os.Stdin.Stat()
 	terminal := err == nil && info.Mode()&os.ModeCharDevice != 0
-	a := &app{stdin: os.Stdin, stdout: stdout, stderr: stderr, terminal: terminal, now: time.Now}
+	a := &app{stdin: os.Stdin, stdout: stdout, stderr: stderr, terminal: terminal, now: time.Now,
+		cliVersion: buildInfo(debug.ReadBuildInfo).Version}
 	return a.run(ctx, args)
 }
 

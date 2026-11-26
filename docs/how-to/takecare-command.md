@@ -53,6 +53,8 @@ rules:
 
 Bind it to a group with a `ClusterRoleBinding`. The platform and the Ranger are cluster-scoped, which is why the example is a ClusterRole.
 
+`status`, `discover` and `review` also read the version the chart wrote on the `TakeCarePlatform`. When your `takecare` and the cluster's TakeCare are more than one minor version apart, they print a warning on stderr (a `versionSkew` field with `--output json`) and go on: install the `takecare` of the cluster's version. Without the right to list `takecareplatforms`, `discover` and `review` skip that check.
+
 ## `takecare init`
 
 Asks factual questions about your ground and writes the first files of an install into a Git working copy: the Map's first entries, the values for the `takecare` chart, the Doc and the Intendant at level Apprentice, and a connector to a runbook source served over MCP when you name one.

@@ -1,0 +1,52 @@
+## same: takecare v0.5.0, cluster "0.5.0"
+stderr: ""
+json: {}
+
+## same minor, other patch: takecare v0.5.2, cluster "0.5.0"
+stderr: ""
+json: {}
+
+## takecare one minor ahead: takecare v0.6.0, cluster "0.5.0"
+stderr: ""
+json: {}
+
+## takecare one minor behind: takecare v0.4.1, cluster "0.5.0"
+stderr: ""
+json: {}
+
+## takecare two minors ahead: takecare v0.7.0, cluster "0.5.0"
+stderr: "takecare: warning: takecare v0.7.0 and TakeCare 0.5.0 in the cluster are more than one minor version apart: use a takecare of the cluster's version\n"
+json: {"versionSkew":{"cli":"v0.7.0","cluster":"0.5.0","message":"takecare v0.7.0 and TakeCare 0.5.0 in the cluster are more than one minor version apart: use a takecare of the cluster's version"}}
+
+## takecare two minors behind: takecare v0.3.1, cluster "0.5.0"
+stderr: "takecare: warning: takecare v0.3.1 and TakeCare 0.5.0 in the cluster are more than one minor version apart: use a takecare of the cluster's version\n"
+json: {"versionSkew":{"cli":"v0.3.1","cluster":"0.5.0","message":"takecare v0.3.1 and TakeCare 0.5.0 in the cluster are more than one minor version apart: use a takecare of the cluster's version"}}
+
+## another major: takecare v1.5.0, cluster "0.5.0"
+stderr: "takecare: warning: takecare v1.5.0 and TakeCare 0.5.0 in the cluster are more than one minor version apart: use a takecare of the cluster's version\n"
+json: {"versionSkew":{"cli":"v1.5.0","cluster":"0.5.0","message":"takecare v1.5.0 and TakeCare 0.5.0 in the cluster are more than one minor version apart: use a takecare of the cluster's version"}}
+
+## release candidate: takecare v0.7.0-rc.1, cluster "0.5.0"
+stderr: "takecare: warning: takecare v0.7.0-rc.1 and TakeCare 0.5.0 in the cluster are more than one minor version apart: use a takecare of the cluster's version\n"
+json: {"versionSkew":{"cli":"v0.7.0-rc.1","cluster":"0.5.0","message":"takecare v0.7.0-rc.1 and TakeCare 0.5.0 in the cluster are more than one minor version apart: use a takecare of the cluster's version"}}
+
+## go install pseudo-version: takecare v0.5.1-0.20261126101500-28fd06618bd6, cluster "0.5.0"
+stderr: ""
+json: {}
+
+## cluster version unknown: takecare v0.7.0, cluster ""
+stderr: ""
+json: {}
+
+## cluster version not a version: takecare v0.7.0, cluster "latest"
+stderr: ""
+json: {}
+
+## dev build: takecare unknown, cluster "0.5.0"
+stderr: ""
+json: {}
+
+## go build without a tag: takecare v0.0.0-20261126101500-28fd06618bd6, cluster "0.5.0"
+stderr: ""
+json: {}
+

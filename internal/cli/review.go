@@ -61,6 +61,9 @@ type Review struct {
 	Branch    string   `json:"branch,omitempty"`
 	// Faults are the resulting Map's, when it does not validate.
 	Faults []string `json:"faults"`
+	// VersionSkew is set when takecare and the cluster are more than one
+	// minor version apart.
+	VersionSkew *VersionSkew `json:"versionSkew,omitempty"`
 }
 
 // flags registers review's flags.
@@ -104,6 +107,9 @@ func (a *app) runReview(ctx context.Context, r getLister, o *reviewOpts) int {
 	if err != nil {
 		return a.fail("review: %v", err)
 	}
+	// Once the cluster answered, so that its own error wins.
+	sk := a.clusterSkew(ctx, r)
+	a.warnSkew(o.common, sk)
 	if s.Status.Phase != v1alpha1.RunCompleted {
 		return a.fail("review: the survey %s is %s, not Completed: %s", s.Name, cmp.Or(string(s.Status.Phase), "not started"), s.Status.Reason)
 	}
@@ -120,7 +126,8 @@ func (a *app) runReview(ctx context.Context, r getLister, o *reviewOpts) int {
 		return a.fail("review: %v", err)
 	}
 	res := Review{SchemaVersion: reviewSchemaVersion, Survey: s.Name, MapRevision: s.Status.MapRevision, NotRead: notRead,
-		Accepted: []string{}, Validated: []string{}, Skipped: []string{}, Written: []string{}, Deleted: []string{}, Faults: []string{}}
+		Accepted: []string{}, Validated: []string{}, Skipped: []string{}, Written: []string{}, Deleted: []string{}, Faults: []string{},
+		VersionSkew: sk}
 	if !o.noCommit {
 		// Before any question, so that no answer is lost (spec 13 §7).
 		if res.Branch, err = branchReady(ctx, ".", cmp.Or(o.branch, "takecare/review-"+s.Name)); err != nil {
