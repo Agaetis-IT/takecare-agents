@@ -75,6 +75,12 @@ reverse path order, so this file, last by name, is evaluated first.
 {{- if not $url }}
 {{- fail (printf "addons.code.repositories[%s].url is REQUIRED: https://... or an SSH remote" .name) }}
 {{- end }}
+{{- if not (or (hasPrefix "https://" $url) (hasPrefix "ssh://" $url) (regexMatch "^[^/:]+@[^/:]+:" $url)) }}
+{{- fail (printf "addons.code.repositories[%s].url: https://... or an SSH remote (ssh://git@host/path or git@host:path), no other scheme" .name) }}
+{{- end }}
+{{- if regexMatch "^https://[^/]*@" $url }}
+{{- fail (printf "addons.code.repositories[%s].url carries user information: the credential comes from credentialSecret, never the URL" .name) }}
+{{- end }}
 {{- if and (dig "credentialSecret" "name" "" .) (dig "sshKeySecret" "name" "" .) }}
 {{- fail (printf "addons.code.repositories[%s]: credentialSecret and sshKeySecret are exclusive: one credential" .name) }}
 {{- end }}
