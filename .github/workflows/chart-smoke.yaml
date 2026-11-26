@@ -3,7 +3,8 @@
 
 # Installs and upgrades both charts for real on k3d with the pinned Helm 4,
 # then checks the ADR 0007 installation requirements on the cluster
-# (hack/chart-smoke.sh). Runs only when what it exercises changes.
+# (hack/chart-smoke.sh), in two parallel jobs. Runs only when what it
+# exercises changes.
 name: chart-smoke
 
 on:
@@ -45,12 +46,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Two parallel jobs, each on its own cluster (hack/chart-smoke.sh job-a,
+  # job-b): job A installs and runs the check list; job B installs, leaves
+  # the install pass's writes on the chart's objects without checking them,
+  # upgrades, runs the whole check list again, then the customer connector
+  # and the front. Together they run every check of the former single job.
   smoke:
-    name: install and upgrade on k3d, ADR 0007 checks
+    name: ${{ matrix.name }}
     runs-on: ubuntu-24.04
-    # The smoke takes about 22 minutes: a hung run stops here instead of
-    # after GitHub's six hours.
-    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - phase: job-a
+            name: install on k3d, ADR 0007 checks
+            # About 11 minutes: a hung run stops here instead of after
+            # GitHub's six hours.
+            timeout: 25
+          - phase: job-b
+            name: upgrade on k3d, ADR 0007 checks, customer connector and front
+            # About 14 minutes.
+            timeout: 30
+    timeout-minutes: ${{ matrix.timeout }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
@@ -104,7 +121,8 @@ jobs:
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       # The Actions cache's URL and token, for buildx's type=gha cache.
       - uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
-      - run: make chart-smoke
+      - run: make helm
+      - run: hack/chart-smoke.sh ${{ matrix.phase }}
       - name: cluster state on failure
         if: failure()
         run: hack/chart-smoke.sh status || true
