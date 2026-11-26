@@ -49,11 +49,11 @@ A checker (`make scenarios-check`, run by `make lint`) validates every file agai
 ### 3.1 `id` and `version`
 
 - `id`: a DNS label, unique across the set, stable for the scenario's life. It is the value of the trace attribute `takecare.scenario` (ADR 0006) and, for a scenario the demo injects, of `TakeCareDemo.spec.scenario`.
-
-`TakeCareDemo.spec.scenario` **keeps its enum**: one value per scenario whose injection the controller carries, since the controller is what knows how to inject it. A scenario file does not add a value; porting a scenario's injection into the controller does (§5). Other drivers (§3.4) do not go through `TakeCareDemo`.
 - `version`: an integer from 1, raised by every change that can change a score: the injection, a cause, a matcher, the blind spots, the safe-action class, the cutoff. A typo in `title` does not raise it.
 
 A report names `<id>@<version>`. Two reports compare only at the same version; the bench refuses a baseline taken at another one and says so.
+
+`TakeCareDemo.spec.scenario` **keeps its enum**: one value per scenario whose injection the controller carries, since the controller is what knows how to inject it. A scenario file does not add a value; porting a scenario's injection into the controller does (§5). Other drivers (§3.4) do not go through `TakeCareDemo`.
 
 ### 3.2 `ground`
 
