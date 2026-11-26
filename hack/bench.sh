@@ -14,7 +14,8 @@
 # metrics, never the diagnosis) and prints the table. BENCH_MIN=<k> exits 1
 # below k correct. A run that does not settle in BENCH_SETTLE_SECONDS
 # (default 900) stops the bench after hack/dump.sh has saved the cluster's
-# state; the dump's directory is printed and named in the report.
+# state; the dump's directory is printed, and only its base name is
+# written in the report (no local path).
 # Usage: hack/bench.sh [N]   (default 5)
 set -euo pipefail
 
@@ -48,7 +49,7 @@ die() {
     local d
     if d="$(hack/dump.sh "bench: $*" | tail -1)"; then
       log "dump: ${d}"
-      [[ -n "$report" && -f "$report" ]] && jq --arg d "$d" '.dump = $d' "$report" >"$report.tmp" && mv "$report.tmp" "$report"
+      [[ -n "$report" && -f "$report" ]] && jq --arg d "$(basename "$d")" '.dump = $d' "$report" >"$report.tmp" && mv "$report.tmp" "$report"
     else
       log "the dump failed"
     fi
