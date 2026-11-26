@@ -66,6 +66,7 @@ die() {
 [[ -f "$KUBECONFIG" ]] || die "no demo: make demo-up first"
 [[ -f "$SCENARIO_FILE" ]] || die "no scenario ${SCENARIO_FILE}"
 WORK="$(mktemp -d)"
+dump_armed=true
 pf_pids=()
 
 # restore puts the Doc's cooldown back as it was, on every exit.
@@ -128,8 +129,6 @@ ref="$(jq -r .ref "$WORK/info.json")"
 "$WORK/player" score -scenario "$SCENARIO_FILE" -investigation <(echo '{}') >/dev/null ||
   die "the scenario ${ref} cannot be scored on this bench (above)"
 [[ "$(jq -r .driver "$WORK/info.json")" == takecare-demo ]] || die "${ref} is not injected by the demo"
-[[ "$(kubectl -n "$NS" get takecaredemo demo -o jsonpath='{.spec.scenario}')" == "$SCENARIO" ]] ||
-  die "the demo plays another scenario than ${SCENARIO}: kubectl -n ${NS} get takecaredemo demo"
 missing="$(kubectl -n "$NS" get takecaredoc "$DOC" -o json | jq -r --slurpfile i "$WORK/info.json" '
   [$i[0].connectors[] as $t | select((.spec.connectors[$t] // []) | length == 0) | $t] | join(", ")')"
 [[ -z "$missing" ]] || die "the Doc is bound to no ${missing} connector, which ${ref} needs: a missing source is not scored zero"
@@ -139,7 +138,12 @@ if [[ -n "${BENCH_BASELINE:-}" ]]; then
   base_ref="$(jq -r '.scenario | if test("@") then . else . + "@1" end' "$BENCH_BASELINE")" || die "cannot read the baseline ${BENCH_BASELINE}"
   [[ "$base_ref" == "$ref" ]] || die "the baseline ${BENCH_BASELINE} is at ${base_ref}, this bench plays ${ref}: reports compare only at the same version"
 fi
-dump_armed=true
+
+# What already runs settles first, the incident's investigation if it
+# started (none returns at once): the bench measures by deltas.
+wait_settled "$SETTLE" || die "the demo's investigations did not settle in ${SETTLE} s"
+playing="$(kubectl -n "$NS" get takecaredemo demo -o jsonpath='{.spec.scenario}')" || die "no TakeCareDemo demo in ${NS}: make demo-up"
+[[ "$playing" == "$SCENARIO" ]] || die "the demo plays ${playing}, not ${SCENARIO}: kubectl -n ${NS} get takecaredemo demo"
 
 # not_played writes the report of a bench that could not play, then stops.
 not_played() {
