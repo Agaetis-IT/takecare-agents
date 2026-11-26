@@ -290,7 +290,7 @@ type SignalState struct {
 // Signal decides a pass's signal state from the alerts firing now, the
 // injection's time and the scenario's window.
 func Signal(s *Scenario, injected, now time.Time, firing []string, grace time.Duration) (SignalState, error) {
-	if s.Fault.Signals.Trigger != "alert" {
+	if s.Fault.Signals.Trigger != triggerAlert {
 		return SignalState{}, fmt.Errorf("trigger %s: this player plays alert scenarios only", s.Fault.Signals.Trigger)
 	}
 	st := SignalState{Deadline: injected.Add(s.window[1] + grace).UTC()}

@@ -43,7 +43,7 @@ func LoadWorld(s *Scenario, mapDir string) (*World, error) {
 		return nil, fmt.Errorf("the %s Map (%s): %w", s.Ground.Map, mapDir, err)
 	}
 	w := &World{Entries: m.Entries}
-	if s.Fault.Injection.Driver == "takecare-demo" {
+	if s.Fault.Injection.Driver == driverDemo {
 		// The records a live demo scenario can cite: the corpus's seeds
 		// for that scenario (the generated noise has no stable id).
 		c, err := corpus.Seeds(s.ID, time.Now())
@@ -61,9 +61,23 @@ func LoadWorld(s *Scenario, mapDir string) (*World, error) {
 	return w, nil
 }
 
+// Values of the format the rules below read.
+const (
+	classNone        = "none"
+	variantFalse     = "false-alarm"
+	variantTwoFaults = "two-faults"
+	triggerAlert     = "alert"
+	triggerOnDemand  = "onDemand"
+	driverDemo       = "takecare-demo"
+)
+
 // classes are the action classes, from least to most harmful (spec 14
 // §3.8).
-var classes = []string{"none", "reversible", "disruptive", "destructive"}
+var classes = []string{classNone, "reversible", "disruptive", "destructive"}
+
+// rules are the format's rules the schema cannot say, each adding its
+// faults.
+var rules = []func(s *Scenario, fail func(string, ...any)){checkSignals, checkCauses, checkCutoff, checkIDs}
 
 // Check applies the format's rules the schema cannot say, and checks the
 // scenario's keys and records against its world. file is the scenario's
@@ -81,35 +95,49 @@ func Check(s *Scenario, file string, w *World, allowReserved bool) []error {
 	if s.Ground.Type != "kubernetes" {
 		fail("ground.type %s: only kubernetes is playable today", s.Ground.Type)
 	}
+	for _, rule := range rules {
+		rule(s, fail)
+	}
+	if w != nil {
+		checkWorld(s, w, fail)
+	}
+	return errs
+}
 
+// checkSignals: the alerts go with their trigger, the window is in order
+// (spec 14 §3.4).
+func checkSignals(s *Scenario, fail func(string, ...any)) {
 	sig := s.Fault.Signals
 	switch {
-	case sig.Trigger == "alert" && len(sig.Alerts) == 0:
+	case sig.Trigger == triggerAlert && len(sig.Alerts) == 0:
 		fail("fault.signals: trigger alert names no alert")
-	case sig.Trigger == "onDemand" && len(sig.Alerts) > 0:
+	case sig.Trigger == triggerOnDemand && len(sig.Alerts) > 0:
 		fail("fault.signals: trigger onDemand takes alerts: []")
 	}
 	if s.window[0] > s.window[1] {
 		fail("fault.signals.window: from %s is after to %s", sig.Window.From, sig.Window.To)
 	}
-	if sig.Trigger == "onDemand" && s.window[0] != s.window[1] {
+	if sig.Trigger == triggerOnDemand && s.window[0] != s.window[1] {
 		fail("fault.signals.window: without an alert, from and to are the wait before the record, equal")
 	}
+}
 
-	// Causes per variant (spec 14 §3.5).
+// checkCauses: the causes, the class and the blind spots per variant
+// (spec 14 §3.3, §3.5, §3.7).
+func checkCauses(s *Scenario, fail func(string, ...any)) {
 	n := len(s.Causes.Items)
 	switch {
-	case s.Variant == "false-alarm" && !s.Causes.None:
+	case s.Variant == variantFalse && !s.Causes.None:
 		fail("causes: a false-alarm has causes: none")
-	case s.Variant != "false-alarm" && s.Causes.None:
+	case s.Variant != variantFalse && s.Causes.None:
 		fail("causes: none is for a false-alarm only")
-	case s.Variant == "two-faults" && n != 2:
+	case s.Variant == variantTwoFaults && n != 2:
 		fail("causes: a two-faults scenario has two causes, not %d", n)
-	case !s.Causes.None && s.Variant != "two-faults" && n != 1:
+	case !s.Causes.None && s.Variant != variantTwoFaults && n != 1:
 		fail("causes: a %s scenario has one cause, not %d", s.Variant, n)
 	}
-	if s.Variant == "false-alarm" {
-		if s.SafeAction.Class != "none" {
+	if s.Variant == variantFalse {
+		if s.SafeAction.Class != classNone {
 			fail("safeAction.class: a false-alarm allows none, not %s", s.SafeAction.Class)
 		}
 		if len(s.Evidence.Expected) == 0 {
@@ -119,15 +147,18 @@ func Check(s *Scenario, file string, w *World, allowReserved bool) []error {
 	if s.Variant == "mute-source" && len(s.BlindSpots) == 0 {
 		fail("blindSpots: a mute-source scenario has at least one")
 	}
+}
 
-	// The cutoff (spec 14 §3.10).
+// checkCutoff: none for a live scenario, a time for a replay, and the
+// excluded sources among the blind spots (spec 14 §3.10).
+func checkCutoff(s *Scenario, fail func(string, ...any)) {
 	switch mode := s.Fault.Injection.Mode; {
 	case mode == "live" && !s.Cutoff.None:
 		fail("cutoff: a live scenario has cutoff: none")
 	case mode == "replay" && s.Cutoff.None:
 		fail("cutoff: a replay names its cutoff")
 	}
-	if !s.Cutoff.None && s.Cutoff.At != "alert" {
+	if !s.Cutoff.None && s.Cutoff.At != triggerAlert {
 		if _, err := time.Parse(time.RFC3339, s.Cutoff.At); err != nil {
 			fail("cutoff.at %s: not an RFC 3339 time", s.Cutoff.At)
 		}
@@ -135,8 +166,10 @@ func Check(s *Scenario, file string, w *World, allowReserved bool) []error {
 	if len(s.Cutoff.Excluded) > 0 && !slices.ContainsFunc(s.BlindSpots, func(b BlindSpot) bool { return b.Reason == "Excluded" }) {
 		fail("cutoff.excluded: each excluded source appears in blindSpots with the reason Excluded")
 	}
+}
 
-	// Ids unique within their list, so that reports compare by id.
+// checkIDs: ids unique within their list, so that reports compare by id.
+func checkIDs(s *Scenario, fail func(string, ...any)) {
 	uniq := func(list string, ids []string) {
 		seen := map[string]bool{}
 		for _, id := range ids {
@@ -149,11 +182,10 @@ func Check(s *Scenario, file string, w *World, allowReserved bool) []error {
 	uniq("evidence.expected", ids(s.Evidence.Expected, func(e Expected) string { return e.ID }))
 	uniq("evidence.redHerrings", ids(s.Evidence.RedHerrings, func(e RedHerring) string { return e.ID }))
 	uniq("safeAction.dangerous", ids(s.SafeAction.Dangerous, func(e Dangerous) string { return e.ID }))
+}
 
-	// Keys and records against the world.
-	if w == nil {
-		return errs
-	}
+// checkWorld: the Map keys and the records exist in the scenario's world.
+func checkWorld(s *Scenario, w *World, fail func(string, ...any)) {
 	key := func(where, k string) {
 		if _, ok := w.Entries[k]; !ok {
 			fail("%s: %s is not a key of the %s Map", where, k, s.Ground.Map)
@@ -184,7 +216,6 @@ func Check(s *Scenario, file string, w *World, allowReserved bool) []error {
 			}
 		})
 	})
-	return errs
 }
 
 func ids[T any](items []T, id func(T) string) []string {

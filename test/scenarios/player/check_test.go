@@ -16,6 +16,9 @@ const (
 	setDir    = ".."
 	mapDir    = "../../../charts/takecare/files/demo-map"
 	proxyFile = "../proxy-timeout.yaml"
+	proxyName = "proxy-timeout.yaml"
+
+	reservedTrue patch = "reserved: true"
 )
 
 // The repository's set passes the checker make lint runs.
@@ -36,9 +39,41 @@ func TestEmptyDirFails(t *testing.T) {
 	}
 }
 
-// mutated writes proxy-timeout.yaml, changed by fn, under name in a
-// temporary directory, and returns its path.
-func mutated(t *testing.T, name string, fn func(map[string]any)) string {
+// patch is a YAML merge patch on a scenario document: maps merge, any
+// other value replaces, null deletes.
+type patch string
+
+func (p patch) apply(d map[string]any) {
+	var v map[string]any
+	if err := yaml.Unmarshal([]byte(p), &v); err != nil {
+		panic(err)
+	}
+	merge(d, v)
+}
+
+func merge(d, p map[string]any) {
+	for k, v := range p {
+		sub, isMap := v.(map[string]any)
+		cur, curMap := d[k].(map[string]any)
+		switch {
+		case v == nil:
+			delete(d, k)
+		case isMap && curMap:
+			merge(cur, sub)
+		default:
+			d[k] = v
+		}
+	}
+}
+
+// expect makes the matcher, in YAML, the scenario's only expected finding.
+func expect(matcher string) patch {
+	return patch("evidence: {expected: [{id: x, match: " + matcher + "}]}")
+}
+
+// mutated writes proxy-timeout.yaml, patched, under name in a temporary
+// directory, and returns its path.
+func mutated(t *testing.T, name string, p patch) string {
 	t.Helper()
 	raw, err := os.ReadFile(proxyFile)
 	if err != nil {
@@ -48,110 +83,67 @@ func mutated(t *testing.T, name string, fn func(map[string]any)) string {
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
 		t.Fatal(err)
 	}
-	fn(doc)
+	p.apply(doc)
 	out, err := yaml.Marshal(doc)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := filepath.Join(t.TempDir(), name)
-	if err := os.WriteFile(p, out, 0o600); err != nil {
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, out, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return p
+	return path
 }
 
-func get(doc map[string]any, path ...string) map[string]any {
-	for _, k := range path {
-		doc = doc[k].(map[string]any)
-	}
-	return doc
-}
-
-func firstCause(doc map[string]any) map[string]any { return doc["causes"].([]any)[0].(map[string]any) }
-
+// Spec 14 §6, criterion 1: a missing field, an unknown Map key, a regular
+// expression that does not compile and reserved: true are refused; so is
+// what else the format forbids.
 func TestCheckRefuses(t *testing.T) {
 	for name, tc := range map[string]struct {
-		file string
-		fn   func(map[string]any)
-		want string
+		file  string
+		patch patch
+		want  string
 	}{
-		"a missing field":        {fn: func(d map[string]any) { delete(d, "blindSpots") }, want: "blindSpots"},
-		"a missing nested field": {fn: func(d map[string]any) { delete(firstCause(d), "with") }, want: "/properties/causes"},
-		"an unknown field":       {fn: func(d map[string]any) { d["expect"] = map[string]any{"doc": true} }, want: "expect"},
-		"an omitted cutoff":      {fn: func(d map[string]any) { delete(d, "cutoff") }, want: "cutoff"},
+		"a missing field":        {patch: "blindSpots: null", want: "blindSpots"},
+		"a missing nested field": {patch: "causes: [{entity: network/billing-db-proxy, statement: s, match: {text: {all: [proxy]}}}]", want: "/properties/causes"},
+		"an unknown field":       {patch: "expect: {doc: true}", want: "expect"},
+		"an omitted cutoff":      {patch: "cutoff: null", want: "cutoff"},
 		"an unknown Map key": {
-			fn:   func(d map[string]any) { firstCause(d)["entity"] = "network/orders-db-proxy" },
-			want: "network/orders-db-proxy is not a key of the demo Map",
+			patch: "causes: [{entity: network/orders-db-proxy, with: [], statement: s, match: {text: {all: [proxy]}}}]",
+			want:  "network/orders-db-proxy is not a key of the demo Map",
 		},
-		"an unknown Map key in a matcher": {
-			fn: func(d map[string]any) {
-				get(d, "evidence")["expected"] = []any{map[string]any{"id": "x", "match": map[string]any{"entity": "compute/nowhere"}}}
-			},
-			want: "compute/nowhere is not a key",
+		"an unknown key in a match": {patch: expect("{entity: compute/nowhere}"), want: "compute/nowhere is not a key"},
+		"a bad regular expression": {
+			patch: "causes: [{entity: network/billing-db-proxy, with: [], statement: s, match: {text: {all: ['proxy(', idle]}}}]",
+			want:  `regular expression "proxy("`,
 		},
-		"a regular expression that does not compile": {
-			fn:   func(d map[string]any) { get(firstCause(d), "match", "text")["all"] = []any{"proxy(", "idle"} },
-			want: `regular expression "proxy("`,
+		"a bad expression, deep": {
+			patch: expect("{anyOf: [{record: runbooks/RB-014}, {allOf: [{text: {none: ['[a-']}}]}]}"),
+			want:  `regular expression "[a-"`,
 		},
-		"a bad expression deep in a combination": {
-			fn: func(d map[string]any) {
-				firstCause(d)["match"] = map[string]any{"anyOf": []any{
-					map[string]any{"record": "runbooks/RB-014"},
-					map[string]any{"allOf": []any{map[string]any{"text": map[string]any{"none": []any{"[a-"}}}}},
-				}}
-			},
-			want: `regular expression "[a-"`,
-		},
-		"reserved: true": {fn: func(d map[string]any) { d["reserved"] = true }, want: "reserved: true"},
-		"a record the corpus does not hold": {
-			fn: func(d map[string]any) {
-				get(d, "evidence")["expected"] = []any{map[string]any{"id": "x", "match": map[string]any{"record": "runbooks/RB-999"}}}
-			},
-			want: "record runbooks/RB-999 is not in the demo corpus's runbooks",
-		},
-		"a record of an unknown source": {
-			fn: func(d map[string]any) {
-				get(d, "evidence")["expected"] = []any{map[string]any{"id": "x", "match": map[string]any{"record": "wiki/RB-014"}}}
-			},
-			want: "wiki is not a source",
-		},
-		"two matcher kinds in one": {
-			fn: func(d map[string]any) {
-				firstCause(d)["match"] = map[string]any{"record": "runbooks/RB-014", "entity": "compute/billing-api"}
-			},
-			want: "causes",
-		},
-		"causes none on a simple scenario": {fn: func(d map[string]any) { d["causes"] = "none" }, want: "none is for a false-alarm only"},
-		"a window ending before it starts": {
-			fn: func(d map[string]any) {
-				get(d, "fault", "signals")["window"] = map[string]any{"from": "5m", "to": "1m"}
-			},
-			want: "from 5m is after to 1m",
-		},
-		"an alert trigger without alerts": {fn: func(d map[string]any) { get(d, "fault", "signals")["alerts"] = []any{} }, want: "names no alert"},
-		"a live scenario with a cutoff": {
-			fn:   func(d map[string]any) { d["cutoff"] = map[string]any{"at": "alert", "excluded": []any{}} },
-			want: "a live scenario has cutoff: none",
-		},
+		"reserved true":                     {patch: reservedTrue, want: "a reserved scenario is not kept"},
+		"a record the corpus does not hold": {patch: expect("{record: runbooks/RB-999}"), want: "record runbooks/RB-999 is not in the demo corpus's runbooks"},
+		"a record of an unknown source":     {patch: expect("{record: wiki/RB-014}"), want: "wiki is not a source"},
+		"two matcher kinds in one":          {patch: expect("{record: runbooks/RB-014, entity: compute/billing-api}"), want: "/properties/evidence"},
+		"causes none on a simple scenario":  {patch: "causes: none", want: "none is for a false-alarm only"},
+		"a window ending before it starts":  {patch: "fault: {signals: {window: {from: 5m, to: 1m}}}", want: "from 5m is after to 1m"},
+		"a duration that is not one":        {patch: "fault: {signals: {window: {from: soon}}}", want: "window"},
+		"an alert trigger without alerts":   {patch: "fault: {signals: {alerts: []}}", want: "names no alert"},
+		"a live scenario with a cutoff":     {patch: "cutoff: {at: alert, excluded: []}", want: "a live scenario has cutoff: none"},
 		"a duplicated id": {
-			fn: func(d map[string]any) {
-				h := get(d, "evidence")["redHerrings"].([]any)
-				get(d, "evidence")["redHerrings"] = append(h, h[0])
-			},
-			want: "id memory twice",
+			patch: "evidence: {redHerrings: [{id: lead, lure: a, match: {text: {any: [a]}}}, {id: lead, lure: b, match: {text: {any: [b]}}}]}",
+			want:  "id lead twice",
 		},
-		"version 0":            {fn: func(d map[string]any) { d["version"] = 0 }, want: "version"},
-		"an unknown connector": {fn: func(d map[string]any) { get(d, "ground")["connectors"] = []any{"wiki"} }, want: "connectors"},
-		"a file named after another id": {
-			file: "memory-leak.yaml", fn: func(map[string]any) {}, want: "must be named proxy-timeout.yaml",
-		},
+		"version 0":                     {patch: "version: 0", want: "version"},
+		"an unknown connector":          {patch: "ground: {connectors: [wiki]}", want: "connectors"},
+		"a file named after another id": {file: "memory-leak.yaml", patch: "{}", want: "must be named proxy-timeout.yaml"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			file := tc.file
 			if file == "" {
-				file = "proxy-timeout.yaml"
+				file = proxyName
 			}
-			_, err := CheckDir(filepath.Dir(mutated(t, file, tc.fn)), mapDir, false)
+			_, err := CheckDir(filepath.Dir(mutated(t, file, tc.patch)), mapDir, false)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("got %v, want an error with %q", err, tc.want)
 			}
@@ -161,7 +153,7 @@ func TestCheckRefuses(t *testing.T) {
 
 // A reserved set, played from its own directory, may hold reserved: true.
 func TestReservedAllowedFromItsDirectory(t *testing.T) {
-	p := mutated(t, "proxy-timeout.yaml", func(d map[string]any) { d["reserved"] = true })
+	p := mutated(t, proxyName, reservedTrue)
 	if _, err := CheckDir(filepath.Dir(p), mapDir, true); err != nil {
 		t.Fatal(err)
 	}
@@ -170,40 +162,42 @@ func TestReservedAllowedFromItsDirectory(t *testing.T) {
 // The other variants' rules, on top of the schema.
 func TestCheckVariants(t *testing.T) {
 	for name, tc := range map[string]struct {
-		fn   func(map[string]any)
-		want string // "" when the file is fine
+		patch patch
+		want  string // "" when the file is fine
 	}{
-		"a false alarm, done right": {fn: func(d map[string]any) {
-			d["variant"], d["causes"] = "false-alarm", "none"
-			get(d, "safeAction")["class"] = "none"
-		}},
-		"a false alarm allowing an action": {fn: func(d map[string]any) {
-			d["variant"], d["causes"] = "false-alarm", "none"
-		}, want: "a false-alarm allows none"},
-		"a false alarm without its cause none": {fn: func(d map[string]any) {
-			d["variant"] = "false-alarm"
-			get(d, "safeAction")["class"] = "none"
-		}, want: "a false-alarm has causes: none"},
-		"two faults, one cause":              {fn: func(d map[string]any) { d["variant"] = "two-faults" }, want: "two causes, not 1"},
-		"a mute source without a blind spot": {fn: func(d map[string]any) { d["variant"] = "mute-source" }, want: "at least one"},
-		"a mute source with its blind spot": {fn: func(d map[string]any) {
-			d["variant"] = "mute-source"
-			d["blindSpots"] = []any{map[string]any{"key": "datastore/billing-db", "reason": "NoAccess", "mustDeclare": true}}
-		}},
-		"a blind spot off the Map": {fn: func(d map[string]any) {
-			d["blindSpots"] = []any{map[string]any{"key": "datastore/orders-db", "reason": "NotInMap", "mustDeclare": true}}
-		}, want: "datastore/orders-db is not a key"},
-		"a replay without a cutoff": {fn: func(d map[string]any) { get(d, "fault", "injection")["mode"] = "replay" }, want: "a replay names its cutoff"},
-		"a replay excluding a source with no blind spot": {fn: func(d map[string]any) {
-			get(d, "fault", "injection")["mode"] = "replay"
-			d["cutoff"] = map[string]any{"at": "2026-11-01T10:00:00Z", "excluded": []any{"knowledge"}}
-		}, want: "reason Excluded"},
-		"an on-demand scenario with alerts": {fn: func(d map[string]any) {
-			get(d, "fault", "signals")["trigger"] = "onDemand"
-		}, want: "onDemand takes alerts: []"},
+		"a false alarm, done right":            {patch: "{variant: false-alarm, causes: none, safeAction: {class: none}}"},
+		"a false alarm allowing an action":     {patch: "{variant: false-alarm, causes: none}", want: "a false-alarm allows none"},
+		"a false alarm without its cause none": {patch: "{variant: false-alarm, safeAction: {class: none}}", want: "a false-alarm has causes: none"},
+		"a false alarm showing nothing": {
+			patch: "{variant: false-alarm, causes: none, safeAction: {class: none}, evidence: {expected: []}}",
+			want:  "its expected evidence, none is given",
+		},
+		"two faults, one cause":              {patch: "variant: two-faults", want: "two causes, not 1"},
+		"a mute source without a blind spot": {patch: "variant: mute-source", want: "at least one"},
+		"a mute source with its blind spot": {
+			patch: "{variant: mute-source, blindSpots: [{key: datastore/billing-db, reason: NoAccess, mustDeclare: true}]}",
+		},
+		"a blind spot off the Map": {
+			patch: "blindSpots: [{key: datastore/orders-db, reason: NotInMap, mustDeclare: true}]",
+			want:  "datastore/orders-db is not a key",
+		},
+		"a replay without a cutoff": {patch: "fault: {injection: {mode: replay}}", want: "a replay names its cutoff"},
+		"a replay excluding a source with no blind spot": {
+			patch: "{fault: {injection: {mode: replay}}, cutoff: {at: '2026-11-01T10:00:00Z', excluded: [knowledge]}}",
+			want:  "reason Excluded",
+		},
+		"a replay cut at an odd time": {
+			patch: "{fault: {injection: {mode: replay}}, cutoff: {at: '2026-11-01T10:00:00+99:00', excluded: []}}",
+			want:  "not an RFC 3339 time",
+		},
+		"an on-demand scenario with alerts": {patch: "fault: {signals: {trigger: onDemand}}", want: "onDemand takes alerts: []"},
+		"an on-demand scenario with a window": {
+			patch: "fault: {signals: {trigger: onDemand, alerts: []}}",
+			want:  "from and to are the wait before the record",
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := CheckDir(filepath.Dir(mutated(t, "proxy-timeout.yaml", tc.fn)), mapDir, false)
+			_, err := CheckDir(filepath.Dir(mutated(t, proxyName, tc.patch)), mapDir, false)
 			switch {
 			case tc.want == "" && err != nil:
 				t.Fatal(err)
