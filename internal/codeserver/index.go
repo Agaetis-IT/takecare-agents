@@ -119,7 +119,7 @@ func document(p string, doc map[string]any, isChart bool) (Document, bool) {
 		d := Document{Path: p, Kind: "Chart", Name: name, Charts: []ChartRef{{Name: name, Version: str(doc, "version")}}}
 		for _, dep := range list(doc, "dependencies") {
 			if m, ok := dep.(map[string]any); ok && str(m, "name") != "" {
-				d.Charts = append(d.Charts, ChartRef{Name: str(m, "name"), Version: str(m, "version"), Repository: str(m, "repository")})
+				d.Charts = append(d.Charts, ChartRef{Name: str(m, "name"), Version: str(m, "version"), Repository: repoURL(str(m, "repository"))})
 			}
 		}
 		return d, true
@@ -172,9 +172,28 @@ func argoCharts(spec map[string]any) []ChartRef {
 		if !ok || str(m, "chart") == "" {
 			continue
 		}
-		out = append(out, ChartRef{Name: str(m, "chart"), Version: str(m, "targetRevision"), Repository: str(m, "repoURL")})
+		out = append(out, ChartRef{Name: str(m, "chart"), Version: str(m, "targetRevision"), Repository: repoURL(str(m, "repoURL"))})
 	}
 	return out
+}
+
+// repoURL is a chart repository's URL without its user information: a
+// manifest may write a password or a token into it, and the index returns
+// no credential. It works on the text rather than through url.Parse, which
+// refuses some URLs a manifest may hold and would leave them whole.
+func repoURL(raw string) string {
+	scheme, rest, ok := strings.Cut(raw, "://")
+	if !ok {
+		return raw
+	}
+	host, tail := rest, ""
+	if i := strings.IndexAny(rest, "/?#"); i >= 0 {
+		host, tail = rest[:i], rest[i:]
+	}
+	if at := strings.LastIndex(host, "@"); at >= 0 {
+		host = host[at+1:]
+	}
+	return scheme + "://" + host + tail
 }
 
 // images walks a document for its pod templates' containers, init

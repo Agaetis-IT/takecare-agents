@@ -473,3 +473,30 @@ func TestArgoSingleSource(t *testing.T) {
 		t.Errorf("charts (-want +got):\n%s", diff)
 	}
 }
+
+// A chart repository's URL loses its user information, from Chart.yaml
+// dependencies and Argo CD sources alike, even when url.Parse refuses it.
+func TestChartRepositoryRedacted(t *testing.T) {
+	pass := strings.Join([]string{"s3", "cr3t", "v4lue"}, "-")
+	cases := []struct{ raw, want string }{
+		{"https://reader:" + pass + "@charts.example.org/stable", "https://charts.example.org/stable"},
+		{"https://" + pass + "@charts.example.org", "https://charts.example.org"},
+		{"oci://reader:" + pass + "@registry.example.org/charts?x=1", "oci://registry.example.org/charts?x=1"},
+		{"https://reader:" + pass + "%zz@charts.example.org/a b%", "https://charts.example.org/a b%"},
+		{"https://charts.example.org/user@x", "https://charts.example.org/user@x"},
+		{"@stable", "@stable"},
+		{"HelmRepository/jetstack", "HelmRepository/jetstack"},
+	}
+	for _, c := range cases {
+		t.Run(c.want, func(t *testing.T) {
+			chart := map[string]any{"name": "shop", "dependencies": []any{map[string]any{"name": "db", "repository": c.raw}}}
+			d, _ := document("Chart.yaml", chart, true)
+			argo := argoCharts(map[string]any{"source": map[string]any{"repoURL": c.raw, "chart": "shop"}})
+			for _, got := range []string{d.Charts[1].Repository, argo[0].Repository} {
+				if got != c.want || strings.Contains(got, pass) {
+					t.Errorf("repository %q, want %q", got, c.want)
+				}
+			}
+		})
+	}
+}
