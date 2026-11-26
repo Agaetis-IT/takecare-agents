@@ -468,8 +468,8 @@ func TestFilesListBound(t *testing.T) {
 
 // An Application with spec.source alone gives its chart.
 func TestArgoSingleSource(t *testing.T) {
-	got := argoCharts(map[string]any{"source": map[string]any{"repoURL": "https://charts.example.org", "chart": "shop", "targetRevision": "1.2.0"}})
-	if diff := cmp.Diff([]ChartRef{{Name: "shop", Version: "1.2.0", Repository: "https://charts.example.org"}}, got); diff != "" {
+	got := argoCharts(map[string]any{"source": map[string]any{"repoURL": "https://helm.example.org", "chart": "shop", "targetRevision": "1.2.0"}})
+	if diff := cmp.Diff([]ChartRef{{Name: "shop", Version: "1.2.0", Repository: "https://helm.example.org"}}, got); diff != "" {
 		t.Errorf("charts (-want +got):\n%s", diff)
 	}
 }
