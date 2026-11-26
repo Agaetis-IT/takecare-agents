@@ -21,6 +21,8 @@ on:
   pull_request:
     paths:
       - .github/workflows/release.yaml
+      - hack/ci-changes.sh
+      - hack/ci-changes-test.sh
       - hack/release-notes.sh
       - hack/release-notes-test.sh
       - hack/sbom.sh
@@ -44,20 +46,45 @@ concurrency:
 jobs:
   dry-run:
     name: release dry run (charts packaged and linted, notes read, SBOMs and takecare binaries written)
+    # checks: read for hack/ci-changes.sh, which reads this job's run at
+    # the previous head; nothing else beyond the workflow's contents: read.
+    permissions:
+      contents: read
+      checks: read
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # The steps below run unless every file of this push, or of the whole
+      # pull request, is one the dry run does not read (bench reports, docs,
+      # the root's Markdown but CHANGELOG.md, the site; hack/ci-changes.sh).
+      - id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.pull_request.head.sha }}
+          # The previous head's run of this job (hack/ci-changes.sh).
+          CHECK: release dry run (charts packaged and linted, notes read, SBOMs and takecare binaries written)
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: hack/ci-changes.sh release >>"$GITHUB_OUTPUT"
       # The pinned chart archives, restored when the pins are the same (spec
       # 04): make chart-deps then downloads only what is missing.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - if: steps.changes.outputs.heavy == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: charts/*/charts
           key: chart-deps-${{ hashFiles('hack/versions.env', 'charts/*/Chart.lock') }}
-      - run: make release-notes-test
+      - if: steps.changes.outputs.heavy == 'true'
+        run: make release-notes-test
       # The section in progress, or the one a release PR has just cut (its
       # Unreleased is then empty).
-      - name: the notes of the next release
+      - if: steps.changes.outputs.heavy == 'true'
+        name: the notes of the next release
         run: |
           set -euo pipefail
           for v in $(grep -oE '^## \[[^]]+\]' CHANGELOG.md | sed -E 's/^## \[(.*)\]$/\1/' | head -2); do
@@ -65,17 +92,21 @@ jobs:
           done
           echo "neither Unreleased nor the latest section of CHANGELOG.md has an entry" >&2
           exit 1
-      - run: make chart-package RELEASE_VERSION=0.0.0-dryrun
-      - run: make sbom-test
+      - if: steps.changes.outputs.heavy == 'true'
+        run: make chart-package RELEASE_VERSION=0.0.0-dryrun
+      - if: steps.changes.outputs.heavy == 'true'
+        run: make sbom-test
       # The release reads the pushed images; with nothing pushed, the dry run
       # reads the operator's binary built as the image builds it. No Go cache:
       # a tag runs this workflow too, and a cache restored there is a
       # poisoning path (zizmor's cache-poisoning audit).
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+      - if: steps.changes.outputs.heavy == 'true'
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
           cache: false
-      - name: the SBOM of a built binary
+      - if: steps.changes.outputs.heavy == 'true'
+        name: the SBOM of a built binary
         run: |
           set -euo pipefail
           make syft
@@ -85,7 +116,8 @@ jobs:
           jq -r '.packages[0:5][] | [.name, .versionInfo] | @tsv' bin/sbom/dryrun.spdx.json
       # go install …/cmd/takecare@vX refuses a module whose go.mod has
       # replace or exclude directives (Go modules reference, go install).
-      - name: the takecare binaries, checksums and SBOMs
+      - if: steps.changes.outputs.heavy == 'true'
+        name: the takecare binaries, checksums and SBOMs
         run: |
           set -euo pipefail
           go mod edit -json | jq -e '((.Replace // []) + (.Exclude // [])) | length == 0' >/dev/null ||

@@ -30,30 +30,58 @@ jobs:
 
   test:
     name: test (unit, golden, envtest)
+    # checks: read for hack/ci-changes.sh, which reads this job's run at
+    # the previous head; nothing else beyond the workflow's contents: read.
+    permissions:
+      contents: read
+      checks: read
     runs-on: ubuntu-24.04
     # About 12 minutes (16 at worst): a hung run stops here instead of
     # after GitHub's six hours.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          fetch-depth: 0
+      # A required check: the steps below run unless every file of this push,
+      # or of the whole pull request, is one no Go test reads (bench reports,
+      # docs, the root's Markdown, the site; hack/ci-changes.sh). The job
+      # still reports, its steps skipped.
+      - id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.pull_request.head.sha }}
+          # The previous head's run of this job (hack/ci-changes.sh).
+          CHECK: test (unit, golden, envtest)
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: hack/ci-changes.sh go >>"$GITHUB_OUTPUT"
+      - if: steps.changes.outputs.heavy == 'true'
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       # The pinned chart archives, restored when the pins are the same (spec
       # 04): make chart-deps then downloads only what is missing.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - if: steps.changes.outputs.heavy == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: charts/*/charts
           key: chart-deps-${{ hashFiles('hack/versions.env', 'charts/*/Chart.lock') }}
-      - run: make generate
+      - if: steps.changes.outputs.heavy == 'true'
+        run: make generate
       - name: generated files are committed
+        if: steps.changes.outputs.heavy == 'true'
         run: |
           if [ -n "$(git status --porcelain)" ]; then
             git status --porcelain
             echo "run make generate and commit the result"
             exit 1
           fi
-      - run: make test
+      - if: steps.changes.outputs.heavy == 'true'
+        run: make test
 
   chart:
     name: chart (sync, helm lint, template, kubeconform)
@@ -85,18 +113,45 @@ jobs:
 
   image:
     name: image (amd64 + arm64, no push)
+    # checks: read for hack/ci-changes.sh, which reads this job's run at
+    # the previous head; nothing else beyond the workflow's contents: read.
+    permissions:
+      contents: read
+      checks: read
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      # A required check: on a PR touching none of the image's inputs, the
-      # job stays and passes, its build steps skipped.
+      # A required check: on a PR touching none of the image's inputs, or
+      # whose push or whole diff has only files no image reads (bench
+      # reports, docs, the root's Markdown, the site; hack/ci-changes.sh),
+      # the job stays and passes, its build steps skipped.
       - id: paths
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.pull_request.head.sha }}
+          # The previous head's run of this job (hack/ci-changes.sh).
+          CHECK: image (amd64 + arm64, no push)
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" != pull_request ] || git diff --name-only "${{ github.event.pull_request.base.sha }}" HEAD |
-            grep -qE '^(api|internal|cmd|test|config)/|^(Dockerfile|\.dockerignore|go\.mod|go\.sum|Makefile|hack/versions\.env|\.github/workflows/ci\.yaml)$'; then
+          if [ "$EVENT" != pull_request ]; then
+            echo build=true >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          heavy="$(hack/ci-changes.sh go)"
+          if [ "$heavy" != heavy=true ]; then
+            echo "only files no image reads changed: build skipped"
+            exit 0
+          fi
+          # The list is read on its own, so that a failed diff stops here.
+          changed="$(git diff --name-only "$BASE" HEAD)"
+          if grep -qE '^(api|internal|cmd|test|config)/|^(Dockerfile|\.dockerignore|go\.mod|go\.sum|Makefile|hack/versions\.env|\.github/workflows/ci\.yaml)$' <<<"$changed"; then
             echo build=true >>"$GITHUB_OUTPUT"
           else
             echo "no image input changed: build skipped"
