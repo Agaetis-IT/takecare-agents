@@ -304,6 +304,9 @@ func TestRepositoriesList(t *testing.T) {
 	if states[1].Revision != "" || !strings.Contains(states[1].FetchError, "clone") {
 		t.Errorf("unreachable = %+v, want its clone error and no revision", states[1])
 	}
+	if got, isErr := call(t, session, ToolRepositoriesList, map[string]any{argRepo: repoShop}); !isErr || !strings.Contains(got, "unknown field") {
+		t.Errorf("repositories_list with an argument = %s, want refused", got)
+	}
 }
 
 func TestFilesList(t *testing.T) {

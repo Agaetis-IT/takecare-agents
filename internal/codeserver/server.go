@@ -174,7 +174,18 @@ func (s *Server) states() []state {
 	return out
 }
 
-func (s *Server) repositoriesList(json.RawMessage) (any, error) { return s.states(), nil }
+// repositoriesList takes no argument and refuses any, like the other tools
+// refuse those they do not know.
+func (s *Server) repositoriesList(raw json.RawMessage) (any, error) {
+	if len(raw) > 0 {
+		dec := json.NewDecoder(bytes.NewReader(raw))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&struct{}{}); err != nil {
+			return nil, fmt.Errorf("arguments: %w", err)
+		}
+	}
+	return s.states(), nil
+}
 
 type pathArgs struct {
 	Repository string `json:"repository"`
