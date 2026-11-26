@@ -98,6 +98,8 @@ Thresholds: at least 4 out of 5 correct to merge a change of prompt, engine, mod
 | `bench.yaml` | `workflow_dispatch` | accuracy bench with a real model (repository secret), report as an artifact |
 | `release.yaml` | tag `v*` | multi-arch images (amd64, arm64), charts packaged and pushed as OCI, GitHub release with CHANGELOG excerpt |
 
+On a pull request, the heavy jobs (unit + golden + envtest, the image builds, the e2e, the chart smoke, the guard corpus, the release dry run, the site build) skip their steps when every file of the push, or every file of the whole pull request, is one they do not read: bench reports (`test/bench/*.json`), `docs/**`, the root's Markdown files and, for the Go and cluster jobs, `site/**`; `CHANGELOG.md` still runs the release dry run and the site build, which read it (`hack/ci-changes.sh`, checked by `make test`). The jobs stay triggered and report, so that the required checks still pass; a push to `main` and a tag run everything. The light checks (lint, markdownlint included, DCO, gitleaks, licenses, chart lint) always run.
+
 Images, named `takecare-agents-<component>` (issue #22): `ghcr.io/agaetis-it/takecare-agents-operator`, `ghcr.io/agaetis-it/takecare-agents-demo-app`, `ghcr.io/agaetis-it/takecare-agents-mcp-corpus`, `ghcr.io/agaetis-it/takecare-agents-mcp-map`, `ghcr.io/agaetis-it/takecare-agents-mcp-history`, `ghcr.io/agaetis-it/takecare-agents-mcp-report-slack` (registry still to be confirmed, vision open question 1). arm64 is required: demos run on Apple Silicon.
 
 ## Conventions
