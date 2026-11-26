@@ -31,6 +31,10 @@ const (
 	underGit     = "under .git/"
 )
 
+// token is shaped like a credential, assembled at run time so that no
+// scanner reads it in the source.
+var token = "gh" + "p_" + strings.Repeat("a1B2c3D4e5", 4)
+
 // builtin stands for the built-in set in these tests.
 var builtin = Source{Name: "builtin.yaml", Data: []byte(`version: 1
 questions:
@@ -96,6 +100,32 @@ func TestLoad(t *testing.T) {
 	}
 }
 
+// A default is typed by its question's kind and offered, never applied.
+func TestLoadDefaults(t *testing.T) {
+	set, err := Load(nil, []Source{{Name: fileF, Data: []byte(`version: 1
+questions:
+  - { id: ns, text: A, why: B, kind: text, default: takecare-system, validate: { pattern: '^[a-z-]+$' } }
+  - { id: empty, text: A, why: B, kind: text, default: "" }
+  - { id: source, text: A, why: B, kind: choice, choices: [Alertmanager, None], default: Alertmanager }
+  - { id: on, text: A, why: B, kind: bool, default: true }
+  - { id: envs, text: A, why: B, kind: list, default: [a, b] }
+  - { id: none, text: A, why: B, kind: text }
+`)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]any{"ns": "takecare-system", "empty": "", "source": "Alertmanager",
+		"on": true, "envs": []string{"a", "b"}} {
+		got, ok := set.Question(id).DefaultAnswer()
+		if diff := cmp.Diff(Answer{Value: want}, got); !ok || diff != "" {
+			t.Errorf("%s: default %v (-want +got):\n%s", id, ok, diff)
+		}
+	}
+	if _, ok := set.Question("none").DefaultAnswer(); ok {
+		t.Error("a question without a default has one")
+	}
+}
+
 // Spec 13 §4.2 and criterion 3: every fault of every file at once, and
 // no set.
 func TestLoadFaults(t *testing.T) {
@@ -110,10 +140,10 @@ questions:
     text: A
     why: B
     kind: password
-    default: x
+    defaults: x
 `,
 		want: []string{
-			"line 7: field default not found in type questionnaire.Question",
+			"line 7: field defaults not found in type questionnaire.Question",
 			`question a: unknown kind "password", want one of [text choice list bool secretRef]`,
 		},
 	}, {
@@ -183,6 +213,27 @@ questions:
 			`question g: pattern "(" does not compile`,
 			`question h: when.equals "Teams" is not a choice of report.kind`,
 			"question i: when.equals cannot compare a list answer",
+		},
+	}, {
+		name: "defaults refused like answers",
+		file: `version: 1
+questions:
+  - { id: j, text: A, why: B, kind: secretRef, default: ops/pager }
+  - { id: k, text: A, why: B, kind: text, default: East, validate: { pattern: '^[a-z]+$' } }
+  - { id: l, text: A, why: B, kind: choice, choices: [x, y], default: z }
+  - { id: m, text: A, why: B, kind: bool, default: "yes" }
+  - { id: n, text: A, why: B, kind: list, default: [a, 7] }
+  - { id: o, text: A, why: B, kind: text, default: ` + token + ` }
+  - { id: p, text: A, why: B, kind: nope, default: x }
+`,
+		want: []string{
+			"question j: a secretRef question takes no default: a Secret is named by the person",
+			"question k: default refused: does not match ^[a-z]+$",
+			"question l: default refused: not one of the choices [x y]",
+			"question m: default refused: not a bool answer",
+			"question n: default refused: not a list answer",
+			"question o: default refused: the answer holds a token prefix: " + ErrCredential.Error(),
+			`question p: unknown kind "nope", want one of [text choice list bool secretRef]`,
 		},
 	}, {
 		name: "an id under another",
