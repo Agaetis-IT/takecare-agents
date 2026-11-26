@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- CI skips its heavy jobs (unit, golden and envtest tests, the image build, the e2e, the chart smoke, the guard corpus, the release dry run, the site build) on a pull request when every file of the push, or of the whole pull request, is a bench report, documentation, a root Markdown file or, for the Go and cluster jobs, the site; `CHANGELOG.md` still runs the release dry run and the site build. The rule of the push applies only when the same job passed at the previous head (read with `checks: read`) on the same base, recorded by that run; otherwise, a base branch that moved on included, the whole pull request decides. A skipped job says so, naming the rule, in a notice on the checks page and in the job's summary. The jobs still report, so the required checks pass; a push to `main` runs everything, and lint, DCO, gitleaks and licenses always run.
+
 ## [0.5.0] - 2026-11-26
 
 The Talkie and Kiné release: the `takecare` command, the teams' console (status, discover, review, validate, init), the Kiné, which reviews the Doc's investigations after each incident up to `Practitioner`, and a first step towards grounds without Kubernetes, the `cloud` connector type for Azure, in the API only. The API stays `v1alpha1`; it gains the kinds `TakeCareKine` and `TakeCareReview`, the connector types `history` and `cloud`, and new fields, and refuses nothing it accepted before.
@@ -48,7 +52,6 @@ The Talkie and Kiné release: the `takecare` command, the teams' console (status
 
 ### Changed
 
-- CI skips its heavy jobs (unit, golden and envtest tests, the image build, the e2e, the chart smoke, the guard corpus, the release dry run, the site build) on a pull request when every file of the push, or of the whole pull request, is a bench report, documentation, a root Markdown file or, for the Go and cluster jobs, the site; `CHANGELOG.md` still runs the release dry run and the site build. The rule of the push applies only when the same job passed at the previous head (read with `checks: read`), otherwise the whole pull request decides. The jobs still report, so the required checks pass; a push to `main` runs everything, and lint, DCO, gitleaks and licenses always run.
 - The product site describes 0.5.0: each delivered role's card shows the highest level the product can do, in words (Apprentice, Practitioner, Expert), instead of a version, and its page says what that level does and what the next one will add; the Kiné and its Rehab are delivered; the Talkie now names the teams' console, the `takecare` command, delivered in part; the alert relay becomes a new card, the Whistle, not built yet; the cloud connector type for Azure; and the roadmap. ADR 0017, 0018 and 0021 get a dated note on the rename.
 - The alert intake finds an alert's earlier investigations, for its cooldown and its incident, through an index of the operator's cache instead of listing the namespace's investigations from the API server at every alert, which cost a read of up to `investigations.maxKept` records per alert. Deduplication, cooldown and grouping are unchanged, including for a record this replica created a moment before that the cache does not show yet.
 - The operator's run-time read-only guard (`ReadOnlyGuard`) now checks the ServiceAccount of every add-on connector, not only the `cluster` ones: a right the guard forbids, bound later to the history, Map, report or corpus server's account, makes its connector not Ready.
