@@ -61,3 +61,5 @@ On an administration cluster (ADR 0011), there is no customer Prometheus at hand
 - **The sub-chart with its own CRDs:** Helm never upgrades them.
 - **Scraping the customer's workloads too:** the volume across many clusters and the sensitivity of the data; the connectors read in place.
 - **Remote-write to the customer:** TakeCare would hold a credential towards the customer.
+
+> **Note (2026-11-26)**: the alert relay is now called the Whistle; the Talkie names the teams' console.

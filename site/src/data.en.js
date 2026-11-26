@@ -6,16 +6,18 @@ const PIL = {
   soigner:{name:"Heal", sub:"Assisted operations", line:"Train for the failure, then heal it: the incident, its cause, its fix.", title:"Heal every incident down to its cause."}
 };
 /* fam : role (nat agent|guard) · exo · mat · lieu. Each product card (role, mat, lieu) carries
-   since: the version it arrived in (a coloured card), or next: "soon"|"later" (a grey one). */
+   since: the version it arrived in (a coloured card), or next: "soon"|"later" (a grey one).
+   A delivered role also carries level, the highest level the product can do (Apprentice,
+   Practitioner or Expert), shown in words on its card, and lvl, one line on that level and the next. */
 const R = [
- ["intendant","encadrer","role","agent","Infra inventory and mapping","The Intendant","Agents and tools coming in from everywhere?","It runs Base camp: only what has been validated gets in, and every agent receives its Bib there. With your teams, it also draws the Map that every agent shares.",{since:"0.3"}],
- ["ranger","encadrer","role","guard","AI agent governance","The Ranger","Agents tempted to go off-trail?","It sets the Markers and checks every Bib: allowed tools, masked data, capped costs, for every agent.",{since:"0.2"}],
+ ["intendant","encadrer","role","agent","Infra inventory and mapping","The Intendant","Agents and tools coming in from everywhere?","It runs Base camp: only what has been validated gets in, and every agent receives its Bib there. With your teams, it also draws the Map that every agent shares.",{since:"0.3",level:"Practitioner",lvl:"It proposes every entry into Base camp and the Map; your teams validate. Expert will add the continuous check of every new version."}],
+ ["ranger","encadrer","role","guard","AI agent governance","The Ranger","Agents tempted to go off-trail?","It sets the Markers and checks every Bib: allowed tools, masked data, capped costs, for every agent.",{since:"0.2",level:"Practitioner",lvl:"It masks, filters and caps for every agent. Expert will add the identity per agent."}],
  ["psy","encadrer","role","guard","AI agent quality control","The Psy","Agents that make up paths, lose their bearings or go round in circles?","It reads each agent's Logbook and flags the answers that drift.",{next:"soon"}],
  ["coach","preparer","role","agent","Peak readiness","The Coach","A traffic peak ahead?","It checks what will hold at the peak and prepares the fixes.",{next:"later"}],
  ["nutri","preparer","role","agent","Cloud cost control","The Nutri","A cloud bill that climbs without warning?","It spots the excess and puts a figure on the savings, without weakening production.",{next:"later"}],
  ["guide","preparer","role","agent","Team upskilling","The Guide","Does your team need to level up?","It answers the teams' questions, walks them through the procedures step by step and flags missing or outdated documentation.",{next:"later"}],
- ["doc","soigner","role","agent","Incident diagnosis","The Doc","An incident in the middle of the night?","It investigates and presents the probable cause; the on-call engineer decides what to do.",{since:"0.1"}],
- ["kine","soigner","role","agent","Problem management","The Kiné","A pain that comes back with every incident?","It goes back to the root cause and proposes what will prevent a relapse.",{next:"soon"}],
+ ["doc","soigner","role","agent","Incident diagnosis","The Doc","An incident in the middle of the night?","It investigates and presents the probable cause; the on-call engineer decides what to do.",{since:"0.1",level:"Practitioner",lvl:"It makes the diagnosis and prepares the action; the on-call engineer validates and launches it. Expert will add the actions of its First-aid kit, done on its own."}],
+ ["kine","soigner","role","agent","Problem management","The Kiné","A pain that comes back with every incident?","It goes back to the root cause and proposes what will prevent a relapse.",{since:"0.5",level:"Practitioner",lvl:"After each incident, it drafts the post-mortem and proposes the corrective actions; your teams validate. Expert will add following up the validated actions."}],
  ["mecano","soigner","role","agent","Lifecycle management","The Mécano","An upgrade that everyone keeps postponing?","It prepares the upgrade, tested on a copy first, and reports to the Map what changes.",{next:"later"}],
  ["relais","","exo","","Knowledge transfer","The Handover","Knowledge that lives in a few people's heads?","A team member takes over a topic in real conditions: the Guide explains, the Mécano shows the actual state of the infra. Whatever was missing joins the Topo and the Map."],
  ["bootcamp","","exo","","Disaster recovery testing","The Bootcamp","Has your plan B never been used?","The Doc, the Kiné and the Mécano face a simulated failure with your teams on the Training ground: what holds, what gives way, and the recovery plan."],
@@ -29,10 +31,11 @@ const R = [
  ["topo","preparer","mat","guide","Documentation and runbooks","The Topo","","Your docs and runbooks, kept up to date with the team.",{since:"0.1"}],
  ["corde","preparer","mat","guide","AI assistant tie-in","The Rope","Your teams already have an AI assistant?","Your team's assistant asks the Guide its question; the Guide searches with its own tools and its own model, then hands back the answer. Your rules and your traces cover the whole reasoning.",{next:"later"}],
  ["trousse","soigner","mat","doc","Validated remediations","The First-aid kit","","The actions you validated, one by one. It stays empty until the Doc is Expert.",{next:"later"}],
- ["reeduc","soigner","mat","kine","Corrective actions","The Rehab","","The actions that prevent a relapse, drawn from every post-mortem.",{next:"soon"}],
+ ["reeduc","soigner","mat","kine","Corrective actions","The Rehab","","The actions that prevent a relapse, drawn from every post-mortem.",{since:"0.5"}],
  ["carnet","soigner","mat","mecano","Lifecycle tracking","The Service log","","Versions, end of support, planned upgrades: the upkeep of your fleet, part by part.",{next:"later"}],
  ["sac","","mat","","Each agent's configuration","The Bag","","What each agent carries: its access, its tools level by level, its know-how, its model. Open source, and set by your teams in each role's resource.",{since:"0.1"}],
- ["talkie","","mat","","Alert relay","The Talkie","Alerts ringing in every corner?","It picks up alerts from all your tools (PRTG, Azure Monitor, CloudWatch…) and relays them on the staff channel: the Doc receives them like any other, grouped and filtered.",{next:"later"}],
+ ["talkie","","mat","","Teams' console","The Talkie","Keep in touch with your agents?","Your teams follow their agents and answer them: a verdict after each diagnosis, a pause when needed, sessions on the training ground.",{since:"0.5",part:true}],
+ ["sifflet","","mat","","Alert relay","The Whistle","Alerts ringing all over the place?","One sound, a thousand messages: all your alerts (PRTG, Azure Monitor, CloudWatch…) go through the same whistle, each with its own code: its source, what it affects, its severity.",{next:"later"}],
  ["campdebase","","lieu","","AI agent registry","Base camp","Where do your agents set off from?","The shared place of the governance roles: the platform installed at your site, and the list of what is validated, kept in your Git. Only what is approved there equips an agent, and every journey sets off from there.",{next:"soon"}],
  ["terrain","","lieu","","Replay and simulation","The Training ground","Train without touching production?","Inside Base camp, we replay your history, simulate the failure and ramp up the load, without touching production.",{since:"0.1"}]
 ].map(([k,p,fam,nat,job,nick,q,does,b])=>({k,p,fam,nat,job,nick,q,does,...b}));
@@ -60,7 +63,8 @@ const X = {
  bootcamp:{when:"When you decide, and at least once a year.",who:"The Doc, the Kiné and the Mécano, with your teams.",with:["doc","kine","mecano","terrain"],out:"What holds, what gives way, a proven recovery plan, and a Doc trained before the real thing."},
  stresstest:{when:"Before every big moment, and with every budget.",who:"The Coach and the Nutri, with your teams.",with:["coach","nutri","plan","ration"],out:"The headroom the peak needs, no more: the Coach's Plan and the Nutri's Ration adjusted."},
  campdebase:{brick:"The platform, and an approved list in your Git: each skill and each prompt is pinned there to the reviewed version, and gets in through a pull request your teams validate.",with:["intendant","ranger","psy"],out:"The validated equipment of all the governance roles: the Map, the Markers, the Bibs, the Logbooks, and every Bag."},
- talkie:{with:["doc","carte","sac"]},
+ talkie:{brick:"The takecare console, on each team member's machine: every action goes through their own rights, every lasting change through a PR.",with:["Your teams","campdebase","terrain"]},
+ sifflet:{brick:"Each alert source is converted to the same format with its code (source, Map entity, severity), then pushed into Alertmanager.",with:["doc","carte","sac"]},
  corde:{with:["guide","dossard","balises"],limit:"The Guide does nothing in your place. What the engineer's assistant does next falls under the engineer's rights."},
  terrain:{brick:"Replay and simulation bench",with:["bootcamp","stresstest"],out:"A place to train without touching production."}
 };

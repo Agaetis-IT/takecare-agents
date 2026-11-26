@@ -34,6 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- The product site describes 0.5.0: each delivered role's card shows the highest level the product can do, in words (Apprentice, Practitioner, Expert), instead of a version, and its page says what that level does and what the next one will add; the Kiné and its Rehab are delivered; the Talkie now names the teams' console, the `takecare` command, delivered in part; the alert relay becomes a new card, the Whistle, not built yet; the cloud connector type for Azure; and the roadmap. ADR 0017, 0018 and 0021 get a dated note on the rename.
 - The alert intake finds an alert's earlier investigations, for its cooldown and its incident, through an index of the operator's cache instead of listing the namespace's investigations from the API server at every alert, which cost a read of up to `investigations.maxKept` records per alert. Deduplication, cooldown and grouping are unchanged, including for a record this replica created a moment before that the cache does not show yet.
 - The operator's run-time read-only guard (`ReadOnlyGuard`) now checks the ServiceAccount of every add-on connector, not only the `cluster` ones: a right the guard forbids, bound later to the history, Map, report or corpus server's account, makes its connector not Ready.
 - A blind spot for an entity with no source a connector can read now says "no kubernetes or azure source in the Map", instead of "no kubernetes source".
