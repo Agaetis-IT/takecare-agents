@@ -4,16 +4,44 @@
 #
 # Checks hack/ci-changes.sh on a throwaway repository: a base commit, a
 # pull request's commits on top of it, and the events the workflows pass.
+# A stub gh answers the previous head's check runs as GH_ANSWER says
+# (success by default), and fails on a call that does not ask for this
+# job's check at that head from GitHub Actions' app.
 set -euo pipefail
 
 script="$(git rev-parse --show-toplevel)/hack/ci-changes.sh"
 repo="$(mktemp -d)"
-trap 'rm -rf "$repo"' EXIT
 cd "$repo"
 git init -q
 git config user.email ci@example.invalid
 git config user.name ci
 git config commit.gpgsign false
+
+stubs="$(mktemp -d)"
+trap 'rm -rf "$repo" "$stubs"' EXIT
+cat >"${stubs}/gh" <<'STUB'
+#!/usr/bin/env bash
+args="$*"
+for want in "api -X GET repos/acme/takecare/commits/${BEFORE}/check-runs" "check_name=${CHECK}" "filter=latest" "app_id=15368"; do
+  if [[ "$args" != *"$want"* ]]; then
+    echo "stub gh: '${want}' not in '${args}'" >&2
+    exit 3
+  fi
+done
+case "${GH_ANSWER:-success}" in
+  success) printf '%s\tcompleted\tsuccess\n' "$CHECK" ;;
+  failure) printf '%s\tcompleted\tfailure\n' "$CHECK" ;;
+  cancelled) printf '%s\tcompleted\tcancelled\n' "$CHECK" ;;
+  skipped) printf '%s\tcompleted\tskipped\n' "$CHECK" ;;
+  running) printf '%s\tin_progress\tnull\n' "$CHECK" ;;
+  rerun-failed) printf '%s\tcompleted\tsuccess\n%s\tcompleted\tfailure\n' "$CHECK" "$CHECK" ;;
+  other-name) printf 'lint\tcompleted\tsuccess\n' ;;
+  missing) ;;
+  error) echo "HTTP 403: Resource not accessible by integration" >&2; exit 1 ;;
+  *) exit 4 ;;
+esac
+STUB
+chmod +x "${stubs}/gh"
 
 # commit FILE...: one commit writing each FILE; prints its sha.
 commit() {
@@ -27,7 +55,8 @@ failed=0
 # check NAME WANT PROFILE ACTION BEFORE AFTER: WANT is true, false or fail.
 check() {
   local out rc=0 got
-  out="$(EVENT="${EVENT:-pull_request}" ACTION="$4" BASE="${BASE-$base}" BEFORE="$5" AFTER="$6" HEAD="$6" "$script" "$3" 2>/dev/null)" || rc=$?
+  out="$(PATH="${stubs}:${PATH}" EVENT="${EVENT:-pull_request}" ACTION="$4" BASE="${BASE-$base}" BEFORE="$5" AFTER="$6" HEAD="$6" \
+    CHECK="${CHECK-test (unit, golden, envtest)}" REPO="${REPO-acme/takecare}" "$script" "$3" 2>/dev/null)" || rc=$?
   if [[ $rc -ne 0 ]]; then got=fail; else got="${out#heavy=}"; fi
   if [[ "$got" == "$2" ]]; then echo "PASS  $1"; else echo "FAIL  $1: want ${2}, got ${got} (exit ${rc}, '${out}')"; failed=1; fi
 }
@@ -44,6 +73,11 @@ check "a Go push after a docs push runs the Go jobs" true go synchronize "$docs"
 bench="$(commit test/bench/report-2026-11-26T1721Z.json)"
 check "a bench report pushed on a Go pull request skips the Go jobs" false go synchronize "$go" "$bench"
 check "the same pull request reopened runs the Go jobs" true go reopened "" "$bench"
+for answer in failure cancelled skipped running rerun-failed other-name missing error; do
+  GH_ANSWER="$answer" check "a bench report pushed after a Go push whose run is ${answer} runs the Go jobs" true go synchronize "$go" "$bench"
+done
+CHECK="" check "a bench report pushed with no check name runs the Go jobs" true go synchronize "$go" "$bench"
+REPO="" check "a bench report pushed with no repository runs the Go jobs" true go synchronize "$go" "$bench"
 check "a bench report under a bench subdirectory is not ignorable" true go synchronize "$bench" "$(commit test/bench/kine/expected.yaml)"
 prev="$(git rev-parse HEAD)"
 check "other test files are never ignorable" true go synchronize "$prev" "$(commit test/chart/x_test.go)"
