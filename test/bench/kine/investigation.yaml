@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 Agaetis
+# SPDX-License-Identifier: Apache-2.0
+#
+# The Kiné bench's input (spec 11 §12): the demo's proxy-timeout incident as
+# the Doc diagnosed it, a silent investigation with its status, so that only
+# the Kiné varies from run to run. The diagnosis is the one recorded from a
+# real model on 2026-11-15 (test/fakellm/testdata/e2e/proxy-timeout.json).
+#
+# hack/bench-kine.sh creates it under a name of its own, with the times
+# below moved to the bench's start, then writes its status: the Doc it names
+# does not exist, so the operator ends it Failed without a run, and the
+# bench replaces that status with this one (kubectl patch
+# --subresource=status). Silent, it is never published, never reviewed by
+# a trigger, and left out of the history server's lists.
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareInvestigation
+metadata:
+  name: bench-kine
+  namespace: takecare-system
+  labels:
+    takecare.agaetis.fr/bench: kine
+spec:
+  roleRef:
+    kind: TakeCareDoc
+    name: bench-kine-no-doc
+  level: Practitioner
+  silent: true
+  alert:
+    name: HighErrorRate
+    fingerprint: bench-kine
+    service: billing-api
+    namespace: demo-apps
+    source: alertmanager
+    entity: service/billing-api
+    firedAt: "2026-11-15T09:00:00Z"
+    labels:
+      alertname: HighErrorRate
+      namespace: demo-apps
+      service: billing-api
+      severity: critical
+    annotations:
+      summary: High error rate on billing-api
+      description: 6.2% of billing-api requests have answered 504 for 30 seconds.
+status:
+  phase: Completed
+  startedAt: "2026-11-15T09:00:05Z"
+  completedAt: "2026-11-15T09:02:40Z"
+  resolvedAt: "2026-11-15T09:20:00Z"
+  alerts:
+    - name: HighErrorRate
+      fingerprint: bench-kine
+      firedAt: "2026-11-15T09:00:00Z"
+  diagnosis: |
+    **Observations**
+    - Pod `billing-api-5bb7c966cf-x2fbp` logs repeatedly report `WARN db connection reset by peer, retrying (pool acquire ...)`.
+    - Deployment `billing-api` sets `DB_POOL_IDLE_TIMEOUT_SECONDS` to `900`, whereas DBProxy `billing-db-proxy` sets `spec.idleClientTimeout` to `600`.
+    - Runbook `RB-014` dictates the application pool must recycle idle connections before the shortest intermediate network timeout.
+
+    **Ruled-out leads**
+    - Memory exhaustion was ruled out because heap usage is at 41% (212 MB / 512 MB) and connection wait times drive the pressure.
+    - Pod crash or restarts were ruled out because the pod status is `Running` with zero restarts.
+
+    **Root cause**
+    The database connection pool idle timeout (900s) exceeds RDS DBProxy's idle client timeout (600s), causing the proxy to close idle connections.
+
+    **Recommended action**
+    Team Platform should update `DB_POOL_IDLE_TIMEOUT_SECONDS` in Deployment `billing-api` below 600s (e.g., 300s) or raise `spec.idleClientTimeout` on `billing-db-proxy`.
