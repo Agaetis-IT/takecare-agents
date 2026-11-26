@@ -580,9 +580,17 @@ run() {
 # Doc's investigation (spec 11 §13): Completed with the fixture's answer,
 # its usage attributed, published once to the fake Slack, matching the
 # golden. The run's other investigation of demo-apps, the masked alert's,
-# gets its own review; both are waited for.
+# gets its own review; both are waited for. A review that ended Failed
+# before its run, the Kiné or the gateway not ready, is followed by
+# another naming the same investigation (spec 11 §3, §6): it is not the
+# one checked. On a failure it prints the Kiné's reviews (name, phase,
+# reason) and what the fake model saw (its counts, the last request's tool
+# names, its unknown requests' fingerprints): no message content.
 kine_review() {
-  local inv="$1" kine="kubectl -n $NS get takecarekine kine -o jsonpath" n="" phase="" review rv
+  local inv="$1" kine="kubectl -n $NS get takecarekine kine -o jsonpath" n="" phase="" review rv before="$failed"
+  # shellcheck disable=SC2016 # $i is jq's variable, not the shell's
+  local mine='.spec.kineRef.name == "kine" and ((.spec.investigations // []) | index($i)) and
+    ((.status.phase == "Failed" and ((.status.reason // "") | test("^the (Kiné is not ready to review|gateway is not ready)$"))) | not)'
   log "reviewing the run's investigations with the demo Kiné, at Practitioner"
   kubectl -n "$NS" patch takecarekine kine --type=merge \
     -p '{"spec":{"suspend":false,"level":"Practitioner","connectors":{"report":"report"},"report":{"practitioner":"review"}}}' >/dev/null
@@ -590,8 +598,7 @@ kine_review() {
     bash -c "for _ in \$(seq 60); do [[ \$($kine='{.status.level} {.status.conditions[?(@.type==\"Ready\")].status}') == 'Practitioner True' ]] && exit 0; sleep 5; done; exit 1"
   rv="kubectl -n $NS get takecarereviews -o json"
   for _ in $(seq 120); do
-    read -r n phase < <($rv | jq -r --arg i "${inv:-none}" '
-      [.items[] | select(.spec.kineRef.name == "kine" and ((.spec.investigations // []) | index($i)))]
+    read -r n phase < <($rv | jq -r --arg i "${inv:-none}" "[.items[] | select(${mine})]"'
       | "\(length) \(map(.status.phase // "") | join(","))"')
     # One review naming it, ended, and none of the Kiné's left to run.
     if [[ "$n" == 1 && "$phase" =~ ^(Completed|Failed|Dropped)$ ]] &&
@@ -600,7 +607,7 @@ kine_review() {
     fi
     sleep 5
   done
-  review="$($rv | jq -r --arg i "${inv:-none}" '[.items[] | select(.spec.kineRef.name == "kine" and ((.spec.investigations // []) | index($i)))][0].metadata.name // "none"')"
+  review="$($rv | jq -r --arg i "${inv:-none}" "[.items[] | select(${mine})][0].metadata.name // \"none\"")"
   local get="kubectl -n $NS get takecarereview $review -o jsonpath"
   check "one review of the Doc's investigation, by the Kiné, Investigation-triggered, Completed with its answer read (spec 11 §3, §6)" \
     bash -c "[[ \$($get='{.spec.trigger} {.spec.level} {.status.phase} {.status.reason}') == 'Investigation Practitioner Completed ' && -n \$($get='{.status.problem.statement}') ]]"
@@ -616,6 +623,16 @@ kine_review() {
   check "published once to the review destination, matching the golden (spec 11 §8, AC 5)" \
     bash -c "[[ \$($get='{.status.published.ok}') == true ]] && E2E_SLACK_MESSAGES='${PWD}/bin/demo/slack-review.json' E2E_REVIEW_CHANNEL='$TAKECARE_SLACK_REVIEW_CHANNEL' E2E_INVESTIGATION='${inv:-none}' E2E_REVIEW='$review' go test -tags e2e -count=1 ./test/e2e/ -run 'TestSlackReview\$'"
   check "the operator's log has no forbidden line after the Kiné's reviews" operator_not_forbidden
+  [[ "$failed" -eq "$before" ]] && return
+  echo "--- the Kiné's reviews"
+  $rv | jq -r '.items[] | select(.spec.kineRef.name == "kine")
+    | "\(.metadata.name) \(.spec.trigger) \(.spec.investigations // []) \(.status.phase // "") \(.status.reason // "")"' || true
+  echo "--- the fake model: counts, the last request's tools"
+  fake_get fake-llm /stats
+  echo
+  fake_get fake-llm /last | jq -c '{model, roles: [.messages[]?.role], tools: ([.tools[]?.function.name] | sort)}' || true
+  echo "--- the fake model's unknown requests"
+  kubectl -n "$E2E_NS" logs deployment/fake-llm | grep 'unknown request' | tail -5 || true
 }
 
 # survey_reasons: the operator says why it created each Registration
