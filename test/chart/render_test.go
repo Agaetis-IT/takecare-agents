@@ -435,12 +435,67 @@ func checkAddonRule(t *testing.T, refKind, refName, sa string, r rbacv1.PolicyRu
 		}
 	}
 	if refKind == kindClusterRole {
+		if refName == nodesClusterRole && sa == "takecare-addon-kubernetes" && cmp.Equal(r, nodesRule) {
+			return
+		}
 		for _, res := range r.Resources {
 			if res != "namespaces" {
-				t.Errorf("ClusterRole %s bound to %s grants %s cluster-wide; only the namespace list is", refName, sa, res)
+				t.Errorf("ClusterRole %s bound to %s grants %s cluster-wide; only the namespace list is, and the nodes opt-in's one rule", refName, sa, res)
 			}
 		}
 	}
+}
+
+// nodesClusterRole and nodesRule are the kubernetes add-on's readNodes
+// opt-in (spec 12 §4): get, list and watch on nodes, no subresource.
+const nodesClusterRole = "takecare-addon-kubernetes-nodes"
+
+var nodesRule = rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"nodes"}, Verbs: []string{verbGet, verbList, verbWatch}}
+
+// The nodes opt-in (spec 12 §4): on in the demo profile, off by default
+// and in the prod profile; when on, one ClusterRole with exactly the one
+// rule, bound to the kubernetes add-on's ServiceAccount alone, and the
+// server's nodes_* tools still disabled.
+func TestAddonReadNodes(t *testing.T) {
+	nodes := func(objs []*unstructured.Unstructured) (roles, bindings []*unstructured.Unstructured) {
+		for _, o := range objs {
+			if o.GetName() != nodesClusterRole {
+				continue
+			}
+			switch o.GetKind() {
+			case kindClusterRole:
+				roles = append(roles, o)
+			case kindClusterBinding:
+				bindings = append(bindings, o)
+			default:
+				t.Errorf("%s %s renders under the nodes opt-in's name", o.GetKind(), o.GetName())
+			}
+		}
+		return roles, bindings
+	}
+	for name, args := range map[string][]string{
+		// The prod profile leaves readNodes to the chart's default.
+		"the prod profile":                  append(profileArgs("prod"), prodSets...),
+		"the demo profile, readNodes false": append(profileArgs("demo"), flagSet, "addons.kubernetes.readNodes=false"),
+	} {
+		if roles, bindings := nodes(render(t, releaseName, args...)); len(roles)+len(bindings) > 0 {
+			t.Errorf("%s render the nodes opt-in: %v", name, objectNames(append(roles, bindings...)))
+		}
+	}
+	demo := render(t, releaseName, profileArgs("demo")...)
+	roles, bindings := nodes(demo)
+	if len(roles) != 1 || len(bindings) != 1 {
+		t.Fatalf("the demo profile renders %v, want the ClusterRole and its binding", objectNames(append(roles, bindings...)))
+	}
+	if diff := cmp.Diff([]rbacv1.PolicyRule{nodesRule}, rulesByRole(t, roles)[kindClusterRole+"/"+nodesClusterRole]); diff != "" {
+		t.Errorf("the nodes opt-in's rules (-want +got):\n%s", diff)
+	}
+	subjects, _, _ := unstructured.NestedSlice(bindings[0].Object, "subjects")
+	if ref, _, _ := unstructured.NestedString(bindings[0].Object, "roleRef", "name"); ref != nodesClusterRole ||
+		jsonOf(subjects) != `[{"kind":"ServiceAccount","name":"takecare-addon-kubernetes","namespace":"`+releaseNamespace+`"}]` {
+		t.Errorf("the binding: roleRef %s, subjects %s", ref, jsonOf(subjects))
+	}
+	checkHardening(t, demo, "takecare-addon-kubernetes")
 }
 
 func TestAddonRBACIsReadOnly(t *testing.T) {
