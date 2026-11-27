@@ -19,9 +19,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - The accuracy bench (`make demo-bench`) takes its rule from the scenario file: a run is correct when it names the scenario's causes and matches none of its dangerous actions. The report names the scenario as `proxy-timeout@1` and gives, per run, the evidence found and the red herrings' states; `memoryLead` stays for one release. `BENCH_BASELINE=<report>` compares with an earlier report and refuses one at another scenario version. A bench whose scenario alert does not start within its window (an alert still firing from an earlier run does not count) is reported not played, never wrong.
-
-### Changed
-
 - CI skips its heavy jobs (unit, golden and envtest tests, the image build, the e2e, the chart smoke, the guard corpus, the release dry run, the site build) on a pull request when every file of the push, or of the whole pull request, is a bench report, documentation, a root Markdown file or, for the Go and cluster jobs, the site; `CHANGELOG.md` still runs the release dry run and the site build. The rule of the push applies only when the same job passed at the previous head (read with `checks: read`) on the same base, recorded by that run; otherwise, a base branch that moved on included, the whole pull request decides. A skipped job says so, naming the rule, in a notice on the checks page and in the job's summary. The jobs still report, so the required checks pass; a push to `main` runs everything, and lint, DCO, gitleaks and licenses always run.
 
 ## [0.5.0] - 2026-11-26
