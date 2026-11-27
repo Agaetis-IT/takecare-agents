@@ -115,6 +115,9 @@ func run(args []string, out io.Writer) error {
 		if err := fs.Parse(args); err != nil {
 			return err
 		}
+		if *format != "json" && *format != "text" {
+			return fmt.Errorf("-format %s: json or text", *format)
+		}
 		r, err := score(*file, *inv, *tools, *results, *mapDir)
 		if err != nil {
 			return err

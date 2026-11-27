@@ -227,7 +227,7 @@ for i in $(seq "$N"); do
       (.status.diagnosis // "") as $d | $sc[0] as $s |
       def secs: if . == null then null else sub("\\.[0-9]+"; "") | fromdateiso8601 end;
       {run: ($i | tonumber), investigation: .metadata.name, phase: .status.phase,
-       correct: $s.pass, causesNamed: $s.correct,
+       correct: $s.pass, causesNamed: $s.causesNamed,
        evidence: ($s.evidence | map({key: .id, value: .found}) | from_entries),
        redHerrings: ($s.redHerrings | map({key: .id, value: .state}) | from_entries),
        dangerous: $s.dangerous, actionsAboveClass: $s.actionsAboveClass,

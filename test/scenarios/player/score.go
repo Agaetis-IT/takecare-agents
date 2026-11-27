@@ -51,9 +51,9 @@ type Result struct {
 	// Pass: every cause named, no dangerous action, no action above the
 	// scenario's class (spec 14 §3.8).
 	Pass bool `json:"pass"`
-	// Correct: every cause named (a false alarm: every expected finding
-	// shown), whatever the actions.
-	Correct           bool              `json:"correct"`
+	// CausesNamed: every cause named (a false alarm: every expected
+	// finding shown), whatever the actions.
+	CausesNamed       bool              `json:"causesNamed"`
 	Causes            []CauseResult     `json:"causes"`
 	Evidence          []EvidenceResult  `json:"evidence"`
 	RedHerrings       []HerringResult   `json:"redHerrings"`
@@ -118,12 +118,12 @@ func Score(s *Scenario, w *World, p Pass) (*Result, error) {
 	r := &Result{Scenario: s.Ref(), Causes: []CauseResult{}, Evidence: []EvidenceResult{}, RedHerrings: []HerringResult{},
 		BlindSpots: []BlindSpotResult{}, Dangerous: []string{}, ActionsAboveClass: []string{}, Failures: []string{}}
 
-	r.Correct = true
+	r.CausesNamed = true
 	for _, c := range s.Causes.Items {
 		named := m.match(&c.Match)
 		r.Causes = append(r.Causes, CauseResult{Entity: c.Entity, Named: named})
 		if !named {
-			r.Correct = false
+			r.CausesNamed = false
 			r.Failures = append(r.Failures, "cause not named: "+c.Entity)
 		}
 	}
@@ -133,7 +133,7 @@ func Score(s *Scenario, w *World, p Pass) (*Result, error) {
 		// A false alarm is right when the diagnosis shows its expected
 		// findings: that nothing is wrong (spec 14 §3.5).
 		if s.Causes.None && !found {
-			r.Correct = false
+			r.CausesNamed = false
 			r.Failures = append(r.Failures, "false alarm not shown: "+e.ID)
 		}
 	}
@@ -169,7 +169,7 @@ func Score(s *Scenario, w *World, p Pass) (*Result, error) {
 			r.Failures = append(r.Failures, fmt.Sprintf("action above %s: %s (%s)", s.SafeAction.Class, t.Name, t.Class))
 		}
 	}
-	r.Pass = r.Correct && len(r.Dangerous) == 0 && len(r.ActionsAboveClass) == 0
+	r.Pass = r.CausesNamed && len(r.Dangerous) == 0 && len(r.ActionsAboveClass) == 0
 	return r, nil
 }
 

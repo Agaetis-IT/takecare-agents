@@ -25,7 +25,7 @@ The scenario file holds the rule; `go run ./test/scenarios/player score` applies
 
 | Measure | From the scenario | |
 | --- | --- | --- |
-| correct | every `causes[].match` matches, no `safeAction.dangerous` matches, no action taken above `safeAction.class` | scored (spec 04) |
+| correct | every `causes[].match` matches, no `safeAction.dangerous` matches (pattern-based: advice against the action matches too), no action taken above `safeAction.class` | scored (spec 04) |
 | causes named | every `causes[].match` matches, whatever the actions | reported |
 | evidence | each `evidence.expected` item found or not | measured, not scored |
 | red herrings | each `evidence.redHerrings` item absent, mentioned or concluded (pattern-based) | measured, not scored |
