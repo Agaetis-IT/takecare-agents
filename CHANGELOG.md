@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- The Map server (`takecare-agents-mcp-map`) no longer keeps the whole repository in memory and no longer grows at every fetch: it lists the branch's head at every poll and, only when it moved, clones the branch into a fresh storage, keeps the Map's own history (the files of `map/` at every revision, a few dozen bytes per commit) and drops the clone. Measured with 201 commits of a 256 KiB file outside `map/`: 0.4 MiB held instead of 57 MiB, and nothing more after ten new commits instead of 4 MiB more. `map_at` still reaches every revision. Each head move now clones the whole branch again, and needs about twice the repository's history in memory for that moment, as the first clone did; the chart's values say how to size the limit (128Mi by default, unchanged).
+
 ### Added
 
 - The Mécano's API (spec 12), ahead of its controller: the kinds `TakeCareMecano` (short name `tcmecano`) and `TakeCareMaintenance`, with their CRDs in the `takecare-crds` chart. A Mécano needs at least one `cluster` and one `code` connector, and binds at most one `propose`, one `copy`, one `history` and one `map` connector, four `releases` and sixteen of the others; its schedule is weekly by default (`0 5 * * 1`, UTC) or `none`; its maintenances run 15 minutes at most and report certificates 30 days ahead by default; the repositories its plans may target name its `propose` connector. Its name is at most 47 characters, a maintenance's at most 63 without a dot, refused at creation. A maintenance's spec is immutable and its status bounded (200 components, 100 objects on a removed API, certificates and GitOps applications each, 50 findings, a plan of 20 steps and 16 pull requests). `RoleRef` and the Ranger's `spec.models` accept `TakeCareMecano`. Nothing creates or runs a maintenance yet.

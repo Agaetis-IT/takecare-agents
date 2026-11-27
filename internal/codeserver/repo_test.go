@@ -5,37 +5,14 @@ package codeserver
 
 import (
 	"context"
-	"encoding/pem"
-	"net/http/cgi" //nolint:gosec // G504 is about Go before 1.6.3; the test runs git http-backend on its own loopback server
-	"net/http/httptest"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/agaetis-it/takecare-agents/internal/gittest"
 )
 
-// httpsRemote serves the remote over HTTPS with git http-backend, which
-// serves shallow clones (go-git's own file:// server does not). The git
-// binary is required: a test that cannot reach the remote fails.
-func (r *remote) https() (url, caFile string) {
-	r.t.Helper()
-	gitBin, err := exec.LookPath("git")
-	if err != nil {
-		r.t.Fatalf("the shallow clone test needs the git binary (git http-backend): %v", err)
-	}
-	srv := httptest.NewTLSServer(&cgi.Handler{
-		Path: gitBin, Args: []string{"http-backend"},
-		Env: []string{"GIT_PROJECT_ROOT=" + r.dir, "GIT_HTTP_EXPORT_ALL=1"},
-	})
-	r.t.Cleanup(srv.Close)
-	caFile = filepath.Join(r.t.TempDir(), "ca.pem")
-	ca := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
-	if err := os.WriteFile(caFile, ca, 0o600); err != nil {
-		r.t.Fatal(err)
-	}
-	return srv.URL + "/.git", caFile
-}
+// https serves the remote over HTTPS with git http-backend.
+func (r *remote) https() (url, caFile string) { return gittest.HTTPS(r.t, r.dir) }
 
 // The server keeps the head of the branch and nothing of its history: a
 // depth-1 clone, replaced by a fresh one when the head moves and kept

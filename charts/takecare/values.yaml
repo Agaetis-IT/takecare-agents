@@ -388,7 +388,15 @@ addons:
       # Empty: the chart's appVersion.
       tag: ""
       pullPolicy: IfNotPresent
-    # -- Requests and limits of the Map server container.
+    # -- Requests and limits of the Map server container. Between polls it
+    # keeps the Map's own history (the files of map/ at every revision and
+    # a few dozen bytes per commit), never the rest of the repository. When
+    # the branch's head moves it clones the branch again, with all its
+    # history, reads it and drops it: for that moment it needs about twice
+    # the size of the repository's history (all files of all revisions,
+    # uncompressed). The default 128Mi holds a history of about 45Mi;
+    # raise limits.memory for a larger repository, or the pod is killed
+    # out of memory when the head moves.
     resources:
       requests: { cpu: 10m, memory: 32Mi }
       limits: { memory: 128Mi }
