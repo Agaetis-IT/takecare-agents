@@ -473,8 +473,8 @@ run() {
   # enforces NetworkPolicies), and the operator's guard checked its account.
   check "the history server is ready under its egress policy, TCP 443 and 6443 only (spec 11 §4)" \
     bash -c "[[ \$(kubectl -n $NS get networkpolicy takecare-addon-history-egress -o jsonpath='{.spec.egress[*].ports[*].port}') == '443 6443' && \$(kubectl -n $NS get deployment takecare-addon-history -o jsonpath='{.status.readyReplicas}') == 1 ]]"
-  check "connector history is Ready with its four read tools, the two gets content (spec 11 §4)" \
-    bash -c "[[ \$(kubectl -n $NS get takecareconnector history -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}') == True && \$(kubectl -n $NS get takecareconnector history -o jsonpath='{range .status.tools[*]}{.name}={.class}{.content} {end}') == 'investigation_get=readtrue investigations_list=read review_get=readtrue reviews_list=read ' ]]"
+  check "connector history is Ready with its six read tools, the three gets content (spec 11 §4, spec 12 §3)" \
+    bash -c "[[ \$(kubectl -n $NS get takecareconnector history -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}') == True && \$(kubectl -n $NS get takecareconnector history -o jsonpath='{range .status.tools[*]}{.name}={.class}{.content} {end}') == 'investigation_get=readtrue investigations_list=read maintenance_get=readtrue maintenances_list=read review_get=readtrue reviews_list=read ' ]]"
   check "connector history's ServiceAccount passed the read-only guard (spec 04, spec 11 §10)" \
     bash -c "[[ \$(kubectl -n $NS get takecareconnector history -o jsonpath='{.status.conditions[?(@.type==\"ReadOnlyGuard\")].status} {.status.conditions[?(@.type==\"ReadOnlyGuard\")].reason}') == 'True Ready' ]]"
   check "connector map has MapCurrent=True with a revision (spec 08 §9)" \
