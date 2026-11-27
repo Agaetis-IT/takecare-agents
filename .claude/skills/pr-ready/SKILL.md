@@ -20,7 +20,7 @@ description: Use before opening or updating a pull request on TakeCare Agents. R
    - the read-only guard (no write verb, `secrets`, `pods/exec|attach|portforward`, `*`, and no `act` tool below `Expert`);
    - no secret, token, prompt or model answer in logs, status, fixtures or golden files (`gitleaks detect --no-git` if available);
    - every new attribute name lives in `internal/telemetry/semconv`.
-4. **Docs.** README updated if a command changed; `CHANGELOG.md` "Unreleased" updated for user-visible changes; spec untouched unless the reviewer agreed; a new ADR if a decision changed (use the `new-adr` skill).
+4. **Docs.** README updated if a command changed; a CHANGELOG fragment under `changes/unreleased/` for user-visible changes, or the no-user-visible-change marker (see `changes/unreleased/README.md`; never edit `CHANGELOG.md`); spec untouched unless the reviewer agreed; a new ADR if a decision changed (use the `new-adr` skill).
 5. **Commits.** Conventional Commits, English, scope from the list in `AGENTS.md`. Squash fixups.
 6. **Description.** Fill `.github/pull_request_template.md`:
    - one line per acceptance criterion: `[x] spec 02 AC 3: covered by TestDocTrialDestination (envtest)`;
