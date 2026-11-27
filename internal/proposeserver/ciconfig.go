@@ -272,7 +272,7 @@ func includeNode(n *yaml.Node, project string) ([]string, error) {
 }
 
 // includeKeys are the keys an include may carry besides its kind.
-var includeKeys = map[string]bool{"rules": true, "inputs": true, "ref": true, "file": true, "job": true, "integrity": true, "cache": true}
+var includeKeys = map[string]bool{"rules": true, "inputs": true, keyRef: true, "file": true, "job": true, "integrity": true, "cache": true}
 
 func includeMap(n *yaml.Node, project string) ([]string, error) {
 	kind := ""
@@ -307,7 +307,7 @@ func includeMap(n *yaml.Node, project string) ([]string, error) {
 		}
 		// This project's own files, perhaps at another ref: refused all
 		// the same, and only readable at the head.
-		if mapValue(n, "ref") != nil {
+		if mapValue(n, keyRef) != nil {
 			return nil, fmt.Errorf("include:project names this project at a ref (line %d)", n.Line)
 		}
 		files := mapValue(n, "file")

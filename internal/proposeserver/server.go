@@ -221,24 +221,24 @@ func annotations() *sdk.ToolAnnotations {
 }
 
 func inputSchema() map[string]any {
-	str := func(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
+	str := func(desc string) map[string]any { return map[string]any{keyType: "string", keyDescription: desc} }
 	return map[string]any{
-		"type":                 "object",
+		keyType:                "object",
 		"additionalProperties": false,
-		"required":             []string{"repository", "branch", "title", "body", "files"},
+		"required":             []string{"repository", keyBranch, keyTitle, keyBody, "files"},
 		"properties": map[string]any{
 			"repository": str("A listed repository: owner/name on GitHub, the project's full path on GitLab."),
-			"branch":     str("The branch to create: takecare/mecano/ then lower-case letters, digits and hyphens, as the operator's message names it."),
-			"title":      str(fmt.Sprintf("The pull request's title, %d characters at most.", maxTitle)),
-			"body":       str(fmt.Sprintf("The pull request's description, %d KiB at most.", maxBody>>10)),
+			keyBranch:    str("The branch to create: takecare/mecano/ then lower-case letters, digits and hyphens, as the operator's message names it."),
+			keyTitle:     str(fmt.Sprintf("The pull request's title, %d characters at most.", maxTitle)),
+			keyBody:      str(fmt.Sprintf("The pull request's description, %d KiB at most.", maxBody>>10)),
 			"files": map[string]any{
-				"type": "array", "minItems": 1, "maxItems": maxFiles,
-				"description": "The files the commit writes, each its whole new content.",
+				keyType: "array", "minItems": 1, "maxItems": maxFiles,
+				keyDescription: "The files the commit writes, each its whole new content.",
 				"items": map[string]any{
-					"type": "object", "additionalProperties": false, "required": []string{"path", "content"},
+					keyType: "object", "additionalProperties": false, "required": []string{"path", keyContent},
 					"properties": map[string]any{
-						"path":    str("A relative path in the repository."),
-						"content": str("The file's whole content."),
+						"path":     str("A relative path in the repository."),
+						keyContent: str("The file's whole content."),
 					},
 				},
 			},
@@ -291,8 +291,7 @@ func (s *Server) handle(ctx context.Context, req *sdk.CallToolRequest) (*sdk.Cal
 	res, repo, err := s.propose(ctx, req.Params.Arguments)
 	if err != nil {
 		code := CodeForge
-		var r *refusal
-		if errors.As(err, &r) {
+		if r, ok := errors.AsType[*refusal](err); ok {
 			code = r.code
 		} else {
 			err = &refusal{code: CodeForge, detail: err.Error()}
@@ -305,7 +304,7 @@ func (s *Server) handle(ctx context.Context, req *sdk.CallToolRequest) (*sdk.Cal
 	if res.Reused {
 		outcome = "reused"
 	}
-	s.logger.Info("propose_change", "repository", res.Repository, "branch", res.Branch, "outcome", outcome, "url", res.URL)
+	s.logger.Info("propose_change", "repository", res.Repository, keyBranch, res.Branch, "outcome", outcome, "url", res.URL)
 	raw, err := json.Marshal(res)
 	if err != nil {
 		return nil, fmt.Errorf("encode the result: %w", err)

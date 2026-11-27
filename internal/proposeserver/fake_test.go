@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -17,6 +18,29 @@ import (
 	"sync"
 	"testing"
 	"time"
+)
+
+// Literals the fakes and the tests repeat.
+const (
+	kMessage     = "message"
+	kName        = "name"
+	kPath        = "path"
+	kDraft       = "draft"
+	kHTMLURL     = "html_url"
+	tContent     = "x: 1\n"
+	kCommit      = "commit"
+	kSHA         = "sha"
+	kTree        = "tree"
+	kMode        = "mode"
+	kHead        = "head"
+	tNotFound    = "Not Found"
+	tMain        = "main"
+	tRunSh       = "run.sh"
+	tLink        = "link"
+	ciMain       = "ci/main.yml"
+	ciA          = "ci/a.yml"
+	cfgSubA      = "configs/sub/a.yml"
+	wantHTTPSURL = "an https URL"
 )
 
 // The token the fakes expect, assembled at run time so that no
@@ -113,8 +137,8 @@ func newFakeGitHub() *fakeGitHub {
 		protected: true, branchStatus: 200, rulesStatus: 200, refs: map[string]bool{},
 		trees: map[string][]fakeEntry{
 			ghTree: {
-				{"deploy", modeTree, "7ree-deploy"}, {"README.md", modeFile, "b1"}, {"run.sh", modeExec, "b2"},
-				{"link", modeSymlink, "b3"}, {"vendor-mod", "160000", "c1"},
+				{"deploy", modeTree, "7ree-deploy"}, {"README.md", modeFile, "b1"}, {tRunSh, modeExec, "b2"},
+				{tLink, modeSymlink, "b3"}, {"vendor-mod", "160000", "c1"},
 			},
 			"7ree-deploy": {{"app.yaml", modeFile, "b4"}},
 		},
@@ -128,49 +152,49 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.unknownCaller = true
 		f.mu.Unlock()
-		writeJSON(w, 401, map[string]any{"message": "Bad credentials"})
+		writeJSON(w, 401, map[string]any{kMessage: "Bad credentials"})
 		return
 	}
 	rest, ok := strings.CutPrefix(path, ghPrefix)
 	if !ok {
-		writeJSON(w, 404, map[string]any{"message": "Not Found"})
+		writeJSON(w, 404, map[string]any{kMessage: tNotFound})
 		return
 	}
 	switch {
 	case r.Method == http.MethodGet && rest == "":
-		writeJSON(w, 200, map[string]any{"full_name": ghRepo, "default_branch": "main"})
+		writeJSON(w, 200, map[string]any{"full_name": ghRepo, "default_branch": tMain})
 	case r.Method == http.MethodGet && rest == "/branches/main":
 		time.Sleep(f.delay)
 		if f.branchStatus != 200 {
-			writeJSON(w, f.branchStatus, map[string]any{"message": "Resource not accessible by personal access token"})
+			writeJSON(w, f.branchStatus, map[string]any{kMessage: "Resource not accessible by personal access token"})
 			return
 		}
-		b := map[string]any{"name": "main", "commit": map[string]any{"sha": ghHead, "commit": map[string]any{"tree": map[string]any{"sha": ghTree}}}}
+		b := map[string]any{kName: tMain, kCommit: map[string]any{kSHA: ghHead, kCommit: map[string]any{kTree: map[string]any{kSHA: ghTree}}}}
 		if f.protected != nil {
 			b["protected"] = f.protected
 		}
 		writeJSON(w, 200, b)
 	case r.Method == http.MethodGet && rest == "/rules/branches/main":
 		if f.rulesStatus != 200 {
-			writeJSON(w, f.rulesStatus, map[string]any{"message": "Forbidden"})
+			writeJSON(w, f.rulesStatus, map[string]any{kMessage: "Forbidden"})
 			return
 		}
 		rules := []map[string]any{}
 		for _, t := range f.rules {
-			rules = append(rules, map[string]any{"type": t, "ruleset_id": 1})
+			rules = append(rules, map[string]any{keyType: t, "ruleset_id": 1})
 		}
 		writeJSON(w, 200, rules)
 	case r.Method == http.MethodGet && strings.HasPrefix(rest, "/git/ref/heads/"):
 		if f.refs[strings.TrimPrefix(rest, "/git/ref/heads/")] {
-			writeJSON(w, 200, map[string]any{"ref": "refs/heads/x"})
+			writeJSON(w, 200, map[string]any{keyRef: "refs/heads/x"})
 			return
 		}
-		writeJSON(w, 404, map[string]any{"message": "Not Found"})
+		writeJSON(w, 404, map[string]any{kMessage: tNotFound})
 	case r.Method == http.MethodGet && rest == "/pulls":
 		q := r.URL.Query()
 		out := []map[string]any{}
 		for _, p := range f.pulls {
-			if q.Get("state") == "open" && "acme:"+p["head"].(map[string]any)["ref"].(string) == q.Get("head") {
+			if q.Get("state") == "open" && "acme:"+p[kHead].(map[string]any)[keyRef].(string) == q.Get(kHead) {
 				out = append(out, p)
 			}
 		}
@@ -178,39 +202,49 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && strings.HasPrefix(rest, "/git/trees/"):
 		entries, ok := f.trees[strings.TrimPrefix(rest, "/git/trees/")]
 		if !ok {
-			writeJSON(w, 404, map[string]any{"message": "Not Found"})
+			writeJSON(w, 404, map[string]any{kMessage: tNotFound})
 			return
 		}
 		tree := []map[string]any{}
 		for _, e := range entries {
-			tree = append(tree, map[string]any{"path": e.path, "mode": e.mode, "sha": e.sha})
+			tree = append(tree, map[string]any{kPath: e.path, kMode: e.mode, kSHA: e.sha})
 		}
-		writeJSON(w, 200, map[string]any{"sha": "x", "tree": tree, "truncated": false})
-	case r.Method == http.MethodPost && rest == "/git/trees":
-		writeJSON(w, 201, map[string]any{"sha": "7ree-new"})
-	case r.Method == http.MethodPost && rest == "/git/commits":
-		writeJSON(w, 201, map[string]any{"sha": "c0mmit-new"})
-	case r.Method == http.MethodPost && rest == "/git/refs":
+		writeJSON(w, 200, map[string]any{kSHA: "x", kTree: tree, "truncated": false})
+	case r.Method == http.MethodPost:
+		f.post(w, rest, body)
+	default:
+		writeJSON(w, 404, map[string]any{kMessage: tNotFound})
+	}
+}
+
+// post serves the writes: the Git data API and the pull requests.
+func (f *fakeGitHub) post(w http.ResponseWriter, rest string, body map[string]any) {
+	switch rest {
+	case "/git/trees":
+		writeJSON(w, 201, map[string]any{kSHA: "7ree-new"})
+	case "/git/commits":
+		writeJSON(w, 201, map[string]any{kSHA: "c0mmit-new"})
+	case "/git/refs":
 		if f.refConflict {
-			writeJSON(w, 422, map[string]any{"message": "Reference already exists"})
+			writeJSON(w, 422, map[string]any{kMessage: "Reference already exists"})
 			return
 		}
-		f.refs[strings.TrimPrefix(body["ref"].(string), "refs/heads/")] = true
-		writeJSON(w, 201, map[string]any{"ref": body["ref"]})
-	case r.Method == http.MethodPost && rest == "/pulls":
+		f.refs[strings.TrimPrefix(body[keyRef].(string), "refs/heads/")] = true
+		writeJSON(w, 201, map[string]any{keyRef: body[keyRef]})
+	case "/pulls":
 		if f.draftRefused {
-			writeJSON(w, 422, map[string]any{"message": "Validation Failed", "errors": []map[string]any{{"resource": "PullRequest", "code": "custom", "message": "Draft pull requests are not supported in this repository."}}})
+			writeJSON(w, 422, map[string]any{kMessage: "Validation Failed", "errors": []map[string]any{{"resource": "PullRequest", "code": "custom", kMessage: "Draft pull requests are not supported in this repository."}}})
 			return
 		}
 		u := fmt.Sprintf("https://github.example/acme/shop/pull/%d", len(f.pulls)+1)
-		draft := body["draft"]
+		draft := body[kDraft]
 		if f.notDraft {
 			draft = false
 		}
-		f.pulls = append(f.pulls, map[string]any{"html_url": u, "body": body["body"], "head": map[string]any{"ref": body["head"]}, "draft": draft})
-		writeJSON(w, 201, map[string]any{"html_url": u, "draft": draft})
+		f.pulls = append(f.pulls, map[string]any{kHTMLURL: u, keyBody: body[keyBody], kHead: map[string]any{keyRef: body[kHead]}, kDraft: draft})
+		writeJSON(w, 201, map[string]any{kHTMLURL: u, kDraft: draft})
 	default:
-		writeJSON(w, 404, map[string]any{"message": "Not Found"})
+		writeJSON(w, 404, map[string]any{kMessage: tNotFound})
 	}
 }
 
@@ -241,10 +275,10 @@ func newFakeGitLab() *fakeGitLab {
 		branch:       map[string]any{"protected": true, "developers_can_push": false, "developers_can_merge": false, "can_push": false},
 		branchStatus: 200,
 		files: map[string]string{
-			".gitlab-ci.yml": "stages: [test]\n", "deploy/app.yaml": "kind: Deployment\n", "run.sh": "#!/bin/sh\n",
-			"link": "deploy/app.yaml",
+			defaultCIConfig: "stages: [test]\n", "deploy/app.yaml": "kind: Deployment\n", tRunSh: "#!/bin/sh\n",
+			tLink: "deploy/app.yaml",
 		},
-		modes:     map[string]string{"run.sh": modeExec, "link": modeSymlink},
+		modes:     map[string]string{tRunSh: modeExec, tLink: modeSymlink},
 		branches:  map[string]bool{},
 		rawStatus: map[string]int{},
 	}
@@ -257,57 +291,55 @@ func (f *fakeGitLab) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.badCaller = true
 		f.mu.Unlock()
-		writeJSON(w, 401, map[string]any{"message": "401 Unauthorized"})
+		writeJSON(w, 401, map[string]any{kMessage: "401 Unauthorized"})
 		return
 	}
 	rest, ok := strings.CutPrefix(path, glPrefix)
 	if !ok {
-		writeJSON(w, 404, map[string]any{"message": "404 Project Not Found"})
+		writeJSON(w, 404, map[string]any{kMessage: "404 Project Not Found"})
 		return
 	}
 	q := r.URL.Query()
 	switch {
 	case r.Method == http.MethodGet && rest == "":
-		p := map[string]any{"path_with_namespace": glProject, "default_branch": "main"}
+		p := map[string]any{"path_with_namespace": glProject, "default_branch": tMain}
 		if !f.noCIField {
 			p["ci_config_path"] = f.ciConfigPath
 		}
 		writeJSON(w, 200, p)
 	case r.Method == http.MethodGet && rest == "/repository/branches/main":
 		if f.branchStatus != 200 {
-			writeJSON(w, f.branchStatus, map[string]any{"message": "403 Forbidden"})
+			writeJSON(w, f.branchStatus, map[string]any{kMessage: "403 Forbidden"})
 			return
 		}
-		b := map[string]any{"name": "main", "default": true, "commit": map[string]any{"id": glHead}}
-		for k, v := range f.branch {
-			b[k] = v
-		}
+		b := map[string]any{kName: tMain, "default": true, kCommit: map[string]any{"id": glHead}}
+		maps.Copy(b, f.branch)
 		writeJSON(w, 200, b)
 	case r.Method == http.MethodGet && strings.HasPrefix(rest, "/repository/branches/"):
 		name, _ := url.PathUnescape(strings.TrimPrefix(rest, "/repository/branches/"))
 		if f.branches[name] {
-			writeJSON(w, 200, map[string]any{"name": name})
+			writeJSON(w, 200, map[string]any{kName: name})
 			return
 		}
-		writeJSON(w, 404, map[string]any{"message": "404 Branch Not Found"})
+		writeJSON(w, 404, map[string]any{kMessage: "404 Branch Not Found"})
 	case r.Method == http.MethodGet && strings.HasPrefix(rest, "/repository/files/") && strings.HasSuffix(rest, "/raw"):
 		name, _ := url.PathUnescape(strings.TrimSuffix(strings.TrimPrefix(rest, "/repository/files/"), "/raw"))
-		if q.Get("ref") != glHead {
-			writeJSON(w, 400, map[string]any{"message": "wrong ref"})
+		if q.Get(keyRef) != glHead {
+			writeJSON(w, 400, map[string]any{kMessage: "wrong ref"})
 			return
 		}
 		if s := f.rawStatus[name]; s != 0 {
-			writeJSON(w, s, map[string]any{"message": "error"})
+			writeJSON(w, s, map[string]any{kMessage: "error"})
 			return
 		}
 		c, ok := f.files[name]
 		if !ok {
-			writeJSON(w, 404, map[string]any{"message": "404 File Not Found"})
+			writeJSON(w, 404, map[string]any{kMessage: "404 File Not Found"})
 			return
 		}
 		_, _ = io.WriteString(w, c)
 	case r.Method == http.MethodGet && rest == "/repository/tree":
-		writeJSON(w, 200, f.tree(q.Get("path"), q.Get("recursive") == "true"))
+		writeJSON(w, 200, f.tree(q.Get(kPath), q.Get("recursive") == "true"))
 	case r.Method == http.MethodGet && rest == "/merge_requests":
 		out := []map[string]any{}
 		for _, m := range f.mrs {
@@ -316,19 +348,29 @@ func (f *fakeGitLab) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		writeJSON(w, 200, out)
-	case r.Method == http.MethodPost && rest == "/repository/commits":
+	case r.Method == http.MethodPost:
+		f.post(w, rest, body)
+	default:
+		writeJSON(w, 404, map[string]any{kMessage: "404 Not Found"})
+	}
+}
+
+// post serves the writes: the commit and the merge request.
+func (f *fakeGitLab) post(w http.ResponseWriter, rest string, body map[string]any) {
+	switch rest {
+	case "/repository/commits":
 		if f.branches[body["branch"].(string)] {
-			writeJSON(w, 400, map[string]any{"message": "A branch called '" + body["branch"].(string) + "' already exists."})
+			writeJSON(w, 400, map[string]any{kMessage: "A branch called '" + body["branch"].(string) + "' already exists."})
 			return
 		}
 		f.branches[body["branch"].(string)] = true
 		writeJSON(w, 201, map[string]any{"id": "c0mmit"})
-	case r.Method == http.MethodPost && rest == "/merge_requests":
+	case "/merge_requests":
 		u := fmt.Sprintf("https://gitlab.example/grp/sub/shop/-/merge_requests/%d", len(f.mrs)+1)
-		f.mrs = append(f.mrs, map[string]any{"web_url": u, "description": body["description"], "source_branch": body["source_branch"], "title": body["title"]})
-		writeJSON(w, 201, map[string]any{"web_url": u, "draft": true})
+		f.mrs = append(f.mrs, map[string]any{"web_url": u, "description": body["description"], "source_branch": body["source_branch"], keyTitle: body[keyTitle]})
+		writeJSON(w, 201, map[string]any{"web_url": u, kDraft: true})
 	default:
-		writeJSON(w, 404, map[string]any{"message": "404 Not Found"})
+		writeJSON(w, 404, map[string]any{kMessage: "404 Not Found"})
 	}
 }
 
@@ -352,7 +394,7 @@ func (f *fakeGitLab) tree(dir string, recursive bool) []map[string]any {
 			continue
 		}
 		if recursive {
-			out = append(out, map[string]any{"name": filepath.Base(p), "path": p, "type": "blob", "mode": f.mode(p)})
+			out = append(out, map[string]any{kName: filepath.Base(p), kPath: p, keyType: "blob", kMode: f.mode(p)})
 			continue
 		}
 		name, _, isDir := strings.Cut(rest, "/")
@@ -362,9 +404,9 @@ func (f *fakeGitLab) tree(dir string, recursive bool) []map[string]any {
 		seen[name] = true
 		mode, typ := f.mode(prefix+name), "blob"
 		if isDir {
-			mode, typ = modeTree, "tree"
+			mode, typ = modeTree, kTree
 		}
-		out = append(out, map[string]any{"name": name, "path": prefix + name, "type": typ, "mode": mode})
+		out = append(out, map[string]any{kName: name, kPath: prefix + name, keyType: typ, kMode: mode})
 	}
 	return out
 }

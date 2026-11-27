@@ -101,7 +101,7 @@ func (g *gitlab) openProposal(ctx context.Context, h head, branch string) (strin
 		Description  string `json:"description"`
 		SourceBranch string `json:"source_branch"`
 	}
-	q := url.Values{"state": {"opened"}, "source_branch": {branch}, "target_branch": {h.branch}, "per_page": {"100"}}
+	q := url.Values{"state": {"opened"}, "source_branch": {branch}, "target_branch": {h.branch}, keyPerPage: {"100"}}
 	if _, err := g.api.do(ctx, http.MethodGet, g.path("/merge_requests"), q, nil, &mrs); err != nil {
 		return "", fmt.Errorf("list the merge requests of %s: %w", branch, err)
 	}
@@ -125,7 +125,7 @@ func (g *gitlab) tree(ctx context.Context, h head, dir string, recursive bool) (
 		if page > maxTreePages {
 			return nil, fmt.Errorf("%q has more than %d entries", dir, maxTreePages*100)
 		}
-		q := url.Values{"ref": {h.commit}, "per_page": {"100"}, "page": {strconv.Itoa(page)}}
+		q := url.Values{keyRef: {h.commit}, keyPerPage: {"100"}, "page": {strconv.Itoa(page)}}
 		if dir != "" {
 			q.Set("path", dir)
 		}
@@ -159,7 +159,7 @@ func (g *gitlab) tree(ctx context.Context, h head, dir string, recursive bool) (
 
 // raw reads a file at the head; found is false on a 404.
 func (g *gitlab) raw(ctx context.Context, h head, p string) (content []byte, found bool, err error) {
-	q := url.Values{"ref": {h.commit}}
+	q := url.Values{keyRef: {h.commit}}
 	_, err = g.api.do(ctx, http.MethodGet, g.path("/repository/files/%s/raw", escapeWhole(p)), q, nil, &content)
 	if httpStatus(err) == http.StatusNotFound {
 		return nil, false, nil
@@ -176,9 +176,9 @@ func (g *gitlab) commit(ctx context.Context, h head, branch, message string, cha
 		if c.exists {
 			action = "update"
 		}
-		actions = append(actions, map[string]string{"action": action, "file_path": c.path, "content": c.content})
+		actions = append(actions, map[string]string{"action": action, "file_path": c.path, keyContent: c.content})
 	}
-	in := map[string]any{"branch": branch, "start_sha": h.commit, "commit_message": message, "actions": actions}
+	in := map[string]any{keyBranch: branch, "start_sha": h.commit, "commit_message": message, "actions": actions}
 	_, err := g.api.do(ctx, http.MethodPost, g.path("/repository/commits"), nil, in, nil)
 	if s := httpStatus(err); s == http.StatusBadRequest && strings.Contains(strings.ToLower(err.Error()), "already exists") {
 		return refuse(CodeBranchExists, "branch %s was created meanwhile: %v", branch, err)
@@ -198,7 +198,7 @@ func (g *gitlab) open(ctx context.Context, h head, branch, title, body string) (
 	var mr struct {
 		WebURL string `json:"web_url"`
 	}
-	in := map[string]any{"source_branch": branch, "target_branch": h.branch, "title": title, "description": body}
+	in := map[string]any{"source_branch": branch, "target_branch": h.branch, keyTitle: title, keyDescription: body}
 	if _, err := g.api.do(ctx, http.MethodPost, g.path("/merge_requests"), nil, in, &mr); err != nil {
 		return "", fmt.Errorf("open the merge request: %w", err)
 	}

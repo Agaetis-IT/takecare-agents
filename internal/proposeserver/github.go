@@ -95,7 +95,7 @@ func (g *github) pullRequestRule(ctx context.Context, branch string) (bool, erro
 		var rules []struct {
 			Type *string `json:"type"`
 		}
-		q := url.Values{"per_page": {"100"}, "page": {strconv.Itoa(page)}}
+		q := url.Values{keyPerPage: {"100"}, "page": {strconv.Itoa(page)}}
 		if _, err := g.api.do(ctx, http.MethodGet, g.path("/rules/branches/%s", escapeSegments(branch)), q, nil, &rules); err != nil {
 			return false, err
 		}
@@ -138,7 +138,7 @@ func (g *github) openProposal(ctx context.Context, h head, branch string) (strin
 			Ref string `json:"ref"`
 		} `json:"head"`
 	}
-	q := url.Values{"state": {"open"}, "head": {g.owner + ":" + branch}, "base": {h.branch}, "per_page": {"100"}}
+	q := url.Values{"state": {"open"}, "head": {g.owner + ":" + branch}, "base": {h.branch}, keyPerPage: {"100"}}
 	if _, err := g.api.do(ctx, http.MethodGet, g.path("/pulls"), q, nil, &pulls); err != nil {
 		return "", fmt.Errorf("list the pull requests of %s: %w", branch, err)
 	}
@@ -196,7 +196,7 @@ func (g *github) commit(ctx context.Context, h head, branch, message string, cha
 	if _, err := g.api.do(ctx, http.MethodPost, g.path("/git/commits"), nil, in, &commit); err != nil {
 		return fmt.Errorf("write the commit: %w", err)
 	}
-	_, err := g.api.do(ctx, http.MethodPost, g.path("/git/refs"), nil, map[string]any{"ref": "refs/heads/" + branch, "sha": commit.SHA}, nil)
+	_, err := g.api.do(ctx, http.MethodPost, g.path("/git/refs"), nil, map[string]any{keyRef: "refs/heads/" + branch, "sha": commit.SHA}, nil)
 	if httpStatus(err) == http.StatusUnprocessableEntity {
 		return refuse(CodeBranchExists, "branch %s was created meanwhile: %v", branch, err)
 	}
@@ -213,7 +213,7 @@ func (g *github) open(ctx context.Context, h head, branch, title, body string) (
 		HTMLURL string `json:"html_url"`
 		Draft   *bool  `json:"draft"`
 	}
-	in := map[string]any{"title": title, "body": body, "head": branch, "base": h.branch, "draft": true}
+	in := map[string]any{keyTitle: title, keyBody: body, "head": branch, "base": h.branch, "draft": true}
 	_, err := g.api.do(ctx, http.MethodPost, g.path("/pulls"), nil, in, &pr)
 	if httpStatus(err) == http.StatusUnprocessableEntity && strings.Contains(strings.ToLower(err.Error()), "draft") {
 		return "", refuse(CodeDraftUnavailable, "%s refuses draft pull requests; branch %s is left without one, the customer's to delete", g.repo, branch)

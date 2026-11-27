@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -66,12 +67,12 @@ func propose(t *testing.T, s *sdk.ClientSession, args map[string]any) (string, b
 
 func args(repo string, files ...map[string]any) map[string]any {
 	if len(files) == 0 {
-		files = []map[string]any{{"path": appFile, "content": "kind: Deployment\n"}}
+		files = []map[string]any{{kPath: appFile, keyContent: "kind: Deployment\n"}}
 	}
-	return map[string]any{"repository": repo, "branch": branch, "title": title, "body": "The plan.", "files": files}
+	return map[string]any{"repository": repo, "branch": branch, keyTitle: title, keyBody: "The plan.", "files": files}
 }
 
-func file(p string) map[string]any { return map[string]any{"path": p, "content": "x: 1\n"} }
+func file(p string) map[string]any { return map[string]any{kPath: p, keyContent: tContent} }
 
 func gitHub(t *testing.T, f *fakeGitHub, timeout time.Duration) *sdk.ClientSession {
 	t.Helper()
@@ -140,9 +141,9 @@ func TestConfigRefusals(t *testing.T) {
 		"a .. segment":              {with(func(r *Repository) { r.Repository = "acme/.." }), "without a . or .. segment"},
 		"a .git suffix":             {with(func(r *Repository) { r.Repository = "acme/shop.git" }), "a .git suffix"},
 		"a subgroup on GitHub":      {with(func(r *Repository) { r.Repository = "acme/sub/shop" }), "owner/name on GitHub"},
-		"plain HTTP":                {with(func(r *Repository) { r.APIURL = "http://api.github.com" }), "an https URL"},
-		"user information in URL":   {with(func(r *Repository) { r.APIURL = "https://user@api.github.com" }), "an https URL"},
-		"a query in the URL":        {with(func(r *Repository) { r.APIURL = "https://api.github.com/?x=1" }), "an https URL"},
+		"plain HTTP":                {with(func(r *Repository) { r.APIURL = "http://api.github.com" }), wantHTTPSURL},
+		"user information in URL":   {with(func(r *Repository) { r.APIURL = "https://user@api.github.com" }), wantHTTPSURL},
+		"a query in the URL":        {with(func(r *Repository) { r.APIURL = "https://api.github.com/?x=1" }), wantHTTPSURL},
 		"no token file":             {with(func(r *Repository) { r.TokenFile = "" }), "no token file"},
 		"a repository listed twice": {[]Repository{ok, ok}, "listed twice"},
 	} {
@@ -220,7 +221,7 @@ func TestToolsListRaw(t *testing.T) {
 func TestGitHubOpensADraft(t *testing.T) {
 	f := newFakeGitHub()
 	s := gitHub(t, f, 5*time.Second)
-	text, isErr := propose(t, s, args(ghRepo, file(appFile), file(newFile), file("run.sh")))
+	text, isErr := propose(t, s, args(ghRepo, file(appFile), file(newFile), file(tRunSh)))
 	if isErr {
 		t.Fatalf("refused: %s", text)
 	}
@@ -244,14 +245,14 @@ func TestGitHubOpensADraft(t *testing.T) {
 		t.Errorf("tree = %s (an executable keeps its mode)", entries)
 	}
 	commit := f.bodies[ghPrefix+"/git/commits"][0]
-	if parents, _ := json.Marshal(commit["parents"]); string(parents) != `["`+ghHead+`"]` || commit["tree"] != "7ree-new" || commit["message"] != title {
+	if parents, _ := json.Marshal(commit["parents"]); string(parents) != `["`+ghHead+`"]` || commit["tree"] != "7ree-new" || commit[kMessage] != title {
 		t.Errorf("commit = %v", commit)
 	}
-	if ref := f.bodies[ghPrefix+"/git/refs"][0]; ref["ref"] != "refs/heads/"+branch || ref["sha"] != "c0mmit-new" || ref["force"] != nil {
+	if ref := f.bodies[ghPrefix+"/git/refs"][0]; ref[keyRef] != "refs/heads/"+branch || ref[kSHA] != "c0mmit-new" || ref["force"] != nil {
 		t.Errorf("ref = %v", ref)
 	}
 	pr := f.bodies[ghPrefix+"/pulls"][0]
-	if pr["draft"] != true || pr["head"] != branch || pr["base"] != "main" || pr["title"] != title || pr["body"] != "The plan."+wantFooter {
+	if pr[kDraft] != true || pr[kHead] != branch || pr["base"] != tMain || pr[keyTitle] != title || pr[keyBody] != "The plan."+wantFooter {
 		t.Errorf("pull request = %v", pr)
 	}
 	if f.unknownCaller {
@@ -279,7 +280,7 @@ func TestRefusals(t *testing.T) {
 		"a repository not listed":     {args("acme/other"), CodeRepositoryNotListed},
 		"a GitHub workflow":           {args(ghRepo, file(".github/workflows/ci.yaml")), CodePathRefused},
 		"a GitHub workflow in caps":   {args(ghRepo, file(".GitHub/Workflows/ci.yaml")), CodePathRefused},
-		"GitLab's CI file":            {args(ghRepo, file(".gitlab-ci.yml")), CodePathRefused},
+		"GitLab's CI file":            {args(ghRepo, file(defaultCIConfig)), CodePathRefused},
 		"GitLab's directory":          {args(ghRepo, file(".gitlab/ci/jobs.yml")), CodePathRefused},
 		"a .. element":                {args(ghRepo, file("deploy/../../x")), CodePathRefused},
 		"an absolute path":            {args(ghRepo, file("/etc/passwd")), CodePathRefused},
@@ -291,7 +292,7 @@ func TestRefusals(t *testing.T) {
 		"a branch in capitals":        {func() map[string]any { a := args(ghRepo); a["branch"] = "takecare/mecano/Weekly"; return a }(), CodeBranchRefused},
 		"a branch with a slash":       {func() map[string]any { a := args(ghRepo); a["branch"] = "takecare/mecano/a/b"; return a }(), CodeBranchRefused},
 		"an argument not declared":    {func() map[string]any { a := args(ghRepo); a["force"] = true; return a }(), CodeArguments},
-		"a title on two lines":        {func() map[string]any { a := args(ghRepo); a["title"] = "a\nb"; return a }(), CodeArguments},
+		"a title on two lines":        {func() map[string]any { a := args(ghRepo); a[keyTitle] = "a\nb"; return a }(), CodeArguments},
 		"no file":                     {func() map[string]any { a := args(ghRepo); a["files"] = []any{}; return a }(), CodeArguments},
 		"21 files": {func() map[string]any {
 			a := args(ghRepo)
@@ -302,7 +303,7 @@ func TestRefusals(t *testing.T) {
 			a["files"] = fs
 			return a
 		}(), CodeArguments},
-		"past 256 KiB": {args(ghRepo, map[string]any{"path": "a", "content": long}, map[string]any{"path": "b", "content": long}), CodeArguments},
+		"past 256 KiB": {args(ghRepo, map[string]any{kPath: "a", keyContent: long}, map[string]any{kPath: "b", keyContent: long}), CodeArguments},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newFakeGitHub()
@@ -318,7 +319,7 @@ func TestRefusals(t *testing.T) {
 // A symbolic link or a submodule on a path is refused once the tree is
 // read, before any write.
 func TestGitHubTreeRefusals(t *testing.T) {
-	for _, p := range []string{"link", "link/app.yaml", "vendor-mod/x.yaml", "README.md/x", "deploy"} {
+	for _, p := range []string{tLink, "link/app.yaml", "vendor-mod/x.yaml", "README.md/x", "deploy"} {
 		t.Run(p, func(t *testing.T) {
 			f := newFakeGitHub()
 			text, isErr := propose(t, gitHub(t, f, 5*time.Second), args(ghRepo, file(p)))
@@ -365,8 +366,8 @@ func TestGitHubProtection(t *testing.T) {
 // An existing branch is reused only with the open pull request the server
 // opened from it.
 func TestGitHubExistingBranch(t *testing.T) {
-	ours := map[string]any{"html_url": "https://github.example/acme/shop/pull/7", "body": "plan" + wantFooter, "head": map[string]any{"ref": branch}}
-	foreign := map[string]any{"html_url": "https://github.example/acme/shop/pull/8", "body": "someone's", "head": map[string]any{"ref": branch}}
+	ours := map[string]any{kHTMLURL: "https://github.example/acme/shop/pull/7", keyBody: "plan" + wantFooter, kHead: map[string]any{keyRef: branch}}
+	foreign := map[string]any{kHTMLURL: "https://github.example/acme/shop/pull/8", keyBody: "someone's", kHead: map[string]any{keyRef: branch}}
 	for name, tc := range map[string]struct {
 		pulls []map[string]any
 		code  string
@@ -415,7 +416,7 @@ func TestGitHubDraftUnavailable(t *testing.T) {
 			n++
 		}
 	}
-	if n != 1 || f.bodies[ghPrefix+"/pulls"][0]["draft"] != true {
+	if n != 1 || f.bodies[ghPrefix+"/pulls"][0][kDraft] != true {
 		t.Errorf("%d pull request attempts, %v; want one, as a draft", n, f.bodies[ghPrefix+"/pulls"])
 	}
 	onlyEndpoints(t, f.all(), githubEndpoints)
@@ -451,7 +452,7 @@ func TestGitLabOpensADraft(t *testing.T) {
 		t.Errorf("actions = %s", actions)
 	}
 	mr := f.bodies[glPrefix+"/merge_requests"][0]
-	if mr["title"] != "Draft: "+title || mr["source_branch"] != branch || mr["target_branch"] != "main" || mr["description"] != "The plan."+wantFooter {
+	if mr[keyTitle] != "Draft: "+title || mr["source_branch"] != branch || mr["target_branch"] != tMain || mr["description"] != "The plan."+wantFooter {
 		t.Errorf("merge request = %v", mr)
 	}
 	if f.badCaller {
@@ -498,10 +499,10 @@ func TestGitLabProtection(t *testing.T) {
 // this repository's; whenever the server cannot tell, CIConfigUnknown.
 func TestGitLabCIConfiguration(t *testing.T) {
 	nested := map[string]string{
-		"ci/main.yml":     "include:\n  - local: /ci/a.yml\n  - remote: https://example.com/x.yml\n  - template: Auto-DevOps.gitlab-ci.yml\n  - project: other/proj\n    file: x.yml\n",
-		"ci/a.yml":        "include: 'ci/b.yml'\n",
+		ciMain:            "include:\n  - local: /ci/a.yml\n  - remote: https://example.com/x.yml\n  - template: Auto-DevOps.gitlab-ci.yml\n  - project: other/proj\n    file: x.yml\n",
+		ciA:               "include: 'ci/b.yml'\n",
 		"ci/b.yml":        "include:\n  - project: grp/sub/shop\n    file: [ci/own.yml]\n  - 'ci/jobs/*.yml'\n",
-		"ci/own.yml":      "x: 1\n",
+		"ci/own.yml":      tContent,
 		"ci/jobs/one.yml": "include:\n  local: ci/deep.yml\n",
 		"ci/deep.yml":     "child:\n  trigger:\n    include: ci/child.yml\n",
 		"ci/child.yml":    "y: 1\n",
@@ -518,43 +519,39 @@ func TestGitLabCIConfiguration(t *testing.T) {
 		path    string
 		code    string // empty: opened
 	}{
-		"the default file":                  {"", false, nil, nil, ".gitlab-ci.yml", CodePathRefused},
-		"no CI file: a manifest proposed":   {"", false, map[string]string{".gitlab-ci.yml": ""}, map[string]int{".gitlab-ci.yml": 404}, appFile, ""},
+		"the default file":                  {"", false, nil, nil, defaultCIConfig, CodePathRefused},
+		"no CI file: a manifest proposed":   {"", false, map[string]string{defaultCIConfig: ""}, map[string]int{defaultCIConfig: 404}, appFile, ""},
 		"null ci_config_path":               {nil, false, nil, nil, appFile, ""},
-		"a custom path":                     {"ci/main.yml", false, nested, nil, "ci/main.yml", CodePathRefused},
-		"a custom path in this project":     {"ci/main.yml@grp/sub/shop", false, nested, nil, "ci/main.yml", CodePathRefused},
-		"a nested include:local":            {"ci/main.yml", false, nested, nil, "ci/a.yml", CodePathRefused},
-		"the short form":                    {"ci/main.yml", false, nested, nil, "ci/b.yml", CodePathRefused},
-		"this project's file":               {"ci/main.yml", false, nested, nil, "ci/own.yml", CodePathRefused},
-		"a file a wildcard matches":         {"ci/main.yml", false, nested, nil, "ci/jobs/two.yml", CodePathRefused},
-		"a wildcard's file's include":       {"ci/main.yml", false, nested, nil, "ci/deep.yml", CodePathRefused},
-		"a child pipeline's file":           {"ci/main.yml", false, nested, nil, "ci/child.yml", CodePathRefused},
-		"another project's file named here": {"ci/main.yml", false, nested, nil, "x.yml", ""},
-		"a file outside the configuration":  {"ci/main.yml", false, nested, nil, "ci/jobs/sub/x.yml", ""},
+		"a custom path":                     {ciMain, false, nested, nil, ciMain, CodePathRefused},
+		"a custom path in this project":     {"ci/main.yml@grp/sub/shop", false, nested, nil, ciMain, CodePathRefused},
+		"a nested include:local":            {ciMain, false, nested, nil, ciA, CodePathRefused},
+		"the short form":                    {ciMain, false, nested, nil, "ci/b.yml", CodePathRefused},
+		"this project's file":               {ciMain, false, nested, nil, "ci/own.yml", CodePathRefused},
+		"a file a wildcard matches":         {ciMain, false, nested, nil, "ci/jobs/two.yml", CodePathRefused},
+		"a wildcard's file's include":       {ciMain, false, nested, nil, "ci/deep.yml", CodePathRefused},
+		"a child pipeline's file":           {ciMain, false, nested, nil, "ci/child.yml", CodePathRefused},
+		"another project's file named here": {ciMain, false, nested, nil, "x.yml", ""},
+		"a file outside the configuration":  {ciMain, false, nested, nil, "ci/jobs/sub/x.yml", ""},
 		"a file in another project":         {"ci.yml@other/proj", false, nil, nil, "ci.yml", ""},
 		"a URL":                             {"https://example.com/ci.yml", false, nil, nil, "ci.yml", ""},
 		"no ci_config_path field":           {"", true, nil, nil, appFile, CodeCIConfigUnknown},
 		"the configured file missing":       {"ci/none.yml", false, nil, nil, appFile, CodeCIConfigUnknown},
-		"a file that cannot be read":        {"", false, nil, map[string]int{".gitlab-ci.yml": 403}, appFile, CodeCIConfigUnknown},
-		"a file that does not parse":        {"", false, map[string]string{".gitlab-ci.yml": "include: [a\n"}, nil, appFile, CodeCIConfigUnknown},
-		"a variable in an include":          {"", false, map[string]string{".gitlab-ci.yml": "include:\n  local: ci/$ENV.yml\n"}, nil, appFile, CodeCIConfigUnknown},
-		"an include kind unknown":           {"", false, map[string]string{".gitlab-ci.yml": "include:\n  - catalog: x\n"}, nil, appFile, CodeCIConfigUnknown},
-		"an included file missing":          {"", false, map[string]string{".gitlab-ci.yml": "include: ci/gone.yml\n"}, nil, appFile, CodeCIConfigUnknown},
+		"a file that cannot be read":        {"", false, nil, map[string]int{defaultCIConfig: 403}, appFile, CodeCIConfigUnknown},
+		"a file that does not parse":        {"", false, map[string]string{defaultCIConfig: "include: [a\n"}, nil, appFile, CodeCIConfigUnknown},
+		"a variable in an include":          {"", false, map[string]string{defaultCIConfig: "include:\n  local: ci/$ENV.yml\n"}, nil, appFile, CodeCIConfigUnknown},
+		"an include kind unknown":           {"", false, map[string]string{defaultCIConfig: "include:\n  - catalog: x\n"}, nil, appFile, CodeCIConfigUnknown},
+		"an included file missing":          {"", false, map[string]string{defaultCIConfig: "include: ci/gone.yml\n"}, nil, appFile, CodeCIConfigUnknown},
 		"this project at another ref":       {"ci/main.yml@grp/sub/shop:dev", false, nil, nil, appFile, CodeCIConfigUnknown},
-		"more than 150 includes":            {"", false, map[string]string{".gitlab-ci.yml": many}, nil, appFile, CodeCIConfigUnknown},
+		"more than 150 includes":            {"", false, map[string]string{defaultCIConfig: many}, nil, appFile, CodeCIConfigUnknown},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newFakeGitLab()
 			f.ciConfigPath, f.noCIField = tc.ciPath, tc.noField
-			for k, v := range tc.files {
-				f.files[k] = v
-			}
-			for k, v := range tc.raw {
-				f.rawStatus[k] = v
-			}
+			maps.Copy(f.files, tc.files)
+			maps.Copy(f.rawStatus, tc.raw)
 			if tc.code == CodeCIConfigUnknown && strings.HasPrefix(name, "more than") {
 				for i := range maxIncludes + 1 {
-					f.files[fmt.Sprintf("ci/m%d.yml", i)] = "x: 1\n"
+					f.files[fmt.Sprintf("ci/m%d.yml", i)] = tContent
 				}
 			}
 			text, isErr := propose(t, gitLab(t, f), args(glProject, file(tc.path)))
@@ -578,12 +575,12 @@ func TestMatchCI(t *testing.T) {
 		want          bool
 	}{
 		{"configs/*.yml", "configs/a.yml", true},
-		{"configs/*.yml", "configs/sub/a.yml", false},
-		{"configs/**.yml", "configs/sub/a.yml", true},
+		{"configs/*.yml", cfgSubA, false},
+		{"configs/**.yml", cfgSubA, true},
 		{"configs/**/*.yml", "configs/a.yml", false},
-		{"configs/**/*.yml", "configs/sub/a.yml", true},
-		{"ci/a.yml", "ci/a.yml", true},
-		{"ci/a.yml", "ci/a.yaml", false},
+		{"configs/**/*.yml", cfgSubA, true},
+		{ciA, ciA, true},
+		{ciA, "ci/a.yaml", false},
 		{"c.i/*.yml", "cxi/a.yml", false},
 	} {
 		if got := matchCI(tc.pattern, tc.path); got != tc.want {
@@ -598,7 +595,7 @@ func TestNoRedirect(t *testing.T) {
 	other := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { elsewhere++; w.WriteHeader(200) }))
 	t.Cleanup(other.Close)
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, other.URL+r.URL.Path, http.StatusFound)
+		http.Redirect(w, r, other.URL+r.URL.Path, http.StatusFound) //nolint:gosec // the test's own redirect, to the test's own server
 	}))
 	t.Cleanup(srv.Close)
 	s := connect(t, newServer(t, srv.Client(), Repository{Forge: ForgeGitLab, APIURL: srv.URL, Repository: glProject, TokenFile: tokenFile(t)}))

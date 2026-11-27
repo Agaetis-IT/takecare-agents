@@ -41,6 +41,18 @@ func refuse(code, format string, args ...any) error {
 	return &refusal{code: code, detail: fmt.Sprintf(format, args...)}
 }
 
+// Keys of the forges' JSON and query strings the server repeats.
+const (
+	keyRef         = "ref"
+	keyPerPage     = "per_page"
+	keyBody        = "body"
+	keyContent     = "content"
+	keyBranch      = "branch"
+	keyDescription = "description"
+	keyTitle       = "title"
+	keyType        = "type"
+)
+
 // maxResponse bounds what is read of a forge's answer.
 const maxResponse = 4 << 20
 
@@ -56,8 +68,7 @@ func (e *statusError) Error() string {
 }
 
 func httpStatus(err error) int {
-	var se *statusError
-	if errors.As(err, &se) {
+	if se, ok := errors.AsType[*statusError](err); ok {
 		return se.status
 	}
 	return 0
