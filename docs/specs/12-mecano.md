@@ -266,7 +266,7 @@ What runs live and what Git declares are compared with **what exists**: the vers
 
 The connector type `releases` joins the enum (spec 06 §4). It is optional. Its read server is an add-on, `takecare-agents-mcp-releases` (ours, Go: `cmd/mcp-releases`, `internal/releasesserver`), rendered when `addons.releases.enabled` is set (off by default). It is reached through the gateway like every connector (ADR 0008).
 
-**Sources.** The add-on lists its sources in `addons.releases.sources[]`, at most 32, each `{name, kind, url, tokenSecretRef, components[]}`, `kind` one of:
+**Sources.** The add-on lists its sources in `addons.releases.sources[]`, at most 32, each `{name, kind, url, authHost, tokenSecretRef, components[]}`, `kind` one of:
 
 | Kind | What it reads | Upstream interface |
 |---|---|---|
@@ -288,7 +288,7 @@ The connector type `releases` joins the enum (spec 06 §4). It is optional. Its 
 
 **Once a day, cached.** The server answers from a cache and refreshes a `(source, name)` at most once a day, whatever the number of Mécanos and maintenances: an upstream is called at most once a day per name. A refresh that fails keeps the last answer, with its date, and the tool says it is stale; past 7 days stale the answer is dropped and the collector falls back to the dataset for it, with a blind spot naming the source.
 
-**Egress.** The server calls only the hosts of its listed sources: any other URL, a redirect to another host included, is refused in the server. Kubernetes NetworkPolicies select peers by pod, namespace or IP block, never by host name (Kubernetes docs, "Network Policies"), so the add-on's NetworkPolicy allows DNS and TCP 443 only, to the CIDRs given in `addons.releases.egressCIDRs` when set, or to the proxy pods when the chart's proxy is configured (as for the code add-on, §5); the host list is then held by the server and, where there is one, by the customer's egress proxy. The add-on's README says that a NetworkPolicy alone does not list hosts.
+**Egress.** The server calls only the hosts of its listed sources: any other URL, a redirect to another host included, is refused in the server. An `oci` source whose registry names another host as its token realm (Docker Hub's `auth.docker.io`) declares it in `authHost`, the one other host it may call; undeclared, that realm is refused. URLs are `https` on port 443 only; a `helm` source on `oci://` is refused (an OCI registry is an `oci` source). A `github`, `gitlab` or `endoflife` source serves only the names its `components[]` list. A refresh that fails counts as the day's call: the next one is a day later. Kubernetes NetworkPolicies select peers by pod, namespace or IP block, never by host name (Kubernetes docs, "Network Policies"), so the add-on's NetworkPolicy allows DNS and TCP 443 only, to the CIDRs given in `addons.releases.egressCIDRs` when set, or to the proxy pods when the chart's proxy is configured (as for the code add-on, §5); the host list is then held by the server and, where there is one, by the customer's egress proxy. The add-on's README says that a NetworkPolicy alone does not list hosts.
 
 **Tokens.** Public sources need none, and none is configured. A private source (an internal mirror, a private registry) names a Secret in `tokenSecretRef`, mounted on the releases server's pod only, never read by the operator or the agent: the connector shows the Secret's name, not its content. The token needs read access to the tags, index or releases, nothing more.
 
