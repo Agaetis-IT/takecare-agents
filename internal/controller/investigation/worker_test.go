@@ -130,8 +130,8 @@ type workerFixture struct {
 	// confidences is the worker's takecare_investigations_confidence_total.
 	confidences *prometheus.CounterVec
 	runs        *runs.Metrics
-	cancel context.CancelFunc
-	start  func()
+	cancel      context.CancelFunc
+	start       func()
 	// accounting is given to the worker; set it before start.
 	accounting Accounting
 	// wrap, when set, wraps the worker's client (a failing write); grace is

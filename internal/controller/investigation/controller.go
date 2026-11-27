@@ -68,9 +68,12 @@ const (
 	queuedResync = time.Minute
 )
 
+// labelRole is the role label of the investigation metrics.
+const labelRole = "role"
+
 // NewPhaseMetric creates and registers takecare_investigations_total.
 func NewPhaseMetric(reg prometheus.Registerer) (*prometheus.CounterVec, error) {
-	c := prometheus.NewCounterVec(prometheus.CounterOpts{Name: "takecare_investigations_total", Help: "Investigations by role and phase reached."}, []string{"role", "phase"})
+	c := prometheus.NewCounterVec(prometheus.CounterOpts{Name: "takecare_investigations_total", Help: "Investigations by role and phase reached."}, []string{labelRole, "phase"})
 	if err := reg.Register(c); err != nil {
 		if already, ok := errors.AsType[prometheus.AlreadyRegisteredError](err); ok {
 			if existing, ok := already.ExistingCollector.(*prometheus.CounterVec); ok {
@@ -85,7 +88,7 @@ func NewPhaseMetric(reg prometheus.Registerer) (*prometheus.CounterVec, error) {
 // NewConfidenceMetric creates and registers
 // takecare_investigations_confidence_total.
 func NewConfidenceMetric(reg prometheus.Registerer) (*prometheus.CounterVec, error) {
-	c := prometheus.NewCounterVec(prometheus.CounterOpts{Name: "takecare_investigations_confidence_total", Help: "Completed investigations by role and recorded confidence: high, medium, low, unstated."}, []string{"role", "level"})
+	c := prometheus.NewCounterVec(prometheus.CounterOpts{Name: "takecare_investigations_confidence_total", Help: "Completed investigations by role and recorded confidence: high, medium, low, unstated."}, []string{labelRole, "level"})
 	if err := reg.Register(c); err != nil {
 		if already, ok := errors.AsType[prometheus.AlreadyRegisteredError](err); ok {
 			if existing, ok := already.ExistingCollector.(*prometheus.CounterVec); ok {
