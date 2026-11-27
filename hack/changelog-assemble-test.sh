@@ -175,7 +175,7 @@ accept() {
     fail "accept ${name}: refused: ${out}"
   fi
 }
-accept protocol '- The MCP client speaks the protocol revision `2025-11-25`.'
+accept protocol '- The MCP client speaks the protocol revision 2025-11-25.'
 accept bench '- The Doc answers faster than in the benches of 2026-11-14.'
 accept split '- Decided by the product owner. The benches of 2026-11-14 stand.'
 accept undated '- A rule decided by the product owner, agreed by the maintainers.'
