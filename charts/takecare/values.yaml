@@ -531,6 +531,66 @@ addons:
     egress:
       excludedCIDRs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
       proxy: null
+  # -- The version watch (spec 12 §7.1): our takecare-agents-mcp-releases,
+  # three read tools over the versions an OCI registry, a Helm repository,
+  # a GitHub or GitLab project publish and the release cycles of
+  # endoflife.date products. One connector `releases`, read by the Mécano's
+  # collector, never by an agent. It calls only its sources' hosts, each
+  # name at most once a day. No ServiceAccount token: it reads no
+  # Kubernetes object. Without it, the Mécano uses the end-of-support
+  # dataset shipped with the release (the offline watch).
+  # @default -- see the keys below
+  releases:
+    # -- Deploy the releases server and the connector releases.
+    enabled: false
+    # -- The releases server's image; its tag empty: the chart's appVersion.
+    image:
+      registry: ghcr.io/agaetis-it
+      repository: takecare-agents-mcp-releases
+      # Empty: the chart's appVersion.
+      tag: ""
+      pullPolicy: IfNotPresent
+    # -- No tool carries content: versions and dates only.
+    contentTools: []
+    # -- Tool overrides (spec 05), as for the kubernetes add-on.
+    tools: []
+    # -- Requests and limits of the releases server container. It reads a
+    # Helm index.yaml of 16 MiB at most, one at a time.
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits: { memory: 256Mi }
+    # -- The cache: each (source, name) refreshed at most once per refresh;
+    # a failed refresh keeps the last answer, stale, until staleMax, then
+    # drops it; at most maxEntries names (up to 4096).
+    cache:
+      refresh: 24h
+      staleMax: 168h
+      maxEntries: 512
+    # -- REQUIRED when enabled: 1 to 32 sources, each {name (lower-case
+    # letters, digits, hyphens), kind (oci, helm, github, gitlab or
+    # endoflife), url (https, port 443 only, no user information, query or
+    # fragment: a registry `https://ghcr.io`, a Helm repository's directory
+    # of its index.yaml, a forge's API `https://api.github.com` or
+    # `https://gitlab.com/api/v4`, `https://endoflife.date/api/v1`),
+    # authHost (oci only: the token realm's host when the registry names
+    # another, `auth.docker.io` for Docker Hub), tokenSecretRef {name, key:
+    # token, username} (a read token mounted on this pod only; with a
+    # username, sent as basic credentials, oci and helm only; else Bearer,
+    # PRIVATE-TOKEN on GitLab), components [{match, name}] (match: a Map
+    # key, an image repository or a chart name; name: this source's name for
+    # it; required on github, gitlab and endoflife, whose only names they
+    # are)}. A helm source on oci:// is refused: use an oci source.
+    sources: []
+    # -- The CIDRs the sources resolve to (an internal mirror): egress goes
+    # to them only, TCP 443. Empty: the proxy pods when egress.proxy is set,
+    # else every address outside the cluster, the private ranges excluded,
+    # so that a mirror on a private address needs its CIDR here. A
+    # NetworkPolicy cannot name hosts: the server holds the host list.
+    egressCIDRs: []
+    # -- Egress through a proxy, or the private ranges excluded by default.
+    egress:
+      excludedCIDRs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      proxy: null
 
 # ---------------------------------------------------------------------------
 # Subcharts. Keys below are the upstream charts' own values.

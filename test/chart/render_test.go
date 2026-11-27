@@ -174,6 +174,8 @@ func TestRenderedPlatformAgainstTheCRD(t *testing.T) {
 			flagSet, "platform.observability.metrics.prometheusURL=http://prometheus.monitoring.svc"), "", nil},
 		{"prod profile with the code and propose add-ons", append(append(codeValues(t, ""), proposeValues(t, "")[len(prodArgs()):]...),
 			flagSet, "platform.observability.metrics.prometheusURL=http://prometheus.monitoring.svc"), "", []string{codeConnector, proposeConnector}},
+		{"prod profile with the releases add-on", append(releasesValues(t, ""),
+			flagSet, "platform.observability.metrics.prometheusURL=http://prometheus.monitoring.svc"), "", []string{releasesConnector}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

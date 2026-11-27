@@ -137,6 +137,56 @@ reverse path order, so this file, last by name, is evaluated first.
 {{- end }}
 {{- end }}
 {{- end }}
+{{- with .Values.addons.releases }}
+{{- if .enabled }}
+{{- $n := len .sources }}
+{{- if or (lt $n 1) (gt $n 32) }}
+{{- fail "addons.releases.sources is REQUIRED: 1 to 32 sources the releases connector reads" }}
+{{- end }}
+{{- $names := dict }}
+{{- range .sources }}
+{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$" (.name | default "")) }}
+{{- fail "addons.releases.sources[].name is REQUIRED: lower-case letters, digits and hyphens, 63 at most" }}
+{{- end }}
+{{- if hasKey $names .name }}
+{{- fail (printf "addons.releases.sources: %s is listed twice" .name) }}
+{{- end }}
+{{- $_ := set $names .name true }}
+{{- if not (has .kind (list "oci" "helm" "github" "gitlab" "endoflife")) }}
+{{- fail (printf "addons.releases.sources[%s].kind is REQUIRED: oci, helm, github, gitlab or endoflife" .name) }}
+{{- end }}
+{{- $url := .url | default "" }}
+{{- if hasPrefix "oci://" $url }}
+{{- fail (printf "addons.releases.sources[%s].url: oci:// is refused, a helm source reads an index.yaml over https; use an oci source for an OCI registry" .name) }}
+{{- end }}
+{{- if regexMatch "^https://[^/?#]*@" $url }}
+{{- fail (printf "addons.releases.sources[%s].url carries user information: the credential comes from tokenSecretRef, never the URL" .name) }}
+{{- end }}
+{{- if not (and (regexMatch "^https://[A-Za-z0-9][-.A-Za-z0-9]*(:443)?(/[^\\s?#]*)?$" $url) (le (len $url) 2048)) }}
+{{- fail (printf "addons.releases.sources[%s].url is REQUIRED: https, port 443 only, without user information, query or fragment" .name) }}
+{{- end }}
+{{- if and .authHost (or (ne .kind "oci") (not (regexMatch "^[A-Za-z0-9][-.A-Za-z0-9]{0,252}$" .authHost))) }}
+{{- fail (printf "addons.releases.sources[%s].authHost: an oci source's token host, a host name" .name) }}
+{{- end }}
+{{- $secret := dig "tokenSecretRef" "name" "" . }}
+{{- $user := dig "tokenSecretRef" "username" "" . }}
+{{- if and $user (or (not $secret) (not (has .kind (list "oci" "helm")))) }}
+{{- fail (printf "addons.releases.sources[%s].tokenSecretRef.username goes with tokenSecretRef.name, on an oci or helm source" .name) }}
+{{- end }}
+{{- if and (has .kind (list "github" "gitlab" "endoflife")) (not .components) }}
+{{- fail (printf "addons.releases.sources[%s].components is REQUIRED on a %s source: the names it serves" .name .kind) }}
+{{- end }}
+{{- range .components }}
+{{- if not (and .match .name) }}
+{{- fail "addons.releases.sources[].components[] needs a match and a name" }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if and .egressCIDRs .egress.proxy }}
+{{- fail "addons.releases.egressCIDRs and addons.releases.egress.proxy are exclusive: one way out" }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- if and .Values.addons.reportSlack.enabled .Values.addons.reportLog.enabled }}
 {{- fail "addons.reportSlack and addons.reportLog are exclusive: one report connector" }}
 {{- end }}
