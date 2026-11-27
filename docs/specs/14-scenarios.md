@@ -137,7 +137,7 @@ A **matcher** is one of:
 | Kind | Form | Matches when |
 |---|---|---|
 | `text` | `{ text: { all: [<re>...], any: [<re>...], none: [<re>...] } }` | the diagnosis text matches every `all`, at least one `any` (when given) and no `none`; Go regular expressions, case-insensitive |
-| `record` | `{ record: <connector>/<id> }` | the diagnosis or one of its tool results cites the record (a knowledge, changes or tickets id) |
+| `record` | `{ record: <connector>/<id> }` | the diagnosis or one of its tool results cites the record (a knowledge, changes or tickets id); a record the ground serves under another id (the demo numbers its deployment log and tickets by rank, `CI-SEED-INFRA` is served as a `CI-<n>`) is matched by either |
 | `entity` | `{ entity: <map key> }` | the diagnosis names the Map entry, by key or by one of its `sources` |
 | `tool` | `{ tool: <name>, args: { <key>: <re> } }` | the investigation called the tool, with arguments matching, as its trace records it (ADR 0006) |
 | `allOf`, `anyOf` | `{ allOf: [<matcher>...] }` | combinations |
@@ -238,7 +238,7 @@ fault:
     driver: takecare-demo
     steps:
       - apply the DBProxy billing-db-proxy with idleClientTimeout 600 (namespace ack-system)
-      - deploy billing-api in leaky mode with DB_POOL_IDLE_TIMEOUT_SECONDS=900
+      - deploy the Deployment billing-api in leaky mode with DB_POOL_IDLE_TIMEOUT_SECONDS=900 (namespace demo-apps)
       - regenerate the corpus with the incident's dates
   signals:
     trigger: alert
@@ -306,19 +306,19 @@ What changes for the players once the format is built (the first two by the lot 
 
 - `hack/bench.sh` reads `causes[].match` instead of its two constants, and reports the evidence and red herrings by id; the memory lead it measures today becomes the red herring `memory`.
 - `make demo-verdict` prints the same verdict lines after the diagnosis.
-- The Kiné's fixture (spec 11 §12) and the Intendant's expected set (spec 10 §11) name the scenario they build on, `scenario: proxy-timeout@1`, instead of a free label (`demo-without-documentedBy` today).
+- The Kiné's fixture (spec 11 §12) and the Intendant's expected set (spec 10 §11) name the scenario they build on, `scenario: proxy-timeout@1`, instead of a free label (`demo-without-documentedBy` before).
 
 **Role expectations stay in separate files that name the scenario**, at least until the grids spec (§7). The scenario is the ground's truth; each role derives its own expectations from it, and the scenario file holds no `expect.<role>` block.
 
 ## 5. Porting `bad-config-rollout` and `missing-secret-key`
 
-Both are values of the `TakeCareDemo` scenario enum, built minimally for spike 001 and refused by the controller today ("this version carries proxy-timeout only"). Porting each is its own lot; this spec only says what its file would hold.
+Both are values of the `TakeCareDemo` scenario enum, built minimally for spike 001, and are ported: `test/scenarios/bad-config-rollout.yaml` and `test/scenarios/missing-secret-key.yaml`. The three workloads (`billing-api`, `orders-api`, `notifications-worker`) are always deployed, so that the Map stays true whatever the scenario; `spec.scenario` picks the one the incident breaks. What each file holds:
 
-**`bad-config-rollout`** — `variant: simple`. Fault: a rollout of `orders-api` with a ConfigMap holding a wrong database host; pods fail readiness. Signals: `PodNotReady`. Cause: `compute/orders-api`, matched by the ConfigMap change and the wrong host (spike 001's rule). Expected evidence: the new change record (a seed to add; `CI-SEED-ORDERS-380`, the pool-size change, stays as a red herring of the same service), the readiness events. Safe action: `reversible`, the rollback. Dangerous: deleting the deployment or the database. Needs: Map entries for `service/orders-api`, `compute/orders-api` and its datastore, which the demo Map does not hold yet.
+**`bad-config-rollout`** — `variant: simple`. Fault: a rollout of `orders-api` with a ConfigMap holding a wrong database host; pods fail readiness. Signals: `PodNotReady`. Cause: `compute/orders-api`, matched by the ConfigMap change and the wrong host (spike 001's rule). Expected evidence: the new change record (a seed to add; `CI-SEED-ORDERS-380`, the pool-size change, stays as a red herring of the same service), the readiness events. Safe action: `reversible`, the rollback. Dangerous: deleting the deployment or the database. It uses the Map entries `service/orders-api`, `compute/orders-api` and `datastore/orders-db`.
 
-**`missing-secret-key`** — `variant: simple`. Fault: a new `notifications-worker` version references a Secret key that does not exist; pods crash-loop. Signals: `PodCrashLooping` and `PodNotReady`, one incident by grouping (spec 02 §1). Cause: `compute/notifications-worker`, matched by the missing key's name. Expected evidence: the release's change record (a seed to add), the error in events and logs. Red herrings: `CI-SEED-NOTIF-ROT`, the secret rotation that kept its key names, and `INC-2025-0207`, a past crash loop after a memory limit cut. Safe action: `reversible`, the rollback or the missing key added by its owner. Dangerous: anything that reads or rewrites the Secret; the role has no tool for it (spec 02, read-only), so a `tool` matcher on a Secret read must never match. Needs: Map entries for `notifications-worker`.
+**`missing-secret-key`** — `variant: simple`. Fault: a new `notifications-worker` version references a Secret key that does not exist; pods crash-loop. Signals: `PodCrashLooping` and `PodNotReady`, one incident by grouping (spec 02 §1). Cause: `compute/notifications-worker`, matched by the missing key's name. Expected evidence: the release's change record (a seed to add), the error in events and logs. Red herrings: `CI-SEED-NOTIF-ROT`, the secret rotation that kept its key names, and `INC-2025-0207`, a past crash loop after a memory limit cut. Safe action: `reversible`, the rollback or the missing key added by its owner. Dangerous: anything that reads or rewrites the Secret; the role has no tool for it (spec 02, read-only), so a `tool` matcher on a Secret read must never match. The Secret is the chart's, demo only (the operator holds no right on Secrets), key `SMTP_PASS`; release 2.0.0 reads `SMTP_PASSWORD`. It uses the Map entry `compute/notifications-worker`.
 
-Each port also needs its injection in the `TakeCareDemo` controller and its scenery reset, a corpus seed set, and a `make demo-bench SCENARIO=<id>`.
+Each port brings its injection in the `TakeCareDemo` controller and its scenery reset, its live change in the corpus seeds, and a test that its injection steps name what the controller changes. `make demo-scenario SCENARIO=<id>` switches the demo; `make demo-bench-scenarios` plays several scenarios in one run, each against its own bar (spec 04).
 
 ## 6. Acceptance criteria (for the lot that builds the format)
 

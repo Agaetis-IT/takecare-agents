@@ -17,11 +17,23 @@ The bench copies the firing alert from Alertmanager and posts one copy per run t
 
 **The Doc's `cooldown` is 1 s while the bench runs.** Grouping by incident (spec 02 §1) would otherwise fold every copy into the incident's investigation. The previous value is restored on every exit, a failure or an interruption included. Meanwhile, an alert of the demo with a new start time would open its own investigation, published as usual: run the bench on a demo kept for it.
 
-The `bench` workflow (manual dispatch) runs the same on k3d with the repository secret `TAKECARE_MODEL_API_KEY`, failing under ⌈4N/5⌉ correct (4 for N=5), and uploads the report and the table as artifacts.
+`BENCH_MAX_COST=<USD>` stops the bench, with its report, before a run that could take the total past it: the incident's own investigation counts, and the dearest run so far is the guess of the next. A run whose cost is not measured stops it too. `BENCH_REPORT=<file>` names the report. A bench not played exits 3.
+
+## Several scenarios in one run
+
+```bash
+make demo-up
+make demo-bench-scenarios N=5 BENCH_BARS="proxy-timeout=5/5 bad-config-rollout=4/5 missing-secret-key=4/5" BENCH_MAX_COST=1.50
+make demo-scenario SCENARIO=bad-config-rollout   # or play one by hand: then make demo-incident, make demo-bench
+```
+
+`hack/bench-scenarios.sh` plays `SCENARIOS` (default the three the demo injects) one after the other: for each, the demo switches to it from a healthy scenery, its incident is injected, and `hack/bench.sh` plays N passes. It writes `report-<date>-<id>.json` per scenario and `run-<date>.json`, the run summary: each scenario's ref, played or not and why, correct out of N, bar, whether it meets it, and cost. **Bars are per scenario, never pooled**: `<id>=<k>/5` is scaled to the N planned, ⌈kN/5⌉. A scenario whose alert does not fire is not played, never scored wrong; the run goes on and fails at the end. `BENCH_MAX_COST` caps the whole run; a scenario the cap leaves nothing for is not played. The demo is left healthy on its first scenario.
+
+The `bench` workflow (manual dispatch) runs it on k3d with the repository secret `TAKECARE_MODEL_API_KEY`, on the `scenarios` asked (default the three), with the product owner's bars: `proxy-timeout` 5/5, `bad-config-rollout` and `missing-secret-key` 4/5 each. It uploads the reports, the summary and the table as artifacts.
 
 ## Scoring
 
-The scenario file holds the rule; `go run ./test/scenarios/player score` applies it to each run's investigation (its diagnosis; the trace's tool calls for a scenario with `tool` matchers, not yet read by this bench, which then refuses the scenario):
+The scenario file holds the rule; `go run ./test/scenarios/player score` applies it to each run's investigation. A `record` matcher names a corpus record by its seed id; the demo serves its deployment log and tickets numbered by rank, so the player matches the served id too (`CI-SEED-INFRA` is served as `CI-2448`) (its diagnosis; the trace's tool calls for a scenario with `tool` matchers, not yet read by this bench, which then refuses the scenario):
 
 | Measure | From the scenario | |
 | --- | --- | --- |
@@ -31,7 +43,7 @@ The scenario file holds the rule; `go run ./test/scenarios/player score` applies
 | red herrings | each `evidence.redHerrings` item absent, mentioned or concluded (pattern-based) | measured, not scored |
 | memory lead | the red herring `memory` not absent; kept one release to compare with the reports from before the format | measured, not scored |
 
-For `proxy-timeout@1`, the cause's rule is the one the bench held before the format, unchanged: `proxy` **and** `idle|idleClientTimeout|600 s`, case-insensitive.
+For `proxy-timeout@1`, the cause's rule is the one the bench held before the format, unchanged: `proxy` **and** `idle|idleClientTimeout|600 s`, case-insensitive. The two scenarios ported from spike 001 keep its rules: `bad-config-rollout@1`, `configmap|orders-config` **and** `orders-db-primary`; `missing-secret-key@1`, `SMTP_PASSWORD` **and** `notifications-smtp|secret`.
 
 Spec 04's threshold: at least 4 correct out of 5 to merge a change of prompt, engine, model default, connector or corpus.
 
