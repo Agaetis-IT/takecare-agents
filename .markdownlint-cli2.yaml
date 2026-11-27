@@ -9,10 +9,12 @@ ignores:
   - "spikes/**"
   # Go text/templates, not Markdown as written; what they render is linted
   # through their golden files (internal/doc/testdata,
-  # internal/surveyagent/testdata, internal/kine/testdata).
+  # internal/surveyagent/testdata, internal/kine/testdata,
+  # internal/mecano/testdata).
   - "internal/doc/instructions.md"
   - "internal/surveyagent/instructions.md"
   - "internal/kine/instructions.md"
+  - "internal/mecano/instructions.md"
 gitignore: true
 config:
   # Paragraphs are written on one line; tables are aligned by hand or not.
