@@ -98,6 +98,7 @@ test: setup-envtest chart-deps ## Run unit, golden, envtest and chart tests.
 	hack/power-window-test.sh
 	hack/demo-images-test.sh
 	hack/ci-changes-test.sh
+	hack/bench-score-run-test.sh
 	@# setup-envtest installs its binaries read-only: writable, a worktree's bin/ can be removed.
 	"$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(abspath $(LOCALBIN))" >/dev/null && chmod -R u+w "$(LOCALBIN)/k8s"
 	@# The path is captured on its own, so that a failed setup-envtest stops
@@ -220,6 +221,10 @@ demo-images-test: ## Check that make demo-up stops when building or importing it
 .PHONY: ci-changes-test
 ci-changes-test: ## Check which pull requests skip CI's heavy jobs (hack/ci-changes.sh).
 	hack/ci-changes-test.sh
+
+.PHONY: bench-score-run-test
+bench-score-run-test: ## Check the line the accuracy bench writes for each run (hack/bench-score-run.sh), stdin closed as when unattended.
+	hack/bench-score-run-test.sh
 
 .PHONY: release-notes-test
 release-notes-test: ## Check hack/release-notes.sh against its fixture.

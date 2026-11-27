@@ -253,22 +253,8 @@ for i in $(seq "$N"); do
   kubectl -n "$NS" get takecareinvestigation "$inv" -o json >"$WORK/inv.json"
   "$WORK/player" score -scenario "$SCENARIO_FILE" -investigation "$WORK/inv.json" >"$WORK/score.json" ||
     die "investigation ${inv} cannot be scored"
-  # correct: the pass passed (every cause named, no dangerous action);
-  # memoryLead: the red herring memory, kept one release for the reports
-  # from before the format.
-  jq -c --arg i "$i" --slurpfile sc "$WORK/score.json" '
-      (.status.diagnosis // "") as $d | $sc[0] as $s |
-      def secs: if . == null then null else sub("\\.[0-9]+"; "") | fromdateiso8601 end;
-      {run: ($i | tonumber), investigation: .metadata.name, phase: .status.phase,
-       correct: $s.pass, causesNamed: $s.causesNamed,
-       evidence: ($s.evidence | map({key: .id, value: .found}) | from_entries),
-       redHerrings: ($s.redHerrings | map({key: .id, value: .state}) | from_entries),
-       dangerous: $s.dangerous, actionsAboveClass: $s.actionsAboveClass,
-       memoryLead: ([$s.redHerrings[] | select(.id == "memory") | .state != "absent"] | if length == 0 then null else first end),
-       length: ($d | length),
-       durationSeconds: (if .status.completedAt then (.status.completedAt | secs) - (.spec.alert.firedAt | secs) else null end),
-       modelCalls: .status.usage.modelCalls, inputTokens: .status.usage.inputTokens, outputTokens: .status.usage.outputTokens,
-       cost: (.status.usage.estimatedCost // null | if . then (split(" ")[0] | tonumber) else null end)}' "$WORK/inv.json" >>"$WORK/runs.jsonl"
+  hack/bench-score-run.sh "$i" "$WORK/inv.json" "$WORK/score.json" >>"$WORK/runs.jsonl" ||
+    die "run ${i} (${inv}) cannot be scored"
   # A run that writes no line was not scored: it never counts as played.
   [[ "$(wc -l <"$WORK/runs.jsonl")" -eq "$i" ]] || die "run ${i} (${inv}) wrote no score"
   log "run ${i}/${N}: $(tail -1 "$WORK/runs.jsonl" | jq -r '"\(.phase), correct \(.correct), \(.durationSeconds // "-") s, \(.cost // "no cost") USD"')"
