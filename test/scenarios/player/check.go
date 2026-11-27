@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -27,6 +28,10 @@ type World struct {
 	// Records holds the ids of each source's records; nil when the
 	// ground's records are not known to the player.
 	Records map[string]map[string]bool
+	// Served matches, by <connector>/<id>, the id a record is served
+	// under when the ground serves it under another one: the demo numbers
+	// its deployment log and its tickets by rank.
+	Served map[string]*regexp.Regexp
 }
 
 // LoadWorld reads the ground a scenario names. Only the demo's Map is
@@ -55,6 +60,16 @@ func LoadWorld(s *Scenario, mapDir string) (*World, error) {
 			w.Records[source] = map[string]bool{}
 			for _, r := range records {
 				w.Records[source][r["id"]] = true
+			}
+		}
+		served, err := corpus.Served(s.ID)
+		if err != nil {
+			return nil, fmt.Errorf("the demo corpus: %w", err)
+		}
+		w.Served = map[string]*regexp.Regexp{}
+		for source, ids := range served {
+			for seed, id := range ids {
+				w.Served[source+"/"+seed] = recordRE(id)
 			}
 		}
 	}

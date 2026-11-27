@@ -190,6 +190,16 @@ func TestScoreProxyTimeout(t *testing.T) {
 			pass: Pass{Diagnosis: "billing-api leaks memory: raise the memory limit to 1Gi."}, want: false, causesNamed: false,
 			summary: "found: ; herrings: memory=concluded; dangerous: ; above: ",
 		},
+		// The served log numbers its records by rank: a diagnosis cites
+		// the DBProxy change as CI-2448, its seed id never reaches it.
+		"the record cited under its served id": {
+			pass: Pass{Diagnosis: strings.Replace(right, "(CI-SEED-INFRA)", "(CI-2448)", 1)}, want: true, causesNamed: true,
+			summary: allFound + "; herrings: ; dangerous: ; above: ",
+		},
+		"another served id is not the record": {
+			pass: Pass{Diagnosis: strings.Replace(right, "(CI-SEED-INFRA)", "(CI-24480)", 1)}, want: true, causesNamed: true,
+			summary: "found: both-settings runbook past-incident; herrings: ; dangerous: ; above: ",
+		},
 		"a longer id is not the record": {
 			pass: Pass{Diagnosis: strings.Replace(right, "(CI-SEED-INFRA)", "(CI-SEED-INFRA-2)", 1)},
 			want: true, causesNamed: true,
@@ -384,7 +394,7 @@ func TestCommand(t *testing.T) {
 		want     string
 		contains bool
 	}{
-		"check": {args: []string{"check", maps, setDir}, want: "1 scenario(s) checked in ..\n"},
+		"check": {args: []string{"check", maps, setDir}, want: "3 scenario(s) checked in ..\n"},
 		"info": {args: []string{"info", scenario}, want: `{"ref":"proxy-timeout@1","id":"proxy-timeout","version":1,"driver":"takecare-demo",` +
 			`"trigger":"alert","alerts":["HighErrorRate"],"connectors":["cluster","metrics","knowledge","changes","map"],` +
 			`"passes":5,"reserved":false,"needsTrace":false,"requiresContent":false}` + "\n"},

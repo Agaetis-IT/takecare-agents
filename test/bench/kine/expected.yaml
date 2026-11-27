@@ -5,8 +5,9 @@
 # of the fixture investigation.yaml against the demo corpus. A run is ok
 # when its review ended Completed with its answer read and all three items
 # hold. Text rules are lists of groups: a text matches when every group has
-# one of its words (case-insensitive, as a prefix of a word).
-scenario: proxy-timeout-fixture
+# one of its words (case-insensitive, as a prefix of a word). The scenario
+# the fixture builds on (spec 14 §4).
+scenario: proxy-timeout@1
 # 1. The recurrences name the earlier incident with the same root cause.
 recurrence: INC-2024-0312
 # 2. The actions hold that incident's undone follow-up, the automated check
