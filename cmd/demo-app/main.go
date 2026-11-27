@@ -15,6 +15,9 @@
 //	DB_POOL_IDLE_TIMEOUT_SECONDS  idle connection recycling    (900)
 //	ERROR_BASE_RATIO              504 ratio when healthy       (0.001)
 //	ERROR_PEAK_RATIO              504 ratio added at the peak  (0.06)
+//	DB_HOST                       database host[:port]; ready only while it resolves (none)
+//	APP_VERSION                   version, in the banner       (none)
+//	REQUIRED_SETTINGS             comma-separated variables the app refuses to start without (none)
 //	PORT                          listening port               (8080)
 package main
 
@@ -27,6 +30,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -67,6 +71,8 @@ func run() error {
 	port := "8080"
 	str("MODE", &cfg.Mode)
 	str("SERVICE", &cfg.Service)
+	str("DB_HOST", &cfg.DBHost)
+	str("APP_VERSION", &cfg.Version)
 	str("PORT", &port)
 	num("RAMP_MINUTES", &ramp)
 	num("LEAK_MINUTES", &leak)
@@ -89,6 +95,14 @@ func run() error {
 	app := demoapp.New(cfg, os.Stdout)
 	for _, line := range app.Banner() {
 		fmt.Println(line) //nolint:forbidigo // the scenario's log lines go to stdout as the spike's did
+	}
+	// A missing setting stops the process, as a real service does: the pod
+	// restarts in a loop (missing-secret-key).
+	if missing := demoapp.Missing(os.Getenv("REQUIRED_SETTINGS"), os.Getenv); len(missing) > 0 {
+		for _, name := range missing {
+			fmt.Printf("FATAL missing required setting %s\n", name) //nolint:forbidigo // as above
+		}
+		return fmt.Errorf("missing required settings: %s", strings.Join(missing, ", "))
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
