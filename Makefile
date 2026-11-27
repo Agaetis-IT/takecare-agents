@@ -98,6 +98,7 @@ test: setup-envtest chart-deps ## Run unit, golden, envtest and chart tests.
 	hack/power-window-test.sh
 	hack/demo-images-test.sh
 	hack/ci-changes-test.sh
+	hack/changelog-assemble-test.sh
 	@# setup-envtest installs its binaries read-only: writable, a worktree's bin/ can be removed.
 	"$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(abspath $(LOCALBIN))" >/dev/null && chmod -R u+w "$(LOCALBIN)/k8s"
 	@# The path is captured on its own, so that a failed setup-envtest stops
@@ -221,6 +222,10 @@ demo-images-test: ## Check that make demo-up stops when building or importing it
 ci-changes-test: ## Check which pull requests skip CI's heavy jobs (hack/ci-changes.sh).
 	hack/ci-changes-test.sh
 
+.PHONY: changelog-assemble-test
+changelog-assemble-test: ## Check hack/changelog-assemble.sh and hack/changelog-check.sh against their fixture.
+	hack/changelog-assemble-test.sh
+
 .PHONY: release-notes-test
 release-notes-test: ## Check hack/release-notes.sh against its fixture.
 	hack/release-notes-test.sh
@@ -241,7 +246,7 @@ site-deploy-test: ## Check which runs publish the site (hack/site-deploy.sh): a 
 ##@ Lint
 
 .PHONY: lint
-lint: lint-go lint-sh lint-md lint-spdx scenarios-check ## Run every linter.
+lint: lint-go lint-sh lint-md lint-spdx scenarios-check changelog-check ## Run every linter.
 
 .PHONY: lint-go
 lint-go: golangci-lint ## Run golangci-lint.
@@ -263,6 +268,10 @@ lint-spdx: ## Check the SPDX header of our source files.
 .PHONY: scenarios-check
 scenarios-check: ## Check the scenario files of test/scenarios: schema, Map keys, corpus records, regular expressions (spec 14).
 	go run ./test/scenarios/player check test/scenarios
+
+.PHONY: changelog-check
+changelog-check: ## Check the changelog fragments, and that a change of api/, internal/, cmd/, charts/, config/ or demo/ adds one (changes/unreleased/README.md).
+	hack/changelog-check.sh
 
 .PHONY: dco
 dco: ## Check the DCO sign-off of every commit of DCO_BASE..DCO_HEAD (default origin/main..HEAD; merges excepted).

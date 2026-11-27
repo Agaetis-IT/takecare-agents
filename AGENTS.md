@@ -132,7 +132,7 @@ Scopes: `api`, `platform`, `connector`, `doc`, `investigation`, `engine`, `repor
 - Every commit carries a DCO sign-off (`git commit -s`): the `Signed-off-by` line certifies the [Developer Certificate of Origin](https://developercertificate.org/).
 - The description follows `.github/pull_request_template.md`: spec and acceptance criteria covered (each with how it was checked), tests added, docs updated, **Open questions**.
 - One PR per piece of work, under about 1,500 changed lines of code, excluding tests, generated files and pure code moves. Keep its commits clean so a reviewer can read them one by one. Split only when a part can be merged and be useful on its own, or when a reviewer could not read it well, never for the line count alone. Estimate the size first and say early when a change heads past it.
-- `CHANGELOG.md` is updated in the PR for every user-visible change (Keep a Changelog, section "Unreleased").
+- Every user-visible change adds its changelog entry as a file of its own under `changes/unreleased/`, never by editing `CHANGELOG.md`, which the release cut assembles from them: see `changes/unreleased/README.md`.
 
 ## Project skills
 

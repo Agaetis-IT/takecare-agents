@@ -28,7 +28,7 @@ A pull request is ready when `make generate` changes nothing, and `make lint` an
 
 - **Branches**: `<type>/<short-topic>`, for example `fix/connector-discovery`.
 - **Commits**: [Conventional Commits](https://www.conventionalcommits.org/), in English, with the types and scopes listed in `AGENTS.md`.
-- **Pull requests**: every change, the maintainers' included, is a pull request reviewed by a maintainer before it is merged, and merged only once CI is green. Keep it small enough to review in one sitting, fill in the [template](.github/pull_request_template.md), and update `CHANGELOG.md` ("Unreleased") for any change a user would notice.
+- **Pull requests**: every change, the maintainers' included, is a pull request reviewed by a maintainer before it is merged, and merged only once CI is green. Keep it small enough to review in one sitting, fill in the [template](.github/pull_request_template.md), and add a changelog entry under `changes/unreleased/` for any change a user would notice ([how](changes/unreleased/README.md)).
 - **Rules**: [`AGENTS.md`](AGENTS.md) is the rulebook: read-only by default, everything through the gateway, no secrets, pinned versions, the Go conventions.
 
 ## Developer Certificate of Origin
