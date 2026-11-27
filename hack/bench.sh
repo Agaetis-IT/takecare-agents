@@ -268,7 +268,9 @@ for i in $(seq "$N"); do
        length: ($d | length),
        durationSeconds: (if .status.completedAt then (.status.completedAt | secs) - (.spec.alert.firedAt | secs) else null end),
        modelCalls: .status.usage.modelCalls, inputTokens: .status.usage.inputTokens, outputTokens: .status.usage.outputTokens,
-       cost: (.status.usage.estimatedCost // null | if . then (split(" ")[0] | tonumber) else null end)}' >>"$WORK/runs.jsonl"
+       cost: (.status.usage.estimatedCost // null | if . then (split(" ")[0] | tonumber) else null end)}' "$WORK/inv.json" >>"$WORK/runs.jsonl"
+  # A run that writes no line was not scored: it never counts as played.
+  [[ "$(wc -l <"$WORK/runs.jsonl")" -eq "$i" ]] || die "run ${i} (${inv}) wrote no score"
   log "run ${i}/${N}: $(tail -1 "$WORK/runs.jsonl" | jq -r '"\(.phase), correct \(.correct), \(.durationSeconds // "-") s, \(.cost // "no cost") USD"')"
   cost="$(tail -1 "$WORK/runs.jsonl" | jq -r '.cost // ""')"
   if [[ -n "$MAX_COST" && -z "$cost" ]]; then
