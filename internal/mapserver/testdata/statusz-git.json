@@ -2,14 +2,14 @@
   "entries": 14,
   "lastError": {
     "at": "2026-11-06T10:00:00Z",
-    "commit": "090adcaf132632fd0697a7f6480fc4c94f2456ce",
-    "error": "revision 090adcaf132632fd0697a7f6480fc4c94f2456ce does not validate: map/runbook/broken.yaml: dependsOn service/none: no such entry"
+    "commit": "0773907fd2459957883f16ef9b159f6e7bc98f54",
+    "error": "revision 0773907fd2459957883f16ef9b159f6e7bc98f54 does not validate: map/runbook/broken.yaml: dependsOn service/none: no such entry"
   },
   "lastFetch": "2026-11-06T10:00:00Z",
   "path": ".",
   "pollInterval": "1m0s",
   "ref": "main",
-  "revision": "5d3df1ad999c2a2860c47cb6ac90b2175c61f56d",
+  "revision": "c4e3879687e83b8e242c657070ac4cc72c45cb3b",
   "revisionTime": "2026-11-03T12:00:00Z",
   "source": "git",
   "url": "file:///remote/.git"

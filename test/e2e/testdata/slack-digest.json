@@ -2,14 +2,14 @@
   "blocks": [
     {
       "text": {
-        "text": "Intendant: 3 proposals to review",
+        "text": "Intendant: 5 proposals to review",
         "type": "plain_text"
       },
       "type": "header"
     },
     {
       "text": {
-        "text": "Add 1 · Update 2 · Remove 0 · from the import 2, from the agent 1",
+        "text": "Add 3 · Update 2 · Remove 0 · from the import 4, from the agent 1",
         "type": "mrkdwn",
         "verbatim": true
       },
@@ -17,7 +17,7 @@
     },
     {
       "text": {
-        "text": "```\nAdd network/billing-api\nUpdate service/billing-api\nUpdate runbook/proxy-timeout\n```",
+        "text": "```\nAdd network/billing-api\nAdd network/orders-api\nAdd network/orders-db\nUpdate service/billing-api\nUpdate runbook/proxy-timeout\n```",
         "type": "mrkdwn",
         "verbatim": true
       },
@@ -26,7 +26,7 @@
     {
       "elements": [
         {
-          "text": "Survey <survey> against the Map at 470725dee572 · 2 parts of the ground not read (network 1, inventory 1) · 0 blind spots · which and why: kubectl -n takecare-system get takecaresurvey <survey> -o yaml · the full set: ConfigMap survey-<survey>-proposals",
+          "text": "Survey <survey> against the Map at 03da55b523a5 · 2 parts of the ground not read (network 1, inventory 1) · 0 blind spots · which and why: kubectl -n takecare-system get takecaresurvey <survey> -o yaml · the full set: ConfigMap survey-<survey>-proposals",
           "type": "mrkdwn",
           "verbatim": true
         }
@@ -34,5 +34,5 @@
       "type": "context"
     }
   ],
-  "text": "Intendant: 3 proposals to review\nAdd 1 · Update 2 · Remove 0 · from the import 2, from the agent 1\nAdd network/billing-api\nUpdate service/billing-api\nUpdate runbook/proxy-timeout\nSurvey <survey> against the Map at 470725dee572 · 2 parts of the ground not read (network 1, inventory 1) · 0 blind spots · which and why: kubectl -n takecare-system get takecaresurvey <survey> -o yaml · the full set: ConfigMap survey-<survey>-proposals\n"
+  "text": "Intendant: 5 proposals to review\nAdd 3 · Update 2 · Remove 0 · from the import 4, from the agent 1\nAdd network/billing-api\nAdd network/orders-api\nAdd network/orders-db\nUpdate service/billing-api\nUpdate runbook/proxy-timeout\nSurvey <survey> against the Map at 03da55b523a5 · 2 parts of the ground not read (network 1, inventory 1) · 0 blind spots · which and why: kubectl -n takecare-system get takecaresurvey <survey> -o yaml · the full set: ConfigMap survey-<survey>-proposals\n"
 }

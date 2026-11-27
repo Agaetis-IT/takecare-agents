@@ -9,4 +9,3 @@ sources:
 relations:
   deployedIn: [environment/demo-apps]
   observedBy: [observability/prometheus]
-  alertedBy: [PodCrashLooping, PodNotReady]

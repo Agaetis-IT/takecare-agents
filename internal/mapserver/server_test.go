@@ -92,7 +92,7 @@ func TestTools(t *testing.T) {
 		{"no path to an isolated entry", toolPath, map[string]any{argFrom: keyService, "to": "service/notifications"}, `{"found":false,"steps":[]}`, false},
 		{"path to itself", toolPath, map[string]any{argFrom: keyService, "to": keyService}, `{"found":true,"steps":[]}`, false},
 		{"map_at the day of the load", toolMapAt, map[string]any{argKey: "team/platform", argDate: "2026-11-06"},
-			`{"created":"2026-11-05","inbound":{"belongsTo":["service/billing-api","service/orders-api"]},"key":"team/platform","provenance":"declared","revision":"2612ad3a9e5d","status":"validated"}`, false},
+			`{"created":"2026-11-05","inbound":{"belongsTo":["service/billing-api","service/orders-api"]},"key":"team/platform","provenance":"declared","revision":"03da55b523a5","status":"validated"}`, false},
 		{"map_at before the load", toolMapAt, map[string]any{argDate: "2026-11-06T08:59:00Z"}, "date before the first revision", true},
 		{"map_at with a bad date", toolMapAt, map[string]any{argDate: "yesterday"}, `date "yesterday" is neither`, true},
 	} {

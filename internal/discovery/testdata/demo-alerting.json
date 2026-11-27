@@ -9,8 +9,8 @@
     {
       "name": "compute",
       "seen": 2,
-      "matched": 1,
-      "proposed": 1
+      "matched": 2,
+      "proposed": 0
     },
     {
       "name": "service",
@@ -50,16 +50,6 @@
     }
   ],
   "proposals": [
-    {
-      "id": "e1090c426e0237d4",
-      "action": "Add",
-      "key": "compute/notifications-worker",
-      "entry": "created: \"2026-11-11\"\nkey: compute/notifications-worker\nlastSeen: \"2026-11-11\"\nprovenance: discovered\nrelations:\n  deployedIn:\n  - environment/demo-apps\nsources:\n- kubernetes: demo-apps/Deployment/notifications-worker\nstatus: proposed\n",
-      "evidence": [
-        "kubernetes/resources_list"
-      ],
-      "source": "Import"
-    },
     {
       "id": "7ea96a023f5377bf",
       "action": "Add",
