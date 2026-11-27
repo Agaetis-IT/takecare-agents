@@ -1,0 +1,36 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "NAMESPACE   APIVERSION           KIND          NAME                READY   SECRET              ISSUER    STATUS                                          AGE   LABELS\ndemo-apps   cert-manager.io/v1   Certificate   billing-tls         True    billing-tls         demo-ca   Certificate is up to date and has not expired   1s    \u003cnone\u003e\ndemo-apps   cert-manager.io/v1   Certificate   notifications-tls   False   notifications-tls   demo-ca   Issuing certificate as Secret does not exist    1s    \u003cnone\u003e\n"
+    }
+  ],
+  "structuredContent": {
+    "items": [
+      {
+        "Age": "1s",
+        "Issuer": "demo-ca",
+        "Labels": "\u003cnone\u003e",
+        "Name": "billing-tls",
+        "Namespace": "demo-apps",
+        "Ready": "True",
+        "Secret": "billing-tls",
+        "Status": "Certificate is up to date and has not expired",
+        "apiVersion": "cert-manager.io/v1",
+        "kind": "Certificate"
+      },
+      {
+        "Age": "1s",
+        "Issuer": "demo-ca",
+        "Labels": "\u003cnone\u003e",
+        "Name": "notifications-tls",
+        "Namespace": "demo-apps",
+        "Ready": "False",
+        "Secret": "notifications-tls",
+        "Status": "Issuing certificate as Secret does not exist",
+        "apiVersion": "cert-manager.io/v1",
+        "kind": "Certificate"
+      }
+    ]
+  }
+}

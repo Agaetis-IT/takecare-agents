@@ -1,0 +1,44 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "apiVersion: cert-manager.io/v1\nkind: Certificate\nmetadata:\n  creationTimestamp: \"2026-11-27T19:48:05Z\"\n  generation: 1\n  name: billing-tls\n  namespace: demo-apps\n  resourceVersion: \"258\"\n  uid: c083a11e-337a-482e-875a-34dc7d6a4ed6\nspec:\n  dnsNames:\n  - billing.example.test\n  issuerRef:\n    kind: Issuer\n    name: demo-ca\n  secretName: billing-tls\nstatus:\n  conditions:\n  - lastTransitionTime: \"2026-09-11T08:00:00Z\"\n    message: Certificate is up to date and has not expired\n    reason: Ready\n    status: \"True\"\n    type: Ready\n  notAfter: \"2026-12-10T08:00:00Z\"\n  notBefore: \"2026-09-11T08:00:00Z\"\n  renewalTime: \"2026-11-10T08:00:00Z\"\n"
+    }
+  ],
+  "structuredContent": {
+    "apiVersion": "cert-manager.io/v1",
+    "kind": "Certificate",
+    "metadata": {
+      "creationTimestamp": "2026-11-27T19:48:05Z",
+      "generation": 1,
+      "name": "billing-tls",
+      "namespace": "demo-apps",
+      "resourceVersion": "258",
+      "uid": "c083a11e-337a-482e-875a-34dc7d6a4ed6"
+    },
+    "spec": {
+      "dnsNames": [
+        "billing.example.test"
+      ],
+      "issuerRef": {
+        "kind": "Issuer",
+        "name": "demo-ca"
+      },
+      "secretName": "billing-tls"
+    },
+    "status": {
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-09-11T08:00:00Z",
+          "message": "Certificate is up to date and has not expired",
+          "reason": "Ready",
+          "status": "True",
+          "type": "Ready"
+        }
+      ],
+      "notAfter": "2026-12-10T08:00:00Z",
+      "notBefore": "2026-09-11T08:00:00Z",
+      "renewalTime": "2026-11-10T08:00:00Z"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "failed to list resources: no matches for kind \"CronJob\" in version \"batch/v1beta1\""
+    }
+  ],
+  "isError": true
+}

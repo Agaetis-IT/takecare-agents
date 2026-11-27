@@ -1,0 +1,32 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "NAMESPACE     APIVERSION                       KIND            NAME    AGE   READY   STATUS                                                                 LABELS\nflux-system   kustomize.toolkit.fluxcd.io/v1   Kustomization   apps    1s    True    Applied revision: main@sha1:4f1c2a9e0b7d3c5a8e6f1b2c3d4e5f6a7b8c9d0e   \u003cnone\u003e\nflux-system   kustomize.toolkit.fluxcd.io/v1   Kustomization   infra   1s    False   kustomize build failed: accumulating resources                         \u003cnone\u003e\n"
+    }
+  ],
+  "structuredContent": {
+    "items": [
+      {
+        "Age": "1s",
+        "Labels": "\u003cnone\u003e",
+        "Name": "apps",
+        "Namespace": "flux-system",
+        "Ready": "True",
+        "Status": "Applied revision: main@sha1:4f1c2a9e0b7d3c5a8e6f1b2c3d4e5f6a7b8c9d0e",
+        "apiVersion": "kustomize.toolkit.fluxcd.io/v1",
+        "kind": "Kustomization"
+      },
+      {
+        "Age": "1s",
+        "Labels": "\u003cnone\u003e",
+        "Name": "infra",
+        "Namespace": "flux-system",
+        "Ready": "False",
+        "Status": "kustomize build failed: accumulating resources",
+        "apiVersion": "kustomize.toolkit.fluxcd.io/v1",
+        "kind": "Kustomization"
+      }
+    ]
+  }
+}

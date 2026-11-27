@@ -1,0 +1,23 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "NAMESPACE   APIVERSION   KIND          NAME        READY   AGE   CONTAINERS   IMAGES          LABELS\ndemo-apps   apps/v1      StatefulSet   ledger-db   0/1     3s    postgres     postgres:16.4   \u003cnone\u003e\n"
+    }
+  ],
+  "structuredContent": {
+    "items": [
+      {
+        "Age": "3s",
+        "Containers": "postgres",
+        "Images": "postgres:16.4",
+        "Labels": "\u003cnone\u003e",
+        "Name": "ledger-db",
+        "Namespace": "demo-apps",
+        "Ready": "0/1",
+        "apiVersion": "apps/v1",
+        "kind": "StatefulSet"
+      }
+    ]
+  }
+}
