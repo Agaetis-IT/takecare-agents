@@ -51,6 +51,9 @@ const (
 	keyDescription = "description"
 	keyTitle       = "title"
 	keyType        = "type"
+	keyFiles       = "files"
+	keyPath        = "path"
+	keyRepository  = "repository"
 )
 
 // maxResponse bounds what is read of a forge's answer.

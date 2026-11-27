@@ -292,6 +292,9 @@ func TestRefusals(t *testing.T) {
 		"a branch in capitals":        {func() map[string]any { a := args(ghRepo); a["branch"] = "takecare/mecano/Weekly"; return a }(), CodeBranchRefused},
 		"a branch with a slash":       {func() map[string]any { a := args(ghRepo); a["branch"] = "takecare/mecano/a/b"; return a }(), CodeBranchRefused},
 		"an argument not declared":    {func() map[string]any { a := args(ghRepo); a["force"] = true; return a }(), CodeArguments},
+		"an argument in capitals":     {func() map[string]any { a := args(ghRepo); a["Title"] = a[keyTitle]; delete(a, keyTitle); return a }(), CodeArguments},
+		"a file argument in capitals": {args(ghRepo, map[string]any{"Path": appFile, keyContent: tContent}), CodeArguments},
+		"a GitHub local action":       {args(ghRepo, file(".github/actions/build/action.yml")), CodePathRefused},
 		"a title on two lines":        {func() map[string]any { a := args(ghRepo); a[keyTitle] = "a\nb"; return a }(), CodeArguments},
 		"no file":                     {func() map[string]any { a := args(ghRepo); a["files"] = []any{}; return a }(), CodeArguments},
 		"21 files": {func() map[string]any {
@@ -543,6 +546,18 @@ func TestGitLabCIConfiguration(t *testing.T) {
 		"an included file missing":          {"", false, map[string]string{defaultCIConfig: "include: ci/gone.yml\n"}, nil, appFile, CodeCIConfigUnknown},
 		"this project at another ref":       {"ci/main.yml@grp/sub/shop:dev", false, nil, nil, appFile, CodeCIConfigUnknown},
 		"more than 150 includes":            {"", false, map[string]string{defaultCIConfig: many}, nil, appFile, CodeCIConfigUnknown},
+		"a trigger merged from an anchor":   {"", false, ci(".defs:\n  child: &child\n    trigger:\n      include: ci/child.yml\njob:\n  <<: *child\n"), nil, ciChild, CodePathRefused},
+		"a job that is an alias":            {"", false, ci(".defs:\n  child: &child\n    trigger:\n      include: ci/child.yml\njob: *child\n"), nil, ciChild, CodePathRefused},
+		"a trigger that is an alias":        {"", false, ci(".defs:\n  t: &t\n    include: ci/child.yml\njob:\n  trigger: *t\n"), nil, ciChild, CodePathRefused},
+		"an include merged into a trigger":  {"", false, ci(".defs:\n  i: &i\n    include: [{local: ci/child.yml}]\njob:\n  trigger:\n    <<: *i\n"), nil, ciChild, CodePathRefused},
+		"an included file that is an alias": {"", false, ci(".defs:\n  f: &f ci/child.yml\njob:\n  trigger:\n    include:\n      - local: *f\n"), nil, ciChild, CodePathRefused},
+		"a trigger by !reference":           {"", false, ci(".defs:\n  t:\n    x:\n      include: ci/child.yml\njob:\n  trigger: !reference [.defs, t, x]\n"), nil, ciChild, CodeCIConfigUnknown},
+		"an include by !reference":          {"", false, ci(".defs:\n  t:\n    x: ci/child.yml\njob:\n  trigger:\n    include: !reference [.defs, t, x]\n"), nil, ciChild, CodeCIConfigUnknown},
+		"a multi-project trigger":           {"", false, ci("job:\n  trigger: other/proj\n"), nil, ciChild, ""},
+		"an @ in a file name":               {"ci/a@b.yml", false, nil, nil, appFile, CodeCIConfigUnknown},
+		"a listing that answers 403":        {"", false, ci("include: 'ci/jobs/*.yml'\n"), nil, appFile, CodeCIConfigUnknown},
+		"a listing that answers 500":        {"", false, ci("include: 'ci/jobs/*.yml'\n"), nil, appFile, CodeCIConfigUnknown},
+		"a listing's page 2 gone":           {"", false, ci("include: 'ci/jobs/*.yml'\n"), nil, appFile, CodeCIConfigUnknown},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newFakeGitLab()
@@ -553,6 +568,17 @@ func TestGitLabCIConfiguration(t *testing.T) {
 				for i := range maxIncludes + 1 {
 					f.files[fmt.Sprintf("ci/m%d.yml", i)] = tContent
 				}
+			}
+			switch name {
+			case "a listing that answers 403":
+				f.treeStatus["ci/jobs"] = 403
+			case "a listing that answers 500":
+				f.treeStatus["ci/jobs"] = 500
+			case "a listing's page 2 gone":
+				for i := range 100 {
+					f.files[fmt.Sprintf("ci/jobs/a%03d.txt", i)] = tContent
+				}
+				f.treeStatus["ci/jobs"], f.treeFailPage = 404, 2
 			}
 			text, isErr := propose(t, gitLab(t, f), args(glProject, file(tc.path)))
 			if tc.code == "" {
@@ -565,6 +591,69 @@ func TestGitLabCIConfiguration(t *testing.T) {
 			if w := f.writes(); len(w) != 0 {
 				t.Errorf("refused, yet wrote %v", w)
 			}
+		})
+	}
+}
+
+// ci is a project whose default configuration is content, with the child
+// pipeline's file it may name.
+func ci(content string) map[string]string {
+	return map[string]string{defaultCIConfig: content, ciChild: tContent, "ci/jobs/one.yml": tContent}
+}
+
+// GitLab lists a directory a page at a time: an entry on a later page is
+// read all the same (spec 12 §6.3.2, §6.2).
+func TestGitLabTreePaging(t *testing.T) {
+	t.Run("a wildcard's file on page 2 and its include", func(t *testing.T) {
+		f := newFakeGitLab()
+		for i := range 100 {
+			f.files[fmt.Sprintf("ci/jobs/a%03d.txt", i)] = tContent
+		}
+		f.files[defaultCIConfig] = "include: 'ci/jobs/z*.yml'\n"
+		f.files["ci/jobs/z.yml"] = "include: ci/deep2.yml\n"
+		f.files["ci/deep2.yml"] = tContent
+		text, isErr := propose(t, gitLab(t, f), args(glProject, file("ci/deep2.yml")))
+		wantRefused(t, text, isErr, CodePathRefused)
+		if w := f.writes(); len(w) != 0 {
+			t.Errorf("refused, yet wrote %v", w)
+		}
+	})
+	t.Run("a symbolic link on page 2", func(t *testing.T) {
+		f := newFakeGitLab()
+		for i := range 100 {
+			f.files[fmt.Sprintf("deploy/a%03d.yaml", i)] = tContent
+		}
+		f.files["deploy/zlink"] = appFile
+		f.modes["deploy/zlink"] = modeSymlink
+		text, isErr := propose(t, gitLab(t, f), args(glProject, file("deploy/zlink")))
+		wantRefused(t, text, isErr, CodePathRefused)
+		if w := f.writes(); len(w) != 0 {
+			t.Errorf("refused, yet wrote %v", w)
+		}
+	})
+}
+
+// GitLab's answer must say the merge request is a draft, as GitHub's.
+func TestGitLabDraftFlag(t *testing.T) {
+	for name, tc := range map[string]struct {
+		answer map[string]any
+		ok     bool
+	}{
+		"draft absent":           {map[string]any{}, false},
+		"draft false":            {map[string]any{kDraft: false, kWIP: false}, false},
+		"work_in_progress alone": {map[string]any{kWIP: true}, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFakeGitLab()
+			f.mrDraft = tc.answer
+			text, isErr := propose(t, gitLab(t, f), args(glProject))
+			if tc.ok {
+				if isErr {
+					t.Errorf("refused: %s", text)
+				}
+				return
+			}
+			wantRefused(t, text, isErr, CodeForge)
 		})
 	}
 }

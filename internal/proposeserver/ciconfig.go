@@ -63,6 +63,11 @@ func (g *gitlab) configFile(p string) (string, bool, error) {
 	}
 	file, project, other := strings.Cut(p, "@")
 	if other {
+		// A file name may hold an @ too: unless what follows is a project
+		// path, the server cannot tell which file GitLab reads.
+		if name, _, _ := strings.Cut(project, ":"); !projectPathRE.MatchString(name) {
+			return "", false, refuse(CodeCIConfigUnknown, "ci_config_path %q: what follows @ is not a project path", p)
+		}
 		if strings.Contains(project, ":") {
 			// Another ref than the default branch's head: what it holds
 			// is not what the branch reads.
@@ -82,6 +87,10 @@ func (g *gitlab) configFile(p string) (string, bool, error) {
 	}
 	return clean, true, nil
 }
+
+// projectPathRE is a GitLab project's full path: a namespace, perhaps
+// nested, and the project.
+var projectPathRE = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]*(/[A-Za-z0-9_][A-Za-z0-9_.-]*)+$`)
 
 // ciPath checks a path named by the configuration: relative to the
 // repository's root, a leading / allowed, no variable, no . or ..
@@ -191,11 +200,15 @@ func matchCI(pattern, p string) bool {
 }
 
 // includes are the local files a configuration includes: its top-level
-// include and its jobs' trigger:include (a child pipeline's
-// configuration), in every YAML document. Remote, template, component,
-// artifact and other projects' files are outside the repository; a
-// project file of this project is local. A kind or a key it does not know
-// is an error.
+// include and every trigger:include (a child pipeline's configuration),
+// in every YAML document. Aliases and merge keys (<<) are followed: a
+// trigger is looked for in every mapping at any depth, a hidden job's or
+// an anchor's included, so that a trigger reached through an alias, a
+// merge or extends: is never missed. A !reference tag under a trigger or
+// an include cannot be resolved here: an error. Remote, template,
+// component, artifact and other projects' files are outside the
+// repository; a project file of this project is local. A kind or a key it
+// does not know is an error.
 func includes(content []byte, project string) ([]string, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(content))
 	var out []string
@@ -208,46 +221,165 @@ func includes(content []byte, project string) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parse: %w", err)
 		}
-		if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		if len(doc.Content) == 0 {
 			continue
 		}
-		top := doc.Content[0]
-		for i := 0; i+1 < len(top.Content); i += 2 {
-			key, val := top.Content[i].Value, top.Content[i+1]
-			if key == "include" {
-				l, err := includeNode(val, project)
+		top := deref(doc.Content[0])
+		if top == nil || top.Kind != yaml.MappingNode {
+			continue
+		}
+		if inc := mapValue(top, "include"); inc != nil {
+			l, err := includeNode(inc, project)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, l...)
+		}
+		var walkErr error
+		walk(top, func(m *yaml.Node) bool {
+			for i := 0; i+1 < len(m.Content); i += 2 {
+				if k := deref(m.Content[i]); k == nil || k.Value != "trigger" {
+					continue
+				}
+				l, err := triggerIncludes(m.Content[i+1], project)
 				if err != nil {
-					return nil, err
+					walkErr = err
+					return false
 				}
 				out = append(out, l...)
-				continue
 			}
-			if trig := mapValue(val, "trigger"); trig != nil {
-				if inc := mapValue(trig, "include"); inc != nil {
-					l, err := includeNode(inc, project)
-					if err != nil {
-						return nil, err
-					}
-					out = append(out, l...)
-				}
-			}
+			return true
+		})
+		if walkErr != nil {
+			return nil, walkErr
 		}
 	}
 }
 
+// triggerIncludes are the files a trigger includes: none for a project
+// name (a multi-project pipeline), its include's otherwise.
+func triggerIncludes(n *yaml.Node, project string) ([]string, error) {
+	if hasReference(n) {
+		return nil, fmt.Errorf("a !reference under a trigger (line %d)", n.Line)
+	}
+	t := deref(n)
+	if t == nil || t.Kind != yaml.MappingNode {
+		return nil, nil
+	}
+	if inc := mapValue(t, "include"); inc != nil {
+		return includeNode(inc, project)
+	}
+	return nil, nil
+}
+
+// maxAliasDepth bounds alias and merge chains.
+const maxAliasDepth = 32
+
+// deref follows an alias to its anchored node; nil past maxAliasDepth.
+func deref(n *yaml.Node) *yaml.Node {
+	for range maxAliasDepth {
+		if n == nil || n.Kind != yaml.AliasNode {
+			return n
+		}
+		n = n.Alias
+	}
+	return nil
+}
+
+// walk calls visit on every mapping reachable from n, aliases followed,
+// each once; it stops when visit returns false.
+func walk(n *yaml.Node, visit func(*yaml.Node) bool) {
+	seen := map[*yaml.Node]bool{}
+	stack := []*yaml.Node{n}
+	for len(stack) > 0 {
+		n := deref(stack[len(stack)-1])
+		stack = stack[:len(stack)-1]
+		if n == nil || seen[n] {
+			continue
+		}
+		seen[n] = true
+		if n.Kind == yaml.MappingNode && !visit(n) {
+			return
+		}
+		stack = append(stack, n.Content...)
+	}
+}
+
+// hasReference tells whether a !reference tag sits anywhere under n,
+// aliases followed.
+func hasReference(n *yaml.Node) bool {
+	seen := map[*yaml.Node]bool{}
+	stack := []*yaml.Node{n}
+	for len(stack) > 0 {
+		n := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if n == nil || seen[n] {
+			continue
+		}
+		seen[n] = true
+		if n.Tag == "!reference" {
+			return true
+		}
+		if n.Kind == yaml.AliasNode {
+			stack = append(stack, n.Alias)
+			continue
+		}
+		stack = append(stack, n.Content...)
+	}
+	return false
+}
+
+// mapValue is the value of key in a mapping, aliases and merge keys (<<)
+// followed: a key of the mapping itself wins over a merged one, and the
+// first merged mapping over the next.
 func mapValue(n *yaml.Node, key string) *yaml.Node {
-	if n.Kind != yaml.MappingNode {
+	return mapValueDepth(n, key, 0)
+}
+
+func mapValueDepth(n *yaml.Node, key string, depth int) *yaml.Node {
+	n = deref(n)
+	if n == nil || n.Kind != yaml.MappingNode || depth > maxAliasDepth {
 		return nil
 	}
+	var merges []*yaml.Node
 	for i := 0; i+1 < len(n.Content); i += 2 {
-		if n.Content[i].Value == key {
+		k := deref(n.Content[i])
+		if k == nil {
+			continue
+		}
+		if k.Value == key {
 			return n.Content[i+1]
+		}
+		if k.Value == "<<" {
+			merges = append(merges, n.Content[i+1])
+		}
+	}
+	for _, m := range merges {
+		m = deref(m)
+		if m == nil {
+			continue
+		}
+		sources := []*yaml.Node{m}
+		if m.Kind == yaml.SequenceNode {
+			sources = m.Content
+		}
+		for _, s := range sources {
+			if v := mapValueDepth(s, key, depth+1); v != nil {
+				return v
+			}
 		}
 	}
 	return nil
 }
 
 func includeNode(n *yaml.Node, project string) ([]string, error) {
+	if hasReference(n) {
+		return nil, fmt.Errorf("a !reference under an include (line %d)", n.Line)
+	}
+	n = deref(n)
+	if n == nil {
+		return nil, errors.New("an alias chain too long under an include")
+	}
 	switch n.Kind {
 	case yaml.ScalarNode:
 		if strings.HasPrefix(n.Value, "http://") || strings.HasPrefix(n.Value, "https://") {
@@ -277,7 +409,11 @@ var includeKeys = map[string]bool{"rules": true, "inputs": true, keyRef: true, "
 func includeMap(n *yaml.Node, project string) ([]string, error) {
 	kind := ""
 	for i := 0; i+1 < len(n.Content); i += 2 {
-		k := n.Content[i].Value
+		kn := deref(n.Content[i])
+		if kn == nil {
+			return nil, fmt.Errorf("an alias chain too long in an include (line %d)", n.Line)
+		}
+		k := kn.Value
 		switch k {
 		case "local", "project", "remote", "template", "component", "artifact":
 			if kind != "" {
@@ -292,14 +428,14 @@ func includeMap(n *yaml.Node, project string) ([]string, error) {
 	}
 	switch kind {
 	case "local":
-		v := mapValue(n, "local")
-		if v.Kind != yaml.ScalarNode {
+		v := deref(mapValue(n, "local"))
+		if v == nil || v.Kind != yaml.ScalarNode {
 			return nil, fmt.Errorf("include:local is not a path (line %d)", n.Line)
 		}
 		return []string{v.Value}, nil
 	case "project":
-		v := mapValue(n, "project")
-		if v.Kind != yaml.ScalarNode || strings.Contains(v.Value, "$") {
+		v := deref(mapValue(n, "project"))
+		if v == nil || v.Kind != yaml.ScalarNode || strings.Contains(v.Value, "$") {
 			return nil, fmt.Errorf("include:project is not a project path (line %d)", n.Line)
 		}
 		if !strings.EqualFold(strings.Trim(v.Value, "/"), project) {
@@ -310,7 +446,7 @@ func includeMap(n *yaml.Node, project string) ([]string, error) {
 		if mapValue(n, keyRef) != nil {
 			return nil, fmt.Errorf("include:project names this project at a ref (line %d)", n.Line)
 		}
-		files := mapValue(n, "file")
+		files := deref(mapValue(n, "file"))
 		if files == nil {
 			return nil, fmt.Errorf("include:project without file (line %d)", n.Line)
 		}

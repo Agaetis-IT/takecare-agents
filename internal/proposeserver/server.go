@@ -225,19 +225,19 @@ func inputSchema() map[string]any {
 	return map[string]any{
 		keyType:                "object",
 		"additionalProperties": false,
-		"required":             []string{"repository", keyBranch, keyTitle, keyBody, "files"},
+		"required":             []string{keyRepository, keyBranch, keyTitle, keyBody, keyFiles},
 		"properties": map[string]any{
-			"repository": str("A listed repository: owner/name on GitHub, the project's full path on GitLab."),
-			keyBranch:    str("The branch to create: takecare/mecano/ then lower-case letters, digits and hyphens, as the operator's message names it."),
-			keyTitle:     str(fmt.Sprintf("The pull request's title, %d characters at most.", maxTitle)),
-			keyBody:      str(fmt.Sprintf("The pull request's description, %d KiB at most.", maxBody>>10)),
-			"files": map[string]any{
+			keyRepository: str("A listed repository: owner/name on GitHub, the project's full path on GitLab."),
+			keyBranch:     str("The branch to create: takecare/mecano/ then lower-case letters, digits and hyphens, as the operator's message names it."),
+			keyTitle:      str(fmt.Sprintf("The pull request's title, %d characters at most.", maxTitle)),
+			keyBody:       str(fmt.Sprintf("The pull request's description, %d KiB at most.", maxBody>>10)),
+			keyFiles: map[string]any{
 				keyType: "array", "minItems": 1, "maxItems": maxFiles,
 				keyDescription: "The files the commit writes, each its whole new content.",
 				"items": map[string]any{
-					keyType: "object", "additionalProperties": false, "required": []string{"path", keyContent},
+					keyType: "object", "additionalProperties": false, "required": []string{keyPath, keyContent},
 					"properties": map[string]any{
-						"path":     str("A relative path in the repository."),
+						keyPath:    str("A relative path in the repository."),
 						keyContent: str("The file's whole content."),
 					},
 				},
@@ -297,7 +297,7 @@ func (s *Server) handle(ctx context.Context, req *sdk.CallToolRequest) (*sdk.Cal
 			err = &refusal{code: CodeForge, detail: err.Error()}
 		}
 		// The repository and the outcome, never the content.
-		s.logger.Info("propose_change refused", "repository", repo, "outcome", code)
+		s.logger.Info("propose_change refused", keyRepository, repo, "outcome", code)
 		return &sdk.CallToolResult{IsError: true, Content: []sdk.Content{&sdk.TextContent{Text: err.Error()}}}, nil
 	}
 	outcome := "opened"
@@ -380,8 +380,33 @@ func (s *Server) propose(ctx context.Context, raw json.RawMessage) (*Result, str
 	return &Result{Repository: a.Repository, URL: u, Branch: a.Branch}, a.Repository, nil
 }
 
+// argKeys are the published argument names.
+var argKeys = map[string]bool{keyRepository: true, keyBranch: true, keyTitle: true, keyBody: true, keyFiles: true}
+
 func decodeArgs(raw json.RawMessage) (Args, error) {
 	var a Args
+	// encoding/json matches keys case-insensitively: each key must be a
+	// published name exactly, read first as it is.
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &keys); err != nil {
+		return a, refuse(CodeArguments, "%v", err)
+	}
+	for k := range keys {
+		if !argKeys[k] {
+			return a, refuse(CodeArguments, "an argument not declared: %q", k)
+		}
+	}
+	var files []map[string]json.RawMessage
+	if err := json.Unmarshal(keys[keyFiles], &files); keys[keyFiles] != nil && err != nil {
+		return a, refuse(CodeArguments, "files: %v", err)
+	}
+	for _, f := range files {
+		for k := range f {
+			if k != keyPath && k != keyContent {
+				return a, refuse(CodeArguments, "a file argument not declared: %q", k)
+			}
+		}
+	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&a); err != nil {
@@ -411,8 +436,9 @@ func decodeArgs(raw json.RawMessage) (Args, error) {
 }
 
 // fixedCI are refused on every forge, whatever the project's settings:
-// GitHub's workflows, GitLab's default configuration and its directory.
-var fixedCI = []string{".github/workflows/", ".gitlab-ci.yml", ".gitlab/"}
+// GitHub's workflows and its local actions (a workflow runs them with the
+// workflow's rights), GitLab's default configuration and its directory.
+var fixedCI = []string{".github/workflows/", ".github/actions/", ".gitlab-ci.yml", ".gitlab/"}
 
 // checkPaths refuses a path outside the repository, a .git element, a
 // path twice, and the fixed CI paths.

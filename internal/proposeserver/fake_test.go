@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -40,6 +41,9 @@ const (
 	ciMain       = "ci/main.yml"
 	ciA          = "ci/a.yml"
 	cfgSubA      = "configs/sub/a.yml"
+	ciChild      = "ci/child.yml"
+	kWebURL      = "web_url"
+	kWIP         = "work_in_progress"
 	wantHTTPSURL = "an https URL"
 )
 
@@ -260,6 +264,9 @@ type fakeGitLab struct {
 	branches     map[string]bool
 	mrs          []map[string]any
 	rawStatus    map[string]int
+	treeStatus   map[string]int // a directory's listing fails with this status
+	treeFailPage int            // on this page only, or on every page when 0
+	mrDraft      map[string]any // the create answer's draft fields, when set
 	badCaller    bool
 }
 
@@ -278,9 +285,10 @@ func newFakeGitLab() *fakeGitLab {
 			defaultCIConfig: "stages: [test]\n", "deploy/app.yaml": "kind: Deployment\n", tRunSh: "#!/bin/sh\n",
 			tLink: "deploy/app.yaml",
 		},
-		modes:     map[string]string{tRunSh: modeExec, tLink: modeSymlink},
-		branches:  map[string]bool{},
-		rawStatus: map[string]int{},
+		modes:      map[string]string{tRunSh: modeExec, tLink: modeSymlink},
+		branches:   map[string]bool{},
+		rawStatus:  map[string]int{},
+		treeStatus: map[string]int{},
 	}
 }
 
@@ -339,7 +347,7 @@ func (f *fakeGitLab) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		_, _ = io.WriteString(w, c)
 	case r.Method == http.MethodGet && rest == "/repository/tree":
-		writeJSON(w, 200, f.tree(q.Get(kPath), q.Get("recursive") == "true"))
+		f.servePage(w, q)
 	case r.Method == http.MethodGet && rest == "/merge_requests":
 		out := []map[string]any{}
 		for _, m := range f.mrs {
@@ -367,11 +375,43 @@ func (f *fakeGitLab) post(w http.ResponseWriter, rest string, body map[string]an
 		writeJSON(w, 201, map[string]any{"id": "c0mmit"})
 	case "/merge_requests":
 		u := fmt.Sprintf("https://gitlab.example/grp/sub/shop/-/merge_requests/%d", len(f.mrs)+1)
-		f.mrs = append(f.mrs, map[string]any{"web_url": u, "description": body["description"], "source_branch": body["source_branch"], keyTitle: body[keyTitle]})
-		writeJSON(w, 201, map[string]any{"web_url": u, kDraft: true})
+		f.mrs = append(f.mrs, map[string]any{kWebURL: u, "description": body["description"], "source_branch": body["source_branch"], keyTitle: body[keyTitle]})
+		answer := map[string]any{kWebURL: u, kDraft: true, kWIP: true}
+		if f.mrDraft != nil {
+			answer = map[string]any{kWebURL: u}
+			maps.Copy(answer, f.mrDraft)
+		}
+		writeJSON(w, 201, answer)
 	default:
 		writeJSON(w, 404, map[string]any{kMessage: "404 Not Found"})
 	}
+}
+
+// servePage serves one page of a tree listing as GitLab does: per_page
+// entries (20 by default, 100 at most) from page, X-Next-Page set while
+// more remain.
+func (f *fakeGitLab) servePage(w http.ResponseWriter, q url.Values) {
+	dir := q.Get(kPath)
+	page, _ := strconv.Atoi(q.Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	if s := f.treeStatus[dir]; s != 0 && (f.treeFailPage == 0 || f.treeFailPage == page) {
+		writeJSON(w, s, map[string]any{kMessage: "error"})
+		return
+	}
+	per, _ := strconv.Atoi(q.Get("per_page"))
+	if per < 1 {
+		per = 20
+	}
+	per = min(per, 100)
+	all := f.tree(dir, q.Get("recursive") == "true")
+	from := min((page-1)*per, len(all))
+	to := min(from+per, len(all))
+	if to < len(all) {
+		w.Header().Set("X-Next-Page", strconv.Itoa(page+1))
+	}
+	writeJSON(w, 200, all[from:to])
 }
 
 // tree lists the fake's files under dir: its direct children, or every

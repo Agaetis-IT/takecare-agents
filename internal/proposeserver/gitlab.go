@@ -118,7 +118,7 @@ func (g *gitlab) list(ctx context.Context, h head, dir, _ string) ([]entry, erro
 }
 
 // tree lists a directory at the head, page by page; a directory that does
-// not exist is empty.
+// not exist (a 404 on the first page) is empty, any other error is one.
 func (g *gitlab) tree(ctx context.Context, h head, dir string, recursive bool) ([]entry, error) {
 	var out []entry
 	for page := 1; ; page++ {
@@ -138,11 +138,13 @@ func (g *gitlab) tree(ctx context.Context, h head, dir string, recursive bool) (
 			Mode string `json:"mode"`
 		}
 		hdr, err := g.api.do(ctx, http.MethodGet, g.path("/repository/tree"), q, nil, &items)
-		if httpStatus(err) == http.StatusNotFound {
+		if httpStatus(err) == http.StatusNotFound && page == 1 {
 			return out, nil
 		}
 		if err != nil {
-			return nil, err
+			// Any other error, or a page that vanished, is not an empty
+			// directory: the caller fails closed.
+			return nil, fmt.Errorf("list %q, page %d: %w", dir, page, err)
 		}
 		for _, it := range items {
 			name := it.Name
@@ -196,11 +198,18 @@ func (g *gitlab) open(ctx context.Context, h head, branch, title, body string) (
 		title = draftPrefix + title
 	}
 	var mr struct {
-		WebURL string `json:"web_url"`
+		WebURL         string `json:"web_url"`
+		Draft          *bool  `json:"draft"`
+		WorkInProgress *bool  `json:"work_in_progress"`
 	}
 	in := map[string]any{"source_branch": branch, "target_branch": h.branch, keyTitle: title, keyDescription: body}
 	if _, err := g.api.do(ctx, http.MethodPost, g.path("/merge_requests"), nil, in, &mr); err != nil {
 		return "", fmt.Errorf("open the merge request: %w", err)
+	}
+	// draft since GitLab 13.2, work_in_progress before (deprecated): one
+	// of them must say it is a draft.
+	if (mr.Draft == nil || !*mr.Draft) && (mr.WorkInProgress == nil || !*mr.WorkInProgress) {
+		return "", fmt.Errorf("the forge opened %s without marking it a draft", mr.WebURL)
 	}
 	return mr.WebURL, nil
 }
