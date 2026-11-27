@@ -27,6 +27,7 @@ import (
 // Names the tests repeat.
 const (
 	srcReg      = "reg"
+	srcRepo     = "repo"
 	nameApp     = "acme/app"
 	chartApp    = "app"
 	robot       = "robot"
@@ -397,10 +398,10 @@ func TestCacheOnceADayStaleThenDropped(t *testing.T) {
 		_, _ = fmt.Fprint(w, "entries:\n  app:\n    - version: 1.0.0\n")
 	}
 	clk := &clock{now: t0}
-	s := newServer(t, client(api), clk, Source{Name: "repo", Kind: KindHelm, URL: api.srv.URL})
+	s := newServer(t, client(api), clk, Source{Name: srcRepo, Kind: KindHelm, URL: api.srv.URL})
 	session := connect(t, s)
 	get := func() (result, string, bool) {
-		text, isErr := call(t, session, ToolVersionsList, map[string]any{argSource: "repo", argName: chartApp})
+		text, isErr := call(t, session, ToolVersionsList, map[string]any{argSource: srcRepo, argName: chartApp})
 		if isErr {
 			return result{}, text, true
 		}

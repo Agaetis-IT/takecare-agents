@@ -111,10 +111,11 @@ func TestHelmIndexOneAtATime(t *testing.T) {
 // silent short list; the server stops at ociMaxPages calls.
 func TestOCITagsTruncatedIsAnError(t *testing.T) {
 	api := newUpstream(t)
-	api.routes["/v2/acme/app/tags/list"] = func(w http.ResponseWriter, r *http.Request) {
-		next := r.URL.Query().Get("last") + "x"
-		w.Header().Set("Link", `</v2/acme/app/tags/list?last=`+next+`&n=1000>; rel="next"`)
-		_, _ = fmt.Fprintf(w, `{"tags":["1.0.%d"]}`, len(next))
+	var page atomic.Int32
+	api.routes["/v2/acme/app/tags/list"] = func(w http.ResponseWriter, _ *http.Request) {
+		n := page.Add(1)
+		w.Header().Set("Link", fmt.Sprintf(`</v2/acme/app/tags/list?last=1.0.%d&n=1000>; rel="next"`, n))
+		_, _ = fmt.Fprintf(w, `{"tags":["1.0.%d"]}`, n)
 	}
 	s := newServer(t, client(api), &clock{now: t0}, Source{Name: srcReg, Kind: KindOCI, URL: api.srv.URL})
 	text, isErr := call(t, connect(t, s), ToolVersionsList, map[string]any{argSource: srcReg, argName: nameApp})
@@ -196,14 +197,15 @@ func TestRedirectToPlainHTTPRefused(t *testing.T) {
 	srv := httptest.NewUnstartedServer(nil)
 	cl := &countingListener{Listener: srv.Listener}
 	srv.Listener = cl
+	plain := "http://" + srv.Listener.Addr().String() + "/index.yaml"
 	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "http://"+r.Host+"/index.yaml", http.StatusFound)
+		http.Redirect(w, r, plain, http.StatusFound)
 	})
 	srv.StartTLS()
 	t.Cleanup(srv.Close)
 	u := &upstream{t: t, srv: srv}
-	s := newServer(t, client(u), &clock{now: t0}, Source{Name: "repo", Kind: KindHelm, URL: srv.URL, TokenFile: tokenFile(t, "made-up-a")})
-	text, isErr := call(t, connect(t, s), ToolVersionsList, map[string]any{argSource: "repo", argName: chartApp})
+	s := newServer(t, client(u), &clock{now: t0}, Source{Name: srcRepo, Kind: KindHelm, URL: srv.URL, TokenFile: tokenFile(t, "made-up-a")})
+	text, isErr := call(t, connect(t, s), ToolVersionsList, map[string]any{argSource: srcRepo, argName: chartApp})
 	if !isErr || !strings.Contains(text, "redirect off the source's host is refused") {
 		t.Errorf("a redirect to http: %v %s", isErr, text)
 	}
@@ -267,7 +269,8 @@ func TestPort443Only(t *testing.T) {
 		t.Errorf("a URL on port 443: %v", err)
 	}
 	base, _ := url.Parse(urlRegistry)
-	s := &source{Source: Source{AuthHost: "auth.example.com"}, base: base}
+	s := &source{base: base}
+	s.AuthHost = "auth.example.com"
 	for raw, want := range map[string]bool{
 		"https://auth.example.com/token":      true,
 		"https://auth.example.com:443/token":  true,

@@ -89,7 +89,7 @@ func (r *Server) ociTags(ctx context.Context, s *source, name string) ([]publish
 			q.Set("last", last)
 		}
 		u.RawQuery = q.Encode()
-		raw, h, err := r.get(ctx, s, u, header, maxJSON)
+		raw, h, err := r.get(ctx, s, u, header)
 		if se, ok := errors.AsType[*statusError](err); ok && se.status == http.StatusUnauthorized && !challenged {
 			challenged = true
 			auth, terr := r.ociAuth(ctx, s, name, se.header.Get("WWW-Authenticate"), cred)
@@ -175,7 +175,7 @@ func (r *Server) ociAuth(ctx context.Context, s *source, name, challenge, cred s
 	if s.Username != "" {
 		header.Set(headerAuthorization, cred)
 	}
-	raw, _, err := r.get(ctx, s, realm, header, maxJSON)
+	raw, _, err := r.get(ctx, s, realm, header)
 	if err != nil {
 		return "", fmt.Errorf("source %s: token: %w", s.Name, err)
 	}
@@ -289,7 +289,7 @@ func (r *Server) forgePages(ctx context.Context, s *source, u *url.URL, header h
 	out := []published{}
 	for page := 1; page <= forgeMaxPages; page++ {
 		u.RawQuery = url.Values{keyPerPage: {strconv.Itoa(forgePage)}, keyPage: {strconv.Itoa(page)}}.Encode()
-		raw, _, err := r.get(ctx, s, u, header, maxJSON)
+		raw, _, err := r.get(ctx, s, u, header)
 		if err != nil {
 			return nil, err
 		}
@@ -315,7 +315,7 @@ func (r *Server) cycles(ctx context.Context, s *source, product string) ([]Cycle
 	if err != nil {
 		return nil, err
 	}
-	raw, _, err := r.get(ctx, s, join(s.base, "products", product), header, maxJSON)
+	raw, _, err := r.get(ctx, s, join(s.base, "products", product), header)
 	if err != nil {
 		return nil, err
 	}

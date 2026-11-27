@@ -103,12 +103,12 @@ type statusError struct {
 
 func (e *statusError) Error() string { return fmt.Sprintf("answered %d", e.status) }
 
-// get calls u on one of the source's hosts and returns at most limit bytes
-// of a 2xx answer. Its errors name the host and the path only: never a
-// query, never a credential, which travel in headers.
-func (r *Server) get(ctx context.Context, s *source, u *url.URL, header http.Header, limit int64) ([]byte, http.Header, error) {
+// get calls u on one of the source's hosts and returns at most maxJSON
+// bytes of a 2xx answer. Its errors name the host and the path only: never
+// a query, never a credential, which travel in headers.
+func (r *Server) get(ctx context.Context, s *source, u *url.URL, header http.Header) ([]byte, http.Header, error) {
 	var raw []byte
-	h, err := r.stream(ctx, s, u, header, limit, func(body io.Reader) error {
+	h, err := r.stream(ctx, s, u, header, maxJSON, func(body io.Reader) error {
 		var err error
 		raw, err = io.ReadAll(body)
 		return err
