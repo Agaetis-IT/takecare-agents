@@ -489,6 +489,48 @@ addons:
     egress:
       excludedCIDRs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
       proxy: null
+  # -- Add-on code-propose (spec 12 §6): the code server's image in propose
+  # mode, a separate Deployment that alone holds the write tokens. Its one
+  # tool, propose_change, opens a draft pull request (a draft merge request
+  # on GitLab) on a listed repository, on a branch under takecare/mecano/,
+  # only when the default branch is protected and never on a CI file. Its
+  # connector code-propose overrides the tool to the propose class; a role
+  # binds it only at Practitioner. No ServiceAccount token.
+  # @default -- see the keys below
+  codePropose:
+    # -- Deploy the propose server and the connector code-propose.
+    enabled: false
+    # -- The image: the code server's, run in propose mode; its tag empty:
+    # the chart's appVersion.
+    image:
+      registry: ghcr.io/agaetis-it
+      repository: takecare-agents-mcp-code
+      # Empty: the chart's appVersion.
+      tag: ""
+      pullPolicy: IfNotPresent
+    # -- Requests and limits of the propose server container: it holds no
+    # repository, only the call in flight (256 KiB of files at most).
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits: { memory: 128Mi }
+    # -- REQUIRED when enabled: the Secret holding one write token per
+    # repository, mounted on this pod only. GitHub: a fine-grained token or
+    # an App installation token limited to the listed repositories, with
+    # Contents and Pull requests write and nothing else (no Workflows).
+    # GitLab: a project access token per project, role Developer, scope api,
+    # with an expiry date to renew.
+    tokenSecret:
+      name: ""
+    # -- REQUIRED when enabled: 1 to 16 repositories, each {forge (github or
+    # gitlab), apiURL (`https://api.github.com`, `https://<host>/api/v3`,
+    # `https://gitlab.com/api/v4`), repository (owner/name on GitHub, the
+    # project's full path on GitLab), tokenKey (its key in tokenSecret)}.
+    repositories: []
+    # -- Egress to the forges' APIs: DNS, then TCP 443 outside the cluster,
+    # or the proxy pods only.
+    egress:
+      excludedCIDRs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      proxy: null
 
 # ---------------------------------------------------------------------------
 # Subcharts. Keys below are the upstream charts' own values.
