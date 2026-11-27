@@ -510,6 +510,20 @@ func TestGitLabCIConfiguration(t *testing.T) {
 		"ci/deep.yml":     "child:\n  trigger:\n    include: ci/child.yml\n",
 		"ci/child.yml":    "y: 1\n",
 	}
+	const (
+		atPath   = "ci@prod/pipeline.yml"
+		atConfig = "ci/config@grp/other"
+		otherCI  = "ci.yml@other/proj"
+	)
+	// GitLab reads a ci_config_path that does not match .+(yml|yaml)@.+ as
+	// this repository's file, @ and all.
+	atLocal := map[string]string{atConfig: "include: ci/inc.yml\n", "ci/inc.yml": tContent}
+	// A trigger's include reached through more merges than maxAliasDepth.
+	deepMerge := ".m0: &m0\n  include: ci/child.yml\n"
+	for i := 1; i <= maxAliasDepth+1; i++ {
+		deepMerge += fmt.Sprintf(".m%d: &m%d\n  <<: *m%d\n", i, i, i-1)
+	}
+	deepMerge += fmt.Sprintf("job:\n  trigger:\n    <<: *m%d\n", maxAliasDepth+1)
 	many := "include:\n"
 	for i := range maxIncludes + 1 {
 		many += fmt.Sprintf("  - local: ci/m%d.yml\n", i)
@@ -535,7 +549,7 @@ func TestGitLabCIConfiguration(t *testing.T) {
 		"a child pipeline's file":           {ciMain, false, nested, nil, "ci/child.yml", CodePathRefused},
 		"another project's file named here": {ciMain, false, nested, nil, "x.yml", ""},
 		"a file outside the configuration":  {ciMain, false, nested, nil, "ci/jobs/sub/x.yml", ""},
-		"a file in another project":         {"ci.yml@other/proj", false, nil, nil, "ci.yml", ""},
+		"a file in another project":         {otherCI, false, nil, nil, "ci.yml", ""},
 		"a URL":                             {"https://example.com/ci.yml", false, nil, nil, "ci.yml", ""},
 		"no ci_config_path field":           {"", true, nil, nil, appFile, CodeCIConfigUnknown},
 		"the configured file missing":       {"ci/none.yml", false, nil, nil, appFile, CodeCIConfigUnknown},
@@ -555,6 +569,11 @@ func TestGitLabCIConfiguration(t *testing.T) {
 		"an include by !reference":          {"", false, ci(".defs:\n  t:\n    x: ci/child.yml\njob:\n  trigger:\n    include: !reference [.defs, t, x]\n"), nil, ciChild, CodeCIConfigUnknown},
 		"a multi-project trigger":           {"", false, ci("job:\n  trigger: other/proj\n"), nil, ciChild, ""},
 		"an @ in a file name":               {"ci/a@b.yml", false, nil, nil, appFile, CodeCIConfigUnknown},
+		"an @ before a path, no extension":  {atPath, false, map[string]string{atPath: tContent}, nil, atPath, CodePathRefused},
+		"an @ before a project path":        {atConfig, false, atLocal, nil, atConfig, CodePathRefused},
+		"an @ file's local include":         {atConfig, false, atLocal, nil, "ci/inc.yml", CodePathRefused},
+		"another project's file, literally": {otherCI, false, nil, nil, otherCI, CodePathRefused},
+		"a merge chain past the bound":      {"", false, ci(deepMerge), nil, ciChild, CodeCIConfigUnknown},
 		"a listing that answers 403":        {"", false, ci("include: 'ci/jobs/*.yml'\n"), nil, appFile, CodeCIConfigUnknown},
 		"a listing that answers 500":        {"", false, ci("include: 'ci/jobs/*.yml'\n"), nil, appFile, CodeCIConfigUnknown},
 		"a listing's page 2 gone":           {"", false, ci("include: 'ci/jobs/*.yml'\n"), nil, appFile, CodeCIConfigUnknown},

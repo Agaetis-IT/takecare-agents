@@ -209,7 +209,7 @@ func (g *gitlab) open(ctx context.Context, h head, branch, title, body string) (
 	// draft, or work_in_progress, its deprecated older name: one
 	// of them must say it is a draft.
 	if (mr.Draft == nil || !*mr.Draft) && (mr.WorkInProgress == nil || !*mr.WorkInProgress) {
-		return "", fmt.Errorf("the forge opened %s without marking it a draft", mr.WebURL)
+		return "", fmt.Errorf("the forge opened %s without marking it a draft: it stays open as a non-draft merge request, to mark as a draft or close by hand", mr.WebURL)
 	}
 	return mr.WebURL, nil
 }
