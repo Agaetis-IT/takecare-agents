@@ -5,7 +5,8 @@
 # Base images are pinned in hack/versions.env and passed by the Makefile
 # (make docker-build, make docker-buildx); there is no default on purpose.
 # COMPONENT names the binary under cmd/ (operator, mcp-report-slack, demo-app,
-# mcp-corpus, mcp-map, mcp-front, mcp-history, mcp-code): one Dockerfile, one image per component.
+# mcp-corpus, mcp-map, mcp-front, mcp-history, mcp-code, mcp-releases): one
+# Dockerfile, one image per component.
 ARG GO_BUILD_IMAGE
 ARG RUNTIME_IMAGE
 ARG GO_LICENSES_VERSION
@@ -14,7 +15,7 @@ ARG COMPONENT=operator
 # Full license texts (and NOTICE files) of every third-party module of every
 # command, once per build on the build platform: each image ships the union
 # (docs/licensing.md). The Go caches are BuildKit cache mounts, shared by the
-# eight images of one build.
+# nine images of one build.
 FROM --platform=$BUILDPLATFORM ${GO_BUILD_IMAGE} AS licenses
 ARG GO_LICENSES_VERSION
 WORKDIR /workspace

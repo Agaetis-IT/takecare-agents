@@ -62,11 +62,12 @@ What is shared is extracted from today's `TakeCareInvestigationStatus` into a **
 
 ## 4. Outputs and connector types
 
-Everything an agent touches is a connector (ADR 0008). The seven types of spec 05 cover the Doc. The collection needs four more, **added to the enum when their first role is built**, never before:
+Everything an agent touches is a connector (ADR 0008). The seven types of spec 05 cover the Doc. The collection needs five more, **added to the enum when their first role is built**, never before:
 
 | Type | Classes of tools | First role | Notes |
 |---|---|---|---|
 | `code` | `read` at `Apprentice` (repositories, manifests, IaC), `propose` at `Practitioner` (open a pull request), `act` at `Expert` (merge is **never** an agent's: a human merges) | Mécano, then Kiné | The first writing role writes **a pull request**, which is a `propose` tool: the three-layer guarantee of ADR 0008 holds unchanged |
+| `releases` | `read` (published versions and release cycles: registries, Helm repositories, forges' releases, endoflife.date) | Mécano | Read by the Mécano's collector, never rendered on an agent (spec 12 §7.1); a role does without it on the end-of-support dataset |
 | `billing` | `read` (cloud and Kubernetes cost exports, quotas) | Nutri | Scope is cloud accounts, not namespaces |
 | `chat` | `read` (receive messages), `propose` (reply) | Guide | The `report` connector posts; a `chat` connector converses. Same Slack server, two surfaces |
 | `history` | `read` | Kiné | **TakeCare's own records** (investigations, reviews) exposed as an MCP server, an add-on with its own read-only ServiceAccount (spec 11 §4), so a role reads another role's history through the gateway with an allow-list, like any other source. No role reads the Kubernetes API for TakeCare objects |

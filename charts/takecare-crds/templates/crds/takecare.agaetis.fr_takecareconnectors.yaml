@@ -427,6 +427,7 @@ spec:
                   - history
                   - cloud
                   - code
+                  - releases
                   type: string
                 minItems: 1
                 type: array
