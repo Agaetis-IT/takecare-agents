@@ -241,7 +241,7 @@ site-deploy-test: ## Check which runs publish the site (hack/site-deploy.sh): a 
 ##@ Lint
 
 .PHONY: lint
-lint: lint-go lint-sh lint-md lint-spdx ## Run every linter.
+lint: lint-go lint-sh lint-md lint-spdx scenarios-check ## Run every linter.
 
 .PHONY: lint-go
 lint-go: golangci-lint ## Run golangci-lint.
@@ -259,6 +259,10 @@ lint-md: ## Run markdownlint on the documentation.
 .PHONY: lint-spdx
 lint-spdx: ## Check the SPDX header of our source files.
 	hack/check-spdx.sh
+
+.PHONY: scenarios-check
+scenarios-check: ## Check the scenario files of test/scenarios: schema, Map keys, corpus records, regular expressions (spec 14).
+	go run ./test/scenarios/player check test/scenarios
 
 .PHONY: dco
 dco: ## Check the DCO sign-off of every commit of DCO_BASE..DCO_HEAD (default origin/main..HEAD; merges excepted).
@@ -382,10 +386,10 @@ demo-up: ## Create the k3d demo and install everything (TAKECARE_MODEL_API_KEY; 
 	hack/demo.sh up
 demo-incident: ## Start the proxy-timeout incident and print the expected alert window.
 	hack/demo.sh incident
-demo-verdict: ## Wait for the Doc's diagnosis of the incident and its usage (read one scrape wait after the end), then the Kiné's review of it, and print them.
+demo-verdict: ## Wait for the Doc's diagnosis of the incident and its usage (read one scrape wait after the end), print them with the scenario's verdict lines, then the Kiné's review.
 	hack/demo.sh verdict
 N ?= 5
-demo-bench: ## Accuracy bench: N silent investigations of the ongoing incident, scored (the Doc's cooldown is 1 s meanwhile; BENCH_MIN=k fails under k).
+demo-bench: ## Accuracy bench: N silent investigations of the ongoing incident, scored against test/scenarios/<scenario>.yaml (the Doc's cooldown is 1 s meanwhile; BENCH_MIN=k fails under k; BENCH_BASELINE=report compares).
 	hack/bench.sh $(N)
 demo-bench-intendant: ## Intendant bench: N surveys of the demo against the bench's Map, scored against test/bench/intendant/expected.yaml (BENCH_MIN=k fails under k).
 	hack/bench-intendant.sh $(N)
