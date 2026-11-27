@@ -15,7 +15,18 @@ The workflow refuses a tag that is not `v<major>.<minor>.<patch>` with an option
 
 ## Procedure
 
-1. **Bench, on `main`, before the cut.** Run the three benches on a real model, as spec 04, spec 10 and spec 11 ask before each release, from `main`'s head: the commit the cut (step 2) will be based on. They run before the cut PR is opened, on the product owner's go and within the cost cap given with it, so that the cut PR arrives complete with their reports and needs a single review:
+The procedure opens with the end-of-version audit, then follows the numbered steps; the audit stays unnumbered so that step 2 remains the cut, which the checks and workflows name.
+
+**Audit the version, once its last lot is merged, before the benches.** By the product owner's decision, every version gets an audit of its whole diff since the previous tag (`git diff vPREVIOUS origin/main`), by a second reviewer model. It comes in addition to the second reviews of the risky pull requests, and looks at what no single pull request shows, what crosses lots:
+
+- the consistency between the code, the specs, the docs, the `CHANGELOG.md` entries (the fragments under `changes/unreleased/`) and the site;
+- the version's total security surface: the generated RBAC, the NetworkPolicies, every write path, the tokens and the Secrets;
+- the upgrade from the previous version: CRD changes, values renamed or removed, migrations, and their upgrade notes;
+- the open questions left unanswered in the version's merged pull requests.
+
+The audit is split by zone, one report per zone, so that each part stays readable: for example one per role, the CI, the charts and rights. Each report lists its findings, or says the zone was read and found clean. Every finding is fixed by a normal pull request merged before the benches start, so that nothing waits for the cut PR, which stays single.
+
+1. **Bench, on `main`, before the cut.** Run the three benches on a real model, as spec 04, spec 10 and spec 11 ask before each release, from `main`'s head once the audit's fixes are merged: the commit the cut (step 2) will be based on. They run before the cut PR is opened, on the product owner's go and within the cost cap given with it, so that the cut PR arrives complete with their reports and needs a single review:
    - the Doc's accuracy bench (`make demo-bench N=5 BENCH_MIN=5`, or the `bench` workflow): the bar, set by the product owner, is five correct out of five; below it, do not release;
    - the Intendant's bench (`make demo-bench-intendant N=5 BENCH_MIN=5`): the bar, set by the product owner, is five runs ok out of five; below it, do not release;
    - the Kiné's bench (`make demo-bench-kine N=5 BENCH_MIN=5`, spec 11 §12): the bar, set by the product owner, is five runs ok out of five; below it, do not release. It is revisited after its first report, as the Intendant's was. On macOS, run the benches under `caffeinate -i`.
