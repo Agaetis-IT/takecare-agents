@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -19,13 +17,9 @@ import (
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/go-git/go-git/v5/plumbing/transport"
-	"github.com/go-git/go-git/v5/plumbing/transport/client"
-	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
-	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 	"github.com/go-git/go-git/v5/storage/memory"
 
-	"github.com/agaetis-it/takecare-agents/internal/httpclient"
+	"github.com/agaetis-it/takecare-agents/internal/gitauth"
 )
 
 // GitConfig is the customer's repository holding the Map (spec 08 §5): one
@@ -67,7 +61,7 @@ type gitSource struct {
 	cfg    GitConfig
 	logger *slog.Logger
 	now    func() time.Time
-	auth   func() (transport.AuthMethod, error)
+	auth   gitauth.Method
 	// retry is how soon a failed clone is tried again.
 	retry time.Duration
 
@@ -104,80 +98,15 @@ func newGitSource(cfg GitConfig, logger *slog.Logger, now func() time.Time) (*gi
 	if cfg.PollInterval < pollMin {
 		return nil, fmt.Errorf("poll interval %s is below %s", cfg.PollInterval, pollMin)
 	}
-	ep, err := transport.NewEndpoint(cfg.URL)
+	auth, err := gitauth.For(gitauth.Config{
+		URL: cfg.URL, CredentialFile: cfg.CredentialFile, CredentialUsername: cfg.CredentialUsername,
+		SSHKeyFile: cfg.SSHKeyFile, KnownHostsFile: cfg.KnownHostsFile, CAFile: cfg.CAFile, Timeout: gitTimeout,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("git URL: %w", err)
+		return nil, err
 	}
-	g := &gitSource{cfg: cfg, logger: logger, now: now, retry: cloneRetry}
-	switch ep.Protocol {
-	case "ssh":
-		if cfg.SSHKeyFile == "" || cfg.KnownHostsFile == "" {
-			return nil, errors.New("an SSH remote needs a key file and a known_hosts file: host keys are always checked")
-		}
-		user := ep.User
-		if user == "" {
-			user = "git"
-		}
-		g.auth = func() (transport.AuthMethod, error) { return sshAuth(user, cfg.SSHKeyFile, cfg.KnownHostsFile) }
-	case "https":
-		hc := httpclient.FromEnv(gitTimeout)
-		if cfg.CAFile != "" {
-			hc.CAFile = cfg.CAFile
-		}
-		c, err := hc.New()
-		if err != nil {
-			return nil, fmt.Errorf("the HTTPS client: %w", err)
-		}
-		// go-git takes its HTTP client per scheme; this one has the proxy,
-		// the CA bundle and the timeouts, never http.DefaultClient.
-		client.InstallProtocol("https", githttp.NewClient(c))
-		if cfg.CredentialFile != "" {
-			username := cfg.CredentialUsername
-			if username == "" {
-				username = "x-access-token"
-			}
-			g.auth = func() (transport.AuthMethod, error) { return tokenAuth(username, cfg.CredentialFile) }
-		}
-	case "file":
-		// Tests and local runs.
-	default:
-		return nil, fmt.Errorf("git URL scheme %s: use https or ssh", ep.Protocol)
-	}
-	if g.auth == nil {
-		g.auth = func() (transport.AuthMethod, error) { return nil, nil }
-	}
+	g := &gitSource{cfg: cfg, logger: logger, now: now, retry: cloneRetry, auth: auth}
 	return g, nil
-}
-
-// tokenAuth reads an HTTPS token from its file.
-func tokenAuth(username, file string) (transport.AuthMethod, error) {
-	raw, err := os.ReadFile(file) //nolint:gosec // a mounted Secret, named by the operator
-	if err != nil {
-		return nil, fmt.Errorf("read the credential: %w", err)
-	}
-	token := strings.TrimSpace(string(raw))
-	if token == "" {
-		return nil, errors.New("the credential file is empty")
-	}
-	return &githttp.BasicAuth{Username: username, Password: token}, nil
-}
-
-// sshAuth reads a deploy key and the hosts it may talk to.
-func sshAuth(user, keyFile, knownHosts string) (transport.AuthMethod, error) {
-	key, err := os.ReadFile(keyFile) //nolint:gosec // a mounted Secret, named by the operator
-	if err != nil {
-		return nil, fmt.Errorf("read the SSH key: %w", err)
-	}
-	keys, err := gitssh.NewPublicKeys(user, key, "")
-	if err != nil {
-		return nil, fmt.Errorf("the SSH key: %w", err)
-	}
-	cb, err := gitssh.NewKnownHostsCallback(knownHosts)
-	if err != nil {
-		return nil, fmt.Errorf("the known_hosts file: %w", err)
-	}
-	keys.HostKeyCallback = cb
-	return keys, nil
 }
 
 // run clones, then fetches every poll interval; a clone that fails is
@@ -230,7 +159,7 @@ func (g *gitSource) fetch(ctx context.Context) error {
 			SingleBranch: true, Tags: git.NoTags,
 		})
 		if err != nil {
-			return fmt.Errorf("clone %s: %w", redact(g.cfg.URL), err)
+			return fmt.Errorf("clone %s: %w", gitauth.Redact(g.cfg.URL), err)
 		}
 		g.repo = repo
 		return nil
@@ -430,7 +359,7 @@ func (g *gitSource) current() (*Map, error) {
 func (g *gitSource) status() map[string]any {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	st := map[string]any{"source": "git", "url": redact(g.cfg.URL), "ref": g.cfg.Ref, "path": g.cfg.Path,
+	st := map[string]any{"source": "git", "url": gitauth.Redact(g.cfg.URL), "ref": g.cfg.Ref, "path": g.cfg.Path,
 		"pollInterval": g.cfg.PollInterval.String(), keyEntries: 0}
 	if g.valid != nil {
 		st[keyRevision], st["revisionTime"], st[keyEntries] = g.valid.Revision, g.valid.LoadedAt, len(g.valid.Entries)
@@ -445,14 +374,4 @@ func (g *gitSource) status() map[string]any {
 		st["lastError"] = map[string]any{"commit": g.badCommit, keyError: g.lastErr.Error(), "at": g.lastErrAt}
 	}
 	return st
-}
-
-// redact drops a password or token written into a URL.
-func redact(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil || u.User == nil {
-		return raw
-	}
-	u.User = url.User(u.User.Username())
-	return u.String()
 }

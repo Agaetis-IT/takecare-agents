@@ -65,6 +65,8 @@ func TestNameBoundsAgree(t *testing.T) {
 		{"takecaredemos", fmt.Sprintf("oldSelf.hasValue() || size(self.metadata.name) <= %d", v1alpha1.MaxDemoName), v1alpha1.MessageDemoName, v1alpha1.MaxDemoName},
 		{"takecarekines", fmt.Sprintf("oldSelf.hasValue() || size(self.metadata.name) <= %d", v1alpha1.MaxKineName), v1alpha1.MessageKineName, v1alpha1.MaxKineName},
 		{"takecarereviews", fmt.Sprintf("oldSelf.hasValue() || size(self.metadata.name) <= %d", v1alpha1.MaxReviewName), v1alpha1.MessageReviewName, v1alpha1.MaxReviewName},
+		{"takecaremecanos", fmt.Sprintf("oldSelf.hasValue() || size(self.metadata.name) <= %d", v1alpha1.MaxMecanoName), v1alpha1.MessageMecanoName, v1alpha1.MaxMecanoName},
+		{"takecaremaintenances", fmt.Sprintf("oldSelf.hasValue() || (size(self.metadata.name) <= %d && !self.metadata.name.contains('.'))", v1alpha1.MaxMaintenanceName), v1alpha1.MessageMaintenanceName, v1alpha1.MaxMaintenanceName},
 	} {
 		t.Run(tc.plural, func(t *testing.T) {
 			said := crdSays(t, tc.plural)
@@ -78,7 +80,7 @@ func TestNameBoundsAgree(t *testing.T) {
 			}
 		})
 	}
-	for _, plural := range []string{"takecareintendants", "takecarekines"} {
+	for _, plural := range []string{"takecareintendants", "takecarekines", "takecaremecanos"} {
 		if !crdSays(t, plural)[v1alpha1.MessageScheduleUTC] {
 			t.Errorf("the %s CRD does not say %q", plural, v1alpha1.MessageScheduleUTC)
 		}
@@ -87,6 +89,16 @@ func TestNameBoundsAgree(t *testing.T) {
 	// characters (the agent's renderer comes with lot K3).
 	if n := len(v1alpha1.KineAgentPrefix) + v1alpha1.MaxKineName; n != 63 || !strings.Contains(v1alpha1.MessageKineName, v1alpha1.KineAgentPrefix) {
 		t.Errorf("Kiné at its bound: agent name of %d characters, want 63; message names the prefix: %v", n, strings.Contains(v1alpha1.MessageKineName, v1alpha1.KineAgentPrefix))
+	}
+	// The Mécano's engine agent, takecare-mecano-<name>, at its bound: 63
+	// characters (the agent's renderer comes with lot M2).
+	if n := len(v1alpha1.MecanoAgentPrefix) + v1alpha1.MaxMecanoName; n != 63 || !strings.Contains(v1alpha1.MessageMecanoName, v1alpha1.MecanoAgentPrefix) {
+		t.Errorf("Mécano at its bound: agent name of %d characters, want 63; message names the prefix: %v", n, strings.Contains(v1alpha1.MessageMecanoName, v1alpha1.MecanoAgentPrefix))
+	}
+	// A maintenance at its bound names a branch the propose server takes:
+	// at most 63 characters after takecare/mecano/ (spec 12 §6.2).
+	if v1alpha1.MaxMaintenanceName != 63 {
+		t.Errorf("MaxMaintenanceName = %d, want 63, the propose server's branch bound", v1alpha1.MaxMaintenanceName)
 	}
 	// A new action's id, <review name>-<n>, fits its bound for a review
 	// at its own bound and its 20th action.

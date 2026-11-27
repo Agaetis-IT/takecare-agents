@@ -56,6 +56,48 @@ reverse path order, so this file, last by name, is evaluated first.
 {{- end }}
 {{- end }}
 {{- end }}
+{{- with .Values.addons.code }}
+{{- if .enabled }}
+{{- $n := len .repositories }}
+{{- if or (lt $n 1) (gt $n 16) }}
+{{- fail "addons.code.repositories is REQUIRED: 1 to 16 repositories the code connector reads" }}
+{{- end }}
+{{- $names := dict }}
+{{- range .repositories }}
+{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$" (.name | default "")) }}
+{{- fail "addons.code.repositories[].name is REQUIRED: lower-case letters, digits and hyphens, 63 at most" }}
+{{- end }}
+{{- if hasKey $names .name }}
+{{- fail (printf "addons.code.repositories: %s is listed twice" .name) }}
+{{- end }}
+{{- $_ := set $names .name true }}
+{{- $url := .url | default "" }}
+{{- if not $url }}
+{{- fail (printf "addons.code.repositories[%s].url is REQUIRED: https://... or an SSH remote" .name) }}
+{{- end }}
+{{- if not (or (hasPrefix "https://" $url) (hasPrefix "ssh://" $url) (regexMatch "^[^/:]+@[^/:]+:" $url)) }}
+{{- fail (printf "addons.code.repositories[%s].url: https://... or an SSH remote (ssh://git@host/path or git@host:path), no other scheme" .name) }}
+{{- end }}
+{{- if regexMatch "^https://[^/]*@" $url }}
+{{- fail (printf "addons.code.repositories[%s].url carries user information: the credential comes from credentialSecret, never the URL" .name) }}
+{{- end }}
+{{- if regexMatch "^ssh://[^/@]*:[^/@]*@" $url }}
+{{- fail (printf "addons.code.repositories[%s].url carries a password: the credential comes from sshKeySecret, never the URL" .name) }}
+{{- end }}
+{{- if and (hasPrefix "https://" $url) (dig "sshKeySecret" "name" "" .) }}
+{{- fail (printf "addons.code.repositories[%s]: sshKeySecret goes with an SSH remote, not an https URL: use credentialSecret" .name) }}
+{{- end }}
+{{- if and (dig "credentialSecret" "name" "" .) (dig "sshKeySecret" "name" "" .) }}
+{{- fail (printf "addons.code.repositories[%s]: credentialSecret and sshKeySecret are exclusive: one credential" .name) }}
+{{- end }}
+{{- $ssh := or (hasPrefix "ssh://" $url) (regexMatch "^[^/:]+@[^/:]+:" $url) }}
+{{- $key := dig "sshKeySecret" "name" "" . }}
+{{- if and (or $ssh $key) (not (and $key (dig "knownHostsConfigMap" "name" "" .))) }}
+{{- fail (printf "addons.code.repositories[%s]: an SSH remote needs sshKeySecret and knownHostsConfigMap: the Git host's key is always checked" .name) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- if and .Values.addons.reportSlack.enabled .Values.addons.reportLog.enabled }}
 {{- fail "addons.reportSlack and addons.reportLog are exclusive: one report connector" }}
 {{- end }}

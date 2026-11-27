@@ -930,6 +930,33 @@ status:
   phase: Completed
   actionCounts: { total: 3, open: 2 }
   traceID: 0af7651916cd43dd8448eb211c80319c`},
+ {kind:"TakeCareMecano", card:"mecano", sub:"Le Mécano : son niveau, son périmètre, ses connecteurs (le cluster et le code d'abord), le rythme de sa maintenance et les dépôts où son plan peut ouvrir une pull request.", spec:"12-mecano.md", yaml:`apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareMecano
+metadata:
+  name: mecano
+  namespace: takecare-system
+spec:
+  level: Apprentice
+  scope:
+    namespaces: [demo-apps]
+  connectors:
+    cluster: [kubernetes]
+    code: [code]
+    report: report
+  contentTools: [file_get]
+  schedule: "0 5 * * 1"  # UTC`},
+ {kind:"TakeCareMaintenance", card:"mecano", sub:"Une maintenance du Mécano, à échéance ou à la demande : son statut porte l'inventaire (versions en service et déclarées dans Git, écarts, API retirées, certificats, synchronisation GitOps), les constats et, au Compagnon, le plan et ses pull requests.", spec:"12-mecano.md", yaml:`apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareMaintenance
+metadata:
+  name: maintenance-by-hand
+  namespace: takecare-system
+spec:
+  mecanoRef: { kind: TakeCareMecano, name: mecano }
+  trigger: OnDemand
+status:
+  phase: Completed
+  counts: { findings: 4, now: 1, pullRequests: 0 }
+  traceID: 0af7651916cd43dd8448eb211c80319c`},
  {kind:"TakeCareDemo", card:"terrain", sub:"Le Terrain d'entraînement de la démo : le décor billing-api et l'incident à rejouer.", spec:"03-demo.md", yaml:`apiVersion: takecare.agaetis.fr/v1alpha1
 kind: TakeCareDemo
 metadata:

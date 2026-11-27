@@ -41,6 +41,7 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/controller/intendant"
 	"github.com/agaetis-it/takecare-agents/internal/controller/investigation"
 	"github.com/agaetis-it/takecare-agents/internal/controller/kine"
+	"github.com/agaetis-it/takecare-agents/internal/controller/mecano"
 	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
 	"github.com/agaetis-it/takecare-agents/internal/controller/ranger"
 	"github.com/agaetis-it/takecare-agents/internal/controller/takecaredoc"
@@ -83,6 +84,9 @@ type config struct {
 	investigationMaxKept   int
 	// reviewRetention is how long an ended review is kept.
 	reviewRetention time.Duration
+	// maintenanceRetention is how long an ended maintenance is kept; its
+	// sweep lands with the Mécano's runner (spec 12 §14, lot M3).
+	maintenanceRetention time.Duration
 	// demo runs the TakeCareDemo controller, with demoAppImage as
 	// billing-api's image: the chart sets both with demo.enabled.
 	demo         bool
@@ -130,6 +134,8 @@ func run(args []string) error {
 		"How many ended investigations are kept at most; past it, the oldest ended go first, whatever their age.")
 	fs.DurationVar(&cfg.reviewRetention, "review-retention", kine.DefaultReviewRetention,
 		"How long an ended review is kept before it is deleted; each Kiné keeps its newest ended review.")
+	fs.DurationVar(&cfg.maintenanceRetention, "maintenance-retention", mecano.DefaultMaintenanceRetention,
+		"How long an ended maintenance is kept before it is deleted; each Mécano keeps its newest ended and newest published maintenances.")
 	fs.DurationVar(&cfg.usageScrapeWait, "usage-scrape-wait", 30*time.Second,
 		"How long after a run ends its usage is read from Prometheus: one scrape interval of the gateway.")
 	fs.StringVar(&cfg.alertsTokenSecret, "alerts-token-secret", alerts.TokenSecretName,
@@ -151,6 +157,9 @@ func run(args []string) error {
 		return fmt.Errorf("parse flags: %w", err)
 	}
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zapOpts)))
+	if cfg.maintenanceRetention <= 0 {
+		return errors.New("maintenance-retention must be positive")
+	}
 
 	scheme, err := newScheme()
 	if err != nil {

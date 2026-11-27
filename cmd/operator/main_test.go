@@ -98,6 +98,17 @@ func TestRunHelpExitsCleanly(t *testing.T) {
 	}
 }
 
+// A maintenance retention of zero or less is refused before anything
+// starts: the sweep would delete every ended maintenance.
+func TestRunRefusesANonPositiveMaintenanceRetention(t *testing.T) {
+	for _, v := range []string{"0s", "-1h"} {
+		err := run([]string{"--maintenance-retention=" + v})
+		if err == nil || !strings.Contains(err.Error(), "maintenance-retention must be positive") {
+			t.Errorf("--maintenance-retention=%s: run = %v, want the refusal", v, err)
+		}
+	}
+}
+
 // staticMapper answers from the scheme alone: no API server is needed to
 // build the manager and register the controllers.
 func staticMapper(scheme *runtime.Scheme) meta.RESTMapper {
