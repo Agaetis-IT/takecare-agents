@@ -43,7 +43,7 @@ if ! "$assemble" 0.6.0 2026-12-01 "${tmp}/ok/fragments" "${tmp}/ok/CHANGELOG.md"
 elif ! diff -u "${fixture}/CHANGELOG.want.md" "${tmp}/ok/CHANGELOG.md"; then
   fail "the assembled CHANGELOG differs from CHANGELOG.want.md"
 fi
-left="$(cd "${tmp}/ok/fragments" && LC_ALL=C ls -A | tr '\n' ' ')"
+left="$(cd "${tmp}/ok/fragments" && find . -mindepth 1 | sed 's|^\./||' | LC_ALL=C sort | tr '\n' ' ')"
 if [ "$left" != ".gitkeep README.md " ]; then
   fail "after the fold, the directory holds '${left}', not '.gitkeep README.md '"
 fi
