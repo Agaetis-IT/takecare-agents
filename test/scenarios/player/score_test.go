@@ -284,23 +284,40 @@ blindSpots: [{key: datastore/billing-db, reason: NoAccess, mustDeclare: true}]}`
 	}
 }
 
+// firing is an alert firing since the given time after the injection.
+func firing(name string, at time.Time, since time.Duration) Firing {
+	var f Firing
+	f.Labels.AlertName, f.StartsAt = name, at.Add(since)
+	return f
+}
+
 // Spec 14 §6, criterion 4: an expected alert that does not fire within the
-// window makes the pass not played, never wrong.
+// window makes the pass not played, never wrong. The window is the
+// alert's start after the injection, from window.from to window.to plus
+// the grace: an alert that started before (a stale one, still firing from
+// an earlier run) or after it does not start a scored pass.
 func TestSignal(t *testing.T) {
 	s, _ := load(t, proxyFile)
 	const fires = "HighErrorRate"
 	at := time.Date(2026, 11, 26, 10, 0, 0, 0, time.UTC)
 	for name, tc := range map[string]struct {
-		now    time.Duration
-		firing []string
-		want   string
+		now     time.Duration
+		firing  []Firing
+		want    string
+		outside bool // the reason names an alert fired outside the window
 	}{
-		"fired":                       {now: 3 * time.Minute, firing: []string{"PodNotReady", fires}, want: Fired},
-		"fired long after the window": {now: time.Hour, firing: []string{fires}, want: Fired},
-		"not yet":                     {now: time.Minute, want: Waiting},
-		"within the grace":            {now: 4 * time.Minute, want: Waiting},
-		"another alert only":          {now: 10 * time.Minute, firing: []string{"PodCrashLooping"}, want: NotPlayed},
-		"nothing after the window":    {now: 4*time.Minute + 31*time.Second, want: NotPlayed},
+		"fired":                                {now: 3 * time.Minute, firing: []Firing{firing("PodNotReady", at, time.Minute), firing(fires, at, 150*time.Second)}, want: Fired},
+		"fired at window.from":                 {now: 3 * time.Minute, firing: []Firing{firing(fires, at, 2*time.Minute)}, want: Fired},
+		"fired within grace":                   {now: 5 * time.Minute, firing: []Firing{firing(fires, at, 4*time.Minute+30*time.Second)}, want: Fired},
+		"still firing long after":              {now: time.Hour, firing: []Firing{firing(fires, at, 3*time.Minute)}, want: Fired},
+		"not yet":                              {now: time.Minute, want: Waiting},
+		"within the grace":                     {now: 4 * time.Minute, want: Waiting},
+		"stale, before the injection, waiting": {now: 3 * time.Minute, firing: []Firing{firing(fires, at, -time.Hour)}, want: Waiting},
+		"stale, before the injection":          {now: 5 * time.Minute, firing: []Firing{firing(fires, at, -time.Hour)}, want: NotPlayed, outside: true},
+		"before window.from":                   {now: 5 * time.Minute, firing: []Firing{firing(fires, at, time.Minute)}, want: NotPlayed, outside: true},
+		"after the window and its grace":       {now: 10 * time.Minute, firing: []Firing{firing(fires, at, 5*time.Minute)}, want: NotPlayed, outside: true},
+		"another alert only":                   {now: 10 * time.Minute, firing: []Firing{firing("PodCrashLooping", at, 3*time.Minute)}, want: NotPlayed},
+		"nothing after the window":             {now: 4*time.Minute + 31*time.Second, want: NotPlayed},
 	} {
 		t.Run(name, func(t *testing.T) {
 			st, err := Signal(s, at, at.Add(tc.now), tc.firing, time.Minute)
@@ -316,6 +333,9 @@ func TestSignal(t *testing.T) {
 			if (st.State == NotPlayed) != (st.Reason != "") {
 				t.Errorf("reason %q for %s", st.Reason, st.State)
 			}
+			if got := strings.Contains(st.Reason, "outside the window"); got != tc.outside {
+				t.Errorf("reason %q, an alert outside the window named: %v", st.Reason, tc.outside)
+			}
 		})
 	}
 	od, _ := patched(t, "fault: {signals: {trigger: onDemand, alerts: [], window: {from: 1m, to: 1m}}}")
@@ -327,6 +347,11 @@ func TestSignal(t *testing.T) {
 // The command, end to end: check, info, signal and score's two formats.
 func TestCommand(t *testing.T) {
 	dir := t.TempDir()
+	active := filepath.Join(dir, "active.json")
+	if err := os.WriteFile(active, []byte(`[{"labels":{"alertname":"PodNotReady"},"startsAt":"2026-11-26T09:00:00Z"},`+
+		`{"labels":{"alertname":"HighErrorRate","namespace":"demo-apps"},"startsAt":"2026-11-26T10:02:40.123Z"}]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	inv := filepath.Join(dir, "inv.json")
 	if err := os.WriteFile(inv, []byte(`{"status":{"diagnosis":"The proxy idle timeout (600 s) is below the pool's 900 s, see RB-014. Raise the memory limit."}}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -343,7 +368,7 @@ func TestCommand(t *testing.T) {
 			`"trigger":"alert","alerts":["HighErrorRate"],"connectors":["cluster","metrics","knowledge","changes","map"],` +
 			`"passes":5,"reserved":false,"needsTrace":false,"requiresContent":false}` + "\n"},
 		cmdSignal: {
-			args: []string{cmdSignal, scenario, "-injected=2026-11-26T10:00:00Z", "-now=2026-11-26T10:10:00Z", "-firing=PodNotReady,HighErrorRate,"},
+			args: []string{cmdSignal, scenario, "-injected=2026-11-26T10:00:00Z", "-now=2026-11-26T10:10:00Z", "-active=" + active},
 			want: `{"state":"fired","alert":"HighErrorRate","deadline":"2026-11-26T10:04:30Z"}` + "\n",
 		},
 		"score as text": {args: []string{cmdScore, scenario, investigation, maps, "-format=text"}, want: `verdict proxy-timeout@1: pass
@@ -377,6 +402,7 @@ func TestCommand(t *testing.T) {
 		"an unknown command":      {"play"},
 		"no command":              {},
 		"a bad injection time":    {cmdSignal, scenario, "-injected=yesterday"},
+		"no active alerts file":   {cmdSignal, scenario, "-injected=2026-11-26T10:00:00Z"},
 	} {
 		if err := run(args, &bytes.Buffer{}); err == nil {
 			t.Errorf("%s: no error", name)

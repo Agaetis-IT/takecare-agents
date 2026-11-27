@@ -11,12 +11,13 @@
 //
 //	go run ./test/scenarios/player check [-reserved] [-map-dir DIR] [DIR]
 //	go run ./test/scenarios/player info -scenario FILE
-//	go run ./test/scenarios/player signal -scenario FILE -injected TIME -firing A,B [-now TIME] [-grace 1m]
+//	go run ./test/scenarios/player signal -scenario FILE -injected TIME -active FILE [-now TIME] [-grace 1m]
 //	go run ./test/scenarios/player score -scenario FILE -investigation FILE [-tools FILE] [-results FILE] [-format json|text]
 //
 // The investigation is a TakeCareInvestigation as kubectl get -o json
 // prints it; the tools file a JSON list of {name, arguments, class}; the
-// results file, with content capture only, a JSON list of strings.
+// results file, with content capture only, a JSON list of strings; the
+// active file the alerts firing, as Alertmanager's /api/v2/alerts lists them.
 package main
 
 import (
@@ -76,7 +77,7 @@ func run(args []string, out io.Writer) error {
 		file := fs.String("scenario", "", "the scenario file")
 		injected := fs.String("injected", "", "when the fault was injected (RFC 3339)")
 		now := fs.String("now", "", "now (RFC 3339; default the clock)")
-		firing := fs.String("firing", "", "the alerts firing on the ground, comma-separated")
+		active := fs.String("active", "", "the alerts firing on the ground, Alertmanager's API v2 JSON list")
 		grace := fs.Duration("grace", time.Minute, "the alert's way from the rule to Alertmanager")
 		if err := fs.Parse(args); err != nil {
 			return err
@@ -95,7 +96,11 @@ func run(args []string, out io.Writer) error {
 				return fmt.Errorf("-now: %w", err)
 			}
 		}
-		st, err := Signal(s, at, t, splitList(*firing), *grace)
+		var firing []Firing
+		if err := readJSON(*active, &firing); err != nil {
+			return err
+		}
+		st, err := Signal(s, at, t, firing, *grace)
 		if err != nil {
 			return err
 		}
@@ -187,16 +192,6 @@ func readJSON(path string, v any) error {
 		return fmt.Errorf("parse %s: %w", path, err)
 	}
 	return nil
-}
-
-func splitList(s string) []string {
-	var out []string
-	for v := range strings.SplitSeq(s, ",") {
-		if v = strings.TrimSpace(v); v != "" {
-			out = append(out, v)
-		}
-	}
-	return out
 }
 
 // Text prints a result as the verdict lines of make demo-verdict.

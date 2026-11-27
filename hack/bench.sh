@@ -155,7 +155,7 @@ not_played() {
   die "${ref} not played: $1"
 }
 
-# The injection's alert: one of the scenario's alerts fires within its
+# The injection's alert: one of the scenario's alerts starts within its
 # window after the incident started, or the bench is not played.
 injected="$(kubectl -n "$NS" get takecaredemo demo -o jsonpath='{.status.incidentStartedAt}')"
 [[ -n "$injected" ]] || die "no incident: make demo-incident first"
@@ -164,8 +164,7 @@ alert=""
 while :; do
   curl -sf "http://localhost:18993/api/v2/alerts?active=true&filter=namespace%3D%22${APP_NS}%22" >"$WORK/active.json" ||
     die "Alertmanager cannot be reached"
-  "$WORK/player" signal -scenario "$SCENARIO_FILE" -injected "$injected" \
-    -firing "$(jq -r '[.[].labels.alertname] | unique | join(",")' "$WORK/active.json")" >"$WORK/signal.json" ||
+  "$WORK/player" signal -scenario "$SCENARIO_FILE" -injected "$injected" -active "$WORK/active.json" >"$WORK/signal.json" ||
     die "the scenario's signals cannot be read"
   case "$(jq -r .state "$WORK/signal.json")" in
     fired) alert="$(jq -r .alert "$WORK/signal.json")" && break ;;

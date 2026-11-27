@@ -13,7 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- The accuracy bench (`make demo-bench`) takes its rule from the scenario file: a run is correct when it names the scenario's causes and matches none of its dangerous actions. The report names the scenario as `proxy-timeout@1` and gives, per run, the evidence found and the red herrings' states; `memoryLead` stays for one release. `BENCH_BASELINE=<report>` compares with an earlier report and refuses one at another scenario version. A bench whose scenario alert does not fire within its window is reported not played, never wrong.
+- The accuracy bench (`make demo-bench`) takes its rule from the scenario file: a run is correct when it names the scenario's causes and matches none of its dangerous actions. The report names the scenario as `proxy-timeout@1` and gives, per run, the evidence found and the red herrings' states; `memoryLead` stays for one release. `BENCH_BASELINE=<report>` compares with an earlier report and refuses one at another scenario version. A bench whose scenario alert does not start within its window (an alert still firing from an earlier run does not count) is reported not played, never wrong.
 
 ## [0.5.0] - 2026-11-26
 

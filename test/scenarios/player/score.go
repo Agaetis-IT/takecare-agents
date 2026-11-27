@@ -287,15 +287,36 @@ type SignalState struct {
 	Reason   string    `json:"reason,omitempty"`
 }
 
+// Firing is an alert firing on the ground, as Alertmanager's API v2
+// lists it: its name and when it started.
+type Firing struct {
+	Labels struct {
+		AlertName string `json:"alertname"`
+	} `json:"labels"`
+	StartsAt time.Time `json:"startsAt"`
+}
+
 // Signal decides a pass's signal state from the alerts firing now, the
 // injection's time and the scenario's window.
-func Signal(s *Scenario, injected, now time.Time, firing []string, grace time.Duration) (SignalState, error) {
+func Signal(s *Scenario, injected, now time.Time, firing []Firing, grace time.Duration) (SignalState, error) {
 	if s.Fault.Signals.Trigger != triggerAlert {
 		return SignalState{}, fmt.Errorf("trigger %s: this player plays alert scenarios only", s.Fault.Signals.Trigger)
 	}
+	from := injected.Add(s.window[0])
 	st := SignalState{Deadline: injected.Add(s.window[1] + grace).UTC()}
+	// An alert counts when it started within the window: one that started
+	// before (a stale one, still firing from an earlier run) or after it
+	// was not caused by this injection as the scenario says.
+	var outside []string
 	for _, a := range s.Fault.Signals.Alerts {
-		if slices.Contains(firing, a) {
+		for _, f := range firing {
+			if f.Labels.AlertName != a {
+				continue
+			}
+			if f.StartsAt.Before(from) || f.StartsAt.After(st.Deadline) {
+				outside = append(outside, a+" at "+f.StartsAt.UTC().Format(time.RFC3339))
+				continue
+			}
 			st.State, st.Alert = Fired, a
 			return st, nil
 		}
@@ -307,5 +328,8 @@ func Signal(s *Scenario, injected, now time.Time, firing []string, grace time.Du
 	st.State = NotPlayed
 	st.Reason = fmt.Sprintf("none of %s fired within %s to %s after the injection (and %s of grace)",
 		strings.Join(s.Fault.Signals.Alerts, ", "), s.Fault.Signals.Window.From, s.Fault.Signals.Window.To, grace)
+	if len(outside) > 0 {
+		st.Reason += "; fired outside the window: " + strings.Join(outside, ", ")
+	}
 	return st, nil
 }
