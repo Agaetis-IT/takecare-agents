@@ -13,4 +13,3 @@ relations:
   dependsOn: [datastore/orders-db]
   belongsTo: [team/platform]
   observedBy: [observability/prometheus]
-  alertedBy: [PodNotReady]
