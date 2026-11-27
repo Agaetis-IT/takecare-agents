@@ -80,6 +80,7 @@ spec:
                     - TakeCareDoc
                     - TakeCareIntendant
                     - TakeCareKine
+                    - TakeCareMecano
                     type: string
                   name:
                     minLength: 1

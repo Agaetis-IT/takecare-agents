@@ -212,6 +212,69 @@ spec:
                   rule: has(self.addon) != has(self.url)
                 - message: headersFrom is only valid with url
                   rule: '!has(self.headersFrom) || has(self.url)'
+              propose:
+                description: |-
+                  The forge write of a propose add-on (spec 12 §6): the token's Secret
+                  and the repositories it may open pull requests on, repeated from the
+                  add-on's configuration for review. Type code, add-on only.
+                properties:
+                  repositories:
+                    items:
+                      description: ProposeRepository is a repository on a forge.
+                      properties:
+                        apiURL:
+                          description: |-
+                            The forge's REST API, for example https://api.github.com or
+                            https://gitlab.com/api/v4. No user information: a credential has no
+                            place in a connector's spec.
+                          maxLength: 2048
+                          pattern: ^https://[^\s/?#@]+([/?#][^\s]*)?$
+                          type: string
+                        forge:
+                          enum:
+                          - github
+                          - gitlab
+                          type: string
+                        repository:
+                          description: |-
+                            owner/name on GitHub, the project's full path on GitLab. A segment
+                            is never . or .. (on a forge's REST path it would change the
+                            endpoint called), and the name has no .git suffix, which GitLab
+                            refuses in a project path.
+                          maxLength: 255
+                          minLength: 1
+                          pattern: ^[A-Za-z0-9_.-]*[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_.-]*[A-Za-z0-9_-][A-Za-z0-9_.-]*)+$
+                          type: string
+                          x-kubernetes-validations:
+                          - message: repository is the forge's path, without a .git
+                              suffix
+                            rule: '!self.endsWith(''.git'')'
+                      required:
+                      - apiURL
+                      - forge
+                      - repository
+                      type: object
+                    maxItems: 16
+                    minItems: 1
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - repository
+                    x-kubernetes-list-type: map
+                  tokenSecretRef:
+                    description: |-
+                      The Secret holding one write token per repository, mounted on the
+                      propose server only; the operator never reads it.
+                    properties:
+                      name:
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                required:
+                - repositories
+                - tokenSecretRef
+                type: object
               reach:
                 description: |-
                   What of a ground without Kubernetes the connector reads. Type cloud
@@ -363,6 +426,7 @@ spec:
                   - map
                   - history
                   - cloud
+                  - code
                   type: string
                 minItems: 1
                 type: array
@@ -387,6 +451,9 @@ spec:
               rule: '!(''cloud'' in self.types) || has(self.reach)'
             - message: spec.reach is only valid for a connector of type cloud
               rule: '!has(self.reach) || ''cloud'' in self.types'
+            - message: spec.propose is only valid for a connector of type code served
+                by an add-on
+              rule: '!has(self.propose) || (''code'' in self.types && has(self.mcp.addon))'
             - message: cluster needs an https mcp.url, no addon, and the cluster type
               rule: '!has(self.cluster) || (has(self.mcp.url) && !has(self.mcp.addon)
                 && self.mcp.url.startsWith(''https://'') && ''cluster'' in self.types)'
