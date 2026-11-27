@@ -12,4 +12,4 @@ description: Use when packaging an MCP server as a TakeCare add-on (chart values
 5. **Tool classes**: list the server's tools, check their MCP annotations, and add overrides only when an annotation is missing or wrong. Never relax a tool to `read` without saying why in the PR.
 6. **RBAC**: if the server reads the cluster, its ServiceAccount gets generated read-only RBAC (spec 05); extend the read-only guard test.
 7. **Tests**: tool discovery against a fake MCP server; golden files for the generated gateway backend; for `report` adapters, a golden message.
-8. **Docs**: spec 05 add-ons table (with the reviewer's agreement), README if user-facing, CHANGELOG.
+8. **Docs**: spec 05 add-ons table (with the reviewer's agreement), README if user-facing, a CHANGELOG fragment under `changes/unreleased/` (see its `README.md`).
