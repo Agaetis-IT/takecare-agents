@@ -6,7 +6,7 @@
     "service": "notifications-worker",
     "type": "secret",
     "author": "CI pipeline (platform team)",
-    "summary": "Scheduled rotation of the SMTP credentials held in Secret notifications-smtp (managed by the platform team). Key names unchanged: smtp-password. No change to the workload.",
+    "summary": "Scheduled rotation of the SMTP credentials held in Secret notifications-smtp (managed by the platform team). Key names unchanged: SMTP_PASS. No change to the workload.",
     "status": "success",
     "tags": "notifications secret rotation credentials smtp"
   },
@@ -57,6 +57,34 @@
     "review": "Two approvals from the infrastructure team. No value was overwritten and the resource carried no comment: there was nothing to contradict.",
     "status": "success",
     "tags": "infrastructure aws rds dbproxy idleclienttimeout ack billing"
+  },
+  {
+    "id": "CI-SEED-ORDERS-390",
+    "scenario": "bad-config-rollout",
+    "date": "@TS1@",
+    "title": "orders-config v3.9.0 rolled out",
+    "service": "orders-api",
+    "type": "configmap",
+    "author": "CI pipeline (orders team)",
+    "summary": "ConfigMap orders-config updated and orders-api rolled out to pick it up. Database host switched to the primary endpoint, ahead of the read/write split planned with the database team.",
+    "diff": "DB_HOST: orders-db.demo-apps.svc:5432 -> orders-db-primary.demo-apps.svc:5432",
+    "review": "One approval from the orders team.",
+    "status": "success",
+    "tags": "orders configmap database host endpoint primary split"
+  },
+  {
+    "id": "CI-SEED-NOTIF-200",
+    "scenario": "missing-secret-key",
+    "date": "@TS1@",
+    "title": "notifications-worker v2.0.0 rolled out",
+    "service": "notifications-worker",
+    "type": "image",
+    "author": "CI pipeline (notifications team)",
+    "summary": "Major version. Settings are now read from environment variables named after the setting (SMTP_HOST, SMTP_USER, SMTP_PASSWORD) instead of the old short names. Chart values aligned with the new names.",
+    "diff": "image: notifications-worker:1.9.4 -> 2.0.0; chart: env names aligned with the settings, secretKeyRef keys aligned with the env names",
+    "review": "Two approvals from the notifications team. Tested locally with a .env file.",
+    "status": "success",
+    "tags": "notifications release major settings environment variables chart"
   },
   {
     "id": "CI-SEED-CHECKOUT",

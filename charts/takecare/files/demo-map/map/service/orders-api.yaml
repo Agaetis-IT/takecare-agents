@@ -1,0 +1,16 @@
+key: service/orders-api
+provenance: declared
+status: validated
+created: 2026-11-27
+lastValidated: 2026-11-27
+owner: team/platform
+labels: { tier: critical }
+description: The orders API, as its users see it.
+sources:
+  - kubernetes: demo-apps/Deployment/orders-api
+relations:
+  runsAs: [compute/orders-api]
+  dependsOn: [datastore/orders-db]
+  belongsTo: [team/platform]
+  observedBy: [observability/prometheus]
+  alertedBy: [PodNotReady]

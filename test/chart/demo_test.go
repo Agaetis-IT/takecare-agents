@@ -189,7 +189,11 @@ func TestDemoOperatorRoles(t *testing.T) {
 	demo := render(t, releaseName, profileArgs("demo")...)
 	const write = " get,create,patch,delete"
 	want := map[string]map[string][]string{ // namespace -> "resource verbs" -> names
-		"demo-apps":  {"deployments" + write: {"billing-api"}, "services" + write: {"billing-api"}},
+		demoAppsNS: {
+			"deployments" + write: {"billing-api", "orders-api", "notifications-worker"},
+			"services" + write:    {"billing-api", "orders-api", "orders-db"},
+			"configmaps" + write:  {"orders-config"},
+		},
 		"ack-system": {"dbproxies" + write: {"billing-db-proxy"}},
 		releaseNamespace: {
 			"configmaps" + write: {"takecare-demo-corpus-incidents", "takecare-demo-corpus-runbooks", "takecare-demo-corpus-deployments", "takecare-demo-corpus-vendor", "takecare-demo-corpus-support"},
@@ -240,6 +244,34 @@ func TestDemoOperatorRoles(t *testing.T) {
 		args, _, _ := unstructured.NestedStringSlice(containers[0].(map[string]any), "args")
 		if slices.Contains(args, "--demo") {
 			t.Error("prod runs the demo controller")
+		}
+	}
+}
+
+// missing-secret-key's Secret (spec 14 §5) is the chart's, demo only, in
+// the app namespace: its one key is SMTP_PASS, the key notifications-worker
+// 2.0.0 does not read, with a placeholder value. The operator gets no right
+// on Secrets for it (TestDemoOperatorRoles).
+func TestDemoNotificationsSecret(t *testing.T) {
+	demo := render(t, releaseName, profileArgs("demo")...)
+	var found []string
+	for _, o := range ofKind(demo, "Secret") {
+		if o.GetName() != "notifications-smtp" {
+			continue
+		}
+		found = append(found, o.GetNamespace())
+		data, _, _ := unstructured.NestedStringMap(o.Object, "stringData")
+		if !reflect.DeepEqual(data, map[string]string{"SMTP_PASS": "demo-placeholder"}) {
+			t.Errorf("notifications-smtp holds %v, want only SMTP_PASS, a placeholder", data)
+		}
+	}
+	if !slices.Equal(found, []string{demoAppsNS}) {
+		t.Errorf("notifications-smtp rendered in %v, want demo-apps once", found)
+	}
+	prod := render(t, releaseName, append(profileArgs("prod"), prodSets...)...)
+	for _, o := range ofKind(prod, "Secret") {
+		if o.GetName() == "notifications-smtp" {
+			t.Error("prod renders the demo's notifications-smtp Secret")
 		}
 	}
 }

@@ -1,0 +1,12 @@
+key: compute/notifications-worker
+provenance: declared
+status: validated
+created: 2026-11-27
+lastValidated: 2026-11-27
+owner: team/platform
+sources:
+  - kubernetes: demo-apps/Deployment/notifications-worker
+relations:
+  deployedIn: [environment/demo-apps]
+  observedBy: [observability/prometheus]
+  alertedBy: [PodCrashLooping, PodNotReady]

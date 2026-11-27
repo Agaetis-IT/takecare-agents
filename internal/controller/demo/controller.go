@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package demo is the TakeCareDemo controller (spec 03): it deploys the
-// proxy-timeout scenery (billing-api, its Service, the DBProxy, the corpus)
-// and replays its incident on request, through the annotations
-// AnnotationIncident and AnnotationReset. Demo only: the operator runs it
+// scenery (billing-api and the DBProxy, orders-api and its configuration,
+// notifications-worker, the corpus) and replays the incident of the demo's
+// scenario on request, through the annotations AnnotationIncident and
+// AnnotationReset. The three workloads are always deployed; the scenario
+// picks which one the incident breaks (spec 14 §5). Demo only: the operator runs it
 // with --demo, which the chart sets with demo.enabled.
 //
 // The scenery lives in the demo's app and platform namespaces, which the
@@ -26,6 +28,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -128,8 +131,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	before := d.DeepCopy()
 	d.Status.ObservedGeneration = d.Generation
 	d.Status.Scenario = d.Spec.Scenario
-	if d.Spec.Scenario != corpus.ScenarioProxyTimeout {
-		msg := fmt.Sprintf("scenario %s is not available: this version carries proxy-timeout only", d.Spec.Scenario)
+	if _, ok := faults[d.Spec.Scenario]; !ok {
+		msg := fmt.Sprintf("scenario %s is not available: this version carries %s", d.Spec.Scenario, strings.Join(corpus.Scenarios, ", "))
 		d.Status.Phase = v1alpha1.DemoDegraded
 		r.set(&d, v1alpha1.ConditionSceneryReady, false, ReasonScenarioNotAvailable, msg)
 		r.set(&d, v1alpha1.ConditionReady, false, ReasonScenarioNotAvailable, msg)
@@ -166,10 +169,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 	missing = append(missing, rules...)
-	if startedAt.IsZero() && (!incident || d.Status.IncidentStartedAt != nil) {
-		// The leaky pod is awaited while the incident starts; otherwise an
-		// app that is not available in its mode is missing.
-		missing = append(missing, fmt.Sprintf("%s is not available in mode %s", appName, mode(incident)))
+	if incident && startedAt.IsZero() && d.Status.IncidentStartedAt != nil {
+		// The fault is awaited while the incident starts; once started, a
+		// fault no longer in place is missing.
+		missing = append(missing, fmt.Sprintf("the %s fault is no longer in place", d.Spec.Scenario))
 	}
 	r.report(&d, incident, missing, startedAt, unchecked)
 	if d.Status.Phase != before.Status.Phase {
@@ -203,7 +206,7 @@ func (r *Reconciler) handleActions(ctx context.Context, d *v1alpha1.TakeCareDemo
 		action = true
 		d.Status.Phase = v1alpha1.DemoIncidentInProgress
 		d.Status.IncidentStartedAt, d.Status.ExpectedAlertWindow = nil, nil
-		r.Recorder.Eventf(d, nil, corev1.EventTypeNormal, ReasonIncident, "Incident", "starting incident %s: DBProxy idleClientTimeout %d s, billing-api leaky", v, proxyIdleTimeout)
+		r.Recorder.Eventf(d, nil, corev1.EventTypeNormal, ReasonIncident, "Incident", "starting incident %s of %s: %s", v, d.Spec.Scenario, faults[d.Spec.Scenario].summary)
 	}
 	return action, nil
 }
@@ -228,9 +231,10 @@ func (r *Reconciler) deleteInvestigations(ctx context.Context, d *v1alpha1.TakeC
 	return nil
 }
 
-// applyScenery applies the app, its Service and the DBProxy of the phase.
+// applyScenery applies the workloads, their Services and configuration,
+// and the DBProxy, with the fault of the phase.
 func (r *Reconciler) applyScenery(ctx context.Context, d *v1alpha1.TakeCareDemo, incident bool) error {
-	for _, obj := range []client.Object{appDeployment(d, r.AppImage, incident), appService(d), dbProxy(d, incident)} {
+	for _, obj := range scenery(d, r.AppImage, injected(d, incident)) {
 		if err := apply.Strict(ctx, r.Client, obj); err != nil {
 			return fmt.Errorf("apply %s %s/%s: %w", obj.GetObjectKind().GroupVersionKind().Kind, obj.GetNamespace(), obj.GetName(), err)
 		}
@@ -238,25 +242,46 @@ func (r *Reconciler) applyScenery(ctx context.Context, d *v1alpha1.TakeCareDemo,
 	return nil
 }
 
-// observe reports what of the scenery is missing, and when the app's pod of
-// the phase became available (zero while it is not: Reconcile judges whether
-// that is a transition or a missing piece).
+// observe reports what of the scenery is missing, and when the injected
+// fault was in place: proxy-timeout's when the leaky pod became available,
+// the others' when their broken pod was created, seen now (zero while it
+// is not: Reconcile judges whether that is a transition or a missing
+// piece). Every workload the phase does not break must run an available
+// pod of its template.
 func (r *Reconciler) observe(ctx context.Context, d *v1alpha1.TakeCareDemo, incident bool) ([]string, time.Time, error) {
 	var missing []string
 	var startedAt time.Time
-	var dep appsv1.Deployment
-	err := r.Reader.Get(ctx, client.ObjectKey{Namespace: string(d.Spec.AppNamespace), Name: appName}, &dep)
-	switch {
-	case apierrors.IsNotFound(err):
-		missing = append(missing, fmt.Sprintf("Deployment %s/%s is missing", d.Spec.AppNamespace, appName))
-	case err != nil:
-		return nil, startedAt, fmt.Errorf("read the app: %w", err)
-	default:
-		startedAt, _ = rolledOut(&dep, appDeployment(d, r.AppImage, incident))
+	scenario := injected(d, incident)
+	broken := deployments(scenery(d, r.AppImage, scenario))
+	healthy := deployments(scenery(d, r.AppImage, corpus.ScenarioNone))
+	for i, want := range broken {
+		var dep appsv1.Deployment
+		err := r.Reader.Get(ctx, client.ObjectKey{Namespace: want.Namespace, Name: want.Name}, &dep)
+		switch {
+		case apierrors.IsNotFound(err):
+			missing = append(missing, fmt.Sprintf("Deployment %s/%s is missing", want.Namespace, want.Name))
+			continue
+		case err != nil:
+			return nil, startedAt, fmt.Errorf("read %s: %w", want.Name, err)
+		}
+		faulty := !reflect.DeepEqual(want, healthy[i])
+		switch {
+		case faulty && scenario == corpus.ScenarioProxyTimeout:
+			// billing-api leaky stays available: the ramp starts with it.
+			startedAt, _ = rolledOut(&dep, want)
+		case faulty:
+			if faultInPlace(&dep, want) {
+				startedAt = r.now()
+			}
+		default:
+			if _, ok := rolledOut(&dep, want); !ok {
+				missing = append(missing, fmt.Sprintf("%s is not available in mode %s", want.Name, want.Spec.Template.Annotations[annotationMode]))
+			}
+		}
 	}
 	proxy := &unstructured.Unstructured{}
 	proxy.SetGroupVersionKind(DBProxyGVK)
-	err = r.Reader.Get(ctx, client.ObjectKey{Namespace: string(d.Spec.PlatformNamespace), Name: proxyName}, proxy)
+	err := r.Reader.Get(ctx, client.ObjectKey{Namespace: string(d.Spec.PlatformNamespace), Name: proxyName}, proxy)
 	switch {
 	case apierrors.IsNotFound(err) || meta.IsNoMatchError(err):
 		missing = append(missing, fmt.Sprintf("DBProxy %s/%s is missing", d.Spec.PlatformNamespace, proxyName))
@@ -301,8 +326,9 @@ func (r *Reconciler) report(d *v1alpha1.TakeCareDemo, incident bool, missing []s
 	ready := len(missing) == 0
 	switch {
 	case incident && d.Status.IncidentStartedAt == nil && !startedAt.IsZero():
-		// The ramp starts with the leaky pod, not with the annotation.
-		from, to := alertDelay(time.Duration(d.Spec.RampMinutes) * time.Minute)
+		// The window starts with the fault in place (proxy-timeout's ramp
+		// with the leaky pod), not with the annotation.
+		from, to := faults[d.Spec.Scenario].window(time.Duration(d.Spec.RampMinutes) * time.Minute)
 		d.Status.IncidentStartedAt = &metav1.Time{Time: startedAt}
 		d.Status.ExpectedAlertWindow = &v1alpha1.TimeWindow{From: metav1.NewTime(startedAt.Add(from)), To: metav1.NewTime(startedAt.Add(to))}
 	case !incident && ready:
@@ -318,13 +344,13 @@ func (r *Reconciler) report(d *v1alpha1.TakeCareDemo, incident bool, missing []s
 		r.set(d, v1alpha1.ConditionReady, false, ReasonSceneryNotReady, msg)
 		return
 	}
-	msg := "billing-api, the DBProxy and the corpus are as written, and Prometheus loaded the chart's rules"
+	msg := "the workloads, the DBProxy and the corpus are as written, and Prometheus loaded the chart's rules"
 	if unchecked != "" {
-		msg = "billing-api, the DBProxy and the corpus are as written; " + unchecked
+		msg = "the workloads, the DBProxy and the corpus are as written; " + unchecked
 	}
 	r.set(d, v1alpha1.ConditionSceneryReady, true, ReasonReady, msg)
 	if incident && d.Status.IncidentStartedAt == nil {
-		r.set(d, v1alpha1.ConditionReady, true, ReasonIncidentStarting, "the incident is starting: waiting for the leaky pod")
+		r.set(d, v1alpha1.ConditionReady, true, ReasonIncidentStarting, fmt.Sprintf("the %s incident is starting: waiting for its fault to be in place", d.Spec.Scenario))
 		return
 	}
 	r.set(d, v1alpha1.ConditionReady, true, ReasonReady, "the demo is ready")
@@ -347,11 +373,12 @@ func (r *Reconciler) patchStatus(ctx context.Context, before, d *v1alpha1.TakeCa
 	return nil
 }
 
-// removeScenery deletes what ownerReferences cannot: the app, its Service,
-// and the DBProxy. A DBProxy kind the cluster no longer serves is gone too.
+// removeScenery deletes what ownerReferences cannot: the workloads, their
+// Services and configuration, and the DBProxy. A DBProxy kind the cluster
+// no longer serves is gone too.
 func (r *Reconciler) removeScenery(ctx context.Context, d *v1alpha1.TakeCareDemo) error {
 	var errs []error
-	for _, obj := range []client.Object{appDeployment(d, r.AppImage, false), appService(d), dbProxy(d, false)} {
+	for _, obj := range scenery(d, r.AppImage, corpus.ScenarioNone) {
 		if err := r.Client.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) && !meta.IsNoMatchError(err) {
 			errs = append(errs, fmt.Errorf("delete %s %s/%s: %w", obj.GetObjectKind().GroupVersionKind().Kind, obj.GetNamespace(), obj.GetName(), err))
 		}

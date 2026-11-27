@@ -8,8 +8,8 @@
 // Ported from spike 001's generate-corpus.py (itself from the challenge POC).
 // Each source is CURATED records (seed/, hand-written, they carry the
 // scenario's signals and their competitors) plus generated noise around them.
-// Only the proxy-timeout scenario is carried: the other scenarios' live
-// changes were left out of the seeds, their unscoped records stay as noise.
+// The three scenarios of the demo are carried (spec 14 §5); each has its
+// live change, and the records the others plant stay as noise.
 //
 // Dates are relative to the incident time. Seeds write them as "@TS<minutes>@"
 // and "@DAY<days>@", resolved here into explicit UTC ISO 8601: the agent
@@ -28,6 +28,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"time"
 )
@@ -36,9 +37,18 @@ import (
 const (
 	// ScenarioNone composes the corpus without any live change.
 	ScenarioNone = ""
-	// ScenarioProxyTimeout is the demo's scenario (spec 03).
+	// ScenarioProxyTimeout is the demo's first scenario (spec 03).
 	ScenarioProxyTimeout = "proxy-timeout"
+	// ScenarioBadConfigRollout breaks orders-api's configuration (spec 14
+	// §5).
+	ScenarioBadConfigRollout = "bad-config-rollout"
+	// ScenarioMissingSecretKey releases a notifications-worker that reads
+	// a Secret key that does not exist (spec 14 §5).
+	ScenarioMissingSecretKey = "missing-secret-key"
 )
+
+// Scenarios are the scenarios the corpus carries, in a stable order.
+var Scenarios = []string{ScenarioProxyTimeout, ScenarioBadConfigRollout, ScenarioMissingSecretKey}
 
 // Sources, one corpus MCP server each.
 const (
@@ -62,6 +72,9 @@ const (
 	keyTitle   = "title"
 )
 
+// typeImage is the type of a deployment record that releases an image.
+const typeImage = "image"
+
 // isoUTC is the layout of every generated date (2026-10-17T18:30:00Z).
 const isoUTC = "2006-01-02T15:04:05Z"
 
@@ -79,7 +92,7 @@ var marker = regexp.MustCompile(`^@(TS|DAY)([0-9]+)@$`)
 // Seeds loads the curated records of every source for a scenario, dates
 // resolved relative to the incident time.
 func Seeds(scenario string, incident time.Time) (Corpus, error) {
-	if scenario != ScenarioNone && scenario != ScenarioProxyTimeout {
+	if scenario != ScenarioNone && !slices.Contains(Scenarios, scenario) {
 		return nil, fmt.Errorf("scenario %q is not available", scenario)
 	}
 	c := Corpus{}

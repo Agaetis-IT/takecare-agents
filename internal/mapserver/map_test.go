@@ -30,7 +30,7 @@ func TestLoadDemo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(m.Entries) != 10 || m.Revision == "" {
+	if len(m.Entries) != 14 || m.Revision == "" {
 		t.Errorf("%d entries, revision %q", len(m.Entries), m.Revision)
 	}
 	if got := m.Entries["service/notifications"].Status; got != "proposed" {

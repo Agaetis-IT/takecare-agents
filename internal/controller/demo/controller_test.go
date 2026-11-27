@@ -32,16 +32,19 @@ import (
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/cachescope"
 	"github.com/agaetis-it/takecare-agents/internal/controller/platform"
+	"github.com/agaetis-it/takecare-agents/internal/demo/corpus"
 	"github.com/agaetis-it/takecare-agents/internal/demoapp"
 	"github.com/agaetis-it/takecare-agents/internal/testenv"
 )
 
 const (
-	ns      = "takecare-system"
-	appNS   = "demo-apps"
-	platNS  = "ack-system"
-	image   = "demo-app:test"
-	timeout = 20 * time.Second
+	// noScenario is how the corpus records the healthy phase.
+	noScenario = "none"
+	ns         = "takecare-system"
+	appNS      = "demo-apps"
+	platNS     = "ack-system"
+	image      = "demo-app:test"
+	timeout    = 20 * time.Second
 )
 
 type fixture struct {
@@ -111,12 +114,27 @@ func (f *fixture) demo() *v1alpha1.TakeCareDemo {
 	return &d
 }
 
-func (f *fixture) app() *appsv1.Deployment {
+func (f *fixture) app() *appsv1.Deployment { return f.deployment(appName) }
+
+func (f *fixture) deployment(name string) *appsv1.Deployment {
 	var dep appsv1.Deployment
-	if err := f.c.Get(f.ctx, client.ObjectKey{Namespace: appNS, Name: appName}, &dep); err != nil {
+	if err := f.c.Get(f.ctx, client.ObjectKey{Namespace: appNS, Name: name}, &dep); err != nil {
 		return nil
 	}
 	return &dep
+}
+
+// workloadsGone: the three Deployments and orders-config are deleted.
+func (f *fixture) workloadsGone() bool {
+	return f.app() == nil && f.deployment(ordersName) == nil && f.deployment(workerName) == nil && f.ordersConfig() == nil
+}
+
+func (f *fixture) ordersConfig() *corev1.ConfigMap {
+	var cm corev1.ConfigMap
+	if err := f.c.Get(f.ctx, client.ObjectKey{Namespace: appNS, Name: ordersConfig}, &cm); err != nil {
+		return nil
+	}
+	return &cm
 }
 
 func (f *fixture) proxyTimeout() (int64, bool) {
@@ -144,27 +162,65 @@ func (f *fixture) corpus(source string) *corev1.ConfigMap {
 	return &cm
 }
 
-func (f *fixture) corpusScenario(source string) string {
-	if cm := f.corpus(source); cm != nil {
+// corpusScenario is the scenario of the deployment log's corpus, "none"
+// for the healthy one.
+func (f *fixture) corpusScenario() string {
+	if cm := f.corpus(corpus.SourceDeployments); cm != nil {
 		return cm.Annotations[annotationScene]
 	}
 	return ""
 }
 
-// rollOut plays the Deployment controller envtest lacks: the pod of the
-// template in a mode and for an incident ("" when healthy) is available
-// since `at`.
+// rollOut plays the Deployment controller envtest lacks: billing-api's
+// pod of the template in a mode and for an incident ("" when healthy) is
+// available since `at`.
 func (f *fixture) rollOut(mode, incident string, at time.Time) {
 	f.t.Helper()
-	f.eventually("billing-api in mode "+mode+" for incident "+incident, func() bool {
-		dep := f.app()
+	f.rollOutWorkload(appName, mode, incident, at)
+}
+
+// rollOutHealthy makes the three workloads available, healthy.
+func (f *fixture) rollOutHealthy(at time.Time) {
+	f.t.Helper()
+	for _, name := range []string{appName, ordersName, workerName} {
+		f.rollOutWorkload(name, demoapp.ModeHealthy, "", at)
+	}
+}
+
+func (f *fixture) rollOutWorkload(name, mode, incident string, at time.Time) {
+	f.t.Helper()
+	f.eventually(name+" in mode "+mode+" for incident "+incident, func() bool {
+		dep := f.deployment(name)
 		return dep != nil && dep.Spec.Template.Annotations[annotationMode] == mode && dep.Spec.Template.Annotations[annotationIncident] == incident
 	})
-	dep := f.app()
+	dep := f.deployment(name)
 	dep.Status = appsv1.DeploymentStatus{
 		ObservedGeneration: dep.Generation, Replicas: 1, UpdatedReplicas: 1, ReadyReplicas: 1, AvailableReplicas: 1,
 		Conditions: []appsv1.DeploymentCondition{{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue,
 			LastTransitionTime: metav1.NewTime(at), LastUpdateTime: metav1.NewTime(at), Reason: "MinimumReplicasAvailable"}},
+	}
+	if err := f.c.Status().Update(f.ctx, dep); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
+// breakWorkload plays a rollout that never becomes available: the new
+// pod of the incident's template is created, not ready; RollingUpdate
+// keeps the old one available, Recreate does not.
+func (f *fixture) breakWorkload(name, incident string) {
+	f.t.Helper()
+	f.eventually(name+" on incident "+incident+"'s template", func() bool {
+		dep := f.deployment(name)
+		return dep != nil && dep.Spec.Template.Annotations[annotationIncident] == incident
+	})
+	dep := f.deployment(name)
+	available := int32(0)
+	if dep.Spec.Strategy.Type == appsv1.RollingUpdateDeploymentStrategyType {
+		available = 1
+	}
+	dep.Status = appsv1.DeploymentStatus{
+		ObservedGeneration: dep.Generation, Replicas: 1 + available, UpdatedReplicas: 1, ReadyReplicas: available, AvailableReplicas: available,
+		UnavailableReplicas: 1,
 	}
 	if err := f.c.Status().Update(f.ctx, dep); err != nil {
 		f.t.Fatal(err)
@@ -254,7 +310,7 @@ func TestDemoLifecycle(t *testing.T) {
 	f.eventually("the healthy scenery", func() bool {
 		_, set := f.proxyTimeout()
 		dep := f.app()
-		return dep != nil && dep.Spec.Template.Annotations[annotationMode] == demoapp.ModeHealthy && !set && f.corpusScenario("deployments") == "none"
+		return dep != nil && dep.Spec.Template.Annotations[annotationMode] == demoapp.ModeHealthy && !set && f.corpusScenario() == noScenario
 	})
 	// The corpus ConfigMaps are written one after the other: wait for the
 	// one checked, not only for the deployments source above.
@@ -268,7 +324,7 @@ func TestDemoLifecycle(t *testing.T) {
 		c := ready(f.demo())
 		return c != nil && c.Status == metav1.ConditionFalse && c.Reason == ReasonSceneryNotReady
 	})
-	f.rollOut(demoapp.ModeHealthy, "", time.Now())
+	f.rollOutHealthy(time.Now())
 	f.eventually("phase Ready", func() bool {
 		d := f.demo()
 		c := ready(d)
@@ -281,7 +337,7 @@ func TestDemoLifecycle(t *testing.T) {
 	f.eventually("the incident's scenery", func() bool {
 		v, _ := f.proxyTimeout()
 		d := f.demo()
-		return v == 600 && f.corpusScenario("deployments") == "proxy-timeout" && d.Status.Phase == v1alpha1.DemoIncidentInProgress && d.Status.LastHandled.Incident == "1"
+		return v == 600 && f.corpusScenario() == corpus.ScenarioProxyTimeout && d.Status.Phase == v1alpha1.DemoIncidentInProgress && d.Status.LastHandled.Incident == "1"
 	})
 	f.eventually("the incident starting, no time before the leaky pod", func() bool {
 		d := f.demo()
@@ -311,7 +367,7 @@ func TestDemoLifecycle(t *testing.T) {
 		_, set := f.proxyTimeout()
 		var inv v1alpha1.TakeCareInvestigation
 		gone := apierrors.IsNotFound(f.c.Get(f.ctx, client.ObjectKey{Namespace: ns, Name: "inv-demo"}, &inv))
-		return !set && gone && f.corpusScenario("deployments") == "none" && f.demo().Status.Phase == v1alpha1.DemoResetting
+		return !set && gone && f.corpusScenario() == noScenario && f.demo().Status.Phase == v1alpha1.DemoResetting
 	})
 	var kept v1alpha1.TakeCareInvestigation
 	if err := f.c.Get(f.ctx, client.ObjectKey{Namespace: ns, Name: "inv-elsewhere"}, &kept); err != nil {
@@ -332,17 +388,21 @@ func TestDemoLifecycle(t *testing.T) {
 		u := &unstructured.Unstructured{}
 		u.SetGroupVersionKind(DBProxyGVK)
 		proxyGone := apierrors.IsNotFound(f.c.Get(f.ctx, client.ObjectKey{Namespace: platNS, Name: proxyName}, u))
-		return f.app() == nil && proxyGone && !set
+		return f.workloadsGone() && proxyGone && !set
 	})
 }
 
+// A scenario the controller does not inject, stored before the enum: no
+// scenery.
 func TestScenarioNotAvailable(t *testing.T) {
 	f := start(t, nil)
 	d := testDemo()
-	d.Spec.Scenario = "bad-config-rollout"
-	if err := f.c.Create(f.ctx, d); err != nil {
-		t.Fatal(err)
-	}
+	d.Spec.Scenario = "disk-full"
+	probe := d.DeepCopy()
+	probe.Name = "probe"
+	testenv.StoreUnvalidated(t, f.cfg, "takecaredemos.takecare.agaetis.fr",
+		func() error { return f.c.Create(f.ctx, d.DeepCopy()) },
+		func() error { return f.c.Create(f.ctx, probe.DeepCopy(), client.DryRunAll) })
 	f.eventually("ScenarioNotAvailable", func() bool {
 		c := ready(f.demo())
 		return c != nil && c.Status == metav1.ConditionFalse && c.Reason == ReasonScenarioNotAvailable
@@ -386,7 +446,7 @@ func TestRulesDriftInSceneryReady(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	f.rollOut(demoapp.ModeHealthy, "", time.Now())
+	f.rollOutHealthy(time.Now())
 	scenery := func() *metav1.Condition {
 		return meta.FindStatusCondition(f.demo().Status.Conditions, v1alpha1.ConditionSceneryReady)
 	}
@@ -408,4 +468,70 @@ func TestRulesDriftInSceneryReady(t *testing.T) {
 		c := scenery()
 		return c != nil && c.Status == metav1.ConditionTrue && strings.Contains(c.Message, "the rules are not checked: connection refused")
 	})
+}
+
+// The two ported scenarios (spec 14 §5): the scenario picks the workload
+// the incident breaks, the others stay healthy and available; the alert
+// window starts when the broken pod exists, PodNotReady's `for` later; the
+// reset puts the healthy configuration back.
+func TestPortedScenarios(t *testing.T) {
+	for _, tc := range []struct {
+		scenario, broken string
+		check            func(f *fixture) bool
+	}{
+		{"bad-config-rollout", ordersName, func(f *fixture) bool {
+			cm := f.ordersConfig()
+			return cm != nil && cm.Data["DB_HOST"] == "orders-db-primary.demo-apps.svc:5432"
+		}},
+		{"missing-secret-key", workerName, func(f *fixture) bool {
+			dep := f.deployment(workerName)
+			return dep != nil && env(dep.Spec.Template.Spec.Containers[0])["APP_VERSION"] == "2.0.0"
+		}},
+	} {
+		t.Run(tc.scenario, func(t *testing.T) {
+			t.Parallel()
+			f := start(t, nil)
+			d := testDemo()
+			d.Spec.Scenario = tc.scenario
+			if err := f.c.Create(f.ctx, d); err != nil {
+				t.Fatal(err)
+			}
+			f.rollOutHealthy(time.Now())
+			f.eventually("phase Ready", func() bool { return f.demo().Status.Phase == v1alpha1.DemoReady })
+			if tc.check(f) {
+				t.Fatal("the healthy scenery carries the fault")
+			}
+
+			f.annotate(v1alpha1.AnnotationIncident, "1")
+			f.eventually("the fault applied, the corpus of the scenario", func() bool {
+				_, set := f.proxyTimeout()
+				app := f.app()
+				return tc.check(f) && !set && app.Spec.Template.Annotations[annotationMode] == demoapp.ModeHealthy &&
+					f.corpusScenario() == tc.scenario
+			})
+			f.eventually("the incident starting until the broken pod exists", func() bool {
+				d := f.demo()
+				c := ready(d)
+				return d.Status.IncidentStartedAt == nil && c != nil && c.Reason == ReasonIncidentStarting
+			})
+			before := time.Now().Truncate(time.Second)
+			f.breakWorkload(tc.broken, "1")
+			f.eventually("the incident started with the broken pod", func() bool { return f.demo().Status.IncidentStartedAt != nil })
+			d = f.demo()
+			started := d.Status.IncidentStartedAt.Time
+			if started.Before(before) || !d.Status.ExpectedAlertWindow.From.Time.Equal(started.Add(5*time.Minute)) ||
+				!d.Status.ExpectedAlertWindow.To.Time.Equal(started.Add(6*time.Minute+30*time.Second)) {
+				t.Errorf("started %v window %v, want PodNotReady's 5m to 6m30s after %v", started, d.Status.ExpectedAlertWindow, before)
+			}
+			if c := ready(d); c == nil || c.Status != metav1.ConditionTrue {
+				t.Errorf("Ready %+v: the broken workload is the incident, not a missing piece", c)
+			}
+
+			f.annotate(v1alpha1.AnnotationReset, "1")
+			f.eventually("the healthy configuration back", func() bool {
+				dep := f.deployment(tc.broken)
+				return !tc.check(f) && dep != nil && dep.Spec.Template.Annotations[annotationIncident] == "" && f.corpusScenario() == noScenario
+			})
+		})
+	}
 }

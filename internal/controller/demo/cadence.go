@@ -57,3 +57,22 @@ func alertDelay(ramp time.Duration) (from, to time.Duration) {
 	}
 	return crossing + ruleFor, crossing + ruleFor + 2*ruleInterval
 }
+
+// PodNotReady as the demo's Prometheus evaluates it (values-demo.yaml):
+// kube_pod_status_ready false for 5 minutes. bad-config-rollout's new pod
+// and missing-secret-key's restarting one are never ready, from their
+// creation on; PodNotReady is the first alert of both (spike 001 measured
+// 5 min 36 s to 5 min 41 s for bad-config-rollout).
+const (
+	notReadyFor = 5 * time.Minute
+	// notReadyLag is the readiness probe's failures (3 × 10 s), the pod's
+	// start, and the scrape and evaluation phases (2 × 15 s): the latest
+	// the alert fires after its `for`.
+	notReadyLag = 90 * time.Second
+)
+
+// notReadyDelay is when PodNotReady fires after the broken pod is created,
+// at the earliest and at the latest; the ramp plays no part.
+func notReadyDelay(time.Duration) (from, to time.Duration) {
+	return notReadyFor, notReadyFor + notReadyLag
+}

@@ -50,7 +50,7 @@ func StoreUnvalidated(t *testing.T, cfg *rest.Config, crd string, do, refused fu
 
 // lift removes the validations a test stores past, in place.
 func lift(s *apiextensionsv1.JSONSchemaProps) {
-	s.XValidations, s.MaxItems, s.MaxLength = nil, nil, nil
+	s.XValidations, s.MaxItems, s.MaxLength, s.Enum = nil, nil, nil, nil
 	for k, p := range s.Properties {
 		lift(&p)
 		s.Properties[k] = p
