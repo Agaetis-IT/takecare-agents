@@ -17,7 +17,9 @@ import (
 	"sync"
 )
 
-// Bounds of what is read of an upstream's answer.
+// Bounds of what is read of an upstream's answer: a JSON answer is held
+// whole; a Helm index is streamed, and only the asked chart's entries are
+// held (helmindex.go).
 const (
 	maxJSON     = 4 << 20
 	maxIndex    = 16 << 20
@@ -41,8 +43,9 @@ func checkRedirect(req *http.Request, via []*http.Request) error {
 type source struct {
 	Source
 	base *url.URL
-	// fetch runs the calls to one upstream: one at a time, which
-	// also bounds the memory of large Helm indexes.
+	// anyPort lets tests call upstreams off port 443.
+	anyPort bool
+	// fetch runs the calls to one upstream one at a time.
 	fetch sync.Mutex
 
 	mu      sync.Mutex
@@ -50,12 +53,16 @@ type source struct {
 	outcome string
 }
 
-// allowed says whether a URL is on one of the source's hosts.
+// allowed says whether a URL is on one of the source's hosts: the base's
+// host and port, or the declared authHost on port 443.
 func (s *source) allowed(u *url.URL) bool {
 	if u.Scheme != schemeHTTPS || u.User != nil {
 		return false
 	}
-	return u.Host == s.base.Host || (s.AuthHost != "" && u.Hostname() == s.AuthHost)
+	if u.Host == s.base.Host {
+		return true
+	}
+	return s.AuthHost != "" && u.Hostname() == s.AuthHost && (u.Port() == "" || u.Port() == port443 || s.anyPort)
 }
 
 // token reads the source's token at each fetch, so that a renewed Secret
@@ -100,13 +107,28 @@ func (e *statusError) Error() string { return fmt.Sprintf("answered %d", e.statu
 // of a 2xx answer. Its errors name the host and the path only: never a
 // query, never a credential, which travel in headers.
 func (r *Server) get(ctx context.Context, s *source, u *url.URL, header http.Header, limit int64) ([]byte, http.Header, error) {
+	var raw []byte
+	h, err := r.stream(ctx, s, u, header, limit, func(body io.Reader) error {
+		var err error
+		raw, err = io.ReadAll(body)
+		return err
+	})
+	if err != nil {
+		return nil, h, err
+	}
+	return raw, h, nil
+}
+
+// stream calls u as get does and hands read at most limit bytes of a 2xx
+// answer, without holding it: past limit, its reads fail.
+func (r *Server) stream(ctx context.Context, s *source, u *url.URL, header http.Header, limit int64, read func(io.Reader) error) (http.Header, error) {
 	where := u.Host + u.EscapedPath()
 	if !s.allowed(u) {
-		return nil, nil, fmt.Errorf("GET %s: not a host of source %s, refused", u.Host, s.Name)
+		return nil, fmt.Errorf("GET %s: not a host of source %s, refused", u.Host, s.Name)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return nil, nil, fmt.Errorf("GET %s: build the request", where)
+		return nil, fmt.Errorf("GET %s: build the request", where)
 	}
 	maps.Copy(req.Header, header)
 	req.Header.Set("User-Agent", "takecare-agents-mcp-releases")
@@ -115,21 +137,38 @@ func (r *Server) get(ctx context.Context, s *source, u *url.URL, header http.Hea
 		if ue, ok := errors.AsType[*url.Error](err); ok {
 			err = ue.Err
 		}
-		return nil, nil, fmt.Errorf("GET %s: %w", where, err)
+		return nil, fmt.Errorf("GET %s: %w", where, err)
 	}
 	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode < 200 || res.StatusCode > 299 {
 		_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 64<<10))
-		return nil, res.Header, fmt.Errorf("GET %s: %w", where, &statusError{status: res.StatusCode, header: res.Header})
+		return res.Header, fmt.Errorf("GET %s: %w", where, &statusError{status: res.StatusCode, header: res.Header})
 	}
-	raw, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
-	if err != nil {
-		return nil, nil, fmt.Errorf("GET %s: read the answer: %w", where, err)
+	if err := read(&bounded{r: io.LimitReader(res.Body, limit+1), limit: limit}); err != nil {
+		if errors.Is(err, errTooLarge) {
+			return nil, fmt.Errorf("GET %s: the answer is larger than %d MiB", where, limit>>20)
+		}
+		return nil, fmt.Errorf("GET %s: read the answer: %w", where, err)
 	}
-	if int64(len(raw)) > limit {
-		return nil, nil, fmt.Errorf("GET %s: the answer is larger than %d MiB", where, limit>>20)
+	return res.Header, nil
+}
+
+// errTooLarge is a read past an answer's bound.
+var errTooLarge = errors.New("the answer is past its bound")
+
+// bounded fails its reads once more than limit bytes came through.
+type bounded struct {
+	r        io.Reader
+	n, limit int64
+}
+
+func (b *bounded) Read(p []byte) (int, error) {
+	n, err := b.r.Read(p)
+	b.n += int64(n)
+	if b.n > b.limit {
+		return n, errTooLarge
 	}
-	return raw, res.Header, nil
+	return n, err
 }
 
 // join adds path segments to a base URL, each escaped as one segment: a

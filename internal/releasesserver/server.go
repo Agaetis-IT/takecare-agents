@@ -49,6 +49,8 @@ type Config struct {
 	Logger *slog.Logger
 	// Now is replaceable in tests.
 	Now func() time.Time
+	// anyPort lets tests call upstreams off port 443.
+	anyPort bool
 }
 
 // Server serves the sources.
@@ -60,6 +62,8 @@ type Server struct {
 	cache   *cache
 	sources []*source
 	byName  map[string]*source
+	// indexGate lets one Helm index be read at a time, server-wide.
+	indexGate chan struct{}
 }
 
 // New checks the sources and builds the server.
@@ -78,16 +82,16 @@ func New(cfg Config) (*Server, error) {
 	}
 	client := *cfg.Client
 	client.CheckRedirect = checkRedirect
-	s := &Server{client: &client, log: cfg.Logger, now: cfg.Now, cache: newCache(cfg.Cache, cfg.Now), byName: map[string]*source{}}
+	s := &Server{client: &client, log: cfg.Logger, now: cfg.Now, cache: newCache(cfg.Cache, cfg.Now), byName: map[string]*source{}, indexGate: make(chan struct{}, 1)}
 	for _, sc := range cfg.Sources {
-		u, err := sc.validate()
+		u, err := sc.validate(cfg.anyPort)
 		if err != nil {
 			return nil, err
 		}
 		if s.byName[sc.Name] != nil {
 			return nil, fmt.Errorf("source %s is listed twice", sc.Name)
 		}
-		src := &source{Source: sc, base: u}
+		src := &source{Source: sc, base: u, anyPort: cfg.anyPort}
 		s.sources, s.byName[sc.Name] = append(s.sources, src), src
 	}
 	s.mcp = sdk.NewServer(&sdk.Implementation{Name: "releases", Version: "1"}, nil)
@@ -102,7 +106,7 @@ func New(cfg Config) (*Server, error) {
 	}{
 		{ToolSourcesList, "The sources: name, kind, host, url, components, the token Secret's name when one is set, and the last refresh's time and outcome.",
 			map[string]any{}, nil, s.sourcesList},
-		{ToolVersionsList, fmt.Sprintf("The versions an oci, helm, github or gitlab source publishes for a name (an image repository, a chart, owner/repo, a project's path): at most %d, newest first, semantic versions only, pre-releases flagged, with their publication date when the source gives one. Refreshed at most once a day; stale says the last refresh failed.", maxVersions),
+		{ToolVersionsList, fmt.Sprintf("The versions an oci, helm, github or gitlab source publishes for a name (an image repository, a chart, owner/repo, a project's path): at most %d, newest first, full semantic versions (MAJOR.MINOR.PATCH) only, pre-releases flagged, with their publication date when the source gives one. Refreshed at most once a day; stale says the last refresh failed.", maxVersions),
 			map[string]any{argSource: srcArg, argName: map[string]any{keyType: typeString, keyDesc: "The image repository, chart, owner/repo or project path.", "maxLength": 255}},
 			[]string{argSource, argName}, s.versionsList},
 		{ToolCyclesGet, "An endoflife source's release cycles for a product: name, latest version, maintained, end of life and its date. Refreshed at most once a day; stale says the last refresh failed.",

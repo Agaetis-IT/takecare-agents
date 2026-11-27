@@ -8,13 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
-
-	"go.yaml.in/yaml/v3"
 )
 
 // Paging bounds per upstream.
@@ -113,34 +112,38 @@ func (r *Server) ociTags(ctx context.Context, s *source, name string) ([]publish
 		for _, t := range body.Tags {
 			out = append(out, published{tag: t})
 		}
-		next := nextLast(h.Get("Link"))
-		if next == "" || len(body.Tags) == 0 {
+		next, more := nextLast(h.Get("Link"))
+		if !more || len(body.Tags) == 0 {
 			return out, nil
+		}
+		if next == "" {
+			return nil, fmt.Errorf("source %s: the tag list names a next page without its last tag: the list cannot be read whole", s.Name)
 		}
 		last = next
 	}
-	return out, nil
+	return nil, fmt.Errorf("source %s: the tag list has more than %d pages of %d tags: refused rather than read in part", s.Name, ociMaxPages, ociPage)
 }
 
-// nextLast is the last query parameter of a Link header's rel="next"
-// target; the target itself is never called: the next request is built
-// on the source's own URL.
-func nextLast(link string) string {
+// nextLast reads a Link header's rel="next" target: more says there is
+// one, last is its last query parameter ("" when it has none). The
+// target itself is never called: the next request is built on the
+// source's own URL.
+func nextLast(link string) (last string, more bool) {
 	for part := range strings.SplitSeq(link, ",") {
 		if !strings.Contains(part, `rel="next"`) {
 			continue
 		}
 		start, end := strings.Index(part, "<"), strings.Index(part, ">")
 		if start < 0 || end < start {
-			return ""
+			return "", true
 		}
 		target, err := url.Parse(part[start+1 : end])
 		if err != nil {
-			return ""
+			return "", true
 		}
-		return target.Query().Get("last")
+		return target.Query().Get("last"), true
 	}
-	return ""
+	return "", false
 }
 
 // ociAuth answers a registry's challenge: Basic with the source's
@@ -190,27 +193,36 @@ func (r *Server) ociAuth(ctx context.Context, s *source, name, challenge, cred s
 }
 
 // helmVersions reads a chart's versions from the repository's index.yaml
-// (Helm, "The Chart Repository Guide").
+// (Helm, "The Chart Repository Guide"), streamed: only the chart's
+// entries are held, and one index is read at a time, server-wide.
 func (r *Server) helmVersions(ctx context.Context, s *source, name string) ([]published, error) {
 	header, err := r.authHeader(s, headerAuthorization)
 	if err != nil {
 		return nil, err
 	}
-	raw, _, err := r.get(ctx, s, join(s.base, "index.yaml"), header, maxIndex)
-	if err != nil {
+	select {
+	case r.indexGate <- struct{}{}:
+	case <-ctx.Done():
+		return nil, fmt.Errorf("source %s: wait for the index gate: %w", s.Name, ctx.Err())
+	}
+	defer func() { <-r.indexGate }()
+	var entries []indexEntry
+	found, perr := false, error(nil)
+	_, err = r.stream(ctx, s, join(s.base, "index.yaml"), header, maxIndex, func(body io.Reader) error {
+		var err error
+		entries, found, err = chartEntries(body, name)
+		if err != nil && !errors.Is(err, errTooLarge) {
+			// A parse error, kept apart from the read's own errors.
+			perr, err = err, nil
+		}
+		return err
+	})
+	switch {
+	case err != nil:
 		return nil, err
-	}
-	var index struct {
-		Entries map[string][]struct {
-			Version string `yaml:"version"`
-			Created string `yaml:"created"`
-		} `yaml:"entries"`
-	}
-	if err := yaml.Unmarshal(raw, &index); err != nil {
-		return nil, fmt.Errorf("source %s: index.yaml does not parse", s.Name)
-	}
-	entries, ok := index.Entries[name]
-	if !ok {
+	case perr != nil:
+		return nil, fmt.Errorf("source %s: index.yaml: %w", s.Name, perr)
+	case !found:
 		return nil, fmt.Errorf("source %s: no chart %s in index.yaml", s.Name, name)
 	}
 	out := make([]published, 0, len(entries))

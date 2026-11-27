@@ -116,7 +116,7 @@ func client(ups ...*upstream) *http.Client {
 
 func newServer(t *testing.T, c *http.Client, clk *clock, sources ...Source) *Server {
 	t.Helper()
-	s, err := New(Config{Sources: sources, Client: c, Now: clk.Now, Logger: slog.New(slog.DiscardHandler)})
+	s, err := New(Config{Sources: sources, Client: c, Now: clk.Now, Logger: slog.New(slog.DiscardHandler), anyPort: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +385,7 @@ func TestEndOfLifeCycles(t *testing.T) {
 
 // Once a day per name: a second call within the day is served from the
 // cache; a failed refresh keeps the last answer, stale, until 7 days,
-// then drops it; a failed first fetch is not retried within the day.
+// then drops it; a failed fetch is not retried within its retry wait.
 func TestCacheOnceADayStaleThenDropped(t *testing.T) {
 	api := newUpstream(t)
 	fail := false
@@ -427,13 +427,13 @@ func TestCacheOnceADayStaleThenDropped(t *testing.T) {
 	if _, text, isErr := get(); !isErr || !strings.Contains(text, "dropped") {
 		t.Errorf("past 7 days stale: %v %s", isErr, text)
 	}
-	// The next call within the day of that attempt calls nobody.
+	// The next call within that attempt's retry wait calls nobody.
 	n := api.callCount()
 	if _, text, isErr := get(); !isErr || !strings.Contains(text, "next attempt after") {
 		t.Errorf("after the drop: %v %s", isErr, text)
 	}
 	if api.callCount() != n {
-		t.Error("an upstream was called twice within a day")
+		t.Error("an upstream was called again within the retry wait")
 	}
 	states, _ := call(t, session, ToolSourcesList, nil)
 	if !strings.Contains(states, `"outcome":"GET `) || !strings.Contains(states, "answered 502") {

@@ -21,9 +21,11 @@ type Version struct {
 	Published  string `json:"published,omitempty"`
 }
 
-// order keeps the versions that parse as semantic versions (a leading v
-// optional, as Go's semver wants it), flags pre-releases, and sorts them
-// newest first; it returns at most maxVersions and how many it left out.
+// order keeps the versions that parse as full semantic versions,
+// MAJOR.MINOR.PATCH (a leading v optional, as Go's semver wants it;
+// floating tags such as 1 or 1.27 are left out), flags pre-releases, and
+// sorts them newest first; it returns at most maxVersions and how many it
+// left out.
 func order(in []published) ([]Version, int) {
 	type parsed struct {
 		Version
@@ -36,7 +38,8 @@ func order(in []published) ([]Version, int) {
 		if !strings.HasPrefix(v, "v") {
 			v = "v" + v
 		}
-		if !semver.IsValid(v) || seen[p.tag] || len(p.tag) > 128 {
+		full, _, _ := strings.Cut(v, "+")
+		if !semver.IsValid(v) || semver.Canonical(v) != full || seen[p.tag] || len(p.tag) > 128 {
 			continue
 		}
 		seen[p.tag] = true

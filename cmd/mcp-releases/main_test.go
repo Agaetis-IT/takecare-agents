@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 
 	"github.com/agaetis-it/takecare-agents/internal/releasesserver"
 )
@@ -41,7 +42,7 @@ func TestReadConfig(t *testing.T) {
 				Username: "robot", TokenSecret: "mirror", Components: []releasesserver.Component{{Match: "app", Name: "app"}}},
 		},
 	}
-	if diff := cmp.Diff(want, got); diff != "" {
+	if diff := cmp.Diff(want, got, cmpopts.IgnoreUnexported(releasesserver.Config{})); diff != "" {
 		t.Errorf("config (-want +got):\n%s", diff)
 	}
 	for name, tc := range map[string]struct{ content, want string }{

@@ -23,8 +23,12 @@ const (
 	KindEndOfLife Kind = "endoflife"
 )
 
-// schemeHTTPS is the one scheme a source is read over.
-const schemeHTTPS = "https"
+// schemeHTTPS and port443 are the one scheme and port a source is read
+// over.
+const (
+	schemeHTTPS = "https"
+	port443     = "443"
+)
 
 // MaxSources bounds the sources one server reads.
 const MaxSources = 32
@@ -117,9 +121,10 @@ func validName(k Kind, name string) bool {
 	return false
 }
 
-// baseURL checks a source's URL: https, a host, no user information,
-// query or fragment. The URL returned has no trailing slash.
-func baseURL(raw string) (*url.URL, error) {
+// baseURL checks a source's URL: https on port 443, a host, no user
+// information, query or fragment. The URL returned has no trailing slash.
+// anyPort lets tests call upstreams off port 443.
+func baseURL(raw string, anyPort bool) (*url.URL, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
 		return nil, fmt.Errorf("url: not a URL")
@@ -131,6 +136,8 @@ func baseURL(raw string) (*url.URL, error) {
 		return nil, fmt.Errorf("url: carries user information: the credential comes from tokenSecretRef, never the URL")
 	case u.Host == "" || !hostName.MatchString(u.Hostname()):
 		return nil, fmt.Errorf("url: no valid host")
+	case u.Port() != "" && u.Port() != port443 && !anyPort:
+		return nil, fmt.Errorf("url: port 443 only")
 	case u.RawQuery != "" || u.Fragment != "" || u.Opaque != "":
 		return nil, fmt.Errorf("url: no query or fragment")
 	case strings.Contains(u.Path, "/../") || strings.HasSuffix(u.Path, "/.."):
@@ -142,7 +149,7 @@ func baseURL(raw string) (*url.URL, error) {
 }
 
 // validate checks one source and returns its base URL.
-func (s Source) validate() (*url.URL, error) {
+func (s Source) validate(anyPort bool) (*url.URL, error) {
 	if !sourceName.MatchString(s.Name) {
 		return nil, fmt.Errorf("source %q: a name of lower-case letters, digits and hyphens, 63 at most", s.Name)
 	}
@@ -151,7 +158,7 @@ func (s Source) validate() (*url.URL, error) {
 	default:
 		return nil, fmt.Errorf("source %s: kind %q: oci, helm, github, gitlab or endoflife", s.Name, s.Kind)
 	}
-	u, err := baseURL(s.URL)
+	u, err := baseURL(s.URL, anyPort)
 	if err != nil {
 		return nil, fmt.Errorf("source %s: %w", s.Name, err)
 	}
