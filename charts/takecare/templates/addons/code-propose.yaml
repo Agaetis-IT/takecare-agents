@@ -128,7 +128,7 @@ spec:
             secretName: {{ $a.tokenSecret.name }}
             items:
               {{- range $i, $r := $a.repositories }}
-              - key: {{ $r.tokenKey }}
+              - key: {{ $r.tokenKey | quote }}
                 path: "{{ $i }}"
               {{- end }}
         {{- if $ca }}

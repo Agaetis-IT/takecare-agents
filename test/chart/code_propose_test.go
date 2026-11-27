@@ -176,3 +176,22 @@ func TestCodeProposeAddonGuards(t *testing.T) {
 		})
 	}
 }
+
+// A token key that YAML would read as a number or a boolean stays a
+// string in the Secret volume's items.
+func TestCodeProposeAddonTokenKeyQuoted(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "propose.yaml")
+	values := proposeHeader + `    repositories:
+      - {forge: github, apiURL: "https://api.github.com", repository: acme/a, tokenKey: "1234"}
+      - {forge: github, apiURL: "https://api.github.com", repository: acme/b, tokenKey: "true"}
+`
+	if err := os.WriteFile(p, []byte(values), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := proposeObjects(render(t, releaseName, append(prodArgs(), "-f", p)...))
+	volumes, _, _ := unstructured.NestedSlice(got["Deployment/"+proposeName].Object, "spec", "template", "spec", "volumes")
+	raw, _ := json.Marshal(volumes)
+	if !strings.Contains(string(raw), `"items":[{"key":"1234","path":"0"},{"key":"true","path":"1"}]`) {
+		t.Errorf("the token keys are not strings: %s", raw)
+	}
+}
