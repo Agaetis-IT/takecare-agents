@@ -485,6 +485,32 @@ func TestCodeConnectorValidation(t *testing.T) {
 	}
 }
 
+// The releases connector type (spec 12 §7.1): an add-on's connector with
+// no field of its own; propose stays the code type's.
+func TestReleasesConnectorValidation(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		mutate func(*v1alpha1.TakeCareConnector)
+		want   string
+	}{
+		{"releases connector", func(*v1alpha1.TakeCareConnector) {}, ""},
+		{"propose on releases", func(c *v1alpha1.TakeCareConnector) { c.Spec.Propose = codeConnector().Spec.Propose }, wantPropose},
+		{"an unknown type", func(c *v1alpha1.TakeCareConnector) { c.Spec.Types = []v1alpha1.ConnectorType{"versions"} }, `Unsupported value: "versions"`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &v1alpha1.TakeCareConnector{
+				Name: uniqueName(connReleases), Namespace: testNamespace,
+				Spec: v1alpha1.TakeCareConnectorSpec{
+					Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorReleases},
+					MCP:   v1alpha1.MCPSpec{Addon: connReleases},
+				},
+			}
+			tt.mutate(c)
+			checkError(t, create(t, c), tt.want)
+		})
+	}
+}
+
 // A record names the Mécano as its role (RoleRef's enum); the Ranger's
 // enum is checked with its other kinds (ranger_test.go).
 func TestRoleRefTakesTheMecano(t *testing.T) {
