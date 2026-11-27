@@ -206,7 +206,7 @@ func (g *gitlab) open(ctx context.Context, h head, branch, title, body string) (
 	if _, err := g.api.do(ctx, http.MethodPost, g.path("/merge_requests"), nil, in, &mr); err != nil {
 		return "", fmt.Errorf("open the merge request: %w", err)
 	}
-	// draft since GitLab 13.2, work_in_progress before (deprecated): one
+	// draft, or work_in_progress, its deprecated older name: one
 	// of them must say it is a draft.
 	if (mr.Draft == nil || !*mr.Draft) && (mr.WorkInProgress == nil || !*mr.WorkInProgress) {
 		return "", fmt.Errorf("the forge opened %s without marking it a draft", mr.WebURL)
