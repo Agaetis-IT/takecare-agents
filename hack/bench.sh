@@ -13,11 +13,16 @@
 # at a time, since the usage is measured by the gateway's deltas, exact
 # only without overlap.
 # If none of the scenario's alerts fires within its window after the
-# injection, the bench is not played: its report says so, never wrong.
-# Writes report-<date>.json to BENCH_DIR (default test/bench; the scenario
-# as <id>@<version>, scores and metrics, never the diagnosis) and prints
-# the table. BENCH_MIN=<k> exits 1 below k passes. BENCH_BASELINE=<report>
-# compares with an earlier report, refused at another scenario version.
+# injection, the bench is not played: its report says so, never wrong, and
+# it exits 3.
+# Writes report-<date>.json to BENCH_DIR (default test/bench), or to
+# BENCH_REPORT (the scenario as <id>@<version>, scores and metrics, never
+# the diagnosis) and prints the table. BENCH_MIN=<k> exits 1 below k
+# passes. BENCH_BASELINE=<report> compares with an earlier report, refused
+# at another scenario version. BENCH_MAX_COST=<USD> stops the bench, with
+# its report, when the next run could take the total past it (the dearest
+# run so far as the guess, the incident's own investigation counted), or
+# when a run's cost is not measured.
 # A run that does not settle in BENCH_SETTLE_SECONDS (default 900) stops
 # the bench after hack/dump.sh has saved the cluster's state; the dump's
 # directory is printed, and only its base name is written in the report
@@ -43,12 +48,15 @@ SCENARIO_FILE="${SCENARIOS_DIR}/${SCENARIO}.yaml"
 ENDED='^(Completed|Failed|TimedOut|Dropped)$'
 SETTLE="${BENCH_SETTLE_SECONDS:-900}"
 [[ "$SETTLE" =~ ^[0-9]+$ ]] || { echo "BENCH_SETTLE_SECONDS must be a number of seconds" >&2; exit 1; }
+MAX_COST="${BENCH_MAX_COST:-}"
+[[ -z "$MAX_COST" || "$MAX_COST" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "BENCH_MAX_COST must be an amount in USD" >&2; exit 1; }
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*" >&2; }
 # die stops the bench; once the cluster is in use, it first dumps its
 # state (hack/dump.sh), before anything else runs.
 dump_armed=false
 report=""
+die_code=1
 die() {
   printf '\033[1;31merror:\033[0m %s\n' "$*" >&2
   if $dump_armed; then
@@ -60,8 +68,22 @@ die() {
       log "the dump failed"
     fi
   fi
-  exit 1
+  exit "$die_code"
 }
+
+# report_path: BENCH_REPORT, or a dated report in BENCH_DIR.
+report_path() {
+  mkdir -p "${BENCH_DIR:=test/bench}"
+  if [[ -n "${BENCH_REPORT:-}" ]]; then
+    mkdir -p "$(dirname "$BENCH_REPORT")"
+    echo "$BENCH_REPORT"
+  else
+    echo "${BENCH_DIR}/report-$(date -u +%Y-%m-%dT%H%MZ).json"
+  fi
+}
+
+# usd COST: the amount of an estimated cost ("0.0321 USD"), empty when none.
+usd() { [[ "$1" =~ ^([0-9.]+)\ USD$ ]] && echo "${BASH_REMATCH[1]}" || true; }
 
 [[ -f "$KUBECONFIG" ]] || die "no demo: make demo-up first"
 [[ -f "$SCENARIO_FILE" ]] || die "no scenario ${SCENARIO_FILE}"
@@ -145,13 +167,14 @@ wait_settled "$SETTLE" || die "the demo's investigations did not settle in ${SET
 playing="$(kubectl -n "$NS" get takecaredemo demo -o jsonpath='{.spec.scenario}')" || die "no TakeCareDemo demo in ${NS}: make demo-up"
 [[ "$playing" == "$SCENARIO" ]] || die "the demo plays ${playing}, not ${SCENARIO}: kubectl -n ${NS} get takecaredemo demo"
 
-# not_played writes the report of a bench that could not play, then stops.
+# not_played writes the report of a bench that could not play, then stops
+# with exit 3: a scenario not played is never scored wrong.
 not_played() {
-  mkdir -p "${BENCH_DIR:=test/bench}"
-  report="${BENCH_DIR}/report-$(date -u +%Y-%m-%dT%H%MZ).json"
+  report="$(report_path)"
   jq -n --arg s "$ref" --arg commit "$(git rev-parse HEAD)" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg why "$1" \
-    '{scenario: $s, date: $date, commit: $commit, played: false, notPlayed: $why, n: 0, correct: null, runs: []}' >"$report"
+    '{scenario: $s, date: $date, commit: $commit, played: false, notPlayed: $why, n: 0, correct: null, totalCost: 0, runs: []}' >"$report"
   log "report: ${report}"
+  die_code=3
   die "${ref} not played: $1"
 }
 
@@ -184,6 +207,16 @@ done
 [[ -n "$(kubectl -n "$NS" get takecareinvestigations -l "takecare.agaetis.fr/alert-namespace=${APP_NS}" -o name)" ]] ||
   die "no investigation of ${APP_NS}: start the incident (make demo-incident) and wait for the alert"
 wait_settled "$SETTLE" || die "the incident's investigation did not settle in ${SETTLE} s"
+# The incident's own investigations are spent too: they count against the
+# cap, and their cost is the first guess of a run's.
+incident_cost="$(kubectl -n "$NS" get takecareinvestigations -l "takecare.agaetis.fr/alert-namespace=${APP_NS}" -o json | jq '
+  [.items[].status.usage.estimatedCost // empty | split(" ")[0] | tonumber] | add // 0')"
+total="$incident_cost"
+dearest="$incident_cost"
+stopped=""
+if [[ -n "$MAX_COST" ]] && jq -en --arg t "$total" --arg m "$MAX_COST" '($t | tonumber) * 2 > ($m | tonumber)' >/dev/null; then
+  die "the incident's investigation cost ${total} USD: a run more could pass the cap ${MAX_COST} USD"
+fi
 guards_before="$(hack/guardrail-counts.sh)" || die "the gateway's guardrail counters cannot be read"
 
 # The firing alert, copied for every run.
@@ -236,19 +269,33 @@ for i in $(seq "$N"); do
        durationSeconds: (if .status.completedAt then (.status.completedAt | secs) - (.spec.alert.firedAt | secs) else null end),
        modelCalls: .status.usage.modelCalls, inputTokens: .status.usage.inputTokens, outputTokens: .status.usage.outputTokens,
        cost: (.status.usage.estimatedCost // null | if . then (split(" ")[0] | tonumber) else null end)}' >>"$WORK/runs.jsonl"
-  log "run ${i}/${N}: $(tail -1 "$WORK/runs.jsonl" | jq -r '"\(.phase), correct \(.correct), \(.durationSeconds // "-") s"')"
+  log "run ${i}/${N}: $(tail -1 "$WORK/runs.jsonl" | jq -r '"\(.phase), correct \(.correct), \(.durationSeconds // "-") s, \(.cost // "no cost") USD"')"
+  cost="$(tail -1 "$WORK/runs.jsonl" | jq -r '.cost // ""')"
+  if [[ -n "$MAX_COST" && -z "$cost" ]]; then
+    stopped="run ${i}'s cost was not measured: the cap ${MAX_COST} USD cannot be held"
+    break
+  fi
+  total="$(jq -n --arg t "$total" --arg r "${cost:-0}" '($t | tonumber) + ($r | tonumber)')"
+  dearest="$(jq -n --arg d "$dearest" --arg r "${cost:-0}" '[($d | tonumber), ($r | tonumber)] | max')"
+  if [[ -n "$MAX_COST" ]] && ((i < N)) && jq -en --arg t "$total" --arg d "$dearest" --arg m "$MAX_COST" '($t | tonumber) + ($d | tonumber) > ($m | tonumber)' >/dev/null; then
+    stopped="stopped after run ${i}: ${total} USD spent, the next run could pass the cap ${MAX_COST} USD"
+    break
+  fi
 done
+[[ -z "$stopped" ]] || log "$stopped"
 
 model="$(kubectl get takecareplatform -o json | jq -r --arg m "$(kubectl -n "$NS" get takecaredoc "$DOC" -o jsonpath='{.spec.model.name}')" '
   .items[0].spec.models as $ms | ($ms | map(select(.name == $m)) | .[0]) // $ms[0] | .model')"
 guards_after="$(hack/guardrail-counts.sh)" || die "the gateway's guardrail counters cannot be read"
-mkdir -p "${BENCH_DIR:=test/bench}"
-report="${BENCH_DIR}/report-$(date -u +%Y-%m-%dT%H%MZ).json"
+report="$(report_path)"
 jq -s --arg ref "$ref" --arg model "$model" --arg commit "$(git rev-parse HEAD)" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --argjson before "$guards_before" --argjson after "$guards_after" '
+  --argjson before "$guards_before" --argjson after "$guards_after" --argjson planned "$N" \
+  --arg stopped "$stopped" --arg cap "$MAX_COST" --argjson incident "$incident_cost" '
   def median: map(select(. != null)) | sort | if length == 0 then null
     elif length % 2 == 1 then .[length / 2 | floor] else (.[length / 2 - 1] + .[length / 2]) / 2 end;
-  {scenario: $ref, date: $date, commit: $commit, model: $model, played: true, n: length,
+  {scenario: $ref, date: $date, commit: $commit, model: $model, played: true, n: length, planned: $planned,
+   incidentCost: $incident, totalCost: ($incident + (map(.cost // 0) | add // 0) | . * 10000 | round / 10000),
+   maxCost: (if $cap == "" then null else ($cap | tonumber) end), stopped: (if $stopped == "" then null else $stopped end),
    correct: map(select(.correct)) | length, causesNamed: map(select(.causesNamed)) | length,
    memoryLead: map(select(.memoryLead)) | length,
    evidence: (map(.evidence | to_entries[]) | group_by(.key) | map({key: .[0].key, value: map(select(.value)) | length}) | from_entries),
@@ -267,7 +314,7 @@ jq -r '
   "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   (.runs[] | "| \(.run) | \(.phase) | \(.correct) | \([.evidence | to_entries[] | select(.value) | .key] | join(", ") | if . == "" then "-" else . end) | \([.redHerrings | to_entries[] | select(.value != "absent") | "\(.key) \(.value)"] | join(", ") | if . == "" then "-" else . end) | \(.dangerous | join(", ") | if . == "" then "-" else . end) | \(.length) | \(.durationSeconds // "-") | \(.modelCalls // "-") | \(.inputTokens // "-") / \(.outputTokens // "-") | \(.cost // "-") |"),
   "",
-  "Correct: \(.correct)/\(.n) · causes named: \(.causesNamed)/\(.n) · memory lead: \(.memoryLead)/\(.n) · median duration \(.median.durationSeconds // "-") s · median model calls \(.median.modelCalls // "-") · median cost \(.median.cost // "-")",
+  "Correct: \(.correct)/\(.n)\(if .n < .planned then " (of \(.planned) planned)" else "" end) · causes named: \(.causesNamed)/\(.n) · memory lead: \(.memoryLead)/\(.n) · median duration \(.median.durationSeconds // "-") s · median model calls \(.median.modelCalls // "-") · median cost \(.median.cost // "-") · total cost \(.totalCost) USD with the incident investigation\(if .maxCost then " (cap \(.maxCost))" else "" end)",
   "",
   "Guardrail counters (phase/action: before → after): \([.guardrails.after[] as $a | "\($a.phase)/\($a.action) \((.guardrails.before[] | select(.phase == $a.phase and .action == $a.action) | .n) // 0) → \($a.n)"] | join(", "))"' "$report"
 if [[ -n "${BENCH_BASELINE:-}" ]]; then
