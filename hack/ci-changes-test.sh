@@ -6,9 +6,10 @@
 # pull request's commits on top of it, and the events the workflows pass.
 # A stub gh answers the previous head's check runs as GH_ANSWER says
 # (success by default) and that run's annotations as GH_RECORD says (the
-# pull request's first base by default), and fails on a call that does not
-# ask for this job's check at that head from GitHub Actions' app. HEAD is
-# the merge commit GitHub's checkout gives: the base, then the head.
+# base in RECORDED_BASE, the pull request's first base by default), and
+# fails on a call that does not ask for this job's check at that head from
+# GitHub Actions' app, every page of it. HEAD is the merge commit GitHub's
+# checkout gives: the base, then the head.
 set -euo pipefail
 
 script="$(git rev-parse --show-toplevel)/hack/ci-changes.sh"
@@ -33,16 +34,19 @@ if [[ "$args" == *"/check-runs/4242/annotations"* ]]; then
   case "${GH_RECORD:-same}" in
     same) echo "test (unit, golden, envtest) run: a file the go jobs read changed. Measured on base ${RECORDED}." ;;
     moved) echo "test (unit, golden, envtest) run: a file the go jobs read changed. Measured on base ${MOVED}." ;;
-    two) printf 'x. Measured on base %s.\ny. Measured on base %s.\n' "$RECORDED" "$MOVED" ;;
+    # Two records of the right base: refused for being two, not for a
+    # wrong base.
+    two) printf 'x. Measured on base %s.\ny. Measured on base %s.\n' "$RECORDED" "$RECORDED" ;;
     short) echo "x. Measured on base ${RECORDED:0:12}." ;;
     none) echo "x skipped: the rule of the whole pull request." ;;
     missing) ;;
-    error) echo "HTTP 403: Resource not accessible by integration" >&2; exit 1 ;;
+    # A right record on stdout, then a failure: refused for the failure.
+    error) echo "x. Measured on base ${RECORDED}."; echo "HTTP 502: Bad Gateway" >&2; exit 1 ;;
     *) exit 4 ;;
   esac
   exit 0
 fi
-for want in "api -X GET repos/acme/takecare/commits/${BEFORE}/check-runs" "check_name=${CHECK}" "filter=latest" "app_id=15368"; do
+for want in "api -X GET repos/acme/takecare/commits/${BEFORE}/check-runs" "check_name=${CHECK}" "filter=latest" "app_id=15368" "per_page=100" "--paginate"; do
   if [[ "$args" != *"$want"* ]]; then
     echo "stub gh: '${want}' not in '${args}'" >&2
     exit 3
@@ -78,10 +82,12 @@ failed=0
 notes="$(mktemp)"
 summary="$(mktemp)"
 trap 'rm -rf "$repo" "$stubs" "$notes" "$summary"' EXIT
-# merge PARENT AFTER: the merge commit of PARENT and AFTER, with AFTER's
-# tree (PARENT is AFTER's ancestor, or its tree does not matter).
+# merge PARENT AFTER: the merge commit of PARENT and AFTER, with the tree
+# git merges them to (conflict markers included, as the test needs a HEAD).
 merge() {
-  git commit-tree -p "$1" -p "$2" -m "merge" "$(git rev-parse "${2}^{tree}")"
+  local tree
+  tree="$({ git merge-tree --write-tree "$1" "$2" || true; } | head -1)"
+  git commit-tree -p "$1" -p "$2" -m "merge" "$tree"
 }
 # check NAME WANT PROFILE ACTION BEFORE AFTER: WANT is true, false or fail.
 # HEAD is the merge of MERGE_PARENT (the base by default) and MERGE_HEAD
@@ -92,7 +98,7 @@ check() {
   [[ "${MERGE_HEAD:-$6}" == "$parent" ]] || head="$(merge "$parent" "${MERGE_HEAD:-$6}")"
   : >"$summary"
   out="$(PATH="${stubs}:${PATH}" EVENT="${EVENT:-pull_request}" ACTION="$4" BASE="${BASE-$base}" BEFORE="$5" AFTER="$6" HEAD="$head" \
-    CHECK="${CHECK-test (unit, golden, envtest)}" REPO="${REPO-acme/takecare}" RECORDED="$base" MOVED="$moved" \
+    CHECK="${CHECK-test (unit, golden, envtest)}" REPO="${REPO-acme/takecare}" RECORDED="${RECORDED_BASE:-$base}" MOVED="$moved" \
     GITHUB_STEP_SUMMARY="$summary" "$script" "$3" 2>"$notes")" || rc=$?
   if [[ $rc -ne 0 ]]; then got=fail; else got="${out#heavy=}"; fi
   if [[ "$got" == "$2" ]]; then echo "PASS  $1"; else echo "FAIL  $1: want ${2}, got ${got} (exit ${rc}, '${out}')"; failed=1; fi
@@ -129,6 +135,10 @@ silent "a run writes nothing in the job's summary" "$summary"
 GH_RECORD=moved check "a bench report pushed after a green Go push on another base runs the Go jobs" true go synchronize "$go" "$bench"
 for record in two short none missing error; do
   GH_RECORD="$record" check "a bench report pushed after a green Go push whose base record is ${record} runs the Go jobs" true go synchronize "$go" "$bench"
+  case "$record" in
+    two | short | none | missing) says "a base record that is ${record} is refused as no single base" 'recorded no single base' "$notes" ;;
+    error) says "a base record that fails to read is refused as unread" 'annotations could not be read' "$notes" ;;
+  esac
 done
 MERGE_HEAD="$go" check "a bench report pushed with HEAD not a merge of the pushed head runs the Go jobs" true go synchronize "$go" "$bench"
 CHECK="" check "a bench report pushed with no check name runs the Go jobs" true go synchronize "$go" "$bench"
@@ -158,6 +168,30 @@ prev="$(git rev-parse HEAD)"
 git commit -q --allow-empty -m "nothing"
 check "a push that changes no file: the whole pull request decides" true go synchronize "$prev" "$(git rev-parse HEAD)"
 check "an unknown previous head: the whole pull request decides" true go synchronize 0123456789abcdef0123456789abcdef01234567 "$(git rev-parse HEAD)"
+
+# The base moved under a Go pull request, and the previous head's run
+# tested its merge with the new base. BEFORE to AFTER alone only shows
+# docs when the base is merged in with "-s ours": the merged tree drops
+# the base's change, and the push rule must see it.
+git checkout -q -b main2 "$base"
+main2="$(commit internal/a.go)"
+git checkout -q -b pr2 "$base"
+pr2="$(commit internal/b.go)"
+docs2="$(commit docs/b.md)"
+MERGE_PARENT="$main2" BASE="$main2" RECORDED_BASE="$main2" \
+  check "a docs push on a Go pull request whose base moved, green on that base, skips the Go jobs" false go synchronize "$pr2" "$docs2"
+says "that skip is the rule of the push" 'skipped: the rule of this push' "$notes"
+git merge -q -s ours --no-edit "$main2"
+dropped="$(commit docs/c.md)"
+MERGE_PARENT="$main2" BASE="$main2" RECORDED_BASE="$main2" \
+  check "a docs push over a merge of the base that drops its change runs the Go jobs" true go synchronize "$docs2" "$dropped"
+says "that run names the dropped change" 'not ignorable: internal/a\.go' "$notes"
+git checkout -q -b pr3 "$base"
+pr3="$(commit internal/a.go)"
+docs3="$(commit docs/d.md)"
+MERGE_PARENT="$main2" BASE="$main2" RECORDED_BASE="$main2" \
+  check "a docs push whose previous head conflicts with the base runs the Go jobs" true go synchronize "$pr3" "$docs3"
+says "a conflict leaves the whole pull request to decide" 'fails or conflicts: the whole pull request decides' "$notes"
 
 git checkout -q -b docs-only "$base"
 d1="$(commit docs/a.md)"

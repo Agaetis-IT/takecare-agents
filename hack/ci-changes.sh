@@ -21,21 +21,26 @@
 #   site     bench reports, docs/** and the root's *.md but CHANGELOG.md,
 #            which the site's build reads.
 #
-# Any other path runs the job. The files of this push are those from
-# BEFORE to AFTER on a synchronize, the whole pull request's otherwise
-# (opened, reopened). The rule of this push applies only when the same
-# job (the check run named CHECK, by GitHub Actions) concluded success at
-# BEFORE, read from the GitHub API with gh and the job's token (checks:
-# read), and measured the same base as this run: a skip then stands on a
-# head and a base this job checked. Each run records its base in a notice
-# annotation (title ci-changes, "Measured on base <sha>."), the parent of
-# the merge commit the checkout gives beside AFTER; the next run reads it
-# back from the previous run's annotations. A run failed, cancelled,
-# still running or missing at BEFORE, a base not recorded there or not
-# the same as this run's (the base branch moved), an API error, no CHECK
-# or REPO, BEFORE not in the clone (a force push), HEAD not a merge of
-# AFTER, or a range that changes no file: only the whole pull request's
-# rule applies. The whole pull request's files are those from BASE to
+# Any other path runs the job. On a synchronize, the files of this push
+# are those that differ between the tree the previous head's run tested
+# and HEAD; the whole pull request's otherwise (opened, reopened). The
+# rule of this push applies only when the same job (the check run named
+# CHECK, by GitHub Actions) concluded success at BEFORE, read from the
+# GitHub API with gh and the job's token (checks: read), and measured the
+# same base as this run. Each run records its base in a notice annotation
+# (title ci-changes, "Measured on base <sha>."), the parent of the merge
+# commit the checkout gives beside AFTER; the next run reads it back from
+# the previous run's annotations. The tree that run tested is then
+# rebuilt as the merge of that base and BEFORE (git merge-tree), and
+# compared with HEAD: a skip stands on a tree this job checked, even when
+# BEFORE to AFTER alone looks like docs (a merge of the base that drops
+# its changes, "-s ours" or a soft reset, does not show there). A run
+# failed, cancelled, still running or missing at BEFORE, a base not
+# recorded there or not the same as this run's (the base branch moved),
+# an API error, no CHECK or REPO, BEFORE not in the clone (a force push),
+# HEAD not a merge of AFTER, a merge of the base and BEFORE that fails or
+# conflicts, or no file changed since that tree: only the whole pull
+# request's rule applies. The whole pull request's files are those from BASE to
 # HEAD (default HEAD, the merge commit the checkout gives). It fails,
 # instead of skipping, when it cannot tell: no base, a diff that fails,
 # or no changed file at all. Renames count as a deletion and an addition.
@@ -139,7 +144,7 @@ previous_green() {
     return 1
   fi
   if ! runs="$(gh api -X GET "repos/${REPO}/commits/${BEFORE}/check-runs" \
-    -f check_name="$CHECK" -f filter=latest -f app_id="$actions_app_id" \
+    -f check_name="$CHECK" -f filter=latest -f app_id="$actions_app_id" -f per_page=100 --paginate \
     --jq '.check_runs[] | "\(.id)\t\(.name)\t\(.status)\t\(.conclusion)"')"; then
     echo "ci-changes: the previous head's runs could not be read" >&2
     return 1
@@ -195,9 +200,14 @@ if [[ "${ACTION:-}" == synchronize && -n "${BEFORE:-}" && -n "${AFTER:-}" ]]; th
     echo "ci-changes: the previous head ${BEFORE} is not in the clone (a force push?): the whole pull request decides" >&2
   elif ! previous_green; then
     echo "ci-changes: this job did not pass at the previous head ${BEFORE} on this base: the whole pull request decides" >&2
+  # The tree the previous head's run tested: the merge of the base it
+  # recorded, which is this run's, and BEFORE. A conflict, or any other
+  # failure, leaves no tree to compare.
+  elif ! tested="$(git merge-tree --write-tree --no-messages "$measured_base" "$BEFORE" 2>/dev/null)"; then
+    echo "ci-changes: the merge of the base and the previous head ${BEFORE} fails or conflicts: the whole pull request decides" >&2
   else
-    push="$(git diff --no-renames --name-only "$BEFORE" "$AFTER")"
-    [[ -n "$push" ]] || echo "ci-changes: this push changes no file: the whole pull request decides" >&2
+    push="$(git diff --no-renames --name-only "${tested%%$'\n'*}" "$head")"
+    [[ -n "$push" ]] || echo "ci-changes: no file changed since the tree the previous head's run tested: the whole pull request decides" >&2
   fi
 else
   push="$pr"
