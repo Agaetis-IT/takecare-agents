@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/agaetis-it/takecare-agents/test/scenarios/schema.json",
+  "title": "TakeCare scenario",
+  "description": "A fault on a ground, with what a role should find (spec 14). One file per scenario, test/scenarios/<id>.yaml. Every field is required: an empty list or none is written out.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "id", "version", "title", "ground", "variant", "fault", "causes", "evidence", "blindSpots", "safeAction", "passes", "cutoff", "reserved"],
+  "properties": {
+    "apiVersion": { "const": "takecare.agaetis.fr/scenario/v1alpha1" },
+    "kind": { "const": "Scenario" },
+    "id": {
+      "description": "A DNS label, unique across the set, stable for the scenario's life (spec 14 §3.1).",
+      "$ref": "#/$defs/label"
+    },
+    "version": {
+      "description": "Raised by every change that can change a score (spec 14 §3.1).",
+      "type": "integer",
+      "minimum": 1
+    },
+    "title": { "$ref": "#/$defs/text" },
+    "ground": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "map", "connectors"],
+      "properties": {
+        "type": {
+          "description": "The ground's kind (ADR 0018); only kubernetes is playable today.",
+          "enum": ["kubernetes", "azure", "aws", "vsphere", "url"]
+        },
+        "map": {
+          "description": "The Map the scenario's keys live in.",
+          "$ref": "#/$defs/label"
+        },
+        "connectors": {
+          "description": "The connector types the role must be bound to for the scenario to be fair (spec 05).",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["cluster", "metrics", "logs", "knowledge", "changes", "tickets", "report", "map", "history", "cloud"] }
+        }
+      }
+    },
+    "variant": { "enum": ["simple", "noise", "mute-source", "two-faults", "false-alarm"] },
+    "fault": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "injection", "signals"],
+      "properties": {
+        "summary": { "$ref": "#/$defs/text" },
+        "injection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "driver", "steps"],
+          "properties": {
+            "mode": { "enum": ["live", "replay"] },
+            "driver": { "$ref": "#/$defs/label" },
+            "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/text" } }
+          }
+        },
+        "signals": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["trigger", "alerts", "window"],
+          "properties": {
+            "trigger": { "enum": ["alert", "onDemand"] },
+            "alerts": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }
+            },
+            "window": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["from", "to"],
+              "properties": {
+                "from": { "$ref": "#/$defs/duration" },
+                "to": { "$ref": "#/$defs/duration" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "causes": {
+      "description": "One cause, two for two-faults, or none for a false-alarm (spec 14 §3.5).",
+      "oneOf": [
+        { "const": "none" },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["entity", "with", "statement", "match"],
+            "properties": {
+              "entity": { "$ref": "#/$defs/mapKey" },
+              "with": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/mapKey" } },
+              "statement": { "$ref": "#/$defs/text" },
+              "match": { "$ref": "#/$defs/matcher" }
+            }
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected", "redHerrings"],
+      "properties": {
+        "expected": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "match"],
+            "properties": {
+              "id": { "$ref": "#/$defs/label" },
+              "match": { "$ref": "#/$defs/matcher" }
+            }
+          }
+        },
+        "redHerrings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "lure", "match"],
+            "properties": {
+              "id": { "$ref": "#/$defs/label" },
+              "lure": { "$ref": "#/$defs/text" },
+              "match": { "$ref": "#/$defs/matcher" },
+              "concluded": {
+                "description": "Optional: the diagnosis gives the lead as the cause or acts on it (pattern-based, spec 14 §3.6).",
+                "$ref": "#/$defs/matcher"
+              }
+            }
+          }
+        }
+      }
+    },
+    "blindSpots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "reason", "mustDeclare"],
+        "properties": {
+          "key": { "$ref": "#/$defs/mapKey" },
+          "reason": { "enum": ["NoAccess", "ConnectorNotReady", "NotInMap", "NotValidated", "Excluded"] },
+          "mustDeclare": { "type": "boolean" }
+        }
+      }
+    },
+    "safeAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "remedy", "dangerous"],
+      "properties": {
+        "class": {
+          "description": "The highest class of action the scenario allows (spec 14 §3.8).",
+          "$ref": "#/$defs/actionClass"
+        },
+        "remedy": { "$ref": "#/$defs/text" },
+        "dangerous": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "match"],
+            "properties": {
+              "id": { "$ref": "#/$defs/label" },
+              "match": { "$ref": "#/$defs/matcher" }
+            }
+          }
+        }
+      }
+    },
+    "passes": { "type": "integer", "minimum": 1 },
+    "cutoff": {
+      "description": "none for a live scenario; the time past which nothing exists for a replay (spec 14 §3.10).",
+      "oneOf": [
+        { "const": "none" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["at", "excluded"],
+          "properties": {
+            "at": {
+              "anyOf": [
+                { "const": "alert" },
+                { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$" }
+              ]
+            },
+            "excluded": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/label" } }
+          }
+        }
+      ]
+    },
+    "reserved": {
+      "description": "Never used to tune the agents; refused under test/scenarios/ (spec 14 §3.11).",
+      "type": "boolean"
+    }
+  },
+  "$defs": {
+    "label": { "type": "string", "pattern": "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$" },
+    "text": { "type": "string", "minLength": 1 },
+    "duration": {
+      "description": "A Go duration, for example 2m or 3m30s.",
+      "type": "string",
+      "pattern": "^([0-9]+(\\.[0-9]+)?(h|m|s|ms))+$"
+    },
+    "mapKey": {
+      "description": "<type>/<name>, a key of the scenario's Map (spec 08).",
+      "type": "string",
+      "pattern": "^[a-z]+/[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"
+    },
+    "actionClass": { "enum": ["none", "reversible", "disruptive", "destructive"] },
+    "patterns": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "matcher": {
+      "description": "What says a diagnosis shows a finding (spec 14 §3.6). Exactly one kind.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text"],
+          "properties": {
+            "text": {
+              "description": "Go regular expressions, case-insensitive, on the diagnosis: every all, at least one any (when given), no none.",
+              "type": "object",
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "all": { "$ref": "#/$defs/patterns" },
+                "any": { "$ref": "#/$defs/patterns" },
+                "none": { "$ref": "#/$defs/patterns" }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["record"],
+          "properties": {
+            "record": {
+              "description": "<connector>/<id>: the diagnosis cites the record's id.",
+              "type": "string",
+              "pattern": "^[a-z0-9-]+/[A-Za-z0-9][A-Za-z0-9._-]*$"
+            },
+            "requiresContent": {
+              "description": "Also look in the tool results; needs a bench run with content capture on.",
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["entity"],
+          "properties": { "entity": { "$ref": "#/$defs/mapKey" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tool"],
+          "properties": {
+            "tool": { "type": "string", "minLength": 1 },
+            "args": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["allOf"],
+          "properties": { "allOf": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/matcher" } } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["anyOf"],
+          "properties": { "anyOf": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/matcher" } } }
+        }
+      ]
+    }
+  }
+}
