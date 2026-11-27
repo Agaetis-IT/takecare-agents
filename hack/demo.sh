@@ -278,7 +278,35 @@ published: {.status.published}
       echo "usage: not recorded ${USAGE_WAIT_SECONDS} s after the end (kubectl -n ${NS} get takecareinvestigation ${inv} -o yaml)"
       ;;
   esac
+  scenario_verdict "$inv"
   review_verdict "$inv"
+}
+
+# scenario_verdict INV prints the verdict lines of the demo's scenario on
+# the investigation: its file's causes, evidence, red herrings and
+# dangerous actions (spec 14), scored by the scenario player.
+scenario_verdict() {
+  local scenario file tmp
+  scenario="$(demo_field '{.spec.scenario}')"
+  file="test/scenarios/${scenario}.yaml"
+  echo
+  if [[ ! -f "$file" ]]; then
+    echo "verdict: no scenario file ${file}"
+    return 0
+  fi
+  if ! command -v go >/dev/null; then
+    echo "verdict: not scored, the scenario player needs Go"
+    return 0
+  fi
+  tmp="$(mktemp)"
+  if ! kubectl -n "$NS" get takecareinvestigation "$1" -o json >"$tmp"; then
+    rm -f "$tmp"
+    echo "verdict: not scored, the investigation ${1} cannot be read"
+    return 0
+  fi
+  go run ./test/scenarios/player score -scenario "$file" -investigation "$tmp" -format text ||
+    echo "verdict: the scenario player failed (above)"
+  rm -f "$tmp"
 }
 
 # review_verdict INV waits for the demo Kiné's review naming the

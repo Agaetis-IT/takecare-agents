@@ -98,6 +98,45 @@ reverse path order, so this file, last by name, is evaluated first.
 {{- end }}
 {{- end }}
 {{- end }}
+{{- with .Values.addons.codePropose }}
+{{- if .enabled }}
+{{- if not (dig "tokenSecret" "name" "" .) }}
+{{- fail "addons.codePropose.tokenSecret.name is REQUIRED: the Secret holding one write token per repository" }}
+{{- end }}
+{{- $n := len .repositories }}
+{{- if or (lt $n 1) (gt $n 16) }}
+{{- fail "addons.codePropose.repositories is REQUIRED: 1 to 16 repositories the propose server may open pull requests on" }}
+{{- end }}
+{{- $seen := dict }}
+{{- $keys := dict }}
+{{- range .repositories }}
+{{- $repo := .repository | default "" }}
+{{- if not (and (regexMatch "^[A-Za-z0-9_.-]*[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_.-]*[A-Za-z0-9_-][A-Za-z0-9_.-]*)+$" $repo) (not (hasSuffix ".git" $repo)) (le (len $repo) 255)) }}
+{{- fail (printf "addons.codePropose.repositories[].repository %q: owner/name on GitHub, the project's full path on GitLab, without a . or .. segment or a .git suffix" $repo) }}
+{{- end }}
+{{- if not (has .forge (list "github" "gitlab")) }}
+{{- fail (printf "addons.codePropose.repositories[%s].forge is REQUIRED: github or gitlab" $repo) }}
+{{- end }}
+{{- if and (eq .forge "github") (ne (len (splitList "/" $repo)) 2) }}
+{{- fail (printf "addons.codePropose.repositories[%s].repository: owner/name on GitHub" $repo) }}
+{{- end }}
+{{- if not (and (regexMatch "^https://[^\\s/?#@]+(/[^\\s?#]*)?$" (.apiURL | default "")) (le (len (.apiURL | default "")) 2048)) }}
+{{- fail (printf "addons.codePropose.repositories[%s].apiURL is REQUIRED: the forge's REST API, https, without user information, query or fragment" $repo) }}
+{{- end }}
+{{- if not (regexMatch "^[-._a-zA-Z0-9]{1,253}$" (.tokenKey | default "")) }}
+{{- fail (printf "addons.codePropose.repositories[%s].tokenKey is REQUIRED: the repository's key in tokenSecret" $repo) }}
+{{- end }}
+{{- if hasKey $seen $repo }}
+{{- fail (printf "addons.codePropose.repositories: %s is listed twice" $repo) }}
+{{- end }}
+{{- if hasKey $keys .tokenKey }}
+{{- fail (printf "addons.codePropose.repositories: tokenKey %s is used twice: one token per repository" .tokenKey) }}
+{{- end }}
+{{- $_ := set $seen $repo true }}
+{{- $_ := set $keys .tokenKey true }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- if and .Values.addons.reportSlack.enabled .Values.addons.reportLog.enabled }}
 {{- fail "addons.reportSlack and addons.reportLog are exclusive: one report connector" }}
 {{- end }}

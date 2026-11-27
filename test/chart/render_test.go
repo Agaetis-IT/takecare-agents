@@ -21,8 +21,10 @@ import (
 	"strings"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -164,10 +166,14 @@ func TestRenderedPlatformAgainstTheCRD(t *testing.T) {
 		name    string
 		args    []string
 		wantErr string
+		// connectors are rendered TakeCareConnectors checked as well.
+		connectors []string
 	}{
-		{"demo profile is complete", profileArgs("demo"), ""},
+		{"demo profile is complete", profileArgs("demo"), "", nil},
 		{"prod profile with its REQUIRED values set", append(append(profileArgs("prod"), prodSets...),
-			flagSet, "platform.observability.metrics.prometheusURL=http://prometheus.monitoring.svc"), ""},
+			flagSet, "platform.observability.metrics.prometheusURL=http://prometheus.monitoring.svc"), "", nil},
+		{"prod profile with the code and propose add-ons", append(append(codeValues(t, ""), proposeValues(t, "")[len(prodArgs()):]...),
+			flagSet, "platform.observability.metrics.prometheusURL=http://prometheus.monitoring.svc"), "", []string{codeConnector, proposeConnector}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -188,6 +194,21 @@ func TestRenderedPlatformAgainstTheCRD(t *testing.T) {
 				case tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)):
 					t.Fatalf("want a rejection mentioning %q, got %v", tt.wantErr, err)
 				}
+			}
+			for _, name := range tt.connectors {
+				ns := &corev1.Namespace{Name: releaseNamespace}
+				if err := c.Create(ctx, ns); err != nil && !apierrors.IsAlreadyExists(err) {
+					t.Fatal(err)
+				}
+				i := slices.IndexFunc(ofKind(objs, kindConnector), func(o *unstructured.Unstructured) bool { return o.GetName() == name })
+				if i < 0 {
+					t.Fatalf("no TakeCareConnector %s rendered", name)
+				}
+				conn := ofKind(objs, kindConnector)[i]
+				if err := c.Create(ctx, conn); err != nil {
+					t.Fatalf("the rendered TakeCareConnector %s is rejected by its CRD: %v", name, err)
+				}
+				t.Cleanup(func() { _ = c.Delete(ctx, conn) })
 			}
 		})
 	}
