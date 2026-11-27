@@ -554,14 +554,17 @@ addons:
     contentTools: []
     # -- Tool overrides (spec 05), as for the kubernetes add-on.
     tools: []
-    # -- Requests and limits of the releases server container. It reads a
-    # Helm index.yaml of 16 MiB at most, one at a time.
+    # -- Requests and limits of the releases server container. It streams
+    # a Helm index.yaml of 16 MiB at most, one at a time server-wide, and
+    # decodes only the asked chart's entries, 4 MiB at most (about 75 MiB
+    # of heap at that bound), well under the limit.
     resources:
       requests: { cpu: 10m, memory: 32Mi }
       limits: { memory: 256Mi }
-    # -- The cache: each (source, name) refreshed at most once per refresh;
-    # a failed refresh keeps the last answer, stale, until staleMax, then
-    # drops it; at most maxEntries names (up to 4096).
+    # -- The cache: each (source, name) refreshed at most once per refresh
+    # after an answer; a failed fetch is retried after 15 min, 30 min, then
+    # once an hour at most, and keeps the last answer, stale, until
+    # staleMax, then drops it; at most maxEntries names (up to 4096).
     cache:
       refresh: 24h
       staleMax: 168h
@@ -573,10 +576,11 @@ addons:
     # of its index.yaml, a forge's API `https://api.github.com` or
     # `https://gitlab.com/api/v4`, `https://endoflife.date/api/v1`),
     # authHost (oci only: the token realm's host when the registry names
-    # another, `auth.docker.io` for Docker Hub), tokenSecretRef {name, key:
-    # token, username} (a read token mounted on this pod only; with a
-    # username, sent as basic credentials, oci and helm only; else Bearer,
-    # PRIVATE-TOKEN on GitLab), components [{match, name}] (match: a Map
+    # another, `auth.docker.io` for Docker Hub, called on port 443),
+    # tokenSecretRef {name, key: token, username} (a read token mounted on
+    # this pod only; with a username, sent as basic credentials, oci and
+    # helm only, and the one way a token reaches an oci token realm; else
+    # Bearer to the registry only, PRIVATE-TOKEN on GitLab), components [{match, name}] (match: a Map
     # key, an image repository or a chart name; name: this source's name for
     # it; required on github, gitlab and endoflife, whose only names they
     # are)}. A helm source on oci:// is refused: use an oci source.
