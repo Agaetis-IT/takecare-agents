@@ -55,8 +55,8 @@ func TestRunRefusals(t *testing.T) {
 	if err := run([]string{"-h"}); err != nil {
 		t.Errorf("run(-h) = %v, want nil", err)
 	}
-	if err := run([]string{"--mode=propose"}); err == nil || !strings.Contains(err.Error(), "read is the only mode") {
-		t.Errorf("run(--mode=propose) = %v, want refused", err)
+	if err := run([]string{"--mode=write"}); err == nil || !strings.Contains(err.Error(), "read or propose") {
+		t.Errorf("run(--mode=write) = %v, want refused", err)
 	}
 	if err := run([]string{"--repositories-file=" + filepath.Join(t.TempDir(), "none.json")}); err == nil {
 		t.Error("a missing repositories file is accepted")
