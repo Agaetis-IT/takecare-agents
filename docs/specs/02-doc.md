@@ -90,10 +90,12 @@ status:
   published: { connector: report, destination: on-call, ok: true }
   usage: { modelCalls: 7, inputTokens: 41250, cachedInputTokens: 30200, outputTokens: 1310, estimatedCost: "0.0093 USD", approximate: false }
   traceID: 4bf92f3577b34da6a3ce929d0e0e4736
+  confidence: High                     # High | Medium | Low | Unstated (§4, Confidence)
+  confidenceCapped: false              # true when a stated High was recorded Medium
   resolvedAt: null
 ```
 
-Printer columns: `ALERT`, `PHASE`, `PUBLISHED`, `AGE`. Ended investigations are kept 90 days, at most 2000 of them, the oldest ended going first past that count; both are chart values (spec 11 §5).
+Printer columns: `ALERT`, `PHASE`, `PUBLISHED`, `CONFIDENCE`, `AGE`. Ended investigations are kept 90 days, at most 2000 of them, the oldest ended going first past that count; both are chart values (spec 11 §5).
 
 ## Flow
 
@@ -201,10 +203,12 @@ The Doc has no RBAC of its own: it reads the cluster through its `cluster` conne
 - **Message** (the `slack` adapter renders Block Kit; the `log` adapter renders the same content as text), in English:
   - header: `Doc · {alertname} on {service}`;
   - body: the diagnosis, unchanged;
-  - context line: time since the alert, model calls, tokens, estimated cost, trace ID;
+  - context line: time since the alert, the recorded confidence (`confidence high`, with `(capped from high: the alert is in a blind spot)` when capped), model calls, tokens, estimated cost, trace ID;
   - when alerts of the same incident were folded into the investigation after its run started, one line says so: `2 other alerts of the same incident, not passed to the investigation: PodNotReady, …`, so that the on-call reader is not left wondering about an alert they saw;
   - at the `Apprentice` level, a banner: `Apprentice: shadow diagnosis, no one was paged by TakeCare.`
 - Failures are retried 3 times with backoff, or the report server's `Retry-After` when longer, within 3 minutes, which bound how long the publication holds the investigation's slot; a `Retry-After` that would end past that bound ends the publication at once. Every attempt carries the investigation's identity as the idempotency key, so that a retry does not post again what the report server already delivered (spec 05, "Publishing once", says when it still can). A refusal the server marks not retryable (a channel not found, a revoked token) is not retried. A final failure is recorded (`published: { ok: false, reason }`, naming Slack's error) and as a warning event.
+
+- **Confidence**: the message asks the Doc to end its answer with one line in fixed English tokens, whatever the language of the answer: `Confidence: high|medium|low — <why in one sentence>`. High: the root cause rests on evidence the Doc read and the obvious leads are ruled out; medium: a link of the chain is inferred, not read; low: the sources do not allow a conclusion, or a needed source could not be read. When the investigation completes, the operator reads the last non-empty line of the answer into `status.confidence` (`High`, `Medium`, `Low`, or `Unstated` when that line states none; Markdown emphasis is tolerated, a translated token is not). A stated `High` is recorded `Medium`, with `confidenceCapped: true`, when the alert's Map entry or the environment entry of its namespace is one of the Doc's blind spots: the Doc could not read everything the alert is about. The diagnosis stays the agent's answer, unchanged. The confidence is measured only: it changes neither whether nor where the diagnosis is published.
 
 ### 5. Cost and usage
 
@@ -216,7 +220,7 @@ The Doc has no RBAC of its own: it reads the cluster through its `cluster` conne
 
 ### 6. Telemetry (ADR 0006)
 
-- Root span `invoke_agent doc`, from alert acceptance to publication. Attributes: `gen_ai.operation.name=invoke_agent`, `gen_ai.agent.name=doc`, `gen_ai.agent.id=<TakeCareDoc UID>`, `gen_ai.conversation.id=<investigation name>`, `gen_ai.provider.name`, `gen_ai.request.model`, `takecare.role=doc`, `takecare.level`, `takecare.alert.name`, `takecare.alert.fingerprint`.
+- Root span `invoke_agent doc`, from alert acceptance to publication. Attributes: `gen_ai.operation.name=invoke_agent`, `gen_ai.agent.name=doc`, `gen_ai.agent.id=<TakeCareDoc UID>`, `gen_ai.conversation.id=<investigation name>`, `gen_ai.provider.name`, `gen_ai.request.model`, `takecare.role=doc`, `takecare.level`, `takecare.alert.name`, `takecare.alert.fingerprint`, and on a completed run `takecare.confidence` (`high`, `medium`, `low`, `unstated`, as recorded).
 - Span events: `alert.accepted`, `investigation.started`, `investigation.completed`, `diagnosis.published`.
 - The A2A call carries `traceparent`; kagent's spans, the gateway's `chat` spans and the MCP servers' spans should join the trace (spike 001 checks where the chain breaks; fallback: correlation by `gen_ai.conversation.id`).
 - kagent keeps each run as a session in its database, with its events (prompts, tool calls and results, answers) and its task; `captureContent` governs the traces, not that database. The chart sets kagent's `sessionRetentionDays` to 30: a session idle for 30 days (counted from its last write) is deleted with its events and tasks by kagent's daily cleanup, for every agent of that kagent.
@@ -256,7 +260,7 @@ A misconfigured Doc (`BlindSpots` with nothing covered, `ConnectorMissing`: a bo
 
 ## Metrics (operator)
 
-`takecare_alerts_received_total`, `takecare_alerts_ignored_total{reason}`, `takecare_alerts_resolved_total{result}` (`hit`, `miss`, `unavailable`, `none`), `takecare_investigations_total{role,phase}`, `takecare_investigation_duration_seconds{role}` (alert accepted to diagnosis published), `takecare_runs_total{role,outcome}` (`completed`, `failed`, `failed_after_answer`, `lost`, `timed_out`), `takecare_run_cancels_total{role,result}` (`canceled`, `unsupported`, `finished`, `error`).
+`takecare_alerts_received_total`, `takecare_alerts_ignored_total{reason}`, `takecare_alerts_resolved_total{result}` (`hit`, `miss`, `unavailable`, `none`), `takecare_investigations_total{role,phase}`, `takecare_investigations_confidence_total{role,level}` (completed investigations by recorded confidence: `high`, `medium`, `low`, `unstated`), `takecare_investigation_duration_seconds{role}` (alert accepted to diagnosis published), `takecare_runs_total{role,outcome}` (`completed`, `failed`, `failed_after_answer`, `lost`, `timed_out`), `takecare_run_cancels_total{role,result}` (`canceled`, `unsupported`, `finished`, `error`).
 
 ## Acceptance criteria
 
