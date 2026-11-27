@@ -299,7 +299,11 @@ scenario_verdict() {
     return 0
   fi
   tmp="$(mktemp)"
-  kubectl -n "$NS" get takecareinvestigation "$1" -o json >"$tmp"
+  if ! kubectl -n "$NS" get takecareinvestigation "$1" -o json >"$tmp"; then
+    rm -f "$tmp"
+    echo "verdict: not scored, the investigation ${1} cannot be read"
+    return 0
+  fi
   go run ./test/scenarios/player score -scenario "$file" -investigation "$tmp" -format text ||
     echo "verdict: the scenario player failed (above)"
   rm -f "$tmp"
