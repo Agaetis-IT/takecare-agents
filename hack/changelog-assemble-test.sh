@@ -111,9 +111,25 @@ fresh worddate
 printf 'Added\n\n- An entry decided on 27 November.\n' >"${tmp}/worddate/fragments/x.md"
 refuse worddate "no date" 0.6.0 2026-12-01
 
+fresh decidedby
+printf 'Added\n\n- An entry, decided by the product owner on 2026-11-27.\n' >"${tmp}/decidedby/fragments/x.md"
+refuse decidedby "no date" 0.6.0 2026-12-01
+
+fresh agreed
+printf 'Changed\n\n- A first sentence. The rule was agreed in November 2026, so it applies.\n' >"${tmp}/agreed/fragments/x.md"
+refuse agreed "no date" 0.6.0 2026-12-01
+
+fresh go
+printf 'Changed\n\n- A rule, applied since the go of 2026-11-27.\n' >"${tmp}/go/fragments/x.md"
+refuse go "no date" 0.6.0 2026-12-01
+
 fresh name
 printf 'Added\n\n- An entry, decided by Jane Doe.\n' >"${tmp}/name/fragments/x.md"
 refuse name "never a person's name" 0.6.0 2026-12-01
+
+fresh heading
+printf 'Added\n\n- An entry.\n\n## A heading\n' >"${tmp}/heading/fragments/x.md"
+refuse heading "no heading" 0.6.0 2026-12-01
 
 fresh stray
 printf 'Added: an entry\n' >"${tmp}/stray/fragments/x.txt"
@@ -146,6 +162,24 @@ fi
 if ! out="$("$check" --fragments "${root}/changes/unreleased" 2>&1)"; then
   fail "--fragments refused changes/unreleased: ${out}"
 fi
+
+# A date that does not date a decision is a fact of the entry: a
+# protocol revision, a bench, a release; and a decision without a date.
+# accept NAME TEXT: the fragment "Changed", then TEXT, is accepted.
+accept() {
+  local name="$1" text="$2" out
+  ran=$((ran + 1))
+  mkdir -p "${tmp}/accept-${name}"
+  printf 'Changed\n\n%s\n' "$text" >"${tmp}/accept-${name}/x.md"
+  if ! out="$("$check" --fragments "${tmp}/accept-${name}" 2>&1)"; then
+    fail "accept ${name}: refused: ${out}"
+  fi
+}
+accept protocol '- The MCP client speaks the protocol revision `2025-11-25`.'
+accept bench '- The Doc answers faster than in the benches of 2026-11-14.'
+accept split '- Decided by the product owner. The benches of 2026-11-14 stand.'
+accept undated '- A rule decided by the product owner, agreed by the maintainers.'
+accept going '- The Doc keeps going on 27 November, like the Go 1.25 toolchain.'
 
 # 5. The pull request's rule, on name-status diffs.
 # rule NAME WANT(pass|fail) DIFF

@@ -7,7 +7,8 @@ A pull request with a user-visible change does not edit `CHANGELOG.md`: it adds 
 - One file per pull request, named after the branch's topic: `mecano-propose.md` for `feat/mecano-propose`. A pull request with entries in two sections writes two files, `mecano-propose.md` and `mecano-propose-fixed.md`.
 - Its first line is the section, alone: `Added`, `Changed`, `Fixed`, `Removed`, `Security` or `Upgrade note`.
 - Then the entry, written exactly as an entry of `CHANGELOG.md`: one or more list items (a line starting with a hyphen and a space), each a paragraph on one line.
-- No person's name and no date: write "decided by the product owner", never who or when.
+- No person's name and no date on a decision: write "decided by the product owner", never who or when. A date that is a fact of the entry stays (a protocol revision `2025-11-25`, the benches of a day); `make lint` refuses a date only in a sentence that also says decided, agreed or go.
+- No heading: a line starting with `#` would break the version's section.
 
 ```markdown
 Added
@@ -23,4 +24,4 @@ An `Upgrade note` says what a user must do or know before upgrading; the cut put
 
 During the transition, a pull request that edits `CHANGELOG.md` itself also passes: pull requests opened before this rule keep their entries there, and the release cut edits it.
 
-`make lint` also checks every fragment here: a known section on the first line, an entry under it, no date, and no "decided by" other than the product owner or the maintainers. The pull request's files are compared with `origin/main` (`CHANGELOG_BASE` to change it); in CI, with the pull request's base.
+`make lint` also checks every fragment here: a known section on the first line, an entry under it, no heading, no date on a decision, and no "decided by" other than the product owner or the maintainers. The pull request's files are compared with `origin/main` (`CHANGELOG_BASE` to change it); in CI, with the pull request's base.

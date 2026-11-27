@@ -16,8 +16,11 @@
 #
 # A fragment is any *.md file of DIR but README.md. It fails on a first
 # line that is not a known section, an entry that does not start with a
-# "- " item, a date (2026-11-27, 27 November 2026, November 27) and a
-# "decided by" other than the product owner or the maintainers. A file
+# "- " item, a line starting with '#' (a heading would break the
+# version's section), a date (2026-11-27, 27 November 2026, November 27)
+# in a sentence that also says decided, agreed or go (a decision is not
+# dated; a protocol revision or a bench may be), and a "decided by"
+# other than the product owner or the maintainers. A file
 # of DIR that is neither a fragment, README.md, .gitkeep nor a marker
 # .no-user-visible-change-<topic> fails too.
 #
@@ -34,6 +37,11 @@ set -euo pipefail
 
 sections='Added|Changed|Fixed|Removed|Security|Upgrade note'
 watched='^(api|internal|cmd|charts|config|demo)/'
+months='January|February|March|April|May|June|July|August|September|October|November|December'
+dates="[0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{1,2} (${months})|(${months}) [0-9]{1,2}"
+# decided and agreed in any case, the noun go in lower case only: the Go
+# language is not a decision.
+decision='(^|[^[:alnum:]_-])([Dd]ecided|[Aa]greed|go)([^[:alnum:]_-]|$)'
 
 # check_fragments DIR prints every problem and returns 1 if there is one.
 check_fragments() {
@@ -67,8 +75,15 @@ check_fragments() {
       echo "changelog: ${f}: the entry must start with a '- ' item, as in CHANGELOG.md" >&2
       bad=1
     fi
-    if grep -Eqn '[0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{1,2} (January|February|March|April|May|June|July|August|September|October|November|December)|(January|February|March|April|May|June|July|August|September|October|November|December) [0-9]{1,2}' "$f"; then
-      echo "changelog: ${f}: no date in an entry" >&2
+    if printf '%s\n' "$body" | grep -q '^#'; then
+      echo "changelog: ${f}: no heading in an entry (a line starting with '#' breaks the version's section)" >&2
+      bad=1
+    fi
+    # One sentence per line: a date is refused only in a sentence that
+    # also says decided, agreed or go.
+    if printf '%s\n' "$body" | awk '{ gsub(/[.!?][[:space:]]+/, "&\n"); print }' |
+      grep -E "$dates" | grep -Eq "$decision"; then
+      echo "changelog: ${f}: no date on a decision: write 'decided by the product owner', never when" >&2
       bad=1
     fi
     if grep -Ei 'decided by' "$f" | grep -Eiv 'decided by the (product owner|maintainers)' | grep -q .; then
