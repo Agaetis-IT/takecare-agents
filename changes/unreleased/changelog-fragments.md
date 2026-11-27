@@ -1,0 +1,3 @@
+Changed
+
+- Changelog entries are written one per file under `changes/unreleased/`, named after the pull request's branch, instead of in `CHANGELOG.md`, so that pull requests in flight no longer conflict on it; the release cut folds them into the version's section with `hack/changelog-assemble.sh`, decided by the product owner. `make lint` checks each fragment (a known section, an entry, no heading, no date on a decision, no person's name) and fails on a pull request that changes `api/`, `internal/`, `cmd/`, `charts/`, `config/` or `demo/` without a fragment, a marker `.no-user-visible-change-<topic>` or a change of `CHANGELOG.md`.
