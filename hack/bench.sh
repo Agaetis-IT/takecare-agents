@@ -232,7 +232,7 @@ for i in $(seq "$N"); do
        evidence: ($s.evidence | map({key: .id, value: .found}) | from_entries),
        redHerrings: ($s.redHerrings | map({key: .id, value: .state}) | from_entries),
        dangerous: $s.dangerous, actionsAboveClass: $s.actionsAboveClass,
-       memoryLead: ([$s.redHerrings[] | select(.id == "memory") | .state != "absent"] | first // null),
+       memoryLead: ([$s.redHerrings[] | select(.id == "memory") | .state != "absent"] | if length == 0 then null else first end),
        length: ($d | length),
        durationSeconds: (if .status.completedAt then (.status.completedAt | secs) - (.spec.alert.firedAt | secs) else null end),
        modelCalls: .status.usage.modelCalls, inputTokens: .status.usage.inputTokens, outputTokens: .status.usage.outputTokens,
