@@ -302,7 +302,7 @@ cutoff: none
 reserved: false
 ```
 
-What changes for the players, once the format is built (not in this PR):
+What changes for the players once the format is built (the first two by the lot that builds it, the third with the multi-scenario bench):
 
 - `hack/bench.sh` reads `causes[].match` instead of its two constants, and reports the evidence and red herrings by id; the memory lead it measures today becomes the red herring `memory`.
 - `make demo-verdict` prints the same verdict lines after the diagnosis.
