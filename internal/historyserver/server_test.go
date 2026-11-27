@@ -269,7 +269,7 @@ func TestInvestigationsListCarriesNoDiagnosis(t *testing.T) {
 	if strings.Contains(text, "MODEL-TEXT") || strings.Contains(text, "diagnosis") || strings.Contains(text, "severity") {
 		t.Errorf("the list carries text it must not: %s", text)
 	}
-	want := `{"investigations":[{"name":"inv-a","alertname":"HighErrorRate","namespace":"demo-apps","cluster":"east","entity":billingAPI,"incident":"inc-inv-a","phase":"Completed","firedAt":"2026-11-03T00:00:00Z","completedAt":"2026-11-03T00:00:00Z","published":true}],"omitted":0}`
+	want := `{"investigations":[{"name":"inv-a","alertname":"HighErrorRate","namespace":"demo-apps","cluster":"east","entity":"service/billing-api","incident":"inc-inv-a","phase":"Completed","firedAt":"2026-11-03T00:00:00Z","completedAt":"2026-11-03T00:00:00Z","published":true}],"omitted":0}`
 	if text != want {
 		t.Errorf("list\n got %s\nwant %s", text, want)
 	}
