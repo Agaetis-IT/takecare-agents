@@ -6,7 +6,7 @@ A pull request with a user-visible change does not edit `CHANGELOG.md`: it adds 
 
 - One file per pull request, named after the branch's topic: `mecano-propose.md` for `feat/mecano-propose`. A pull request with entries in two sections writes two files, `mecano-propose.md` and `mecano-propose-fixed.md`.
 - Its first line is the section, alone: `Added`, `Changed`, `Fixed`, `Removed`, `Security` or `Upgrade note`.
-- Then the entry, written exactly as an entry of `CHANGELOG.md`: one or more `- ` items, each a paragraph on one line.
+- Then the entry, written exactly as an entry of `CHANGELOG.md`: one or more list items (a line starting with a hyphen and a space), each a paragraph on one line.
 - No person's name and no date: write "decided by the product owner", never who or when.
 
 ```markdown
