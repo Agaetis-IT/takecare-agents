@@ -16,6 +16,11 @@ cluster:
   # resource: agents}`, and kagent SandboxAgents only with the separate
   # `{group: kagent.dev, resource: sandboxagents}` (spec 10 §8).
   extraResources: []
+  # -- Read the nodes, cluster-wide: get, list and watch on `nodes` only
+  # (spec 12 §4), for the Mécano to read this cluster's version from the
+  # kubelets. Never nodes/proxy, nodes/stats or nodes/log, and the server's
+  # nodes_* tools stay disabled.
+  readNodes: false
 
 tls:
   # -- REQUIRED: the Secret holding the front's server certificate (tls.crt,

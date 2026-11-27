@@ -41,6 +41,8 @@ const (
 	invB          = "inv-b"
 	invC          = "inv-c"
 	invUndated    = "inv-undated"
+	billingAPI    = "service/billing-api"
+	caseLimit     = "a limit"
 )
 
 var day0 = time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
@@ -56,7 +58,7 @@ func investigation(name string, days int, mutate ...func(*v1alpha1.TakeCareInves
 			Level:   v1alpha1.LevelApprentice,
 			Alert: v1alpha1.AlertRecord{
 				Name: alertHigh, Namespace: "demo-apps", Cluster: "east", FiredAt: at(days),
-				Entity: "service/billing-api", Labels: map[string]string{"severity": "critical"},
+				Entity: billingAPI, Labels: map[string]string{"severity": "critical"},
 			},
 		},
 		Status: v1alpha1.TakeCareInvestigationStatus{
@@ -93,6 +95,40 @@ func review(name string, days int, mutate ...func(*v1alpha1.TakeCareReview)) *v1
 		m(r)
 	}
 	return r
+}
+
+// maintenanceText stands for the Mécano's model text: no list may carry
+// it.
+const maintenanceText = "MODEL-TEXT move the chart to the supported line"
+
+func maintenance(name string, days int, mutate ...func(*v1alpha1.TakeCareMaintenance)) *v1alpha1.TakeCareMaintenance {
+	m := &v1alpha1.TakeCareMaintenance{
+		Name: name, Namespace: releaseNS, CreationTimestamp: at(days),
+		Spec: v1alpha1.TakeCareMaintenanceSpec{
+			MecanoRef: v1alpha1.RoleRef{Kind: v1alpha1.KindTakeCareMecano, Name: "mecano"}, Trigger: v1alpha1.MaintenanceTriggerSchedule,
+			Level: v1alpha1.LevelPractitioner, Components: []string{billingAPI},
+		},
+		Status: v1alpha1.TakeCareMaintenanceStatus{
+			RunStatus: v1alpha1.RunStatus{Phase: v1alpha1.RunCompleted},
+			Inventory: &v1alpha1.MaintenanceInventory{Components: []v1alpha1.InventoryComponent{{Key: billingAPI, Live: "1.2.0", Declared: "1.2.0", Drift: v1alpha1.DriftNone}}},
+			Findings: []v1alpha1.MaintenanceFinding{{
+				ID: "Behind/service/billing-api", Kind: v1alpha1.FindingBehind, Component: billingAPI,
+				Text: maintenanceText, Severity: v1alpha1.SeveritySoon, Evidence: []v1alpha1.Evidence{{Tool: "manifests_index", Record: "deploy/billing.yaml"}},
+			}},
+			Plan: &v1alpha1.MaintenancePlan{
+				Steps:        []v1alpha1.PlanStep{{ID: "1", Text: maintenanceText, Findings: []string{"Behind/service/billing-api"}, Class: v1alpha1.ActionReversible}},
+				Tested:       v1alpha1.PlanNotTested,
+				PullRequests: []v1alpha1.PullRequestRef{{Repository: "team/deploy", URL: "https://forge.example/team/deploy/pull/7", Branch: "takecare/mecano/" + name}},
+			},
+			Counts:     &v1alpha1.MaintenanceCounts{Findings: 1, PullRequests: 1},
+			BlindSpots: []v1alpha1.NotSeen{{Ref: "releases", Reason: "offline watch"}},
+			Published:  &v1alpha1.Publication{Connector: "report", OK: true},
+		},
+	}
+	for _, mutate := range mutate {
+		mutate(m)
+	}
+	return m
 }
 
 func silentInvestigation(i *v1alpha1.TakeCareInvestigation) { i.Spec.Silent = true }
@@ -154,8 +190,8 @@ func names(t *testing.T, text, key string) ([]string, int) {
 	return got, int(out["omitted"].(float64))
 }
 
-// The tools: four, all read-only by their annotations, which an add-on's
-// connector trusts (spec 05); the content ones are the two gets.
+// The tools: six, all read-only by their annotations, which an add-on's
+// connector trusts (spec 05); the content ones are the three gets.
 func TestToolsAreReadOnly(t *testing.T) {
 	s, _, _ := start(t)
 	res, err := s.ListTools(context.Background(), nil)
@@ -170,10 +206,10 @@ func TestToolsAreReadOnly(t *testing.T) {
 		}
 	}
 	slices.Sort(got)
-	if diff := cmp.Diff([]string{ToolInvestigationGet, ToolInvestigationsList, ToolReviewGet, ToolReviewsList}, got); diff != "" {
+	if diff := cmp.Diff([]string{ToolInvestigationGet, ToolInvestigationsList, ToolMaintenanceGet, ToolMaintenancesList, ToolReviewGet, ToolReviewsList}, got); diff != "" {
 		t.Errorf("tools (-want +got):\n%s", diff)
 	}
-	if diff := cmp.Diff([]string{ToolInvestigationGet, ToolReviewGet}, ContentTools); diff != "" {
+	if diff := cmp.Diff([]string{ToolInvestigationGet, ToolReviewGet, ToolMaintenanceGet}, ContentTools); diff != "" {
 		t.Errorf("content tools (-want +got):\n%s", diff)
 	}
 }
@@ -201,7 +237,7 @@ func TestInvestigationsList(t *testing.T) {
 		omitted int
 	}{
 		{"the window, newest first, silent and other namespaces left out", span(0, 10), []string{invC, invUndated, invB, invA}, 0},
-		{"a limit", span(0, 10, argLimit, 2), []string{invC, invUndated}, 2},
+		{caseLimit, span(0, 10, argLimit, 2), []string{invC, invUndated}, 2},
 		{"a limit past the bound is the bound", span(0, 10, argLimit, 1000), []string{invC, invUndated, invB, invA}, 0},
 		{"by namespace", span(0, 10, "namespace", "shop"), []string{invB}, 0},
 		{"by entity", span(0, 10, "entity", "service/shop"), []string{invB}, 0},
@@ -291,7 +327,7 @@ func TestReviewsList(t *testing.T) {
 	}{
 		{"the window, newest first, silent left out", span(0, 10), []string{"review-b", "review-a"}, 0},
 		{"by Kiné", span(0, 10, "kine", "kine-shop"), []string{"review-b"}, 0},
-		{"a limit", span(0, 20, argLimit, 1), []string{"review-late"}, 2},
+		{caseLimit, span(0, 20, argLimit, 1), []string{"review-late"}, 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			text, isErr := call(t, s, ToolReviewsList, tc.args)
@@ -333,9 +369,72 @@ func TestReviewGet(t *testing.T) {
 	}
 }
 
+func TestMaintenancesList(t *testing.T) {
+	s, _, _ := start(t,
+		maintenance("maintenance-a", 2),
+		maintenance("maintenance-b", 5, func(m *v1alpha1.TakeCareMaintenance) { m.Spec.MecanoRef.Name = "mecano-shop" }),
+		maintenance("maintenance-silent", 4, func(m *v1alpha1.TakeCareMaintenance) { m.Spec.Silent = true }),
+		maintenance("maintenance-late", 12),
+		maintenance("maintenance-other-ns", 3, func(m *v1alpha1.TakeCareMaintenance) { m.Namespace = otherNS }),
+	)
+	for _, tc := range []struct {
+		name    string
+		args    map[string]any
+		want    []string
+		omitted int
+	}{
+		{"the window, newest first, silent and other namespaces left out", span(0, 10), []string{"maintenance-b", "maintenance-a"}, 0},
+		{"by Mécano", span(0, 10, "mecano", "mecano-shop"), []string{"maintenance-b"}, 0},
+		{caseLimit, span(0, 20, argLimit, 1), []string{"maintenance-late"}, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			text, isErr := call(t, s, ToolMaintenancesList, tc.args)
+			if isErr {
+				t.Fatal(text)
+			}
+			got, omitted := names(t, text, "maintenances")
+			if diff := cmp.Diff(tc.want, got); diff != "" || omitted != tc.omitted {
+				t.Errorf("omitted %d, want %d; names (-want +got):\n%s", omitted, tc.omitted, diff)
+			}
+		})
+	}
+	// State only: the findings' ids and severities, never their text, the
+	// plan or the inventory (spec 12 §3, spec 11 §4).
+	text, _ := call(t, s, ToolMaintenancesList, span(1, 3))
+	want := `{"maintenances":[{"name":"maintenance-a","mecano":"mecano","trigger":"Schedule","level":"Practitioner","phase":"Completed","created":"2026-11-03T00:00:00Z","findings":[{"id":"Behind/service/billing-api","severity":"Soon"}],"counts":{"findings":1,"now":0,"pullRequests":1},"published":true}],"omitted":0}`
+	if text != want {
+		t.Errorf("list\n got %s\nwant %s", text, want)
+	}
+	if strings.Contains(text, "MODEL-TEXT") {
+		t.Errorf("the list carries model text: %s", text)
+	}
+}
+
+func TestMaintenanceGet(t *testing.T) {
+	s, _, _ := start(t, maintenance("maintenance-a", 2), maintenance("maintenance-silent", 4, func(m *v1alpha1.TakeCareMaintenance) { m.Spec.Silent = true }))
+	text, isErr := call(t, s, ToolMaintenanceGet, map[string]any{argName: "maintenance-a"})
+	if isErr {
+		t.Fatal(text)
+	}
+	var got Maintenance
+	if err := json.Unmarshal([]byte(text), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Findings) != 1 || got.Findings[0].Text != maintenanceText || got.Plan == nil || len(got.Plan.Steps) != 1 ||
+		len(got.Plan.PullRequests) != 1 || got.Inventory == nil || len(got.BlindSpots) != 1 || !slices.Equal(got.Components, []string{billingAPI}) {
+		t.Errorf("maintenance_get = %s", text)
+	}
+	if text, isErr := call(t, s, ToolMaintenanceGet, map[string]any{argName: "maintenance-silent"}); isErr || !strings.Contains(text, maintenanceText) {
+		t.Errorf("silent maintenance by name: %v %s", isErr, text)
+	}
+	if text, isErr := call(t, s, ToolMaintenanceGet, map[string]any{argName: "maintenance-none"}); !isErr || text != "no maintenance named maintenance-none" {
+		t.Errorf("unknown maintenance: %v %s", isErr, text)
+	}
+}
+
 func TestWindowArguments(t *testing.T) {
 	s, _, _ := start(t)
-	for _, tool := range []string{ToolInvestigationsList, ToolReviewsList} {
+	for _, tool := range []string{ToolInvestigationsList, ToolReviewsList, ToolMaintenancesList} {
 		for _, tc := range []struct {
 			name string
 			args map[string]any

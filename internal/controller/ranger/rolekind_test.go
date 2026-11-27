@@ -30,6 +30,7 @@ func TestRoleKind(t *testing.T) {
 		{"a controller of another group", []metav1.OwnerReference{owner("apps/v1", "Deployment", true)}, "", false},
 		{"a malformed apiVersion", []metav1.OwnerReference{owner("takecare.agaetis.fr/v1alpha1/extra", v1alpha1.KindTakeCareDoc, true)}, "", false},
 		{"a TakeCareDoc controller", []metav1.OwnerReference{owner(takecare, v1alpha1.KindTakeCareDoc, true)}, v1alpha1.KindTakeCareDoc, true},
+		{"a TakeCareMecano controller", []metav1.OwnerReference{owner(takecare, v1alpha1.KindTakeCareMecano, true)}, v1alpha1.KindTakeCareMecano, true},
 		{"a TakeCareIntendant controller beside another owner", []metav1.OwnerReference{
 			owner("apps/v1", "Deployment", false), owner(takecare, v1alpha1.KindTakeCareIntendant, true),
 		}, v1alpha1.KindTakeCareIntendant, true},

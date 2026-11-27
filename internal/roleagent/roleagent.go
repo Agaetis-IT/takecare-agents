@@ -75,3 +75,26 @@ func Tools(c *v1alpha1.TakeCareConnector, contentTools []string) (read, withheld
 	slices.Sort(withheld)
 	return read, withheld
 }
+
+// ProposeSlot is the one connector slot whose propose tools a role may be
+// given (spec 12 §6.4).
+const ProposeSlot = "propose"
+
+// ProposeTools are a connector's propose tools a role is given in a slot:
+// only from the slot named ProposeSlot and only at Practitioner and above,
+// level being the level the role works at. Any other slot or level gets
+// none: a write tool never reaches an Apprentice, nor comes through a read
+// slot. Sorted.
+func ProposeTools(c *v1alpha1.TakeCareConnector, level v1alpha1.Level, slot string) []string {
+	if slot != ProposeSlot || (level != v1alpha1.LevelPractitioner && level != v1alpha1.LevelExpert) {
+		return nil
+	}
+	var out []string
+	for _, tool := range c.Status.Tools {
+		if tool.Class == v1alpha1.ToolPropose {
+			out = append(out, tool.Name)
+		}
+	}
+	slices.Sort(out)
+	return out
+}

@@ -15,11 +15,13 @@ import (
 )
 
 const (
-	fast       = "fast"
-	podsLog    = "pods_log"
-	resources  = "resources_list"
-	configMaps = "configmaps_get"
-	namespaces = "namespaces_list"
+	fast        = "fast"
+	podsLog     = "pods_log"
+	resources   = "resources_list"
+	configMaps  = "configmaps_get"
+	namespaces  = "namespaces_list"
+	proposeTool = "propose_change"
+	fileGet     = "file_get"
 )
 
 func platformWith(models ...string) *v1alpha1.TakeCarePlatform {
@@ -99,5 +101,39 @@ func TestTools(t *testing.T) {
 	}
 	if read, withheld := Tools(&v1alpha1.TakeCareConnector{}, nil); read != nil || withheld != nil {
 		t.Errorf("a connector never discovered: read %v, withheld %v", read, withheld)
+	}
+}
+
+// A propose tool reaches a role only from the propose slot and only at
+// Practitioner and above (spec 12 §6.4); read and act tools never come
+// through it, and Tools never gives a propose tool.
+func TestProposeTools(t *testing.T) {
+	c := &v1alpha1.TakeCareConnector{}
+	c.Status.Tools = []v1alpha1.ToolStatus{
+		{Name: proposeTool, Class: v1alpha1.ToolPropose},
+		{Name: fileGet, Class: v1alpha1.ToolRead, Content: true},
+		{Name: "merge", Class: v1alpha1.ToolAct},
+	}
+	propose := []string{proposeTool}
+	for name, tc := range map[string]struct {
+		level v1alpha1.Level
+		slot  string
+		want  []string
+	}{
+		"Apprentice, propose slot":       {v1alpha1.LevelApprentice, ProposeSlot, nil},
+		"no level, propose slot":         {"", ProposeSlot, nil},
+		"Practitioner, propose slot":     {v1alpha1.LevelPractitioner, ProposeSlot, propose},
+		"Expert, propose slot":           {v1alpha1.LevelExpert, ProposeSlot, propose},
+		"Practitioner, code slot":        {v1alpha1.LevelPractitioner, "code", nil},
+		"an unknown level, propose slot": {"Master", ProposeSlot, nil},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if diff := cmp.Diff(tc.want, ProposeTools(c, tc.level, tc.slot)); diff != "" {
+				t.Errorf("ProposeTools (-want +got):\n%s", diff)
+			}
+		})
+	}
+	if read, _ := Tools(c, []string{fileGet, proposeTool}); !cmp.Equal(read, []string{fileGet}) {
+		t.Errorf("Tools gives %v, want the read tool only", read)
 	}
 }

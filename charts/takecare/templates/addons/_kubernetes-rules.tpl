@@ -37,6 +37,18 @@ wildcard (read-only guard, spec 04).
 {{- end -}}
 
 {{/*
+The nodes opt-in's one rule (readNodes, spec 12 §4), cluster-wide: get,
+list and watch on nodes, never a subresource (nodes/proxy, nodes/stats,
+nodes/log reach the kubelet's API). Shared by both charts like the rules
+above.
+*/}}
+{{- define "takecare.kubernetes.nodeRules" -}}
+- apiGroups: [""]
+  resources: [nodes]
+  verbs: [get, list, watch]
+{{- end -}}
+
+{{/*
 The kubernetes-mcp-server's own locks (v0.0.67, docs/configuration.md),
 whatever a caller sends (spec 05): kubeconfig always uses the server's own
 account, never a caller's Authorization or kubernetes-authorization bearer;

@@ -34,6 +34,7 @@ The workload-cluster package of TakeCare Agents ([ADR 0016](../../docs/adr/0016-
 | cluster.extraResources | list | `[]` | Resources beyond the defaults, as {group, resource}, for example custom resources. ConfigMaps are read only when listed here: customers keep credentials in them. Secrets, pods/exec, pods/attach, pods/portforward, serviceaccounts/token and wildcards are refused. The Intendant's inventory lists kagent Agents only with `{group: kagent.dev, resource: agents}`, and kagent SandboxAgents only with the separate `{group: kagent.dev, resource: sandboxagents}` (spec 10 §8). |
 | cluster.name | string | `""` | REQUIRED: the name the administration cluster registers this cluster under (a DNS label), printed in the connector manifest. |
 | cluster.namespaces | list | `[]` | REQUIRED, at least one: the namespaces the ServiceAccount may read (get, list, watch): workloads, events, logs. |
+| cluster.readNodes | bool | `false` | Read the nodes, cluster-wide: get, list and watch on `nodes` only (spec 12 §4), for the Mécano to read this cluster's version from the kubelets. Never nodes/proxy, nodes/stats or nodes/log, and the server's nodes_* tools stay disabled. |
 | front.guardInterval | string | `"10m"` | How long /guardz serves a verdict before checking again. |
 | front.image.pullPolicy | string | `"IfNotPresent"` | The front's image pull policy. |
 | front.image.registry | string | `"ghcr.io/agaetis-it"` | The registry of the front's image. |

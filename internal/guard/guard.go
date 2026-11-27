@@ -22,15 +22,17 @@ type Probe struct {
 }
 
 const (
-	verbCreate   = "create"
-	resourcePods = "pods"
+	verbCreate    = "create"
+	verbGet       = "get"
+	resourcePods  = "pods"
+	resourceNodes = "nodes"
 )
 
 // Probes samples what the read-only guard forbids: a detection of drift at
 // run time, by sampling. The proof, for what a chart renders, is the
 // render test on its Roles.
 var Probes = []Probe{
-	{"", "secrets", "", "get", "read Secrets"},
+	{"", "secrets", "", verbGet, "read Secrets"},
 	{"", "secrets", "", "list", "list Secrets"},
 	{"", resourcePods, "exec", verbCreate, "exec into pods"},
 	{"", resourcePods, "attach", verbCreate, "attach to pods"},
@@ -41,8 +43,13 @@ var Probes = []Probe{
 	{"apps", "deployments", "", "patch", "patch Deployments"},
 	{"", "serviceaccounts", "token", verbCreate, "mint ServiceAccount tokens"},
 	{"", "users", "", "impersonate", "impersonate users"},
+	// The kubelet's API through the API server: the nodes opt-in reads the
+	// node objects only (spec 12 §4), never these subresources.
+	{"", resourceNodes, "proxy", verbGet, "proxy to the nodes' kubelet"},
+	{"", resourceNodes, "stats", verbGet, "read the nodes' stats"},
+	{"", resourceNodes, "log", verbGet, "read the nodes' logs"},
 	// A wildcard shows as a yes on a resource and a verb that do not exist.
-	{"takecare.agaetis.fr", "takecare-guard-probe", "", "get", "a wildcard on resources"},
+	{"takecare.agaetis.fr", "takecare-guard-probe", "", verbGet, "a wildcard on resources"},
 	{"", resourcePods, "", "takecare-guard-probe", "a wildcard on verbs"},
 }
 

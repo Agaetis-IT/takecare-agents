@@ -23,8 +23,9 @@ const (
 )
 
 // The history add-on's RBAC is exactly the rights approved for it (spec 11
-// §10): one Role in the release namespace with one rule, get, list and
-// watch on the investigations and the reviews, bound to its ServiceAccount
+// §10, spec 12 §13): one Role in the release namespace with one rule, get,
+// list and watch on the investigations, the reviews and the maintenances,
+// bound to its ServiceAccount
 // by one RoleBinding; no ClusterRole and no other binding.
 func TestHistoryAddonRBAC(t *testing.T) {
 	objs := render(t, releaseName, profileArgs("demo")...)
@@ -40,7 +41,7 @@ func TestHistoryAddonRBAC(t *testing.T) {
 	if len(roles) != 1 || roles[0].GetKind() != kindRole || roles[0].GetName() != historyName || roles[0].GetNamespace() != releaseNamespace {
 		t.Fatalf("the history add-on's roles = %v, want the one Role %s in %s", objectNames(roles), historyName, releaseNamespace)
 	}
-	want := []rbacv1.PolicyRule{{APIGroups: []string{"takecare.agaetis.fr"}, Resources: []string{"takecareinvestigations", "takecarereviews"}, Verbs: []string{verbGet, verbList, verbWatch}}}
+	want := []rbacv1.PolicyRule{{APIGroups: []string{"takecare.agaetis.fr"}, Resources: []string{"takecareinvestigations", "takecarereviews", "takecaremaintenances"}, Verbs: []string{verbGet, verbList, verbWatch}}}
 	if diff := cmp.Diff(want, rulesByRole(t, roles)[kindRole+"/"+historyName]); diff != "" {
 		t.Errorf("the history add-on's rules (-want +got):\n%s", diff)
 	}
@@ -59,7 +60,7 @@ func bindsHistory(o *unstructured.Unstructured) bool {
 
 // The rest of the add-on (spec 11 §4): the token mounted on the pod only;
 // ingress from the gateway and the operator, egress to the API server's
-// ports and no DNS; the connector marks the two gets as content. Off by
+// ports and no DNS; the connector marks the three gets as content. Off by
 // default.
 func TestHistoryAddonWorkload(t *testing.T) {
 	checks := map[string]func(*unstructured.Unstructured) string{
@@ -96,7 +97,7 @@ func TestHistoryAddonWorkload(t *testing.T) {
 			addon, _, _ := unstructured.NestedString(o.Object, "spec", "mcp", "addon")
 			tools, _, _ := unstructured.NestedSlice(o.Object, "spec", "tools")
 			if !slices.Equal(types, []string{historyConnector}) || addon != historyConnector ||
-				jsonOf(tools) != `[{"content":true,"name":"investigation_get"},{"content":true,"name":"review_get"}]` {
+				jsonOf(tools) != `[{"content":true,"name":"investigation_get"},{"content":true,"name":"review_get"},{"content":true,"name":"maintenance_get"}]` {
 				return "the connector: types " + jsonOf(types) + ", add-on " + addon + ", tools " + jsonOf(tools)
 			}
 			return ""

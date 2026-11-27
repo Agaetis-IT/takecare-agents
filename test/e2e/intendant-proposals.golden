@@ -17,7 +17,7 @@ inventory agent kagent/takecare-intendant-intendant
 inventory agent kagent/takecare-kine-kine
 inventory connector takecare-system/deployments tools=3
 inventory connector takecare-system/east tools=9
-inventory connector takecare-system/history tools=4
+inventory connector takecare-system/history tools=6
 inventory connector takecare-system/incidents tools=3
 inventory connector takecare-system/kubernetes tools=9
 inventory connector takecare-system/map tools=5

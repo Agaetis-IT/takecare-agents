@@ -35,6 +35,11 @@ func TestCheck(t *testing.T) {
 			Verdict{Violations: []string{"read Secrets cluster-wide", "exec into pods in shop"}, Missing: []string{}}},
 		{"a wildcard on verbs", rights(listShop, "shop//pods//takecare-guard-probe"),
 			Verdict{Violations: []string{"a wildcard on verbs in shop"}, Missing: []string{}}},
+		// The nodes opt-in reads node objects; the kubelet's API through
+		// nodes/proxy is caught (spec 12 §4).
+		{"nodes read, not proxied", rights(listShop, "//nodes//get", "//nodes//list"), Verdict{Violations: []string{}, Missing: []string{}}},
+		{"nodes proxied cluster-wide", rights(listShop, "//nodes//get", "//nodes/proxy/get"),
+			Verdict{Violations: []string{"proxy to the nodes' kubelet cluster-wide"}, Missing: []string{}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := Check(context.Background(), tc.can, []string{"shop"})
