@@ -39,6 +39,7 @@ spec:
             - --investigation-retention={{ .Values.investigations.retention }}
             - --investigation-max-kept={{ .Values.investigations.maxKept }}
             - --review-retention={{ .Values.reviews.retention }}
+            - --maintenance-retention={{ .Values.maintenances.retention }}
             - --usage-scrape-wait={{ .Values.operator.usageScrapeWait }}
             {{- with .Values.global.caBundle }}
             {{- if .secretName }}

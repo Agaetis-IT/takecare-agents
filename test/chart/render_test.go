@@ -595,15 +595,18 @@ func TestOperatorRecordRetention(t *testing.T) {
 	}{
 		"defaults": {want: []string{
 			"--investigation-retention=2160h", "--investigation-max-kept=2000", "--review-retention=8760h",
+			"--maintenance-retention=8760h",
 		}},
 		"overridden": {
 			sets: []string{
 				flagSet, "investigations.retention=720h",
 				flagSet, "investigations.maxKept=500",
 				flagSet, "reviews.retention=4380h",
+				flagSet, "maintenances.retention=2190h",
 			},
 			want: []string{
 				"--investigation-retention=720h", "--investigation-max-kept=500", "--review-retention=4380h",
+				"--maintenance-retention=2190h",
 			},
 		},
 	} {
@@ -988,8 +991,8 @@ func TestCRDChart(t *testing.T) {
 	}
 	wantCRDs := []string{
 		"takecareconnectors", "takecaredemos", "takecaredocs", "takecareintendants",
-		"takecareinvestigations", "takecarekines", "takecareplatforms", "takecarerangers",
-		"takecarereviews", "takecaresurveys",
+		"takecareinvestigations", "takecarekines", "takecaremaintenances", "takecaremecanos",
+		"takecareplatforms", "takecarerangers", "takecarereviews", "takecaresurveys",
 	}
 	for i, n := range wantCRDs {
 		wantCRDs[i] = n + ".takecare.agaetis.fr"

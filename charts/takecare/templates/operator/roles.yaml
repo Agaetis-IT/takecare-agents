@@ -213,6 +213,7 @@ rules:
   - takecaredocs/finalizers
   - takecareintendants/finalizers
   - takecarekines/finalizers
+  - takecaremecanos/finalizers
   - takecaresurveys/finalizers
   verbs:
   - update
@@ -223,6 +224,7 @@ rules:
   - takecaredocs
   - takecareintendants
   - takecarekines
+  - takecaremecanos
   verbs:
   - get
   - list
@@ -236,6 +238,8 @@ rules:
   - takecareintendants/status
   - takecareinvestigations/status
   - takecarekines/status
+  - takecaremaintenances/status
+  - takecaremecanos/status
   - takecarereviews/status
   - takecaresurveys/status
   verbs:
@@ -253,6 +257,7 @@ rules:
 - apiGroups:
   - takecare.agaetis.fr
   resources:
+  - takecaremaintenances
   - takecarereviews
   - takecaresurveys
   verbs:

@@ -33,6 +33,7 @@ MAP_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-map:${IMAGE_TAG}"
 DEMO_APP_IMAGE="${IMAGE_REGISTRY}/takecare-agents-demo-app:${IMAGE_TAG}"
 FRONT_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-front:${IMAGE_TAG}"
 HISTORY_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-history:${IMAGE_TAG}"
+CODE_IMAGE="${IMAGE_REGISTRY}/takecare-agents-mcp-code:${IMAGE_TAG}"
 # Test only: the fake Slack image, here as a customer's MCP server.
 FAKE_SLACK_IMAGE="${IMAGE_REGISTRY}/takecare-agents-fake-slack:${IMAGE_TAG}"
 # The smoke's CA, the chart's global.caBundle: made at run time, never kept
@@ -56,7 +57,7 @@ up() {
   fi
   k3d kubeconfig write "$CLUSTER" --output "$KUBECONFIG" >/dev/null
   log "building and importing ${IMAGE}, ${REPORT_IMAGE}, ${CORPUS_IMAGE}, ${MAP_IMAGE}, ${DEMO_APP_IMAGE}, ${FRONT_IMAGE} and ${HISTORY_IMAGE}"
-  make docker-build OPERATOR_IMG="$IMAGE" REPORT_SLACK_IMG="$REPORT_IMAGE" MCP_CORPUS_IMG="$CORPUS_IMAGE" MCP_MAP_IMG="$MAP_IMAGE" DEMO_APP_IMG="$DEMO_APP_IMAGE" MCP_FRONT_IMG="$FRONT_IMAGE" MCP_HISTORY_IMG="$HISTORY_IMAGE" \
+  make docker-build OPERATOR_IMG="$IMAGE" REPORT_SLACK_IMG="$REPORT_IMAGE" MCP_CORPUS_IMG="$CORPUS_IMAGE" MCP_MAP_IMG="$MAP_IMAGE" DEMO_APP_IMG="$DEMO_APP_IMAGE" MCP_FRONT_IMG="$FRONT_IMAGE" MCP_HISTORY_IMG="$HISTORY_IMAGE" MCP_CODE_IMG="$CODE_IMAGE" \
     LOCAL_LABELS="--label org.agaetis.takecare.local=true --label org.agaetis.takecare.hash=${IMAGE_TAG}" >/dev/null
   # In CI, the fake Slack's layers come from the Actions cache too, in the
   # e2e's scope (Makefile, DOCKER_BUILD).
