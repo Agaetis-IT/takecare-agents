@@ -22,6 +22,8 @@ The story the Doc must uncover:
 
 A correct diagnosis names the proxy idle timeout as the root cause and rules out memory.
 
+The scenario's truth is one file, `test/scenarios/proxy-timeout.yaml` (spec 14): its cause, the evidence a good diagnosis shows, the red herrings the corpus plants, and the dangerous actions. `make demo-verdict` and the bench score a diagnosis against it.
+
 ## Resource
 
 A demo's name is at most 63 characters, refused beyond at creation: its scenery carries the name as a label value. One stored with a longer name before the rule says so in `SceneryReady` and `Ready` (reason `NameTooLong`) and applies nothing.
@@ -73,9 +75,9 @@ Without a Slack token, the demo `TakeCareDoc` has no `report` connector: it is t
 |---|---|
 | `make demo-up` | Checks prerequisites (Docker with ≥ 4 GB, k3d, kubectl, helm) and says what is missing. Creates the k3d cluster `takecare-demo` (pinned k3s image), installs `takecare-crds` and `takecare` with `values-demo.yaml` (which renders the `TakeCarePlatform` and the connectors), creates the Secrets from environment variables, applies the `TakeCareDoc` (level `Practitioner`) and the `TakeCareDemo`, waits until all are `Ready`. Re-runnable: does not reinstall what is in place. |
 | `make demo-incident` | Annotates the `TakeCareDemo`; prints the expected alert window. |
-| `make demo-verdict` | Waits for the next completed `TakeCareInvestigation` and prints the diagnosis and its usage. Works without Slack. |
+| `make demo-verdict` | Waits for the next completed `TakeCareInvestigation` and prints the diagnosis, its usage and the verdict lines of the scenario file (spec 14). Works without Slack. |
 | `make demo-screens` | Port-forwards Prometheus (error rate and memory graphs with thresholds), Alertmanager and Jaeger, and prints the URLs. `make demo-screens-stop` stops them. |
-| `make demo-bench N=5` | Runs N investigations on the ongoing incident without Slack (spec 04). |
+| `make demo-bench N=5` | Runs N investigations on the ongoing incident without Slack, scored against the scenario file (spec 04, spec 14). |
 | `make demo-reset` | Annotates the `TakeCareDemo` for a reset. |
 | `make demo-down` | Deletes the k3d cluster and local working files. |
 
@@ -105,7 +107,7 @@ status:
 
 1. On a clean Mac (Apple Silicon) and a clean Linux (amd64), `make demo-up` ends with all resources `Ready` in at most 10 minutes, with images pulled from the registry (multi-arch).
 2. `make demo-incident` makes `HighErrorRate` fire between 2 and 3.5 minutes later; the pod stays `Ready` with no restart; memory reaches about 70 % of its limit without being OOM-killed.
-3. `make demo-verdict` prints a diagnosis that is correct as defined in spec 04 (it names the proxy idle timeout), less than 3 minutes after the alert.
+3. `make demo-verdict` prints a diagnosis that is correct as defined in spec 04 (it names the proxy idle timeout), less than 3 minutes after the alert, and the verdict lines of `test/scenarios/proxy-timeout.yaml`.
 4. `make demo-reset` brings the scenery back to healthy, and a new `make demo-incident` replays the story with a new investigation (cooldown cleared).
 5. `make demo-up` run twice in a row changes nothing the second time and ends in less than 1 minute.
 6. No target modifies `~/.kube/config` or the current context; no secret is written to a file tracked by Git.

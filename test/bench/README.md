@@ -1,6 +1,6 @@
 # Accuracy bench
 
-The accuracy bench of spec 04: N investigations of the demo's ongoing `proxy-timeout` incident, with a real model, scored. `hack/bench.sh` runs it; the `bench` skill says when and how to compare two reports.
+The accuracy bench of spec 04: N investigations of the demo's ongoing incident, with a real model, scored against its scenario file, `test/scenarios/proxy-timeout.yaml` (spec 14). `hack/bench.sh` runs it; the `bench` skill says when and how to compare two reports.
 
 ## Run it
 
@@ -8,9 +8,12 @@ The accuracy bench of spec 04: N investigations of the demo's ongoing `proxy-tim
 make demo-up                # TAKECARE_MODEL_API_KEY set
 make demo-incident          # then wait for the alert and the Doc's investigation
 make demo-bench N=5         # BENCH_MIN=4 makes it fail under 4 correct
+make demo-bench N=5 BENCH_BASELINE=test/bench/report-<date>.json   # compares, same scenario version only
 ```
 
-The bench copies the firing `HighErrorRate` alert from Alertmanager and posts one copy per run to `/v1/alerts`, each with its own fingerprint, the label `bench_run=<i>` and `takecare_silent="true"`: every run is investigated, none is published. It waits for the incident's own investigation to settle first, then posts one alert at a time and waits for each investigation to end and its usage to be read: the usage comes from the gateway's counters, exact only without overlap.
+Before anything is spent, the bench loads the scenario (`SCENARIO`, default `proxy-timeout`; `SCENARIOS_DIR`, default `test/scenarios`), checks that the demo plays it and that the Doc is bound to every connector type it names (`ground.connectors`), then waits for one of its alerts (`fault.signals.alerts`) to start within its window after the incident started, read from Alertmanager's `startsAt`; an alert that started before or after the window, such as one still firing from an earlier run, does not count. If none does, the bench is **not played**: it writes a report with `played: false` and the reason, dumps the cluster's state and stops; nothing is scored wrong.
+
+The bench copies the firing alert from Alertmanager and posts one copy per run to `/v1/alerts`, each with its own fingerprint, the label `bench_run=<i>` and `takecare_silent="true"`: every run is investigated, none is published. It waits for the incident's own investigation to settle first, then posts one alert at a time and waits for each investigation to end and its usage to be read: the usage comes from the gateway's counters, exact only without overlap.
 
 **The Doc's `cooldown` is 1 s while the bench runs.** Grouping by incident (spec 02 §1) would otherwise fold every copy into the incident's investigation. The previous value is restored on every exit, a failure or an interruption included. Meanwhile, an alert of the demo with a new start time would open its own investigation, published as usual: run the bench on a demo kept for it.
 
@@ -18,18 +21,23 @@ The `bench` workflow (manual dispatch) runs the same on k3d with the repository 
 
 ## Scoring
 
-Case-insensitive regular expressions on the diagnosis (`hack/bench.sh`):
+The scenario file holds the rule; `go run ./test/scenarios/player score` applies it to each run's investigation (its diagnosis; the trace's tool calls for a scenario with `tool` matchers, not yet read by this bench, which then refuses the scenario):
 
-| Measure | Pattern | |
+| Measure | From the scenario | |
 | --- | --- | --- |
-| correct | `proxy` **and** `idle\|idleClientTimeout\|600 s` | scored (spec 04) |
-| memory lead mentioned | `memory\|OOM\|leak` | measured, not scored |
+| correct | every `causes[].match` matches, no `safeAction.dangerous` matches (pattern-based: advice against the action matches too), no action taken above `safeAction.class` | scored (spec 04) |
+| causes named | every `causes[].match` matches, whatever the actions | reported |
+| evidence | each `evidence.expected` item found or not | measured, not scored |
+| red herrings | each `evidence.redHerrings` item absent, mentioned or concluded (pattern-based) | measured, not scored |
+| memory lead | the red herring `memory` not absent; kept one release to compare with the reports from before the format | measured, not scored |
+
+For `proxy-timeout@1`, the cause's rule is the one the bench held before the format, unchanged: `proxy` **and** `idle|idleClientTimeout|600 s`, case-insensitive.
 
 Spec 04's threshold: at least 4 correct out of 5 to merge a change of prompt, engine, model default, connector or corpus.
 
 ## Reports
 
-`report-<date>.json` (UTC, minute precision): the scenario, date, commit, model, N, the counts, the medians (duration from the alert to the end, model calls, tokens, cost) and one row per run. Scores and metrics only: never the diagnosis.
+`report-<date>.json` (UTC, minute precision): the scenario as `<id>@<version>`, date, commit, model, N, the counts (correct, causes named, memory lead, evidence found and red-herring states by id, runs with a dangerous match), the medians (duration from the alert to the end, model calls, tokens, cost) and one row per run. Scores and metrics only: never the diagnosis.
 
 A report is committed by the PR that needed the bench, so that the next change compares with it on the same model; the workflow never commits one. For a scratch run, `BENCH_DIR=test/bench/tmp` (git-ignored).
 
