@@ -82,6 +82,21 @@ func NewPhaseMetric(reg prometheus.Registerer) (*prometheus.CounterVec, error) {
 	return c, nil
 }
 
+// NewConfidenceMetric creates and registers
+// takecare_investigations_confidence_total.
+func NewConfidenceMetric(reg prometheus.Registerer) (*prometheus.CounterVec, error) {
+	c := prometheus.NewCounterVec(prometheus.CounterOpts{Name: "takecare_investigations_confidence_total", Help: "Completed investigations by role and recorded confidence: high, medium, low, unstated."}, []string{"role", "level"})
+	if err := reg.Register(c); err != nil {
+		if already, ok := errors.AsType[prometheus.AlreadyRegisteredError](err); ok {
+			if existing, ok := already.ExistingCollector.(*prometheus.CounterVec); ok {
+				return existing, nil
+			}
+		}
+		return nil, fmt.Errorf("register investigation metrics: %w", err)
+	}
+	return c, nil
+}
+
 // Reconcile is level-based: the queue mirrors the Queued records.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var inv v1alpha1.TakeCareInvestigation

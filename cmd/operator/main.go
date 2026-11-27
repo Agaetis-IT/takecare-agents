@@ -337,6 +337,10 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	if err != nil {
 		return nil, err
 	}
+	confidences, err := investigation.NewConfidenceMetric(crmetrics.Registry)
+	if err != nil {
+		return nil, err
+	}
 	queue := runs.NewQueue(runs.DefaultCapacity)
 	// The retention of ended investigations and reviews, on the leader
 	// (spec 11 §5).
@@ -372,7 +376,7 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("takecare-operator"), Queue: queue,
 		Executor:   &runs.Executor{Engine: &kagent0103.Runs{HTTP: a2aClient}, Role: "doc", Metrics: runMetrics},
 		Tracer:     traces.Tracer("github.com/agaetis-it/takecare-agents/internal/controller/investigation"),
-		EngineKind: kagent0103.Kind, EngineNamespace: cfg.engineNamespace, Phases: phases,
+		EngineKind: kagent0103.Kind, EngineNamespace: cfg.engineNamespace, Phases: phases, Confidences: confidences,
 		Accounting: investigation.Accounting{
 			Usage: usageSource, ScrapeWait: cfg.usageScrapeWait,
 			Poster: &mcp.Client{HTTP: mcpClient}, Duration: duration,

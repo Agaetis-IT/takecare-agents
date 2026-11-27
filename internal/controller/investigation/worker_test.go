@@ -127,7 +127,9 @@ type workerFixture struct {
 	engine *fakeRuns
 	spans  *tracetest.InMemoryExporter
 	phases *prometheus.CounterVec
-	runs   *runs.Metrics
+	// confidences is the worker's takecare_investigations_confidence_total.
+	confidences *prometheus.CounterVec
+	runs        *runs.Metrics
 	cancel context.CancelFunc
 	start  func()
 	// accounting is given to the worker; set it before start.
@@ -173,6 +175,10 @@ func startWorker(t *testing.T, scripts map[string][]poll) *workerFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.confidences, err = NewConfidenceMetric(prometheus.NewRegistry())
+	if err != nil {
+		t.Fatal(err)
+	}
 	f.runs, err = runs.NewMetrics(prometheus.NewRegistry())
 	if err != nil {
 		t.Fatal(err)
@@ -193,7 +199,7 @@ func startWorker(t *testing.T, scripts map[string][]poll) *workerFixture {
 			Client: wc, Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("test"), Queue: queue,
 			Executor:   &runs.Executor{Engine: f.engine, Role: docName, Metrics: f.runs, Interval: 5 * time.Millisecond},
 			Tracer:     tp.Tracer("test"),
-			EngineKind: engineKind, EngineNamespace: engineKind, Phases: f.phases, GateRetry: 50 * time.Millisecond,
+			EngineKind: engineKind, EngineNamespace: engineKind, Phases: f.phases, Confidences: f.confidences, GateRetry: 50 * time.Millisecond,
 			Accounting: f.accounting,
 		}
 		if err := mgr.Add(w); err != nil {
@@ -353,7 +359,7 @@ func TestRunCompleted(t *testing.T) {
 		semconv.GenAIOperationName: "invoke_agent", semconv.GenAIAgentName: docName, semconv.GenAIAgentID: string(d.UID),
 		semconv.GenAIConversationID: "doc-run-ok", semconv.GenAIProviderName: "openai-compatible", semconv.GenAIRequestModel: "gpt-x",
 		semconv.Role: docName, semconv.Level: string(v1alpha1.LevelPractitioner), semconv.AlertName: alertName,
-		semconv.AlertFingerprint: "3fa29c1b07e4d2aa", semconv.RunOutcome: "completed",
+		semconv.AlertFingerprint: "3fa29c1b07e4d2aa", semconv.RunOutcome: "completed", semconv.Confidence: "unstated",
 	} {
 		if a[k] != want {
 			t.Errorf("span attribute %s = %q, want %q", k, a[k], want)
@@ -374,9 +380,56 @@ func TestRunCompleted(t *testing.T) {
 	if got := testutil.ToFloat64(f.phases.WithLabelValues("TakeCareDoc", "Completed")); got != 1 {
 		t.Errorf("takecare_investigations_total{phase=Completed} = %v", got)
 	}
+	// An answer without the confidence line is recorded Unstated.
+	if inv.Status.Confidence != v1alpha1.ConfidenceUnstated || inv.Status.ConfidenceCapped {
+		t.Errorf("confidence %q, capped %t; want Unstated, not capped", inv.Status.Confidence, inv.Status.ConfidenceCapped)
+	}
+	if got := testutil.ToFloat64(f.confidences.WithLabelValues("TakeCareDoc", "unstated")); got != 1 {
+		t.Errorf("takecare_investigations_confidence_total{level=unstated} = %v", got)
+	}
 	var doc v1alpha1.TakeCareDoc
 	if err := f.c.Get(context.Background(), client.ObjectKeyFromObject(d), &doc); err != nil || doc.Status.LastInvestigation != "doc-run-ok" {
 		t.Errorf("the Doc's last investigation = %q, %v", doc.Status.LastInvestigation, err)
+	}
+}
+
+// The confidence the Doc states is recorded, in the trace and the metric;
+// a stated high is capped to medium when the alert's namespace is one of
+// the Doc's blind spots, and only then.
+func TestRunConfidence(t *testing.T) {
+	t.Parallel()
+	high := poll{res: engine.Result{Outcome: engine.OutcomeCompleted, Text: diagnosis + "\nConfidence: high — both values were read."}, done: true}
+	f := startWorker(t, map[string][]poll{task1: {high}, task2: {high}})
+	f.doc(t, true, nil)
+	f.start()
+	f.investigation(t, "doc-sure", nil)
+	sure := f.waitPhase(t, "doc-sure", v1alpha1.PhaseCompleted)
+	if sure.Status.Confidence != v1alpha1.ConfidenceHigh || sure.Status.ConfidenceCapped {
+		t.Errorf("no blind spot: confidence %q, capped %t; want High, not capped", sure.Status.Confidence, sure.Status.ConfidenceCapped)
+	}
+	if got := attrs(f.rootSpan(t, sure.Status.TraceID))[semconv.Confidence]; got != "high" {
+		t.Errorf("span attribute %s = %q, want high", semconv.Confidence, got)
+	}
+	if err := testenv.UpdateStatus(context.Background(), f.c, &v1alpha1.TakeCareDoc{Namespace: ns, Name: docName}, func(d *v1alpha1.TakeCareDoc) {
+		d.Status.BlindSpots = []v1alpha1.BlindSpot{{Entity: "environment/" + appsNS, Reason: v1alpha1.BlindSpotNoAccess}}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.investigation(t, "doc-blind", nil)
+	blind := f.waitPhase(t, "doc-blind", v1alpha1.PhaseCompleted)
+	if blind.Status.Confidence != v1alpha1.ConfidenceMedium || !blind.Status.ConfidenceCapped {
+		t.Errorf("namespace in a blind spot: confidence %q, capped %t; want Medium, capped", blind.Status.Confidence, blind.Status.ConfidenceCapped)
+	}
+	if blind.Status.Diagnosis != high.res.Text {
+		t.Errorf("the diagnosis must stay the agent's answer, unchanged: %q", blind.Status.Diagnosis)
+	}
+	if got := attrs(f.rootSpan(t, blind.Status.TraceID))[semconv.Confidence]; got != "medium" {
+		t.Errorf("span attribute %s = %q, want medium", semconv.Confidence, got)
+	}
+	for level, want := range map[string]float64{"high": 1, "medium": 1, "low": 0, "unstated": 0} {
+		if got := testutil.ToFloat64(f.confidences.WithLabelValues("TakeCareDoc", level)); got != want {
+			t.Errorf("takecare_investigations_confidence_total{level=%s} = %v, want %v", level, got, want)
+		}
 	}
 }
 

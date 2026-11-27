@@ -29,6 +29,9 @@ spec:
     - jsonPath: .status.published.ok
       name: Published
       type: boolean
+    - jsonPath: .status.confidence
+      name: Confidence
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -246,6 +249,24 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              confidence:
+                description: |-
+                  The confidence the Doc stated on the last line of a completed
+                  answer, as recorded: High, Medium or Low, Unstated when the answer
+                  states none. A stated High is recorded Medium when the alert's
+                  entity or namespace is one of the Doc's blind spots. Measured only:
+                  it does not change publication.
+                enum:
+                - High
+                - Medium
+                - Low
+                - Unstated
+                type: string
+              confidenceCapped:
+                description: |-
+                  ConfidenceCapped: the Doc stated High and the operator recorded
+                  Medium, because the alert is in the Doc's blind spots.
+                type: boolean
               degraded:
                 description: |-
                   Set when the run went on without some of its sources (a connector
