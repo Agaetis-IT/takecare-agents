@@ -18,7 +18,9 @@ cluster:
   extraResources: []
   # -- Read the nodes, cluster-wide: get, list and watch on `nodes` only
   # (spec 12 §4), for the Mécano to read this cluster's version from the
-  # kubelets. Never nodes/proxy, nodes/stats or nodes/log, and the server's
+  # kubelets. The right is the front's: every role bound to this cluster's
+  # connector (Doc, Kiné, Intendant, Mécano) can then read the node
+  # objects. Never nodes/proxy, nodes/stats or nodes/log, and the server's
   # nodes_* tools stay disabled.
   readNodes: false
 
