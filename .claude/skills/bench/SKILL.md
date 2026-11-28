@@ -10,7 +10,6 @@ description: Use to run the TakeCare accuracy benches on the demo (real model), 
 3. Read `test/bench/report-<date>.json`. Report, per scenario (`<id>@<version>`): correct runs / N (the rule is the scenario file, `test/scenarios/<id>.yaml`, spec 14), the evidence found, the red herrings mentioned or concluded, any dangerous match, median latency, model calls, tokens and cost per investigation. A report that says `played: false` is not a score: the scenario's alert did not fire.
 4. Compare with the latest report on `main` (same model, same scenario version): `make demo-bench N=5 BENCH_BASELINE=test/bench/report-<date>.json` prints the comparison and refuses a baseline at another version. A drop in correctness, or a latency above 3 minutes, blocks the change: say so in the PR, with both tables.
 5. Never commit a report containing message content if `captureContent` was on; the bench report keeps only scores and metrics.
-6. Before a release, or for a change that can move every scenario (instructions, engine, model default), play the three scenarios: `make demo-bench-scenarios N=5 BENCH_BARS="proxy-timeout=5/5 bad-config-rollout=4/5 missing-secret-key=4/5" BENCH_MAX_COST=<the cap of the go>`. Report each scenario against its own bar, never a pooled score, and say which were not played. Read `test/bench/run-<date>.json` and each `report-<date>-<id>.json`.
 
 ## The Intendant bench
 
