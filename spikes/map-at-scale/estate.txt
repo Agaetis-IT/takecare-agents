@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 Agaetis
+# SPDX-License-Identifier: Apache-2.0
+#
+# The synthetic estate: ~100 releases of public charts commonly found in
+# production, each with its chart's default values. Columns:
+#   count  namespace  release  chart  version  repository ("-" for OCI)
+#   [--set values a chart requires to render at all: external-dns's schema
+#   under Helm 4, and Loki's documented single-binary filesystem install]
+# A namespace "team-*" spreads the releases round-robin over team-01..10;
+# count > 1 suffixes the release name with -01, -02...
+# The mix is an assumption (see the report): a platform layer, ten team
+# namespaces of web apps with their datastores, a few packaged products.
+
+# Platform: one release each, in its usual namespace.
+1  ingress-nginx     ingress-nginx  ingress-nginx  4.15.1  https://kubernetes.github.io/ingress-nginx
+1  cert-manager      cert-manager   cert-manager   v1.21.3 https://charts.jetstack.io
+1  external-dns      external-dns   external-dns   1.24.0  https://kubernetes-sigs.github.io/external-dns policy=upsert-only
+1  external-secrets  external-secrets external-secrets 2.15.0 https://charts.external-secrets.io
+1  monitoring        kube-prometheus-stack kube-prometheus-stack 94.1.0 https://prometheus-community.github.io/helm-charts
+1  monitoring        loki           loki           7.7.0   https://grafana.github.io/helm-charts deploymentMode=SingleBinary,loki.storage.type=filesystem,loki.commonConfig.replication_factor=1,loki.useTestSchema=true,singleBinary.replicas=1,read.replicas=0,write.replicas=0,backend.replicas=0
+1  argocd            argo-cd        argo-cd        10.20.0 https://argoproj.github.io/argo-helm
+1  keda              keda           keda           2.21.1  https://kedacore.github.io/charts
+1  kyverno           kyverno        kyverno        3.10.0  https://kyverno.github.io/kyverno
+1  cnpg-system       cloudnative-pg cloudnative-pg 0.29.2  https://cloudnative-pg.github.io/charts
+1  strimzi           strimzi        oci://quay.io/strimzi-helm/strimzi-kafka-operator 1.3.1 -
+1  kube-system       metrics-server metrics-server 3.14.0  https://kubernetes-sigs.github.io/metrics-server
+
+# Team workloads: web apps, then their datastores and queues.
+49 team-*  web       oci://ghcr.io/stefanprodan/charts/podinfo 6.17.0 -
+10 team-*  front     oci://registry-1.docker.io/bitnamicharts/nginx 25.2.19 -
+6  team-*  pg        oci://registry-1.docker.io/bitnamicharts/postgresql 18.12.28 -
+5  team-*  cache     oci://registry-1.docker.io/bitnamicharts/redis 28.3.16 -
+2  team-*  docs      oci://registry-1.docker.io/bitnamicharts/mongodb 20.0.23 -
+2  team-*  sql       oci://registry-1.docker.io/bitnamicharts/mysql 14.0.3 -
+2  team-*  queue     oci://registry-1.docker.io/bitnamicharts/rabbitmq 16.0.14 -
+1  team-*  events    oci://registry-1.docker.io/bitnamicharts/kafka 32.4.3 -
+1  team-*  memo      oci://registry-1.docker.io/bitnamicharts/memcached 8.8.8 -
+1  team-*  search    oci://registry-1.docker.io/bitnamicharts/elasticsearch 22.1.6 -
+1  team-*  bus       nats           2.15.3  https://nats-io.github.io/k8s/helm/charts
+3  team-*  db        cluster        0.9.0   https://cloudnative-pg.github.io/charts
+
+# Packaged products.
+1  iam      keycloak  oci://registry-1.docker.io/bitnamicharts/keycloak 25.2.0 -
+1  website  wordpress oci://registry-1.docker.io/bitnamicharts/wordpress 34.2.12 -
+1  gitea    gitea     gitea          12.7.0  https://dl.gitea.com/charts
+1  storage  minio     oci://registry-1.docker.io/bitnamicharts/minio 17.0.21 -
+1  grafana  grafana   grafana        10.5.15 https://grafana.github.io/helm-charts
