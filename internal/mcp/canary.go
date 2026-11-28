@@ -44,10 +44,46 @@ func canaryArgs() map[string]any {
 // CallRuleCanary sends the one call the gateway's argument rule on a
 // metrics route must refuse (spec 10 §8) and says what the gateway did,
 // from the HTTP status of the tools/call: the SDK reports a 403 as text
-// only. It is the one call that skips Allowed; its tool and arguments are
-// fixed. The answer, if any, is dropped unread. The status is 0 when no
-// tools/call response came back.
+// only. It is one of the two calls that skip Allowed; its tool and
+// arguments are fixed. The answer, if any, is dropped unread. The status
+// is 0 when no tools/call response came back.
 func (c *Client) CallRuleCanary(ctx context.Context, ep Endpoint) (CanaryVerdict, int) {
+	return c.canary(ctx, ep, RulesTool, canaryArgs())
+}
+
+// ProposeCanaryRepository is the repository the propose canary names: no
+// Mécano may list it (a repository's owner is never "takecare-canary" in
+// maintenance.repositories, which the gateway's rule repeats), and the
+// propose server refuses any repository its configuration does not list,
+// before any forge call.
+const ProposeCanaryRepository = "takecare-canary/unlisted"
+
+// proposeCanaryArgs are propose_change's arguments as the rule on the
+// propose route must refuse them twice over: an unlisted repository and a
+// key outside the five, on a branch the rule would admit, with no file.
+func proposeCanaryArgs() map[string]any {
+	return map[string]any{
+		"repository": ProposeCanaryRepository, "branch": "takecare/mecano/canary",
+		"title": "canary", "body": "canary", "files": []any{}, "takecare_canary": true,
+	}
+}
+
+// ProposeCanary sends the one call the gateway's argument rule on a
+// Mécano's propose route must refuse (spec 12 §6.4) and says what the
+// gateway did, as CallRuleCanary does: only CanaryRefused (a 403) proves
+// the rule. Let through, the propose server refuses the unlisted
+// repository before any forge call. It skips Allowed; its tool and
+// arguments are fixed.
+func (c *Client) ProposeCanary(ctx context.Context, ep Endpoint) (CanaryVerdict, int) {
+	return c.canary(ctx, ep, ProposeTool, proposeCanaryArgs())
+}
+
+// ProposeTool is the propose server's one tool (spec 12 §6.2).
+const ProposeTool = "propose_change"
+
+// canary sends one fixed call and classes the gateway's answer by the
+// tools/call's HTTP status.
+func (c *Client) canary(ctx context.Context, ep Endpoint, tool string, args map[string]any) (CanaryVerdict, int) {
 	httpClient := c.HTTP
 	if ep.HTTP != nil {
 		httpClient = ep.HTTP
@@ -72,7 +108,7 @@ func (c *Client) CallRuleCanary(ctx context.Context, ep Endpoint) (CanaryVerdict
 	}
 	defer session.Close() //nolint:errcheck // see ListTools
 	rec.arm()
-	_, err = session.CallTool(ctx, &sdk.CallToolParams{Name: RulesTool, Arguments: canaryArgs()})
+	_, err = session.CallTool(ctx, &sdk.CallToolParams{Name: tool, Arguments: args})
 	status := rec.status()
 	switch {
 	case status == http.StatusForbidden:

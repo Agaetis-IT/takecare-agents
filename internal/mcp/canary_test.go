@@ -105,3 +105,38 @@ func TestCallRuleCanaryArguments(t *testing.T) {
 		t.Error("the operator's client admits the canary's arguments")
 	}
 }
+
+// The propose canary: only a 403 proves the rule; through an open route
+// the propose server gets an unlisted repository and a key outside the
+// five, and nothing else.
+func TestProposeCanary(t *testing.T) {
+	var got map[string]any
+	srv := mcptest.Start(t, mcptest.ToolSpec{Name: mcp.ProposeTool, Handle: func(args map[string]any) (string, any, bool) {
+		got = args
+		return "RepositoryNotListed", nil, true
+	}})
+	c := &mcp.Client{HTTP: &http.Client{Timeout: 5 * time.Second}}
+	for _, tc := range []struct {
+		name string
+		call func(w http.ResponseWriter) bool
+		want mcp.CanaryVerdict
+	}{
+		{"refused by the rule", func(w http.ResponseWriter) bool { http.Error(w, "denied", http.StatusForbidden); return true }, mcp.CanaryRefused},
+		{"let through", nil, mcp.CanaryLetThrough},
+		{"a server error", func(w http.ResponseWriter) bool { http.Error(w, "x", http.StatusBadGateway); return true }, mcp.CanaryPending},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got = nil
+			v, _ := c.ProposeCanary(t.Context(), mcp.Endpoint{URL: gateway(t, srv.URL, tc.call)})
+			if v != tc.want {
+				t.Errorf("verdict %s, want %s", v, tc.want)
+			}
+			if tc.want == mcp.CanaryLetThrough && (got["repository"] != mcp.ProposeCanaryRepository || got["takecare_canary"] != true || len(got) != 6) {
+				t.Errorf("arguments %v, want the unlisted repository and takecare_canary", got)
+			}
+			if tc.want != mcp.CanaryLetThrough && got != nil {
+				t.Errorf("the server got the canary though the gateway answered: %v", got)
+			}
+		})
+	}
+}
