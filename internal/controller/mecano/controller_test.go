@@ -35,29 +35,30 @@ import (
 )
 
 const (
-	ns          = "takecare-system"
-	engineNS    = "kagent"
-	gwURL       = "http://agentgateway-proxy.takecare-system.svc"
-	mecanoName  = "mecano"
-	agentMecano = "takecare-mecano-mecano"
-	connCluster = "kubernetes"
-	connCode    = "code"
-	connPropose = "code-propose"
-	connRel     = "releases"
-	connCopy    = "staging"
-	connRep     = "report"
-	repoDeploy  = "team/deploy"
-	reasonTest  = "Test"
-	shop        = v1alpha1.Namespace("shop")
-	fileGet     = "file_get"
-	transition  = "2026-11-27T00:00:00Z"
-	accepted    = "Accepted"
-	statusTrue  = "True"
-	gwName      = "agentgateway-proxy"
-	repoOther   = "team/other"
-	denyAll     = "false"
-	keyConds    = "conditions"
-	keyName     = "name"
+	ns           = "takecare-system"
+	engineNS     = "kagent"
+	gwURL        = "http://agentgateway-proxy.takecare-system.svc"
+	mecanoName   = "mecano"
+	agentMecano  = "takecare-mecano-mecano"
+	connCluster  = "kubernetes"
+	connCode     = "code"
+	connPropose  = "code-propose"
+	connRel      = "releases"
+	connCopy     = "staging"
+	connRep      = "report"
+	repoDeploy   = "team/deploy"
+	reasonTest   = "Test"
+	shop         = v1alpha1.Namespace("shop")
+	fileGet      = "file_get"
+	transition   = "2026-11-27T00:00:00Z"
+	accepted     = "Accepted"
+	statusTrue   = "True"
+	gwName       = "agentgateway-proxy"
+	repoOther    = "team/other"
+	denyAll      = "false"
+	keyConds     = "conditions"
+	keyName      = "name"
+	platformName = "main"
 )
 
 var (
@@ -81,7 +82,7 @@ type fixture struct{ c client.Client }
 
 // start runs the Mécano's reconciler as the operator, under its own Roles:
 // a request its Roles refuse fails the test.
-func start(t *testing.T) *fixture {
+func start(t *testing.T, extra ...func(mgr ctrl.Manager, r *Reconciler) error) *fixture {
 	t.Helper()
 	env := testenv.StartOperator(t)
 	scheme := runtime.NewScheme()
@@ -106,6 +107,11 @@ func start(t *testing.T) *fixture {
 		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("test"), OperatorNamespace: ns, EngineNamespace: engineNS,
 		Engine: &kagent0103.Agents{Client: mgr.GetClient()}, Models: &kagent0103.Models{Client: mgr.GetClient()},
 	}
+	for _, add := range extra {
+		if err := add(mgr, r); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := r.SetupWithManager(mgr); err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +133,7 @@ func tools(class v1alpha1.ToolClass, names ...string) []v1alpha1.ToolStatus {
 func (f *fixture) platform(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
-	p := &v1alpha1.TakeCarePlatform{Name: "main"}
+	p := &v1alpha1.TakeCarePlatform{Name: platformName}
 	p.Spec.Models = []v1alpha1.ModelSpec{{Name: "default", Model: "m", BaseURL: "https://x/v1", APIKeySecretRef: v1alpha1.SecretKeyRef{Name: "k", Key: "k"}}}
 	p.Spec.Gateway.GatewayRef = &v1alpha1.ObjectRef{Name: gwName}
 	if err := f.c.Create(ctx, p); err != nil {

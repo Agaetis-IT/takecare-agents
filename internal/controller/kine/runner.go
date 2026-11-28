@@ -390,7 +390,7 @@ func (w *Runner) review(ctx context.Context, rv *v1alpha1.TakeCareReview, k *v1a
 		return failed(failNotFinished), err
 	}
 	run := engine.Run{Namespace: w.EngineNamespace, Agent: kineagent.AgentName(k), GatewayURL: p.Status.GatewayURL, Message: msg, ConversationID: rv.Name}
-	var m *meter
+	var m *usage.Meter
 	unknown := "the operator restarted during the review: its start was not measured"
 	if e := rv.Status.Engine; e == nil || e.TaskID == "" {
 		m, unknown = w.meter(ctx, rv, k, p)
@@ -401,7 +401,7 @@ func (w *Runner) review(ctx context.Context, rv *v1alpha1.TakeCareReview, k *v1a
 	}
 	var u *v1alpha1.Usage
 	if m != nil {
-		u, unknown = m.end(ctx, w.ScrapeWait)
+		u, unknown = m.End(ctx, w.ScrapeWait)
 	}
 	var out v1alpha1.TakeCareReviewStatus
 	switch {
@@ -527,18 +527,9 @@ func (w *Runner) blindSpots(ctx context.Context, k *v1alpha1.TakeCareKine, perio
 	return out, nil
 }
 
-// meter measures a review on the Kiné's own model route (spec 11 §6): one
-// review runs at a time per Kiné, so it counts no other run's calls, except
-// one the engine still runs after it did not finish: then it is
-// approximate.
-type meter struct {
-	source      usage.Source
-	start       usage.Counters
-	pricing     *v1alpha1.Pricing
-	approximate bool
-}
-
-func (w *Runner) meter(ctx context.Context, rv *v1alpha1.TakeCareReview, k *v1alpha1.TakeCareKine, p *v1alpha1.TakeCarePlatform) (*meter, string) {
+// meter measures a review on the Kiné's own model route (spec 11 §6),
+// approximate when the Kiné's last review did not finish.
+func (w *Runner) meter(ctx context.Context, rv *v1alpha1.TakeCareReview, k *v1alpha1.TakeCareKine, p *v1alpha1.TakeCarePlatform) (*usage.Meter, string) {
 	if w.Usage == nil {
 		return nil, "the operator measures no usage"
 	}
@@ -550,17 +541,13 @@ func (w *Runner) meter(ctx context.Context, rv *v1alpha1.TakeCareReview, k *v1al
 	if name == "" {
 		return nil, "the Kiné's model is not resolved"
 	}
-	m := &meter{source: usage.ForRoute(src, routes.ModelRoute(roleOf(k), name)), approximate: w.previousUnfinished(ctx, rv)}
+	var pricing *v1alpha1.Pricing
 	for _, spec := range p.Spec.Models {
 		if spec.Name == name {
-			m.pricing = spec.Pricing
+			pricing = spec.Pricing
 		}
 	}
-	var err error
-	if m.start, err = m.source.Snapshot(ctx); err != nil {
-		return nil, "the start snapshot: " + err.Error()
-	}
-	return m, ""
+	return usage.StartMeter(ctx, usage.ForRoute(src, routes.ModelRoute(roleOf(k), name)), pricing, w.previousUnfinished(ctx, rv))
 }
 
 // previousUnfinished says whether the Kiné's last ended review did not
@@ -579,29 +566,6 @@ func (w *Runner) previousUnfinished(ctx context.Context, rv *v1alpha1.TakeCareRe
 		}
 	}
 	return last != nil && (strings.HasPrefix(last.Status.Reason, failNotFinished) || strings.HasPrefix(last.Status.Reason, v1alpha1.ReasonAbandoned))
-}
-
-// end reads the counters one scrape interval after the run: the usage, or
-// why it is unknown.
-func (m *meter) end(ctx context.Context, wait time.Duration) (*v1alpha1.Usage, string) {
-	select {
-	case <-ctx.Done():
-		return nil, "the operator stopped before the usage was read"
-	case <-time.After(wait):
-	}
-	end, err := m.source.Snapshot(ctx)
-	if err != nil {
-		return nil, "the end snapshot: " + err.Error()
-	}
-	d, err := usage.Delta(m.start, end)
-	if err != nil {
-		return nil, err.Error()
-	}
-	u, err := usage.Record(d, m.pricing, m.approximate)
-	if err != nil {
-		return nil, "not priced: " + err.Error()
-	}
-	return &u, ""
 }
 
 // sayUsage writes UsageAttributed: measured, or why not.

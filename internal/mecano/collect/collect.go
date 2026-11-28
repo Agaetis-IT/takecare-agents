@@ -169,6 +169,7 @@ const (
 	reasonStaleAnswer   = "the source's last refresh failed: its previous answer is used for %s"
 	reasonNoAnswer      = "the source gave no version for %s: the next source, else the dataset, is used"
 	reasonNoCode        = "no code connector could be read: what Git declares is unknown, and so is the drift"
+	reasonKubernetesKey = "a chart or product named kubernetes shares the cluster's key: it is not compared, the cluster's version is kept"
 )
 
 // errCtx wraps the context's end.
@@ -310,7 +311,14 @@ func cut(s string, n int) string {
 // result bounds the lists, counts what is past each bound, and orders
 // everything for a stable status.
 func (c *collector) result() Result {
-	out := Result{BlindSpots: c.blind}
+	blind := slices.Clone(c.blind)
+	slices.SortFunc(blind, func(a, b v1alpha1.NotSeen) int {
+		if a.Ref != b.Ref {
+			return strings.Compare(a.Ref, b.Ref)
+		}
+		return strings.Compare(a.Reason, b.Reason)
+	})
+	out := Result{BlindSpots: blind}
 	if len(c.clusters) > 0 {
 		out.ClusterVersion = c.lowestCluster().version
 	}

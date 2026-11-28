@@ -258,6 +258,48 @@ func setupKine(mgr ctrl.Manager, cfg config, mcpClient *http.Client, rr kineRuns
 	return nil
 }
 
+// setupMecano sets up the Mécano (spec 12): its controller (its
+// conditions, its scope, its routes on the gateway, its agent in the
+// engine and the trigger of its scheduled maintenances), the retention of
+// its maintenances, and its maintenances, queued as they come and run one
+// per Mécano at a time; the collector reads through the Mécano's routes on
+// the gateway (spec 12 §4).
+func setupMecano(mgr ctrl.Manager, cfg config, mcpClient, gatewayClient *http.Client, rr kineRuns) error {
+	if err := (&mecano.Reconciler{
+		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("takecare-operator"),
+		OperatorNamespace: cfg.operatorNamespace, EngineNamespace: cfg.engineNamespace,
+		Engine: &kagent0103.Agents{Client: mgr.GetClient()}, Models: &kagent0103.Models{Client: mgr.GetClient()},
+		Lookup: &coverage.Lookup{MCP: &mcp.Client{HTTP: mcpClient}},
+	}).SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("set up the Mécano controller: %w", err)
+	}
+	if err := mgr.Add(&mecano.Sweeper{
+		Client: mgr.GetClient(), Namespace: cfg.operatorNamespace, Retention: cfg.maintenanceRetention,
+	}); err != nil {
+		return fmt.Errorf("add the maintenance retention: %w", err)
+	}
+	maintenances := runs.NewQueue(16)
+	runner := &mecano.Runner{
+		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: maintenances,
+		Runs: &kagent0103.Runs{HTTP: rr.a2a}, EngineKind: kagent0103.Kind, EngineNamespace: cfg.engineNamespace,
+		RunMetrics: rr.metrics, Tracer: rr.tracer, Usage: rr.usage, ScrapeWait: cfg.usageScrapeWait,
+		Caller: &mcp.Client{HTTP: mcpClient}, Canary: &mcp.Client{HTTP: gatewayClient},
+		Recorder: mgr.GetEventRecorder("takecare-operator"),
+	}
+	// The queuer ends a Running maintenance the runner does not hold at
+	// its bound.
+	if err := (&mecano.MaintenanceQueuer{
+		Client: mgr.GetClient(), Reader: mgr.GetAPIReader(), Queue: maintenances,
+		Recorder: mgr.GetEventRecorder("takecare-operator"), Runs: runner, ScrapeWait: cfg.usageScrapeWait,
+	}).SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("set up the maintenance queue: %w", err)
+	}
+	if err := mgr.Add(runner); err != nil {
+		return fmt.Errorf("add the maintenance runner: %w", err)
+	}
+	return nil
+}
+
 // setupAlerts adds the Doc's trigger: the Alertmanager webhook, on every
 // replica, and the admission of its records into the leader's run queue.
 func setupAlerts(mgr ctrl.Manager, cfg config, mcpClient *http.Client) error {
@@ -454,16 +496,11 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	}); err != nil {
 		return nil, err
 	}
-	// The Mécano (spec 12): its conditions, its scope, its routes on the
-	// gateway and its agent in the engine. Its maintenances come with lot
-	// M3.
-	if err := (&mecano.Reconciler{
-		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("takecare-operator"),
-		OperatorNamespace: cfg.operatorNamespace, EngineNamespace: cfg.engineNamespace,
-		Engine: &kagent0103.Agents{Client: mgr.GetClient()}, Models: &kagent0103.Models{Client: mgr.GetClient()},
-		Lookup: &coverage.Lookup{MCP: &mcp.Client{HTTP: mcpClient}},
-	}).SetupWithManager(mgr); err != nil {
-		return nil, fmt.Errorf("set up the Mécano controller: %w", err)
+	if err := setupMecano(mgr, cfg, mcpClient, gatewayClient, kineRuns{
+		a2a: a2aClient, metrics: runMetrics, usage: usageSource,
+		tracer: traces.Tracer("github.com/agaetis-it/takecare-agents/internal/controller/mecano"),
+	}); err != nil {
+		return nil, err
 	}
 	caBundle, err := parseCABundle(cfg.caBundle)
 	if err != nil {

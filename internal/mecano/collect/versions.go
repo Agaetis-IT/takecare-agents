@@ -55,6 +55,12 @@ func (c *collector) versions(ctx context.Context) error {
 				evs = append(evs, ev)
 			}
 		}
+		// A chart or a product named kubernetes would share the cluster's
+		// key: the cluster keeps it, and the other is not compared.
+		if slices.ContainsFunc(c.components, func(x v1alpha1.InventoryComponent) bool { return x.Key == keyKubernetes }) {
+			c.components = slices.DeleteFunc(c.components, func(x v1alpha1.InventoryComponent) bool { return x.Key == keyKubernetes })
+			c.blindSpot(keyKubernetes, reasonKubernetesKey)
+		}
 		c.origin[keyKubernetes] = originCluster
 		c.components = append([]v1alpha1.InventoryComponent{{Key: keyKubernetes, Live: low.version, Drift: v1alpha1.DriftUnknown, Evidence: evs}},
 			c.components...)

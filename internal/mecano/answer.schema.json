@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/agaetis-it/takecare-agents/internal/mecano/answer.schema.json",
+  "title": "The Mécano's answer",
+  "description": "One maintenance's answer, as the instructions state it (spec 12 §2, §9). The operator cuts what exceeds a status bound and counts it, and drops what the inventory does not hold; the shape alone is checked here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["findings"],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "text", "severity"],
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "enum": ["Behind", "EndOfSupport", "RemovedAPI", "Certificate", "Drift"] },
+          "component": { "type": "string" },
+          "text": { "type": "string", "minLength": 1 },
+          "severity": { "enum": ["Now", "Soon", "Later"] },
+          "evidence": { "$ref": "#/$defs/evidence" }
+        }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["steps"],
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "text", "class"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "text": { "type": "string", "minLength": 1 },
+              "findings": { "type": "array", "items": { "type": "string" } },
+              "class": { "enum": ["reversible", "disruptive", "destructive"] }
+            }
+          }
+        }
+      }
+    },
+    "pullRequests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["repository", "url", "branch"],
+        "properties": {
+          "repository": { "type": "string", "minLength": 1 },
+          "url": { "type": "string", "minLength": 1 },
+          "branch": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tool"],
+        "properties": {
+          "tool": { "type": "string", "minLength": 1 },
+          "record": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -18,6 +18,9 @@
 !internal/kine/message.tmpl
 !internal/kine/answer.schema.json
 !internal/mecano/instructions.md
+!internal/mecano/message.tmpl
+!internal/mecano/answer.schema.json
+!internal/mecano/eos/dataset.yaml
 !internal/demo/corpus/pools.json
 !internal/demo/corpus/seed/*.json
 !api/map/entry.schema.json

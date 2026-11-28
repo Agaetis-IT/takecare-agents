@@ -1,0 +1,61 @@
+{{- /*
+SPDX-FileCopyrightText: 2026 Agaetis
+SPDX-License-Identifier: Apache-2.0
+
+The request of one maintenance (spec 12 §9), a Go text/template rendered
+by internal/mecano: the trigger, the scope, the collector's inventory as
+facts, the dataset's date, what could not be read, the level's task and,
+at Practitioner, the repositories the plan may target with the branch to
+use. Versioned like code: the golden files under testdata/ show every
+change.
+*/ -}}
+{{- if eq .Trigger "Schedule" -}}
+This is the Mécano's weekly maintenance: take stock of the scope.
+{{- else -}}
+This is a maintenance asked on demand.
+{{- end }}
+
+Maintenance: {{ .Name }}
+Scope: {{ .Scope }}
+{{- if .Components }}
+Narrowed to these components only:
+{{- range .Components }}
+- {{ . }}
+{{- end }}
+{{- end }}
+The end-of-support dataset is from {{ .DatasetDate }}.
+{{- if .ClusterVersion }}
+The lowest cluster version read is {{ .ClusterVersion }} (the nodes' kubelets, a lower bound of the control plane's).
+{{- end }}
+
+The collector's inventory, the facts of this maintenance:
+
+```json
+{{ .Inventory }}
+```
+{{- if .BlindSpots }}
+
+What could not be read:
+{{- range .BlindSpots }}
+- {{ .Ref }}: {{ .Reason }}
+{{- end }}
+{{- end }}
+
+{{ if .Practitioner -}}
+Your task: the findings, then the plan of the work they call for.
+{{- if .Repositories }} Open the plan as a draft pull request with `propose_change`, on the branch `{{ .Branch }}`, in these repositories only:
+{{- range .Repositories }}
+- {{ . }}
+{{- end }}
+{{- else }} Open no pull request in this maintenance: record the plan only.
+{{- end }}
+{{- if .Copy }}
+The team's copy was read: the operator says whether it shows the plan working.
+{{- else }}
+No copy was read: the plan is not tested on a copy.
+{{- end }}
+{{- else -}}
+Your task: the findings only. You work as an Apprentice: no plan, no pull request.
+{{- end }}
+
+Read with your tools to explain and prioritise these facts, and answer as your instructions say: one fenced JSON block, no question.

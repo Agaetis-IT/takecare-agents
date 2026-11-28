@@ -86,6 +86,18 @@ const (
 	ReviewTrigger = "takecare.review.trigger"
 	ReviewActions = "takecare.review.actions"
 
+	// A maintenance of the Mécano (spec 12 §15): its record and trigger,
+	// on the root span; the collector's counts on its span; the findings
+	// and pull requests it recorded; the propose canary's connector. Never
+	// a repository's content.
+	MaintenanceName         = "takecare.maintenance.name"
+	MaintenanceTrigger      = "takecare.maintenance.trigger"
+	MaintenanceComponents   = "takecare.maintenance.components"
+	MaintenanceBlindSpots   = "takecare.maintenance.blind_spots"
+	MaintenanceFindings     = "takecare.maintenance.findings"
+	MaintenancePullRequests = "takecare.maintenance.pull_requests"
+	MaintenanceConnector    = "takecare.maintenance.connector"
+
 	// The call rule's canary (spec 10 §8), on its span: what the gateway
 	// did (refused, let-through, pending) and the tools/call's HTTP status
 	// (0 when none came back), the OpenTelemetry HTTP attribute.

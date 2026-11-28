@@ -1,0 +1,18 @@
+This is the Mécano's weekly maintenance: take stock of the scope.
+
+Maintenance: maintenance-0a1b2c3d4e
+Scope: none
+The end-of-support dataset is from 2026-11-20.
+
+The collector's inventory, the facts of this maintenance:
+
+```json
+{
+  "omitted": {}
+}
+```
+
+Your task: the findings, then the plan of the work they call for. Open no pull request in this maintenance: record the plan only.
+No copy was read: the plan is not tested on a copy.
+
+Read with your tools to explain and prioritise these facts, and answer as your instructions say: one fenced JSON block, no question.

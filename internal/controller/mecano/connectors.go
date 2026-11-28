@@ -65,6 +65,14 @@ type binding struct {
 	unknown bool
 }
 
+// The slots the collector reads, by name.
+const (
+	slotCluster  = "cluster"
+	slotCode     = "code"
+	slotCopy     = "copy"
+	slotReleases = "releases"
+)
+
 // slot is one of the Mécano's connector slots read through a route.
 type slot struct {
 	name  string
@@ -84,14 +92,14 @@ type slot struct {
 func slots(m *v1alpha1.TakeCareMecano) []slot {
 	c := m.Spec.Connectors
 	return []slot{
-		{"cluster", v1alpha1.ConnectorCluster, c.Cluster, true, nil},
-		{"code", v1alpha1.ConnectorCode, c.Code, true, nil},
+		{slotCluster, v1alpha1.ConnectorCluster, c.Cluster, true, nil},
+		{slotCode, v1alpha1.ConnectorCode, c.Code, true, nil},
 		{"knowledge", v1alpha1.ConnectorKnowledge, c.Knowledge, true, nil},
 		{"changes", v1alpha1.ConnectorChanges, c.Changes, true, nil},
 		{"history", v1alpha1.ConnectorHistory, c.History, true, nil},
 		{"map", v1alpha1.ConnectorMap, c.Map, true, nil},
-		{"copy", v1alpha1.ConnectorCluster, c.Copy, false, nil},
-		{"releases", v1alpha1.ConnectorReleases, c.Releases, false, ReleasesTools},
+		{slotCopy, v1alpha1.ConnectorCluster, c.Copy, false, nil},
+		{slotReleases, v1alpha1.ConnectorReleases, c.Releases, false, ReleasesTools},
 	}
 }
 
@@ -124,9 +132,9 @@ func (r *Reconciler) connectors(ctx context.Context, m *v1alpha1.TakeCareMecano,
 		// be compared; any other slot, or a second cluster or code
 		// connector, is a blind spot.
 		switch {
-		case s.name == "cluster" && usable == 0:
+		case s.name == slotCluster && usable == 0:
 			b.cluster = missing
-		case s.name == "code" && usable == 0:
+		case s.name == slotCode && usable == 0:
 			b.code = missing
 		default:
 			b.unavailable = append(b.unavailable, failed...)

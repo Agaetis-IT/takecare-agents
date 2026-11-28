@@ -4,7 +4,9 @@
 package collect
 
 import (
+	"cmp"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"path/filepath"
@@ -406,4 +408,47 @@ func TestCertificates(t *testing.T) {
 			t.Errorf("certificates %+v, blind spots %+v", res.Inventory.Certificates, res.BlindSpots)
 		}
 	})
+}
+
+// TestChartNamedKubernetes: a chart named kubernetes would share the
+// cluster's key; the cluster keeps it, with its version, and a blind spot
+// says the chart is not compared.
+func TestChartNamedKubernetes(t *testing.T) {
+	f, in := bare(t, "v1.33.4")
+	f.set(cluster, toolList, list(apps, deploy, demoApps), rows(t, apps, deploy, demoApps,
+		deployment("kube-tools", "ghcr.io/example/kube-tools:1.0.0", "helm.sh/chart=kubernetes-9.9.9")))
+	res := collect(t, f, in)
+	n := 0
+	for _, c := range res.Inventory.Components {
+		if c.Key == keyKubernetes {
+			n++
+			if c.Live != "1.33.4" {
+				t.Errorf("the kubernetes component is the chart's: %+v", c)
+			}
+		}
+	}
+	if n != 1 {
+		t.Errorf("%d components keyed kubernetes, want the cluster's alone", n)
+	}
+	if !hasBlindSpot(res, keyKubernetes, "shares the cluster's key") {
+		t.Errorf("no blind spot for the chart named kubernetes: %+v", res.BlindSpots)
+	}
+}
+
+// TestBlindSpotsSorted: the blind spots come sorted by reference, then
+// reason, whatever the order the collector met them in, so that two
+// maintenances of the same ground write the same status.
+func TestBlindSpotsSorted(t *testing.T) {
+	f, in := demo(t)
+	f.errs[key(cluster, toolList, list(certManager, kindCertificate, demoApps))] = errors.New("down")
+	in.Releases = []Source{{Connector: watch, Endpoint: mcp.Endpoint{URL: watch}}}
+	res := collect(t, f, in)
+	if len(res.BlindSpots) < 3 {
+		t.Fatalf("want several blind spots, got %+v", res.BlindSpots)
+	}
+	if !slices.IsSortedFunc(res.BlindSpots, func(a, b v1alpha1.NotSeen) int {
+		return cmp.Or(strings.Compare(a.Ref, b.Ref), strings.Compare(a.Reason, b.Reason))
+	}) {
+		t.Errorf("blind spots not sorted: %+v", res.BlindSpots)
+	}
 }
