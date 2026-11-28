@@ -53,6 +53,11 @@ const (
 	transition  = "2026-11-27T00:00:00Z"
 	accepted    = "Accepted"
 	statusTrue  = "True"
+	gwName      = "agentgateway-proxy"
+	repoOther   = "team/other"
+	denyAll     = "false"
+	keyConds    = "conditions"
+	keyName     = "name"
 )
 
 var (
@@ -124,7 +129,7 @@ func (f *fixture) platform(t *testing.T) {
 	ctx := context.Background()
 	p := &v1alpha1.TakeCarePlatform{Name: "main"}
 	p.Spec.Models = []v1alpha1.ModelSpec{{Name: "default", Model: "m", BaseURL: "https://x/v1", APIKeySecretRef: v1alpha1.SecretKeyRef{Name: "k", Key: "k"}}}
-	p.Spec.Gateway.GatewayRef = &v1alpha1.ObjectRef{Name: "agentgateway-proxy"}
+	p.Spec.Gateway.GatewayRef = &v1alpha1.ObjectRef{Name: gwName}
 	if err := f.c.Create(ctx, p); err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +173,7 @@ func proposeAddon(c *v1alpha1.TakeCareConnector) {
 		TokenSecretRef: v1alpha1.SecretRef{Name: "propose-token"},
 		Repositories: []v1alpha1.ProposeRepository{
 			{Forge: "github", APIURL: "https://api.github.com", Repository: repoDeploy},
-			{Forge: "github", APIURL: "https://api.github.com", Repository: "team/other"},
+			{Forge: "github", APIURL: "https://api.github.com", Repository: repoOther},
 		},
 	}
 }
@@ -300,9 +305,9 @@ func (f *fixture) allowList(t *testing.T, connector string) string {
 
 // callRule is a route's argument rule, empty when its policy does not
 // exist.
-func (f *fixture) callRule(t *testing.T, connector string) string {
+func (f *fixture) callRule(t *testing.T) string {
 	t.Helper()
-	p, err := f.get(routes.PolicyGVK, ns, "role-mecano-mecano-mcp-"+connector+"-calls")
+	p, err := f.get(routes.PolicyGVK, ns, "role-mecano-mecano-mcp-"+connPropose+"-calls")
 	if apierrors.IsNotFound(err) {
 		return ""
 	}
@@ -349,7 +354,7 @@ func (f *fixture) agentReady(t *testing.T) {
 			return err == nil, fmt.Sprint(err)
 		})
 		if err := testenv.UpdateStatus(context.Background(), f.c, obj, func(obj *unstructured.Unstructured) {
-			obj.Object["status"] = map[string]any{"conditions": []any{
+			obj.Object["status"] = map[string]any{keyConds: []any{
 				condition(accepted, statusTrue, accepted, ""), condition("Ready", statusTrue, "Ready", ""),
 			}}
 		}); err != nil {
@@ -374,7 +379,7 @@ func (f *fixture) agentTools(t *testing.T) string {
 	for _, tool := range list {
 		m, _ := tool.(map[string]any)
 		server, _ := m["mcpServer"].(map[string]any)
-		out = append(out, fmt.Sprintf("%s %v", server["name"], server["toolNames"]))
+		out = append(out, fmt.Sprintf("%s %v", server[keyName], server["toolNames"]))
 	}
 	return strings.Join(out, " ")
 }
@@ -393,8 +398,24 @@ func (f *fixture) instructions(t *testing.T) string {
 	return cm.Data["instructions.md"]
 }
 
+// gatewayVerdict is a policy's status as agentgateway writes it: one
+// ancestor, each condition stamped with the policy's generation.
+func gatewayVerdict(generation int64, conds ...map[string]any) map[string]any {
+	list := make([]any, 0, len(conds))
+	for _, c := range conds {
+		c["observedGeneration"] = generation
+		list = append(list, c)
+	}
+	return map[string]any{"ancestors": []any{map[string]any{
+		"ancestorRef":    map[string]any{"group": "gateway.networking.k8s.io", "kind": "Gateway", keyName: gwName},
+		"controllerName": "agentgateway.dev/agentgateway",
+		keyConds:         list,
+	}}}
+}
+
 // acceptCallRule writes the gateway's verdict on the propose route's
-// argument rule: Accepted and Attached True, or Accepted False.
+// argument rule: Accepted and Attached True, or Accepted False, at the
+// policy's current generation as agentgateway stamps it.
 func (f *fixture) acceptCallRule(t *testing.T, ok bool) {
 	t.Helper()
 	name := "role-mecano-mecano-mcp-" + connPropose + "-calls"
@@ -409,13 +430,8 @@ func (f *fixture) acceptCallRule(t *testing.T, ok bool) {
 		status = "False"
 	}
 	if err := testenv.UpdateStatus(context.Background(), f.c, obj, func(obj *unstructured.Unstructured) {
-		obj.Object["status"] = map[string]any{"ancestors": []any{map[string]any{
-			"ancestorRef":    map[string]any{"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": "agentgateway-proxy"},
-			"controllerName": "agentgateway.dev/agentgateway",
-			"conditions": []any{
-				condition(accepted, status, reasonTest, "rule"), condition("Attached", statusTrue, reasonTest, ""),
-			},
-		}}}
+		obj.Object["status"] = gatewayVerdict(obj.GetGeneration(),
+			condition(accepted, status, reasonTest, "rule"), condition("Attached", statusTrue, reasonTest, ""))
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -509,10 +525,10 @@ func TestPractitionerProposeFailsClosed(t *testing.T) {
 		"the argument rule on code-propose's route is not enforced yet", pullRequestsWithout)
 	f.waitCondition(t, mecanoName, v1alpha1.ConditionReady, metav1.ConditionTrue, ReasonReady)
 	wantRule := routes.CallsExpression(ProposeCallRule([]string{repoDeploy}))
-	if got := f.callRule(t, connPropose); got != wantRule {
+	if got := f.callRule(t); got != wantRule {
 		t.Errorf("the propose route's argument rule = %s, want %s", got, wantRule)
 	}
-	if got := f.allowList(t, connPropose); got != "false" {
+	if got := f.allowList(t, connPropose); got != denyAll {
 		t.Errorf("the propose route admits %s before the rule is enforced", got)
 	}
 	if got := f.agentTools(t); strings.Contains(got, "propose_change") {
@@ -537,13 +553,61 @@ func TestPractitionerProposeFailsClosed(t *testing.T) {
 	f.acceptCallRule(t, false)
 	eventually(t, "the propose route closed", func() (bool, string) {
 		got := f.allowList(t, connPropose)
-		return got == "false", got
+		return got == denyAll, got
 	})
 	f.waitCondition(t, mecanoName, v1alpha1.ConditionConnectorsReady, metav1.ConditionFalse, ReasonConnectorsDegraded,
 		"the gateway does not enforce the argument rule on code-propose's route")
 	eventually(t, "propose_change off the agent", func() (bool, string) {
 		got := f.agentTools(t)
 		return !strings.Contains(got, "propose_change"), got
+	})
+}
+
+// A change of maintenance.repositories changes the propose route's rule:
+// the gateway's verdict on the previous rule does not open the route on
+// the new one (spec 12 §6.4). The allow-list admits nothing, and the agent
+// is not given propose_change, until the gateway's status is at the new
+// rule's generation. Before the fix the old status kept the route open.
+func TestProposeRuleChangePending(t *testing.T) {
+	t.Parallel()
+	f := start(t)
+	f.platform(t)
+	f.connectors(t)
+	f.mecano(t, mecanoName, practitioner)
+	f.agentReady(t)
+	eventually(t, "the propose route's rule", func() (bool, string) {
+		got := f.callRule(t)
+		return got == routes.CallsExpression(ProposeCallRule([]string{repoDeploy})), got
+	})
+	f.acceptCallRule(t, true)
+	const open = `mcp.tool.name in ["propose_change"]`
+	eventually(t, "the propose route open", func() (bool, string) {
+		got := f.allowList(t, connPropose)
+		return got == open, got
+	})
+
+	f.update(t, mecanoName, func(m *v1alpha1.TakeCareMecano) {
+		m.Spec.Maintenance.Repositories = append(m.Spec.Maintenance.Repositories, v1alpha1.MaintenanceRepository{Connector: connPropose, Repository: repoOther})
+	})
+	wantRule := routes.CallsExpression(ProposeCallRule([]string{repoDeploy, repoOther}))
+	eventually(t, "the new rule with the route closed", func() (bool, string) {
+		rule, list := f.callRule(t), f.allowList(t, connPropose)
+		return rule == wantRule && list == denyAll, rule + " / " + list
+	})
+	f.waitCondition(t, mecanoName, v1alpha1.ConditionConnectorsReady, metav1.ConditionFalse, ReasonConnectorsDegraded,
+		"the argument rule on code-propose's route is not enforced yet")
+	eventually(t, "propose_change off the agent", func() (bool, string) {
+		got := f.agentTools(t)
+		return !strings.Contains(got, "propose_change"), got
+	})
+	f.acceptCallRule(t, true)
+	eventually(t, "the propose route open on the new rule", func() (bool, string) {
+		got := f.allowList(t, connPropose)
+		return got == open, got
+	})
+	eventually(t, "propose_change on the agent", func() (bool, string) {
+		got := f.agentTools(t)
+		return strings.Contains(got, "propose_change"), got
 	})
 }
 
@@ -583,7 +647,7 @@ func TestNoProposeRoute(t *testing.T) {
 		m.Spec.Maintenance.Repositories = []v1alpha1.MaintenanceRepository{{Connector: connPropose, Repository: repoDeploy}}
 	})
 	eventually(t, "the propose route", func() (bool, string) {
-		got := f.callRule(t, connPropose)
+		got := f.callRule(t)
 		return got != "", "none yet"
 	})
 	f.update(t, mecanoName, func(m *v1alpha1.TakeCareMecano) { m.Spec.Level = v1alpha1.LevelApprentice })
@@ -619,17 +683,19 @@ func TestRequiredConnectors(t *testing.T) {
 }
 
 // Two Mécanos whose scopes overlap: the later one is not Ready, names the
-// other, and renders nothing (spec 12 §2).
+// other, and renders nothing (spec 12 §2). Creation times have a one
+// second resolution, so both are often created in the same second and the
+// name breaks the tie: the names sort in creation order.
 func TestScopeOverlap(t *testing.T) {
 	t.Parallel()
 	f := start(t)
 	f.platform(t)
 	f.connectors(t)
-	f.mecano(t, mecanoName, nil)
-	f.waitCondition(t, mecanoName, v1alpha1.ConditionConnectorsReady, metav1.ConditionTrue, ReasonReady)
+	f.mecano(t, "earlier", nil)
+	f.waitCondition(t, "earlier", v1alpha1.ConditionConnectorsReady, metav1.ConditionTrue, ReasonReady)
 	f.mecano(t, "later", nil)
 	f.waitCondition(t, "later", v1alpha1.ConditionReady, metav1.ConditionFalse, v1alpha1.ReasonScopeOverlap,
-		"the scope overlaps the TakeCareMecano mecano", "namespace shop")
+		"the scope overlaps the TakeCareMecano earlier", "namespace shop")
 	if got := f.roleObjects(t, "later"); len(got) != 0 {
 		t.Errorf("the overlapping Mécano renders %v", got)
 	}
@@ -659,7 +725,7 @@ func TestExpertScheduleAndDeletion(t *testing.T) {
 	if m.Status.NextMaintenanceTime != nil {
 		t.Errorf("a refused schedule plans %v", m.Status.NextMaintenanceTime)
 	}
-	eventually(t, "the propose route", func() (bool, string) { return f.callRule(t, connPropose) != "", "none yet" })
+	eventually(t, "the propose route", func() (bool, string) { return f.callRule(t) != "", "none yet" })
 
 	if err := f.c.Delete(context.Background(), f.getMecano(t, mecanoName)); err != nil {
 		t.Fatal(err)

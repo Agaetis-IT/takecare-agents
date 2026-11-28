@@ -88,12 +88,19 @@ func (f *fixture) verdict(t *testing.T, intendant, accepted, attached string) {
 		obj.Object["status"] = map[string]any{"ancestors": []any{map[string]any{
 			"ancestorRef":    map[string]any{"group": "gateway.networking.k8s.io", "kind": "HTTPRoute", "name": routes.CallsPolicyName(role, connMetrics)},
 			"controllerName": "agentgateway.dev/agentgateway",
-			keyConditions:    []any{condition("Accepted", accepted), condition("Attached", attached)},
+			keyConditions:    []any{observedAt(condition("Accepted", accepted), obj), observedAt(condition("Attached", attached), obj)},
 		}}}
 		return f.c.Status().Update(ctx, obj)
 	}); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// observedAt stamps a gateway condition with the policy's generation, as
+// agentgateway does on each ancestor condition.
+func observedAt(cond map[string]any, policy *unstructured.Unstructured) map[string]any {
+	cond["observedGeneration"] = policy.GetGeneration()
+	return cond
 }
 
 // condition is a status condition as an engine or the gateway writes it.

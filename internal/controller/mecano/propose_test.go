@@ -55,7 +55,7 @@ func TestProposeCallRule(t *testing.T) {
 		return ok && v
 	}
 	call := func(tool string, args map[string]any) map[string]any {
-		return map[string]any{"methodName": "tools/call", "tool": map[string]any{"name": tool, "arguments": args}}
+		return map[string]any{"methodName": "tools/call", "tool": map[string]any{keyName: tool, "arguments": args}}
 	}
 	for _, tc := range []struct {
 		name string
@@ -68,7 +68,7 @@ func TestProposeCallRule(t *testing.T) {
 			a["branch"] = "takecare/mecano/" + strings.Repeat("a", 63)
 		})), true},
 		{"tools/list, no tool", map[string]any{"methodName": "tools/list"}, true},
-		{"an unlisted repository", call("propose_change", proposeArgs(func(a map[string]any) { a["repository"] = "team/other" })), false},
+		{"an unlisted repository", call("propose_change", proposeArgs(func(a map[string]any) { a["repository"] = repoOther })), false},
 		{"a repository as a list", call("propose_change", proposeArgs(func(a map[string]any) { a["repository"] = []any{repoDeploy} })), false},
 		{"no repository", call("propose_change", proposeArgs(func(a map[string]any) { delete(a, "repository") })), false},
 		{"a branch outside the prefix", call("propose_change", proposeArgs(func(a map[string]any) { a["branch"] = "main" })), false},

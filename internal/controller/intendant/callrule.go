@@ -137,7 +137,7 @@ func rulesRouteState(statusOK bool, statusProblem string, last canaryRecord) rul
 // rulesRouteOf reads the state's two inputs: the gateway's status of the
 // rule, and the last completed survey of the Intendant.
 func rulesRouteOf(ctx context.Context, c client.Reader, in *v1alpha1.TakeCareIntendant, connector string, indexed bool) (rulesRoute, error) {
-	ok, problem, err := routes.CallRuleEnforced(ctx, c, roleOf(in), connector)
+	ok, problem, err := routes.CallRuleEnforced(ctx, c, roleOf(in), connector, RulesCallCEL)
 	if err != nil {
 		return rulesRoute{}, err
 	}
