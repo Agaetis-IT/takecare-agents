@@ -90,6 +90,9 @@ type Worker struct {
 	EngineNamespace string
 	// Phases counts phases reached (takecare_investigations_total).
 	Phases *prometheus.CounterVec
+	// Confidences counts the confidence of completed answers
+	// (takecare_investigations_confidence_total).
+	Confidences *prometheus.CounterVec
 	// Clock is runs.WallClock when nil.
 	Clock runs.Clock
 	// GateRetry is how long a record waits when its Doc cannot run.
@@ -598,17 +601,26 @@ func (w *Worker) finish(ctx context.Context, inv *v1alpha1.TakeCareInvestigation
 		return w.fail(ctx, inv, span, v1alpha1.PhaseTimedOut, ReasonTimedOut, reason, "")
 	case out.Outcome == engine.OutcomeCompleted:
 		now := metav1.NewTime(w.clock().Now())
+		// The confidence is measured only: publication does not depend on it.
+		confidence, capped := doc.Confidence(out.Text, inv.Spec.Alert, d.Status.BlindSpots)
 		updated, err := w.patch(ctx, client.ObjectKeyFromObject(inv), func(i *v1alpha1.TakeCareInvestigation) {
 			i.Status.Phase = v1alpha1.PhaseCompleted
 			i.Status.Reason = ""
 			i.Status.CompletedAt = &now
 			i.Status.Diagnosis = out.Text
+			i.Status.Confidence = confidence
+			i.Status.ConfidenceCapped = capped
 		})
 		if err != nil {
 			log.FromContext(ctx).Error(err, "record the completed investigation", "investigation", inv.Name)
 			return nil
 		}
 		w.count(&updated, v1alpha1.PhaseCompleted)
+		level := strings.ToLower(string(confidence))
+		span.SetAttributes(attribute.String(semconv.Confidence, level))
+		if w.Confidences != nil {
+			w.Confidences.WithLabelValues(updated.Spec.RoleRef.Kind, level).Inc()
+		}
 		span.AddEvent(semconv.EventInvestigationCompleted)
 		w.lastInvestigation(ctx, d, &updated)
 		return &updated

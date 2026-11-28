@@ -104,7 +104,32 @@ type TakeCareInvestigationStatus struct {
 
 	// +optional
 	ResolvedAt *metav1.Time `json:"resolvedAt,omitempty"`
+
+	// The confidence the Doc stated on the last line of a completed
+	// answer, as recorded: High, Medium or Low, Unstated when the answer
+	// states none. A stated High is recorded Medium when the alert's
+	// entity or namespace is one of the Doc's blind spots. Measured only:
+	// it does not change publication.
+	// +optional
+	Confidence Confidence `json:"confidence,omitempty"`
+
+	// ConfidenceCapped: the Doc stated High and the operator recorded
+	// Medium, because the alert is in the Doc's blind spots.
+	// +optional
+	ConfidenceCapped bool `json:"confidenceCapped,omitempty"`
 }
+
+// Confidence is the confidence level of a diagnosis.
+// +kubebuilder:validation:Enum=High;Medium;Low;Unstated
+type Confidence string
+
+// Confidence levels.
+const (
+	ConfidenceHigh     Confidence = "High"
+	ConfidenceMedium   Confidence = "Medium"
+	ConfidenceLow      Confidence = "Low"
+	ConfidenceUnstated Confidence = "Unstated"
+)
 
 // GroupedAlert is an alert folded into an investigation of the same incident.
 type GroupedAlert struct {
@@ -128,6 +153,7 @@ type Publication struct {
 // +kubebuilder:printcolumn:name="Alert",type=string,JSONPath=`.spec.alert.name`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Published",type=boolean,JSONPath=`.status.published.ok`
+// +kubebuilder:printcolumn:name="Confidence",type=string,JSONPath=`.status.confidence`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // TakeCareInvestigation records one handled alert. It is created by the

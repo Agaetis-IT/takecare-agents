@@ -76,14 +76,24 @@ func TestInvestigationIsARecord(t *testing.T) {
 			t.Fatal(err)
 		}
 		got.Status = v1alpha1.TakeCareInvestigationStatus{
-			Phase:     v1alpha1.PhaseCompleted,
-			Engine:    &v1alpha1.EngineRun{Kind: "kagent", Agent: "takecare-system/doc", TaskID: "abc"},
-			Diagnosis: "The proxy closes idle connections after 600 s.",
-			Published: &v1alpha1.Publication{Connector: "report", Destination: destOnCall, OK: true},
-			Usage:     &v1alpha1.Usage{ModelCalls: 7, InputTokens: 41250, CachedInputTokens: 30200, OutputTokens: 1310, EstimatedCost: "0.0093 USD"},
-			TraceID:   "4bf92f3577b34da6a3ce929d0e0e4736",
+			Phase:      v1alpha1.PhaseCompleted,
+			Engine:     &v1alpha1.EngineRun{Kind: "kagent", Agent: "takecare-system/doc", TaskID: "abc"},
+			Diagnosis:  "The proxy closes idle connections after 600 s.",
+			Published:  &v1alpha1.Publication{Connector: "report", Destination: destOnCall, OK: true},
+			Usage:      &v1alpha1.Usage{ModelCalls: 7, InputTokens: 41250, CachedInputTokens: 30200, OutputTokens: 1310, EstimatedCost: "0.0093 USD"},
+			TraceID:    "4bf92f3577b34da6a3ce929d0e0e4736",
+			Confidence: v1alpha1.ConfidenceMedium, ConfidenceCapped: true,
 		}
 		checkError(t, k8sClient.Status().Update(ctx, &got), "")
+	})
+
+	t.Run("an unknown confidence is rejected", func(t *testing.T) {
+		var got v1alpha1.TakeCareInvestigation
+		if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(i), &got); err != nil {
+			t.Fatal(err)
+		}
+		got.Status.Confidence = "high"
+		checkError(t, k8sClient.Status().Update(ctx, &got), "confidence")
 	})
 
 	t.Run("an unknown phase is rejected", func(t *testing.T) {

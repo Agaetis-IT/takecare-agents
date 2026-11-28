@@ -58,6 +58,9 @@ const (
 	// without (issue #10: the run degrades and says so, in the trace too).
 	DegradedConnectors = "takecare.degraded.connectors"
 	DegradedReason     = "takecare.degraded.reason"
+	// Confidence is the confidence recorded for a completed answer (high,
+	// medium, low, unstated), on the root span.
+	Confidence = "takecare.confidence"
 
 	// Journal stamps the gateway's access log lines the Ranger's journal
 	// keeps (spec 09 §7).

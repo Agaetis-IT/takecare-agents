@@ -83,7 +83,7 @@ func NewDurationMetric(reg prometheus.Registerer) (*prometheus.HistogramVec, err
 		Name:    "takecare_investigation_duration_seconds",
 		Help:    "Time from the alert's acceptance to the diagnosis' publication.",
 		Buckets: []float64{15, 30, 60, 90, 120, 180, 300, 600},
-	}, []string{"role"})
+	}, []string{labelRole})
 	if err := reg.Register(h); err != nil {
 		if already, ok := errors.AsType[prometheus.AlreadyRegisteredError](err); ok {
 			if existing, ok := already.ExistingCollector.(*prometheus.HistogramVec); ok {

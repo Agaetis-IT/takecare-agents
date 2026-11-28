@@ -31,7 +31,11 @@ func completed(level v1alpha1.Level) *v1alpha1.TakeCareInvestigation {
 
 func TestPublication(t *testing.T) {
 	now := time.Date(2026, 10, 16, 3, 0, 51, 0, time.UTC)
+	practitioner := completed(v1alpha1.LevelPractitioner)
+	practitioner.Status.Diagnosis += "\nConfidence: high — the proxy's setting and the 504 were both read."
+	practitioner.Status.Confidence = v1alpha1.ConfidenceHigh
 	apprentice := completed(v1alpha1.LevelApprentice)
+	apprentice.Status.Confidence = v1alpha1.ConfidenceUnstated
 	grouped := completed(v1alpha1.LevelPractitioner)
 	grouped.Status.Alerts = []v1alpha1.GroupedAlert{
 		{Name: podNotReady, Fingerprint: "before", FiredAt: metav1.NewTime(now.Add(-50 * time.Second))},
@@ -39,6 +43,7 @@ func TestPublication(t *testing.T) {
 	}
 	grouped.Status.Usage.Approximate = true
 	grouped.Status.Degraded = &v1alpha1.Degradation{Connectors: []string{"prometheus"}}
+	grouped.Status.Confidence, grouped.Status.ConfidenceCapped = v1alpha1.ConfidenceMedium, true
 	noUsage := completed(v1alpha1.LevelPractitioner)
 	noUsage.Status.Usage = nil
 	markdown := completed(v1alpha1.LevelPractitioner)
@@ -48,7 +53,7 @@ func TestPublication(t *testing.T) {
 		reason string
 		sent   map[string]bool
 	}{
-		"publication-practitioner": {inv: completed(v1alpha1.LevelPractitioner)},
+		"publication-practitioner": {inv: practitioner},
 		"publication-apprentice":   {inv: apprentice},
 		"publication-grouped":      {inv: grouped, sent: map[string]bool{"before": true}},
 		"publication-no-usage":     {inv: noUsage, reason: "Prometheus at http://prometheus is unreachable"},

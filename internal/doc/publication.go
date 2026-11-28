@@ -51,6 +51,10 @@ type Publication struct {
 	// started, which the agent was not told about.
 	Later    []string
 	Degraded *v1alpha1.Degradation
+	// Confidence is the recorded one, empty when none was recorded;
+	// Capped when the operator lowered a stated High.
+	Confidence v1alpha1.Confidence
+	Capped     bool
 }
 
 // NewPublication builds the message. sent names the grouped alerts the
@@ -79,6 +83,7 @@ func NewPublication(inv *v1alpha1.TakeCareInvestigation, now time.Time, usageRea
 		Diagnosis: inv.Status.Diagnosis, Since: now.Sub(inv.CreationTimestamp.Time).Round(time.Second),
 		Usage: inv.Status.Usage, UsageReason: usageReason, TraceID: inv.Status.TraceID,
 		Later: later, Degraded: inv.Status.Degraded,
+		Confidence: inv.Status.Confidence, Capped: inv.Status.ConfidenceCapped,
 	}
 }
 
@@ -96,9 +101,17 @@ func (p Publication) header() string {
 	return fmt.Sprintf("Doc · %s on %s", p.Alert, p.Service)
 }
 
-// context is the line under the diagnosis: time, usage, trace.
+// context is the line under the diagnosis: time, confidence, usage,
+// trace.
 func (p Publication) context() string {
 	parts := []string{p.Since.String() + " after the alert"}
+	if p.Confidence != "" {
+		c := "confidence " + strings.ToLower(string(p.Confidence))
+		if p.Capped {
+			c += " (capped from high: the alert is in a blind spot)"
+		}
+		parts = append(parts, c)
+	}
 	if p.Usage != nil {
 		parts = append(parts,
 			fmt.Sprintf("%d model calls", p.Usage.ModelCalls),

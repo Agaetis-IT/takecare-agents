@@ -27,7 +27,7 @@
   {
     "elements": [
       {
-        "text": "39s after the alert · 7 model calls · 42,560 tokens · 0.0075 USD · trace 4bf92f3577b34da6a3ce929d0e0e4736",
+        "text": "39s after the alert · confidence unstated · 7 model calls · 42,560 tokens · 0.0075 USD · trace 4bf92f3577b34da6a3ce929d0e0e4736",
         "type": "mrkdwn",
         "verbatim": true
       }
