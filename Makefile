@@ -101,6 +101,7 @@ test: setup-envtest chart-deps ## Run unit, golden, envtest and chart tests.
 	hack/demo-images-test.sh
 	hack/ci-changes-test.sh
 	hack/bench-score-run-test.sh
+	hack/bench-scenarios-test.sh
 	hack/changelog-assemble-test.sh
 	@# setup-envtest installs its binaries read-only: writable, a worktree's bin/ can be removed.
 	"$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(abspath $(LOCALBIN))" >/dev/null && chmod -R u+w "$(LOCALBIN)/k8s"
@@ -228,6 +229,7 @@ ci-changes-test: ## Check which pull requests skip CI's heavy jobs (hack/ci-chan
 .PHONY: bench-score-run-test
 bench-score-run-test: ## Check the line the accuracy bench writes for each run (hack/bench-score-run.sh), stdin closed as when unattended.
 	hack/bench-score-run-test.sh
+	hack/bench-scenarios-test.sh
 
 .PHONY: changelog-assemble-test
 changelog-assemble-test: ## Check hack/changelog-assemble.sh and hack/changelog-check.sh against their fixture.
