@@ -147,10 +147,7 @@ func (r *Reconciler) runningUntil(ctx context.Context, m *v1alpha1.TakeCareMecan
 	if err := r.List(ctx, &list, client.InNamespace(m.Namespace)); err != nil {
 		return "", time.Time{}, fmt.Errorf("list maintenances: %w", err)
 	}
-	timeout := defaultTimeout
-	if t := m.Spec.Maintenance.Timeout; t != nil && t.Duration > 0 {
-		timeout = t.Duration
-	}
+	timeout := timeoutOf(m)
 	var name string
 	var until time.Time
 	for _, mt := range list.Items {

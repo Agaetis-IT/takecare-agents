@@ -81,7 +81,7 @@ type fixture struct{ c client.Client }
 
 // start runs the Mécano's reconciler as the operator, under its own Roles:
 // a request its Roles refuse fails the test.
-func start(t *testing.T) *fixture {
+func start(t *testing.T, extra ...func(mgr ctrl.Manager, r *Reconciler) error) *fixture {
 	t.Helper()
 	env := testenv.StartOperator(t)
 	scheme := runtime.NewScheme()
@@ -105,6 +105,11 @@ func start(t *testing.T) *fixture {
 	r := &Reconciler{
 		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("test"), OperatorNamespace: ns, EngineNamespace: engineNS,
 		Engine: &kagent0103.Agents{Client: mgr.GetClient()}, Models: &kagent0103.Models{Client: mgr.GetClient()},
+	}
+	for _, add := range extra {
+		if err := add(mgr, r); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := r.SetupWithManager(mgr); err != nil {
 		t.Fatal(err)

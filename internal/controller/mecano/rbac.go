@@ -3,9 +3,8 @@
 
 // Package mecano runs the Mécano (spec 12): its controller (conditions,
 // scope overlap, connectors, its routes on the gateway with the propose
-// route's argument rule, and its agent in the engine), and, with lot M3,
-// the triggers, the queue and the runner of its maintenances, and their
-// retention.
+// route's argument rule, and its agent in the engine), the triggers, the
+// queue and the runner of its maintenances, and their retention.
 package mecano
 
 import "time"

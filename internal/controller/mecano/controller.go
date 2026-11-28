@@ -63,6 +63,9 @@ const requeueNotReady = 30 * time.Second
 // never in Reconcile.
 type Reconciler struct {
 	client.Client
+	// Reader reads the maintenances live before a scheduled one is
+	// created; Client when nil.
+	Reader            client.Reader
 	Recorder          recorder.EventRecorder
 	OperatorNamespace string
 	EngineNamespace   string
@@ -137,7 +140,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		for _, c := range []string{v1alpha1.ConditionEngineReady, v1alpha1.ConditionReady} {
 			st.set(c, false, v1alpha1.ReasonNameTooLong, v1alpha1.MessageMecanoName)
 		}
-		return ctrl.Result{}, r.writeStatus(ctx, &m, st, nil)
+		return ctrl.Result{}, r.writeStatus(ctx, &m, st, kept(&m))
 	}
 	if controllerutil.AddFinalizer(&m, Finalizer) {
 		if err := r.Update(ctx, &m); err != nil {
@@ -148,10 +151,20 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := r.writeStatus(ctx, &m, st, next); err != nil {
+	t, err := r.triggers(ctx, &m, st, next)
+	if err != nil {
 		return ctrl.Result{}, err
 	}
-	log.FromContext(ctx).V(1).Info("reconciled", "level", st.level, "ready", st.isTrue(v1alpha1.ConditionReady))
+	if err := r.writeStatus(ctx, &m, st, t); err != nil {
+		return ctrl.Result{}, err
+	}
+	log.FromContext(ctx).V(1).Info("reconciled", "level", st.level, "ready", st.isTrue(v1alpha1.ConditionReady), "maintenance", t.last)
+	if t.next != nil && t.pending == "" {
+		// The schedule: due then, unless something sooner.
+		if wait := max(t.next.Sub(now), time.Second); requeue == 0 || wait < requeue {
+			requeue = wait
+		}
+	}
 	return ctrl.Result{RequeueAfter: requeue}, nil
 }
 
@@ -297,12 +310,12 @@ func platformOf(ctx context.Context, c client.Reader) (*v1alpha1.TakeCarePlatfor
 
 // writeStatus writes the status and the events a human should see: a
 // level change, a scope overlap that starts.
-func (r *Reconciler) writeStatus(ctx context.Context, m *v1alpha1.TakeCareMecano, st *status, next *metav1.Time) error {
+func (r *Reconciler) writeStatus(ctx context.Context, m *v1alpha1.TakeCareMecano, st *status, t triggered) error {
 	before := m.DeepCopy()
 	m.Status.ObservedGeneration = m.Generation
 	m.Status.Level = st.level
 	m.Status.RenderPendingSince = st.pendingSince
-	m.Status.NextMaintenanceTime = next
+	m.Status.NextMaintenanceTime, m.Status.PendingTrigger = t.next, t.pending
 	for _, c := range st.conditions {
 		meta.SetStatusCondition(&m.Status.Conditions, c)
 	}
