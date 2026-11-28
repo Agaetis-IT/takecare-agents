@@ -15,6 +15,10 @@
 #   (https://endoflife.date/api/v1/products/<product>), MIT.
 # - agentgateway and kagent: the latest release of their GitHub releases
 #   page only; neither publishes an end of support, so none is given.
+#   Their match.images are the images the charts pinned in hack/versions.env
+#   render: agentgateway's controller and the proxy image it deploys
+#   (AGW_PROXY_IMAGE_*), kagent's controller and ui, and the agents' app and
+#   golang-adk images (IMAGE_* and GO_IMAGE_* of its controller's config).
 #
 # To update: change date, then each entry from its source, and run the
 # package's tests (go test ./internal/mecano/eos/).
@@ -147,6 +151,6 @@ components:
   - name: kagent
     source: https://github.com/kagent-dev/kagent/releases/tag/v1.0.1
     match:
-      images: [ghcr.io/kagent-dev/kagent/controller, ghcr.io/kagent-dev/kagent/ui, ghcr.io/kagent-dev/kagent/app]
+      images: [ghcr.io/kagent-dev/kagent/controller, ghcr.io/kagent-dev/kagent/ui, ghcr.io/kagent-dev/kagent/app, ghcr.io/kagent-dev/kagent/golang-adk]
       charts: [kagent]
     latest: "1.0.1"
