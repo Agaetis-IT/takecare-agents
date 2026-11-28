@@ -24,6 +24,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
+	mapschema "github.com/agaetis-it/takecare-agents/api/map"
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
 	"github.com/agaetis-it/takecare-agents/internal/discovery"
 	"github.com/agaetis-it/takecare-agents/internal/mapserver"
@@ -174,8 +175,11 @@ type estateReport struct {
 	Sources   int            `json:"sources"`
 	Kinds     map[string]int `json:"listedKinds"`
 	Unmodeled map[string]int `json:"customResources"`
-	Counts    []count        `json:"counts"`
-	TwoTier   []twoTier      `json:"twoTier"`
+	// NoServiceLabel: workloads with neither app.kubernetes.io/part-of nor
+	// app.kubernetes.io/name, which no service proposal groups.
+	NoServiceLabel int       `json:"workloadsWithoutServiceLabel"`
+	Counts         []count   `json:"counts"`
+	TwoTier        []twoTier `json:"twoTier"`
 }
 
 func measureSnapshot(s *snapshot) (estateReport, error) {
@@ -183,6 +187,10 @@ func measureSnapshot(s *snapshot) (estateReport, error) {
 	for _, o := range s.objects {
 		if _, ok := served[o.group()+"/"+o.kind]; ok {
 			r.Kinds[o.kind]++
+			workload := o.kind == "Deployment" || o.kind == "StatefulSet" || o.kind == "DaemonSet" || o.kind == "CronJob"
+			if workload && o.labels["app.kubernetes.io/part-of"] == "" && o.labels["app.kubernetes.io/name"] == "" {
+				r.NoServiceLabel++
+			}
 		} else if strings.Contains(o.group(), ".") && !strings.HasSuffix(o.group(), ".k8s.io") {
 			r.Unmodeled[o.group()+"/"+o.kind]++
 		}
@@ -208,8 +216,12 @@ type week struct {
 	Changes map[string]map[string]int `json:"changes"`
 	Total   int                       `json:"total"`
 	// Stale: entries whose object is gone but that no removal proposes.
-	Stale   int `json:"stale"`
-	Sources struct {
+	Stale int `json:"stale"`
+	// StaleNamespaceGone: of Stale, the entries whose namespace was
+	// deleted (the survey no longer lists it, so never proposes removing
+	// them).
+	StaleNamespaceGone int `json:"staleNamespaceGone"`
+	Sources            struct {
 		// Compared: rendered in both weeks; Added, Removed: rendered in
 		// one week and absent (not failed) in the other; Failed: failed in
 		// either week, left out of both.
@@ -333,6 +345,9 @@ func churn(dirs []string) (map[string][]week, error) {
 				}
 				if ref := e.Sources[0]["kubernetes"]; !present[ref] && !removed[e.Key] {
 					w.Stale++
+					if src, ok := mapschema.ParseKubernetes(ref); ok && !cur.namespaces[src.Cluster][src.Namespace] {
+						w.StaleNamespaceGone++
+					}
 				}
 			}
 			out[f.name] = append(out[f.name], w)
@@ -440,6 +455,7 @@ func printSnapshot(name string, r estateReport) {
 		}
 		fmt.Println()
 	}
+	fmt.Printf("\nworkloads without app.kubernetes.io/part-of or name (no service proposed): %d\n", r.NoServiceLabel)
 	fmt.Printf("\nlisted kinds: %v\ncustom resources (not modeled unless named in the model): %d kinds, %d objects\n", r.Kinds, len(r.Unmodeled), sum(r.Unmodeled))
 }
 
@@ -453,16 +469,17 @@ func sum(m map[string]int) int {
 
 func printChurn(name string, weeks map[string][]week) {
 	fmt.Printf("\n## %s: week-to-week proposals (last week's proposals accepted as the Map)\n\n", name)
-	fmt.Printf("| filter | weeks | total | mean/week | median | max | stale (sum) | %s |\n|---|---|---|---|---|---|---|%s\n",
+	fmt.Printf("| filter | weeks | total | mean/week | median | max | stale (sum, of which namespace gone) | %s |\n|---|---|---|---|---|---|---|%s\n",
 		strings.Join(layers, " a/u/r | ")+" a/u/r", strings.Repeat("---|", len(layers)))
 	for _, f := range filters() {
 		ws := weeks[f.name]
 		totals := make([]int, len(ws))
 		byLayer := map[string]map[string]int{}
-		stale := 0
+		stale, nsGone := 0, 0
 		for i, w := range ws {
 			totals[i] = w.Total
 			stale += w.Stale
+			nsGone += w.StaleNamespaceGone
 			for l, acts := range w.Changes {
 				if byLayer[l] == nil {
 					byLayer[l] = map[string]int{}
@@ -478,7 +495,7 @@ func printChurn(name string, weeks map[string][]week) {
 		for _, v := range t {
 			s += v
 		}
-		fmt.Printf("| %s | %d | %d | %.1f | %d | %d | %d |", f.name, len(ws), s, float64(s)/float64(max(1, len(ws))), t[len(t)/2], t[len(t)-1], stale)
+		fmt.Printf("| %s | %d | %d | %.1f | %d | %d | %d (%d) |", f.name, len(ws), s, float64(s)/float64(max(1, len(ws))), t[len(t)/2], t[len(t)-1], stale, nsGone)
 		for _, l := range layers {
 			a := byLayer[l]
 			fmt.Printf(" %d/%d/%d |", a["Add"], a["Update"], a["Remove"])
