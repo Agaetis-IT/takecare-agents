@@ -84,7 +84,9 @@ const ProposeSlot = "propose"
 // only from the slot named ProposeSlot and only at Practitioner and above,
 // level being the level the role works at. Any other slot or level gets
 // none: a write tool never reaches an Apprentice, nor comes through a read
-// slot. Sorted.
+// slot. Sorted. In 0.6.0 only the Mécano binds a propose slot and asks for
+// it alone, so the slot check never refuses today: it is kept for the
+// roles that come later, whose read slots must not pass a propose tool.
 func ProposeTools(c *v1alpha1.TakeCareConnector, level v1alpha1.Level, slot string) []string {
 	if slot != ProposeSlot || (level != v1alpha1.LevelPractitioner && level != v1alpha1.LevelExpert) {
 		return nil

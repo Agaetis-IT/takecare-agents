@@ -258,8 +258,10 @@ addons:
     # -- Read the nodes, cluster-wide: get, list and watch on `nodes` only,
     # in a ClusterRole of its own (spec 12 §4). The Mécano reads the
     # cluster's version from the nodes' kubelet version; without it, that
-    # version is a blind spot. Never nodes/proxy, nodes/stats or nodes/log,
-    # and the server's nodes_* tools stay disabled.
+    # version is a blind spot. The right is the connector's: every role
+    # bound to this connector (Doc, Kiné, Intendant, Mécano) can then read
+    # the node objects. Never nodes/proxy, nodes/stats or nodes/log, and the
+    # server's nodes_* tools stay disabled.
     readNodes: false
     # -- Tools whose result carries payload (ADR 0014): a role reads them only
     # when it lists them in spec.contentTools.

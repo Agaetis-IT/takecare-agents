@@ -40,6 +40,10 @@ func TestCheck(t *testing.T) {
 		{"nodes read, not proxied", rights(listShop, "//nodes//get", "//nodes//list"), Verdict{Violations: []string{}, Missing: []string{}}},
 		{"nodes proxied cluster-wide", rights(listShop, "//nodes//get", "//nodes/proxy/get"),
 			Verdict{Violations: []string{"proxy to the nodes' kubelet cluster-wide"}, Missing: []string{}}},
+		// create on nodes/proxy is a POST to the kubelet (exec, run),
+		// granted apart from get.
+		{"nodes proxy written cluster-wide", rights(listShop, "//nodes//get", "//nodes/proxy/create"),
+			Verdict{Violations: []string{"write through the nodes' kubelet proxy cluster-wide"}, Missing: []string{}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := Check(context.Background(), tc.can, []string{"shop"})
