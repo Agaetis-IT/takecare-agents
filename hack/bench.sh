@@ -164,12 +164,14 @@ wait_settled "$SETTLE" || die "the demo's investigations did not settle in ${SET
 playing="$(kubectl -n "$NS" get takecaredemo demo -o jsonpath='{.spec.scenario}')" || die "no TakeCareDemo demo in ${NS}: make demo-up"
 [[ "$playing" == "$SCENARIO" ]] || die "the demo plays ${playing}, not ${SCENARIO}: kubectl -n ${NS} get takecaredemo demo"
 
-# not_played writes the report of a bench that could not play, then stops
-# with exit 3: a scenario not played is never scored wrong.
+# not_played REASON [COST] writes the report of a bench that could not
+# play, with what it spent already (the incident's investigation), then
+# stops with exit 3: a scenario not played is never scored wrong.
 not_played() {
   report="$(report_path)"
   jq -n --arg s "$ref" --arg commit "$(git rev-parse HEAD)" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg why "$1" \
-    '{scenario: $s, date: $date, commit: $commit, played: false, notPlayed: $why, n: 0, correct: null, totalCost: 0, runs: []}' >"$report"
+    --argjson cost "${2:-0}" \
+    '{scenario: $s, date: $date, commit: $commit, played: false, notPlayed: $why, n: 0, correct: null, totalCost: $cost, runs: []}' >"$report"
   log "report: ${report}"
   die_code=3
   die "${ref} not played: $1"
@@ -212,7 +214,7 @@ total="$incident_cost"
 dearest="$incident_cost"
 stopped=""
 if [[ -n "$MAX_COST" ]] && jq -en --arg t "$total" --arg m "$MAX_COST" '($t | tonumber) * 2 > ($m | tonumber)' >/dev/null; then
-  die "the incident's investigation cost ${total} USD: a run more could pass the cap ${MAX_COST} USD"
+  not_played "the incident's investigation cost ${total} USD: a run more could pass the cap ${MAX_COST} USD" "$total"
 fi
 guards_before="$(hack/guardrail-counts.sh)" || die "the gateway's guardrail counters cannot be read"
 
