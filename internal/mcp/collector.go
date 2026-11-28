@@ -28,12 +28,14 @@ const (
 // collector sends: a Kubernetes name's bound.
 const maxCollectorString = 253
 
+const appsV1 = "apps/v1"
+
 // collectorKinds are the apiVersion and kind pairs the collector lists
 // besides the dataset's removed apiVersions and their replacements: the
 // workloads, cert-manager's Certificates and the GitOps tools' objects
 // (spec 12 §4). Node is cluster-scoped and listed without a namespace.
 var collectorKinds = [][2]string{
-	{"apps/v1", "Deployment"}, {"apps/v1", "StatefulSet"}, {"apps/v1", "DaemonSet"}, {"batch/v1", "CronJob"},
+	{appsV1, "Deployment"}, {appsV1, "StatefulSet"}, {appsV1, "DaemonSet"}, {"batch/v1", "CronJob"},
 	{"cert-manager.io/v1", "Certificate"},
 	{"argoproj.io/v1alpha1", "Application"},
 	{"kustomize.toolkit.fluxcd.io/v1", "Kustomization"},

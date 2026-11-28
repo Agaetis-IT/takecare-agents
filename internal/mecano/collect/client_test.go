@@ -61,10 +61,10 @@ func TestCollectThroughClient(t *testing.T) {
 		return m
 	}
 	in := Input{
-		Clusters: []Cluster{{Source: Source{Connector: cluster, Endpoint: mcp.Endpoint{
+		Clusters: []Cluster{{Connector: cluster, Endpoint: mcp.Endpoint{
 			URL: kube.URL, Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorCluster},
 			Collector: true, Namespaces: []string{demoApps}, StateTools: state(toolList, toolGet),
-		}}, Namespaces: []string{demoApps}}},
+		}, Namespaces: []string{demoApps}}},
 		Code: []Source{{Connector: code, Endpoint: mcp.Endpoint{
 			URL: git.URL, Types: []v1alpha1.ConnectorType{v1alpha1.ConnectorCode},
 			Collector: true, StateTools: state(toolRepositories, toolIndex),

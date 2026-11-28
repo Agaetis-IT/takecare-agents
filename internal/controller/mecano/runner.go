@@ -448,7 +448,7 @@ func requeueResumed(st *v1alpha1.TakeCareMaintenanceStatus) bool {
 	if st.Phase != v1alpha1.RunRunning {
 		return false
 	}
-	next := v1alpha1.TakeCareMaintenanceStatus{RunStatus: v1alpha1.RunStatus{Phase: v1alpha1.RunQueued, Attempts: st.Attempts}}
+	next := v1alpha1.TakeCareMaintenanceStatus{Phase: v1alpha1.RunQueued, Attempts: st.Attempts}
 	if e := st.Engine; e != nil && e.TaskID != "" {
 		next.StartedAt, next.Engine = st.StartedAt, e
 	}

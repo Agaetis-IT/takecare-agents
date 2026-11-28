@@ -36,6 +36,8 @@ const (
 	engineKind = "kagent"
 	modeDone   = "complete"
 	modeWork   = "working"
+	kDeploy    = "Deployment"
+	suspended  = "suspended"
 )
 
 var unitStart = time.Date(2026, 11, 28, 9, 0, 0, 0, time.UTC)
@@ -66,10 +68,10 @@ func unitMecano(level v1alpha1.Level, mutate func(*v1alpha1.TakeCareMecano)) *v1
 }
 
 // unitConnector is a Ready connector with its tools classed.
-func unitConnector(name string, types []v1alpha1.ConnectorType, discovered []v1alpha1.ToolStatus, mutate func(*v1alpha1.TakeCareConnector)) *v1alpha1.TakeCareConnector {
+func unitConnector(name string, kinds []v1alpha1.ConnectorType, discovered []v1alpha1.ToolStatus, mutate func(*v1alpha1.TakeCareConnector)) *v1alpha1.TakeCareConnector {
 	c := &v1alpha1.TakeCareConnector{Name: name, Namespace: ns}
-	c.Spec.Types = types
-	if slices.Contains(types, v1alpha1.ConnectorCluster) {
+	c.Spec.Types = kinds
+	if slices.Contains(kinds, v1alpha1.ConnectorCluster) {
 		c.Spec.Kubernetes = &v1alpha1.KubernetesSpec{Namespaces: []v1alpha1.Namespace{shop, "elsewhere"}}
 	}
 	c.Status.Tools = discovered
@@ -92,7 +94,7 @@ func unitMaintenance(name string, phase v1alpha1.RunPhase, mutate func(*v1alpha1
 }
 
 func gatewayPlatform() *v1alpha1.TakeCarePlatform {
-	p := &v1alpha1.TakeCarePlatform{Name: "main"}
+	p := &v1alpha1.TakeCarePlatform{Name: platformName}
 	p.Status.GatewayURL = gwURL
 	return p
 }
@@ -122,9 +124,9 @@ func (f *fakeCaller) Call(_ context.Context, ep mcp.Endpoint, tool string, args 
 		return mcp.Result{Text: string(raw)}
 	}
 	switch {
-	case tool == "resources_list" && args["kind"] == "Deployment":
+	case tool == "resources_list" && args["kind"] == kDeploy:
 		return structured(map[string]any{"items": []any{map[string]any{
-			"apiVersion": "apps/v1", "kind": "Deployment", "Namespace": string(shop), "Name": "app",
+			"apiVersion": "apps/v1", "kind": kDeploy, "Namespace": string(shop), "Name": "app",
 			"Images": appImage + ":1.0.0", "Labels": "", "Ready": "1/1",
 		}}}), nil
 	case tool == "resources_list":
@@ -133,7 +135,7 @@ func (f *fakeCaller) Call(_ context.Context, ep mcp.Endpoint, tool string, args 
 		return text([]map[string]string{{"name": "deploy", "revision": "abc"}}), nil
 	case tool == "manifests_index":
 		return text(codeserver.Index{Repository: "deploy", Revision: "abc", Documents: []codeserver.Document{
-			{Path: "app.yaml", APIVersion: "apps/v1", Kind: "Deployment", Namespace: string(shop), Name: "app", Images: []string{appImage + ":1.1.0"}},
+			{Path: "app.yaml", APIVersion: "apps/v1", Kind: kDeploy, Namespace: string(shop), Name: "app", Images: []string{appImage + ":1.1.0"}},
 		}}), nil
 	}
 	return mcp.Result{IsError: true, Text: "unexpected"}, nil
@@ -387,7 +389,7 @@ func TestRunnerRefuses(t *testing.T) {
 		reason string
 	}{
 		{"no Mécano", nil, "the Mécano mecano does not exist"},
-		{"suspended", unitMecano(v1alpha1.LevelApprentice, func(m *v1alpha1.TakeCareMecano) { m.Spec.Suspend = true }), failNotReady},
+		{suspended, unitMecano(v1alpha1.LevelApprentice, func(m *v1alpha1.TakeCareMecano) { m.Spec.Suspend = true }), failNotReady},
 		{"not Ready", unitMecano(v1alpha1.LevelApprentice, func(m *v1alpha1.TakeCareMecano) {
 			meta.SetStatusCondition(&m.Status.Conditions, metav1.Condition{Type: v1alpha1.ConditionReady, Status: metav1.ConditionFalse, Reason: ReasonNotReady})
 		}), failNotReady},

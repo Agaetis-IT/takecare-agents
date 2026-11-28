@@ -39,7 +39,7 @@ const validAnswer = `{"findings": [
  "pullRequests": [{"repository": "` + repo + `", "url": "` + prURLOK + `", "branch": "takecare/mecano/maintenance-0a1b2c3d4e"}]}`
 
 func facts() Facts {
-	return Facts{Inventory: demoInventory, Repositories: []string{repo}, Branch: branch, ClusterVersion: "1.32.8", Known: []string{"1.33", "1.33.6"}}
+	return Facts{Inventory: demoInventory, Repositories: []string{repo}, Branch: branch, ClusterVersion: v1328, Known: []string{"1.33", "1.33.6"}}
 }
 
 func TestParse(t *testing.T) {
@@ -188,7 +188,7 @@ func TestRecordPullRequests(t *testing.T) {
 				tc.facts(&f)
 			}
 			got := Record(a, v1alpha1.LevelPractitioner, f)
-			if kept := len(got.Plan.PullRequests) == 1; kept != tc.kept || got.Counts.PullRequests != int32(len(got.Plan.PullRequests)) {
+			if kept := len(got.Plan.PullRequests) == 1; kept != tc.kept || int(got.Counts.PullRequests) != len(got.Plan.PullRequests) {
 				t.Errorf("kept %v, want %v: %+v", kept, tc.kept, got.Plan)
 			}
 			if tc.reason == "" && len(got.BlindSpots) != 0 || tc.reason != "" && (len(got.BlindSpots) != 1 || got.BlindSpots[0].Reason != tc.reason) {
@@ -201,15 +201,15 @@ func TestRecordPullRequests(t *testing.T) {
 // TestRecordTestedOnCopy says OnCopy only when the copy runs the plan's
 // target, ready, with its evidence (spec 12 §8).
 func TestRecordTestedOnCopy(t *testing.T) {
-	ev := []v1alpha1.Evidence{{Tool: "resources_list", Record: "staging:demo-apps/Deployment/billing-api"}}
+	ev := []v1alpha1.Evidence{{Tool: toolList, Record: "staging:demo-apps/Deployment/billing-api"}}
 	for _, tc := range []struct {
 		name string
 		copy map[string]CopyFact
 		want v1alpha1.PlanTested
 	}{
 		{"no copy", nil, v1alpha1.PlanNotTested},
-		{"the target, ready", map[string]CopyFact{demoApp: {Version: "0.3.0", Ready: true, Evidence: ev}}, v1alpha1.PlanOnCopy},
-		{"the target, not ready", map[string]CopyFact{demoApp: {Version: "0.3.0", Evidence: ev}}, v1alpha1.PlanNotTested},
+		{"the target, ready", map[string]CopyFact{demoApp: {Version: v030, Ready: true, Evidence: ev}}, v1alpha1.PlanOnCopy},
+		{"the target, not ready", map[string]CopyFact{demoApp: {Version: v030, Evidence: ev}}, v1alpha1.PlanNotTested},
 		{"the live version", map[string]CopyFact{demoApp: {Version: "0.2.0", Ready: true, Evidence: ev}}, v1alpha1.PlanNotTested},
 		{"another version", map[string]CopyFact{demoApp: {Version: "0.4.0", Ready: true, Evidence: ev}}, v1alpha1.PlanNotTested},
 	} {
@@ -253,7 +253,7 @@ func TestRecordBounds(t *testing.T) {
 
 func TestChanged(t *testing.T) {
 	f := func(ids ...string) []v1alpha1.MaintenanceFinding {
-		var out []v1alpha1.MaintenanceFinding
+		out := make([]v1alpha1.MaintenanceFinding, 0, len(ids))
 		for _, id := range ids {
 			out = append(out, v1alpha1.MaintenanceFinding{ID: id})
 		}

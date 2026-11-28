@@ -35,29 +35,30 @@ import (
 )
 
 const (
-	ns          = "takecare-system"
-	engineNS    = "kagent"
-	gwURL       = "http://agentgateway-proxy.takecare-system.svc"
-	mecanoName  = "mecano"
-	agentMecano = "takecare-mecano-mecano"
-	connCluster = "kubernetes"
-	connCode    = "code"
-	connPropose = "code-propose"
-	connRel     = "releases"
-	connCopy    = "staging"
-	connRep     = "report"
-	repoDeploy  = "team/deploy"
-	reasonTest  = "Test"
-	shop        = v1alpha1.Namespace("shop")
-	fileGet     = "file_get"
-	transition  = "2026-11-27T00:00:00Z"
-	accepted    = "Accepted"
-	statusTrue  = "True"
-	gwName      = "agentgateway-proxy"
-	repoOther   = "team/other"
-	denyAll     = "false"
-	keyConds    = "conditions"
-	keyName     = "name"
+	ns           = "takecare-system"
+	engineNS     = "kagent"
+	gwURL        = "http://agentgateway-proxy.takecare-system.svc"
+	mecanoName   = "mecano"
+	agentMecano  = "takecare-mecano-mecano"
+	connCluster  = "kubernetes"
+	connCode     = "code"
+	connPropose  = "code-propose"
+	connRel      = "releases"
+	connCopy     = "staging"
+	connRep      = "report"
+	repoDeploy   = "team/deploy"
+	reasonTest   = "Test"
+	shop         = v1alpha1.Namespace("shop")
+	fileGet      = "file_get"
+	transition   = "2026-11-27T00:00:00Z"
+	accepted     = "Accepted"
+	statusTrue   = "True"
+	gwName       = "agentgateway-proxy"
+	repoOther    = "team/other"
+	denyAll      = "false"
+	keyConds     = "conditions"
+	keyName      = "name"
+	platformName = "main"
 )
 
 var (
@@ -132,7 +133,7 @@ func tools(class v1alpha1.ToolClass, names ...string) []v1alpha1.ToolStatus {
 func (f *fixture) platform(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
-	p := &v1alpha1.TakeCarePlatform{Name: "main"}
+	p := &v1alpha1.TakeCarePlatform{Name: platformName}
 	p.Spec.Models = []v1alpha1.ModelSpec{{Name: "default", Model: "m", BaseURL: "https://x/v1", APIKeySecretRef: v1alpha1.SecretKeyRef{Name: "k", Key: "k"}}}
 	p.Spec.Gateway.GatewayRef = &v1alpha1.ObjectRef{Name: gwName}
 	if err := f.c.Create(ctx, p); err != nil {

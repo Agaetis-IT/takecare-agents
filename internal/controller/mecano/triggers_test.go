@@ -52,7 +52,7 @@ func TestTriggers(t *testing.T) {
 		{name: "busy", readyNow: true, busy: true, now: now, next: &due, pending: v1alpha1.MaintenanceTriggerSchedule},
 		{name: "not ready now", reason: ReasonNotReady, now: now, next: &due, pending: v1alpha1.MaintenanceTriggerSchedule},
 		{name: "not ready in its stored status", mecano: notReady, readyNow: true, now: now, next: &due, pending: v1alpha1.MaintenanceTriggerSchedule},
-		{name: "suspended", mecano: func(m *v1alpha1.TakeCareMecano) { m.Spec.Suspend = true }, reason: ReasonSuspended, now: now},
+		{name: suspended, mecano: func(m *v1alpha1.TakeCareMecano) { m.Spec.Suspend = true }, reason: ReasonSuspended, now: now},
 		{name: "scope overlap", reason: v1alpha1.ReasonScopeOverlap, now: now},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -210,7 +210,7 @@ func TestSweep(t *testing.T) {
 	}
 	var list v1alpha1.TakeCareMaintenanceList
 	_ = c.List(context.Background(), &list)
-	var kept []string
+	kept := make([]string, 0, len(list.Items))
 	for _, mt := range list.Items {
 		kept = append(kept, mt.Name)
 	}

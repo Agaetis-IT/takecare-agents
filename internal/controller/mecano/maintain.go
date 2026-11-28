@@ -65,7 +65,7 @@ type proposal struct {
 // maintain collects, runs the agent on the facts and reads its answer.
 func (w *Runner) maintain(ctx context.Context, mt *v1alpha1.TakeCareMaintenance, m *v1alpha1.TakeCareMecano, lvl v1alpha1.Level) (v1alpha1.TakeCareMaintenanceStatus, error) {
 	failed := func(reason string) v1alpha1.TakeCareMaintenanceStatus {
-		out := v1alpha1.TakeCareMaintenanceStatus{RunStatus: v1alpha1.RunStatus{Phase: v1alpha1.RunFailed, Reason: reason[:min(len(reason), maxReason)]}}
+		out := v1alpha1.TakeCareMaintenanceStatus{Phase: v1alpha1.RunFailed, Reason: reason[:min(len(reason), maxReason)]}
 		sayUsage(&out.Conditions, nil, usageNotRun, mt.Generation)
 		return out
 	}
@@ -206,21 +206,21 @@ func (w *Runner) input(ctx context.Context, m *v1alpha1.TakeCareMecano, route fu
 			}
 			src := collect.Source{Connector: name, Endpoint: ep}
 			switch s.name {
-			case "cluster", "copy":
+			case slotCluster, slotCopy:
 				ns := namespacesOf(m, c)
 				if len(ns) == 0 {
 					continue
 				}
 				src.Endpoint.Namespaces = ns
 				cl := collect.Cluster{Source: src, Namespaces: ns}
-				if s.name == "copy" {
+				if s.name == slotCopy {
 					in.Copy = &cl
 				} else {
 					in.Clusters = append(in.Clusters, cl)
 				}
-			case "code":
+			case slotCode:
 				in.Code = append(in.Code, src)
-			case "releases":
+			case slotReleases:
 				in.Releases = append(in.Releases, src)
 			}
 		}

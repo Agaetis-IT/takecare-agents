@@ -19,6 +19,9 @@ const (
 	kCert   = "Certificate"
 	kRepo   = "repository"
 	kSource = "source"
+	rDemo   = "demo"
+	sGHCR   = "ghcr"
+	kName   = "name"
 )
 
 // collectorEndpoint is a collector endpoint of the given type, every
@@ -46,7 +49,7 @@ func TestCollectorAllowed(t *testing.T) {
 	}
 	get := func(apiVersion, kind, ns, name string) map[string]any {
 		a := list(apiVersion, kind, ns)
-		a["name"] = name
+		a[kName] = name
 		return a
 	}
 	with := func(a map[string]any, k string, v any) map[string]any { a[k] = v; return a }
@@ -69,9 +72,9 @@ func TestCollectorAllowed(t *testing.T) {
 		{"its replacement", cluster, collectorList, list("autoscaling/v2", "HorizontalPodAutoscaler", scoped), true},
 		{"a certificate", cluster, collectorGet, get(vCert, kCert, scoped, "billing-tls"), true},
 		{"repositories", code, collectorRepositories, map[string]any{}, true},
-		{"the index", code, collectorIndex, map[string]any{kRepo: "demo"}, true},
+		{"the index", code, collectorIndex, map[string]any{kRepo: rDemo}, true},
 		{"sources", releases, collectorSources, map[string]any{}, true},
-		{"versions", releases, collectorVersions, map[string]any{kSource: "ghcr", "name": "agaetis-it/demo-app"}, true},
+		{"versions", releases, collectorVersions, map[string]any{kSource: sGHCR, kName: "agaetis-it/demo-app"}, true},
 		{"cycles", releases, collectorCycles, map[string]any{kSource: "eol", "product": "kubernetes"}, true},
 
 		{"secrets", cluster, collectorList, list("v1", "Secret", scoped), false},
@@ -87,19 +90,19 @@ func TestCollectorAllowed(t *testing.T) {
 		{"an extra key on a get", cluster, collectorGet, with(get(vCert, kCert, scoped, "x"), "output", "yaml"), false},
 		{"a name too long", cluster, collectorGet, get(vCert, kCert, scoped, strings.Repeat("a", 254)), false},
 		{"a namespace of another type", cluster, collectorList, with(list(vApps, kDeploy, ""), "namespace", 3), false},
-		{"another cluster tool", cluster, "pods_log", map[string]any{"namespace": scoped, "name": "x"}, false},
+		{"another cluster tool", cluster, "pods_log", map[string]any{"namespace": scoped, kName: "x"}, false},
 		{"a list on a code connector", code, collectorList, list(vApps, kDeploy, scoped), false},
-		{"a path on the index", code, collectorIndex, map[string]any{kRepo: "demo", "path": "apps/"}, false},
-		{"file_get", code, "file_get", map[string]any{kRepo: "demo", "path": "values.yaml"}, false},
+		{"a path on the index", code, collectorIndex, map[string]any{kRepo: rDemo, "path": "apps/"}, false},
+		{"file_get", code, "file_get", map[string]any{kRepo: rDemo, "path": "values.yaml"}, false},
 		{"an index without repository", code, collectorIndex, map[string]any{}, false},
-		{"arguments on repositories", code, collectorRepositories, map[string]any{kRepo: "demo"}, false},
-		{"the index on a cluster connector", cluster, collectorIndex, map[string]any{kRepo: "demo"}, false},
-		{"versions without a name", releases, collectorVersions, map[string]any{kSource: "ghcr"}, false},
-		{"versions with an extra key", releases, collectorVersions, map[string]any{kSource: "ghcr", "name": "x", "url": "https://evil.example"}, false},
-		{"cycles with a name", releases, collectorCycles, map[string]any{kSource: "eol", "name": "kubernetes"}, false},
-		{"an empty source", releases, collectorVersions, map[string]any{kSource: "", "name": "x"}, false},
+		{"arguments on repositories", code, collectorRepositories, map[string]any{kRepo: rDemo}, false},
+		{"the index on a cluster connector", cluster, collectorIndex, map[string]any{kRepo: rDemo}, false},
+		{"versions without a name", releases, collectorVersions, map[string]any{kSource: sGHCR}, false},
+		{"versions with an extra key", releases, collectorVersions, map[string]any{kSource: sGHCR, kName: "x", "url": "https://evil.example"}, false},
+		{"cycles with a name", releases, collectorCycles, map[string]any{kSource: "eol", kName: "kubernetes"}, false},
+		{"an empty source", releases, collectorVersions, map[string]any{kSource: "", kName: "x"}, false},
 		{"a source too long", releases, collectorCycles, map[string]any{kSource: strings.Repeat("s", 254), "product": "x"}, false},
-		{"versions on a code connector", code, collectorVersions, map[string]any{kSource: "ghcr", "name": "x"}, false},
+		{"versions on a code connector", code, collectorVersions, map[string]any{kSource: sGHCR, kName: "x"}, false},
 		{"a report connector's post", collectorEndpoint(v1alpha1.ConnectorReport), "post_message", map[string]any{}, false},
 	}
 	for _, tt := range tests {
@@ -116,7 +119,7 @@ func TestCollectorAllowed(t *testing.T) {
 func TestCollectorAllowedNeedsState(t *testing.T) {
 	ep := collectorEndpoint(v1alpha1.ConnectorCode)
 	ep.StateTools = map[string]bool{collectorRepositories: true}
-	if ep.Allowed(collectorIndex, map[string]any{kRepo: "demo"}) {
+	if ep.Allowed(collectorIndex, map[string]any{kRepo: rDemo}) {
 		t.Error("manifests_index admitted though discovery did not class it read and state")
 	}
 	if !ep.Allowed(collectorRepositories, map[string]any{}) {
@@ -130,7 +133,7 @@ func TestCollectorAllowedNeedsState(t *testing.T) {
 func TestCollectorEndpointKeepsOtherRolesUnchanged(t *testing.T) {
 	ep := collectorEndpoint(v1alpha1.ConnectorCode)
 	ep.Collector = false
-	if ep.Allowed(collectorIndex, map[string]any{kRepo: "demo"}) {
+	if ep.Allowed(collectorIndex, map[string]any{kRepo: rDemo}) {
 		t.Error("manifests_index admitted on an endpoint that is not the collector's")
 	}
 	rel := collectorEndpoint(v1alpha1.ConnectorReleases)

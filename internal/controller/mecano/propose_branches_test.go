@@ -94,7 +94,7 @@ func TestProposeBranches(t *testing.T) {
 		// verdict is on that rule, not on the one rendered now.
 		{name: "the rule of other repositories", policy: enforcedPolicy(role, repoDeploy, repoOther), want: []string{},
 			problem: "the argument rule on code-propose's route is not enforced yet"},
-		{name: "suspended", policy: enforcedPolicy(role, repoDeploy), want: []string{},
+		{name: suspended, policy: enforcedPolicy(role, repoDeploy), want: []string{},
 			mecano:  func(m *v1alpha1.TakeCareMecano) { m.Spec.Suspend = true },
 			problem: "spec.suspend is set: the propose route admits nothing"},
 	} {
