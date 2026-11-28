@@ -58,7 +58,9 @@ const pullRequestsWithout = "each plan is recorded and published without a pull 
 // above only, with maintenance.repositories on that connector, each one
 // the connector lists. The route carries the argument rule from the
 // start; its allow-list admits propose_change, and the agent is given it,
-// only once the gateway has Accepted and Attached the rule: fail closed.
+// only once the gateway has Accepted and Attached that very rule, at the
+// policy's current generation, and while the Mécano is not suspended:
+// fail closed.
 // Whatever keeps the route from proposing is a blind spot, never a
 // refusal: the Mécano stays Ready and publishes its plans without a pull
 // request.
@@ -116,18 +118,28 @@ func (r *Reconciler) propose(ctx context.Context, m *v1alpha1.TakeCareMecano, le
 		b.unavailable = append(b.unavailable, fmt.Sprintf("the propose connector %s offers no %s classed propose: %s", name, mecanoagent.ProposeTool, pullRequestsWithout))
 		return nil
 	}
-	enforced, problem, err := routes.CallRuleEnforced(ctx, r.Client, role, name)
+	// The verdict read is on the rule rendered now: a policy that still
+	// carries the rule of other repositories, or a verdict on an older
+	// generation, keeps the route closed until the gateway has read the
+	// rule this reconcile renders.
+	rule := ProposeCallRule(listed)
+	enforced, problem, err := routes.CallRuleEnforced(ctx, r.Client, role, name, rule)
 	if err != nil {
 		return err
 	}
 	var admitted []string
-	if enforced {
+	switch {
+	case m.Spec.Suspend:
+		// Conservative: a suspended Mécano runs no maintenance, so its
+		// write tool is not left open on the gateway meanwhile.
+		b.unavailable = append(b.unavailable, "spec.suspend is set: the propose route admits nothing")
+	case enforced:
 		admitted = []string{mecanoagent.ProposeTool}
 		b.agent[name] = admitted
-	} else {
+	default:
 		b.unavailable = append(b.unavailable, problem+": "+pullRequestsWithout+" until the gateway enforces it")
 	}
-	b.routes = append(b.routes, routes.MCP{Connector: name, Backend: "mcp-" + name, Tools: admitted, CallRule: ProposeCallRule(listed)})
+	b.routes = append(b.routes, routes.MCP{Connector: name, Backend: "mcp-" + name, Tools: admitted, CallRule: rule})
 	if !meta.IsStatusConditionTrue(c.Status.Conditions, v1alpha1.ConditionReady) {
 		b.unavailable = append(b.unavailable, fmt.Sprintf("propose connector %s is not Ready", name))
 	}
