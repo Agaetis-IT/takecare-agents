@@ -57,7 +57,7 @@ up() {
       --kubeconfig-update-default=false --kubeconfig-switch-context=false --wait
   fi
   k3d kubeconfig write "$CLUSTER" --output "$KUBECONFIG" >/dev/null
-  log "building and importing ${IMAGE}, ${REPORT_IMAGE}, ${CORPUS_IMAGE}, ${MAP_IMAGE}, ${DEMO_APP_IMAGE}, ${FRONT_IMAGE} and ${HISTORY_IMAGE}"
+  log "building and importing ${IMAGE}, ${REPORT_IMAGE}, ${CORPUS_IMAGE}, ${MAP_IMAGE}, ${DEMO_APP_IMAGE}, ${FRONT_IMAGE}, ${HISTORY_IMAGE} and ${CODE_IMAGE}"
   make docker-build OPERATOR_IMG="$IMAGE" REPORT_SLACK_IMG="$REPORT_IMAGE" MCP_CORPUS_IMG="$CORPUS_IMAGE" MCP_MAP_IMG="$MAP_IMAGE" DEMO_APP_IMG="$DEMO_APP_IMAGE" MCP_FRONT_IMG="$FRONT_IMAGE" MCP_HISTORY_IMG="$HISTORY_IMAGE" MCP_CODE_IMG="$CODE_IMAGE" MCP_RELEASES_IMG="$RELEASES_IMAGE" \
     LOCAL_LABELS="--label org.agaetis.takecare.local=true --label org.agaetis.takecare.hash=${IMAGE_TAG}" >/dev/null
   # In CI, the fake Slack's layers come from the Actions cache too, in the
@@ -69,7 +69,7 @@ up() {
   "${build[@]}" --build-arg GO_BUILD_IMAGE="$GO_BUILD_IMAGE" --build-arg RUNTIME_IMAGE="$RUNTIME_IMAGE" \
     --build-arg GO_LICENSES_VERSION="$GO_LICENSES_VERSION" --build-arg COMPONENT=fake-slack \
     --label org.agaetis.takecare.local=true --label org.agaetis.takecare.hash="${IMAGE_TAG}" -t "$FAKE_SLACK_IMAGE" . >/dev/null
-  k3d image import "$IMAGE" "$REPORT_IMAGE" "$CORPUS_IMAGE" "$MAP_IMAGE" "$DEMO_APP_IMAGE" "$FRONT_IMAGE" "$HISTORY_IMAGE" "$FAKE_SLACK_IMAGE" -c "$CLUSTER" >/dev/null
+  k3d image import "$IMAGE" "$REPORT_IMAGE" "$CORPUS_IMAGE" "$MAP_IMAGE" "$DEMO_APP_IMAGE" "$FRONT_IMAGE" "$HISTORY_IMAGE" "$CODE_IMAGE" "$FAKE_SLACK_IMAGE" -c "$CLUSTER" >/dev/null
   make chart-deps >/dev/null
   # The Docker Hub images, pulled once on the host (hack/preload-images.sh).
   hack/preload-images.sh pull
@@ -172,12 +172,13 @@ install_charts() {
   kubectl -n "$NS" create secret generic takecare-model --from-literal=apiKey=smoke-placeholder \
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   empty_corpora
+  propose_token
   # An image that cannot be pulled stops the install with its pod's events
   # instead of the ten minutes of --wait (hack/preload-images.sh watch);
   # either one failing fails the install.
   "$HELM" upgrade --install takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
-    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set addons.history.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set ranger.caps.gateway.requestsPerMinute=600 --set-json 'ranger.caps.models=[{"name":"default","requestsPerMinute":2,"burst":1}]' --wait --timeout 10m &
+    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set addons.history.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" "${PROPOSE_VALUES[@]}" --set ranger.caps.gateway.requestsPerMinute=600 --set-json 'ranger.caps.models=[{"name":"default","requestsPerMinute":2,"burst":1}]' --wait --timeout 10m &
   local helm_pid=$! watch_pid helm_rc=0 watch_rc=0
   hack/preload-images.sh watch "$helm_pid" &
   watch_pid=$!
@@ -235,6 +236,20 @@ empty_corpora() {
     kubectl -n "$NS" create configmap "takecare-demo-corpus-${src}" --from-literal=data.json='[]' \
       --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   done
+}
+
+# The propose add-on (spec 12 §6), on one listed repository whose forge
+# does not resolve: a call the gateway lets through reaches the server,
+# which cannot read the default branch's protection (ProtectionUnknown)
+# and writes nothing anywhere. Its token is a placeholder.
+PROPOSE_VALUES=(--set addons.codePropose.enabled=true --set addons.codePropose.image.tag="$IMAGE_TAG"
+  --set addons.codePropose.tokenSecret.name=smoke-propose-token
+  --set-json 'addons.codePropose.repositories=[{"forge":"github","apiURL":"https://forge.smoke.invalid","repository":"smoke/listed","tokenKey":"token"}]')
+
+# propose_token writes the propose add-on's token Secret, a placeholder.
+propose_token() {
+  kubectl -n "$NS" create secret generic smoke-propose-token --from-literal=token=smoke-placeholder \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 }
 
 # corpus_ready SOURCE: a demo corpus connector is Ready with exactly its
@@ -380,6 +395,20 @@ mcp_forbidden() {
   local out
   out="$(mcp_call "$@")"
   grep -q '^HTTP 403$' <<<"$out" && ! grep -q '"result"' <<<"$out" && return 0
+  mcp_diagnose "$3" "$out"
+  return 1
+}
+
+# mcp_protection_unknown NAMESPACE POD URL TOOL [ARGS]: succeeds when the
+# call reaches the propose server, which answers ProtectionUnknown (it
+# could not read the default branch's protection), within 20 s.
+mcp_protection_unknown() {
+  local _ out
+  for _ in $(seq 10); do
+    out="$(mcp_call "$@")"
+    grep -q '"result"' <<<"$out" && grep -q 'ProtectionUnknown' <<<"$out" && return 0
+    sleep 2
+  done
   mcp_diagnose "$3" "$out"
   return 1
 }
@@ -600,7 +629,7 @@ upgrade() {
     --set image.tag="$IMAGE_TAG" --set demo.enabled=true --wait --timeout 5m
   "$HELM" upgrade takecare charts/takecare -n "$NS" \
     -f charts/takecare/values-demo.yaml \
-    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set addons.history.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" --set operator.extraArgs[0]=--zap-log-level=debug --set global.caBundle.configMapName=smoke-ca --set ranger.caps.gateway.requestsPerMinute=600 --set-json 'ranger.caps.models=[{"name":"default","requestsPerMinute":2,"burst":1}]' --wait --timeout 10m
+    --set operator.image.tag="$IMAGE_TAG" --set addons.report.image.tag="$IMAGE_TAG" --set addons.demoCorpus.image.tag="$IMAGE_TAG" --set addons.map.image.tag="$IMAGE_TAG" --set addons.history.image.tag="$IMAGE_TAG" --set demo.app.image.tag="$IMAGE_TAG" "${PROPOSE_VALUES[@]}" --set operator.extraArgs[0]=--zap-log-level=debug --set global.caBundle.configMapName=smoke-ca --set ranger.caps.gateway.requestsPerMinute=600 --set-json 'ranger.caps.models=[{"name":"default","requestsPerMinute":2,"burst":1}]' --wait --timeout 10m
   check "helm upgrade of both charts succeeded without a field manager conflict" true
   check "operator rolled out with the new argument" \
     kubectl -n "$NS" rollout status deploy/takecare-operator --timeout=120s
@@ -1227,6 +1256,63 @@ EOF
   kubectl -n "$NS" delete takecarekine smoke-kine --timeout=60s >/dev/null
   check "deleting the Kiné removed its agent, model configuration, tool servers and instructions in kagent, and its routes, policies and backend" \
     bash -c "[[ -z \$(kubectl -n kagent get agents,modelconfigs,remotemcpservers,configmaps -l takecare.agaetis.fr/owner=smoke-kine -o name) && -z \$(kubectl -n ${NS} get httproutes,agentgatewaypolicies,agentgatewaybackends -l takecare.agaetis.fr/role-instance=kine.smoke-kine -o name) ]]"
+  # The Mécano's routes (spec 12 §6.4, §12) on the pinned gateway: its
+  # propose route opens once the gateway enforces the argument rule, and
+  # the rule refuses with a 403 an unlisted repository, a branch outside
+  # takecare/mecano/, a key outside the five, the operator's canary and any
+  # other tool; a listed repository on a good branch reaches the propose
+  # server, which answers ProtectionUnknown. Its cluster route lets the
+  # collector's lists through and refuses the rest at the route or the
+  # server. No code add-on runs here (no Git host): the Mécano is not
+  # Ready, and its routes render all the same.
+  log "the Mécano's routes (spec 12 §6.4)"
+  kubectl -n "$NS" apply -f - >/dev/null <<EOF
+apiVersion: takecare.agaetis.fr/v1alpha1
+kind: TakeCareMecano
+metadata: { name: smoke-mecano, namespace: ${NS} }
+spec:
+  level: Practitioner
+  scope: { namespaces: [demo-apps] }
+  schedule: none
+  connectors: { cluster: [kubernetes], propose: [code-propose], report: report }
+  maintenance: { repositories: [{ connector: code-propose, repository: smoke/listed }] }
+EOF
+  check "the code-propose connector is Ready, propose_change classed propose" \
+    bash -c "for _ in \$(seq 60); do [[ \$(kubectl -n ${NS} get takecareconnector code-propose -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status} {.status.tools[?(@.name==\"propose_change\")].class}') == 'True propose' ]] && exit 0; sleep 2; done; exit 1"
+  local mcalls=role-mecano-smoke-mecano-mcp-code-propose-calls
+  check "the argument rule on the Mécano's propose route is Accepted and Attached" \
+    bash -c "for _ in \$(seq 30); do s=\$(kubectl -n ${NS} get agentgatewaypolicy ${mcalls} -o jsonpath='{.status.ancestors[*].conditions[?(@.type==\"Accepted\")].status} {.status.ancestors[*].conditions[?(@.type==\"Attached\")].status}' 2>/dev/null); [[ \$s == 'True True' ]] && exit 0; sleep 2; done; exit 1"
+  check "the propose route's allow-list admits propose_change once the rule is enforced" \
+    bash -c "for _ in \$(seq 30); do [[ \$(kubectl -n ${NS} get agentgatewaypolicy role-mecano-smoke-mecano-mcp-code-propose -o jsonpath='{.spec.backend.mcp.authorization.policy.matchExpressions[0]}' 2>/dev/null) == *propose_change* ]] && exit 0; sleep 2; done; exit 1"
+  local mroute="${gw}/mcp/${NS}/mecano.smoke-mecano" file='[{"path":"README.md","content":"smoke"}]'
+  local good="{\"repository\":\"smoke/listed\",\"branch\":\"takecare/mecano/smoke-1\",\"title\":\"smoke\",\"body\":\"smoke\",\"files\":${file}}"
+  check "propose_change on an unlisted repository is refused by the argument rule (403)" \
+    retry_forbidden kagent smoke-a2a "${mroute}/code-propose" propose_change "${good/smoke\/listed/smoke\/other}"
+  check "propose_change on a branch outside takecare/mecano/ is refused by the argument rule (403)" \
+    mcp_forbidden kagent smoke-a2a "${mroute}/code-propose" propose_change "${good/takecare\/mecano\/smoke-1/main}"
+  check "propose_change with a key outside the five is refused by the argument rule (403)" \
+    mcp_forbidden kagent smoke-a2a "${mroute}/code-propose" propose_change "${good%\}},\"draft\":false}"
+  check "the operator's propose canary is refused by the argument rule (403)" \
+    mcp_forbidden kagent smoke-a2a "${mroute}/code-propose" propose_change \
+    '{"repository":"takecare-canary/unlisted","branch":"takecare/mecano/canary","title":"canary","body":"canary","files":[],"takecare_canary":true}'
+  check "another tool on the propose route is refused by the argument rule (403)" \
+    mcp_forbidden kagent smoke-a2a "${mroute}/code-propose" smoke_invented '{}'
+  check "a listed repository on a good branch reaches the propose server, which answers ProtectionUnknown" \
+    mcp_protection_unknown kagent smoke-a2a "${mroute}/code-propose" propose_change "$good"
+  check "the collector's list of Deployments through the Mécano's cluster route is let through" \
+    mcp_allowed kagent smoke-a2a "${mroute}/kubernetes" resources_list '{"apiVersion":"apps/v1","kind":"Deployment","namespace":"demo-apps"}'
+  local out
+  out="$(mcp_call kagent smoke-a2a "${mroute}/kubernetes" resources_list '{"apiVersion":"v1","kind":"Node"}')"
+  check "the collector's list of Nodes is let through and read (readNodes)" \
+    bash -c "grep -q '\"result\"' <<<\"\$1\" && ! grep -q -i forbidden <<<\"\$1\"" _ "$out"
+  out="$(mcp_call kagent smoke-a2a "${mroute}/kubernetes" resources_list '{"apiVersion":"v1","kind":"Secret","namespace":"demo-apps"}')"
+  check "Secrets through the Mécano's cluster route are refused by the server (resource not allowed)" \
+    bash -c "grep -q 'resource not allowed' <<<\"\$1\"" _ "$out"
+  check "pods_log, a content tool the Mécano does not list, is refused by the gateway" \
+    mcp_unknown_tool kagent smoke-a2a "${mroute}/kubernetes" pods_log '{"namespace":"demo-apps","name":"x"}'
+  kubectl -n "$NS" delete takecaremecano smoke-mecano --timeout=60s >/dev/null
+  check "deleting the Mécano removed its agent and model configuration in kagent, and its routes and policies" \
+    bash -c "[[ -z \$(kubectl -n kagent get agents,modelconfigs,remotemcpservers,configmaps -l takecare.agaetis.fr/owner=smoke-mecano -o name) && -z \$(kubectl -n ${NS} get httproutes,agentgatewaypolicies,agentgatewaybackends -l takecare.agaetis.fr/role-instance=mecano.smoke-mecano -o name) ]]"
   kubectl -n kagent delete pod smoke-a2a --now >/dev/null
   kubectl -n "$NS" delete takecaredoc smoke-doc --timeout=60s >/dev/null
   check "deleting the Doc removed its agent, tool servers and instructions in kagent, and its routes" \
@@ -1687,7 +1773,7 @@ down() {
 # parallel jobs: job-a (install, then the check list) and job-b (install,
 # the fixtures, the upgrade, the check list again, the customer connector
 # and the front). Together they run every check of all.
-CHECKS_INSTALL=226 CHECKS_UPGRADE=226 CHECKS_URL=8 CHECKS_CLUSTER=5
+CHECKS_INSTALL=240 CHECKS_UPGRADE=240 CHECKS_URL=8 CHECKS_CLUSTER=5
 CHECKS_JOB_A=$CHECKS_INSTALL
 CHECKS_JOB_B=$((CHECKS_UPGRADE + CHECKS_URL + CHECKS_CLUSTER))
 CHECKS_ALL=$((CHECKS_INSTALL + CHECKS_UPGRADE + CHECKS_URL + CHECKS_CLUSTER))
