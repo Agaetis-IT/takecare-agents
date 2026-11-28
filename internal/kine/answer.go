@@ -18,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/answerblock"
 )
 
 //go:embed answer.schema.json
@@ -74,8 +75,6 @@ type AnswerAction struct {
 	Evidence []v1alpha1.Evidence   `json:"evidence"`
 }
 
-const fence = "```"
-
 // Parse reads the answer strictly: exactly one fenced json block, checked
 // against answer.schema.json, every date RFC 3339. Prose around the block
 // is ignored. Whatever fails is ErrUnreadable, its detail never the
@@ -112,40 +111,14 @@ func Parse(text string) (Answer, error) {
 	return a, nil
 }
 
-// jsonBlock returns the body of the answer's one json block. Fences count
-// at a line's start only: a JSON string holds no raw newline, so a fence
-// inside a value (a Markdown post-mortem) is never one. The block opens on
-// a json fence line and closes on the next fence line, which must be bare;
-// no json fence line may come before it and no fence line after it.
+// jsonBlock returns the body of the answer's one json block
+// (answerblock.JSON), its failure an ErrUnreadable.
 func jsonBlock(text string) (string, error) {
-	lines := strings.Split(text, "\n")
-	open := -1
-	for i, l := range lines {
-		if strings.TrimSpace(l) == fence+"json" {
-			if open >= 0 {
-				return "", fmt.Errorf("%w: more than one json block", ErrUnreadable)
-			}
-			open = i
-		}
+	block, err := answerblock.JSON(text)
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrUnreadable, err)
 	}
-	if open < 0 {
-		return "", fmt.Errorf("%w: no json block", ErrUnreadable)
-	}
-	for i := open + 1; i < len(lines); i++ {
-		if !strings.HasPrefix(strings.TrimSpace(lines[i]), fence) {
-			continue
-		}
-		if strings.TrimSpace(lines[i]) != fence {
-			break
-		}
-		for _, l := range lines[i+1:] {
-			if strings.HasPrefix(strings.TrimSpace(l), fence) {
-				return "", fmt.Errorf("%w: the json block is not alone", ErrUnreadable)
-			}
-		}
-		return strings.Join(lines[open+1:i], "\n"), nil
-	}
-	return "", fmt.Errorf("%w: the json block is not alone or not closed", ErrUnreadable)
+	return block, nil
 }
 
 // Bounds of the review's status (spec 11 §2), as its CRD states them.

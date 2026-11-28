@@ -1,0 +1,61 @@
+This is a maintenance asked on demand.
+
+Maintenance: maintenance-0a1b2c3d4e
+Scope: the namespace demo-apps
+Narrowed to these components only:
+- kubernetes
+The end-of-support dataset is from 2026-11-20.
+
+The collector's inventory, the facts of this maintenance:
+
+```json
+{
+  "components": [
+    {
+      "key": "ghcr.io/agaetis-it/takecare-agents-demo-app",
+      "live": "0.2.0",
+      "declared": "0.3.0",
+      "latest": "0.3.0",
+      "drift": "Version",
+      "evidence": [
+        {
+          "tool": "resources_list",
+          "record": "kubernetes:demo-apps/Deployment/billing-api"
+        }
+      ]
+    },
+    {
+      "key": "kubernetes",
+      "live": "1.32.8",
+      "latest": "1.37.2",
+      "drift": "Unknown"
+    }
+  ],
+  "apis": [
+    {
+      "apiVersion": "batch/v1beta1",
+      "kind": "CronJob",
+      "name": "nightly-export",
+      "removedIn": "1.25",
+      "replacement": "batch/v1",
+      "where": [
+        "Git"
+      ]
+    }
+  ],
+  "certificates": [
+    {
+      "namespace": "demo-apps",
+      "name": "billing-tls",
+      "ready": true
+    }
+  ],
+  "omitted": {}
+}
+```
+
+Your task: the findings, then the plan of the work they call for. Open the plan as a draft pull request with `propose_change`, on the branch `takecare/mecano/maintenance-0a1b2c3d4e`, in these repositories only:
+- team/deploy
+The team's copy was read: the operator says whether it shows the plan working.
+
+Read with your tools to explain and prioritise these facts, and answer as your instructions say: one fenced JSON block, no question.
