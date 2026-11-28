@@ -8,8 +8,10 @@
 # repository with the stubs and three scenarios, alpha, beta and gamma, the
 # demo playing alpha before the run. Covered: bars judged per scenario,
 # never pooled; a scenario not played lets the run go on and fails it at
-# the end; the cap passed down and spent; a failing bench stops the run;
-# exit 2 when the machine slept; the demo put back on alpha every time.
+# the end, and without bars a run where none was played fails; the cap
+# passed down and spent, a scenario not played included; a failing bench
+# stops the run; exit 2 when the machine slept; the demo put back on
+# alpha every time.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -20,7 +22,9 @@ pass() { echo "PASS  $1"; }
 fail() { printf 'FAIL  %s\n%s\n' "$1" "$2"; failed=1; }
 
 tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
+# The status survives the cleanup: a test that died midway never passes.
+trap 'st=$?; rm -rf "$tmp"; exit "$st"' EXIT
+checked=0
 
 # play NAME PLAN [VAR=value...]: runs the bench in a scratch repository on
 # the plan given (lines "<id> <exit> <correct> <cost>"); sets rc, out (its
@@ -50,6 +54,7 @@ play() {
 # order (the demo back on alpha last) and a line the run must print.
 check() {
   local name="$1" want_rc="$2" want_calls="$3" want_out="${4:-}"
+  checked=$((checked + 1))
   if [[ "$rc" != "$want_rc" ]]; then
     fail "$name: exit ${want_rc}, got ${rc}" "$out"
   elif [[ "$calls" != "$want_calls" ]]; then
@@ -110,6 +115,27 @@ demo incident
 bench beta n=5 cap=0.7
 demo scenario alpha" "below the bar or not played: gamma"
 
+play "none played" "alpha 3 0 0
+beta 3 0 0
+gamma 3 0 0"
+check "without bars, no scenario played fails the run" 1 "$all" "no scenario was played"
+
+# A bench not played under the cap (its incident alone too dear) still
+# spent its incident: the next scenario gets what is left.
+play "not played spends" "alpha 3 0 0.4
+beta 0 5 0.1
+gamma 0 5 0.1" BENCH_MAX_COST=1.00
+check "a scenario not played counts its spend against the cap" 0 "demo scenario alpha
+demo incident
+bench alpha n=5 cap=1
+demo scenario beta
+demo incident
+bench beta n=5 cap=0.6
+demo scenario gamma
+demo incident
+bench gamma n=5 cap=0.5
+demo scenario alpha" "Total cost 0.6 USD (cap 1.00)"
+
 play "bench fails" "alpha 0 5 0.1
 beta 1 0 0
 gamma 0 5 0.1"
@@ -129,4 +155,6 @@ demo incident
 bench alpha n=5 cap=none
 demo scenario alpha" "the machine slept during alpha"
 
+# Every case ran: a case lost on the way is a failure, not a pass.
+((checked == 9)) || fail "every case ran" "${checked} of 9 checked"
 exit "$failed"

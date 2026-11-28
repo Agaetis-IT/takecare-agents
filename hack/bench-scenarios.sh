@@ -21,7 +21,8 @@
 # is left, and a scenario that cannot start under it is not played.
 #
 # Exits 0 when every scenario was played and met its bar, 1 when one is
-# below its bar or was not played, 2 when the machine slept (the bench's
+# below its bar or was not played, or, without bars, when none was
+# played, 2 when the machine slept (the bench's
 # own power guard). A bench that fails otherwise (a run that does not
 # settle: its dump is kept) stops the run there. The demo is left healthy
 # on its first scenario.
@@ -134,6 +135,8 @@ jq -r '
 log "summary: ${summary}"
 
 [[ -z "$stop" ]] || die "$stop: the run stopped there (see that scenario's report and dump)"
+played="$(jq '[.scenarios[] | select(.played == true)] | length' "$summary")"
+((played > 0)) || die "no scenario was played"
 if [[ -n "$BARS" ]]; then
   failed="$(jq -r '[.scenarios[] | select(.meetsBar != true) | .id] | join(", ")' "$summary")"
   [[ -z "$failed" ]] || die "below the bar or not played: ${failed}"
