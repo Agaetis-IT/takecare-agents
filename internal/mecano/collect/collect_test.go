@@ -24,7 +24,6 @@ import (
 
 const (
 	recorded = "testdata/kms-v0.0.67"
-	shaped   = "testdata/shaped"
 	demoApps = "demo-apps"
 	cluster  = "kubernetes"
 	code     = "code"
@@ -138,8 +137,9 @@ func list(apiVersion, kind, namespace string) map[string]any {
 	return a
 }
 
-func get(apiVersion, kind, namespace, name string) map[string]any {
-	a := list(apiVersion, kind, namespace)
+// getCert is the resources_get arguments of a Certificate in demo-apps.
+func getCert(name string) map[string]any {
+	a := list(certManager, kindCertificate, demoApps)
 	a["name"] = name
 	return a
 }
@@ -174,13 +174,10 @@ func demo(t *testing.T) (*fake, Input) {
 	}
 	f.set(cluster, toolList, list("v1", "Node", ""), load(t, filepath.Join(recorded, "Node.json")))
 	f.set(cluster, toolList, list(certManager, "Certificate", demoApps), load(t, filepath.Join(recorded, "demo-apps-Certificate.json")))
-	f.set(cluster, toolGet, get(certManager, "Certificate", demoApps, "billing-tls"), load(t, filepath.Join(recorded, "demo-apps-Certificate-get-billing-tls.json")))
-	f.set(cluster, toolGet, get(certManager, "Certificate", demoApps, "notifications-tls"), load(t, filepath.Join(recorded, "forbidden-ack-system-Deployment.json")))
+	f.set(cluster, toolGet, getCert("billing-tls"), load(t, filepath.Join(recorded, "demo-apps-Certificate-get-billing-tls.json")))
+	f.set(cluster, toolGet, getCert("notifications-tls"), load(t, filepath.Join(recorded, "forbidden-ack-system-Deployment.json")))
 	f.set(cluster, toolList, list(argoCD, "Application", "argocd"), load(t, filepath.Join(recorded, "argocd-Application.json")))
 	f.set(cluster, toolList, list(fluxKustomize, kustom, fluxSystem), load(t, filepath.Join(recorded, "flux-system-Kustomization.json")))
-	for _, n := range []string{"apps", "infra"} {
-		f.set(cluster, toolGet, get(fluxKustomize, kustom, fluxSystem, n), load(t, filepath.Join(shaped, "flux-system-Kustomization-get-"+n+".json")))
-	}
 	f.set(code, toolRepositories, map[string]any{}, text(t, []map[string]string{{kName: repo, "revision": "4f1c2a9"}}))
 	f.set(code, toolIndex, map[string]any{kRepository: repo}, text(t, demoIndex))
 	ds, err := eos.Load()
@@ -226,14 +223,14 @@ func TestCollectDemo(t *testing.T) {
 		comp[c.Key] = c
 	}
 	for k, want := range map[string]v1alpha1.Drift{
-		demoApp:                             v1alpha1.DriftVersion, // the kustomization's tag
-		"cr.fluentbit.io/fluent/fluent-bit": v1alpha1.DriftVersion, // the Flux Kustomization's tag
-		"docker.io/envoyproxy/envoy":        v1alpha1.DriftNone,    // same tag, digest live
-		postgres:                            v1alpha1.DriftNone,    // no namespace in Git
-		"quay.io/jetstack/cert-manager-controller": v1alpha1.DriftNotInGit, // only its chart is in Git
-		"ghcr.io/agaetis-it/legacy":                v1alpha1.DriftNotLive,
-		certMgr:                                    v1alpha1.DriftNone, // chart, by version
-		keyKubernetes:                              v1alpha1.DriftUnknown,
+		demoApp:                             v1alpha1.DriftVersion,  // the kustomization's tag
+		"cr.fluentbit.io/fluent/fluent-bit": v1alpha1.DriftVersion,  // the Flux Kustomization's tag
+		"docker.io/envoyproxy/envoy":        v1alpha1.DriftNone,     // same tag, digest live
+		postgres:                            v1alpha1.DriftNone,     // no namespace in Git
+		cmController:                        v1alpha1.DriftNotInGit, // only its chart is in Git
+		"ghcr.io/agaetis-it/legacy":         v1alpha1.DriftNotLive,
+		certMgr:                             v1alpha1.DriftNone, // chart, by version
+		keyKubernetes:                       v1alpha1.DriftUnknown,
 	} {
 		if comp[k].Drift != want {
 			t.Errorf("%s: drift %q, want %q", k, comp[k].Drift, want)
@@ -242,17 +239,17 @@ func TestCollectDemo(t *testing.T) {
 	if _, ok := comp["ghcr.io/agaetis-it/other"]; ok {
 		t.Error("a manifest of a namespace out of scope is compared")
 	}
-	if c := comp[demoApp]; c.Live != "0.2.0" || c.Declared != tagNext {
+	if c := comp[demoApp]; c.Live != tag020 || c.Declared != tagNext {
 		t.Errorf("demo app: live %q declared %q", c.Live, c.Declared)
 	}
-	if c := comp["quay.io/jetstack/cert-manager-controller"]; c.Latest != "1.21.3" || c.SupportEnds == nil || c.SupportEnds.Format(time.DateOnly) != eol116 {
+	if c := comp[cmController]; c.Latest != "1.21.3" || c.SupportEnds == nil || c.SupportEnds.Format(time.DateOnly) != eol116 {
 		t.Errorf("cert-manager from the dataset: %+v", c)
 	}
 	if c := comp[keyKubernetes]; c.Live != "1.32.8" || c.Latest != "1.37.2" || c.SupportEnds.Format(time.DateOnly) != "2026-02-28" {
 		t.Errorf("kubernetes: %+v", c)
 	}
-	if res.ClusterVersion != "1.32.8" || res.VersionFrom != "kubelet" {
-		t.Errorf("cluster version %q from %q: want the lowest kubelet's", res.ClusterVersion, res.VersionFrom)
+	if res.ClusterVersion != "1.32.8" {
+		t.Errorf("cluster version %q: want the lowest kubelet's", res.ClusterVersion)
 	}
 	wantAPI := v1alpha1.DeprecatedAPIUse{APIVersion: "batch/v1beta1", Kind: "CronJob", Name: "nightly-export", RemovedIn: "1.25", Replacement: "batch/v1",
 		Where: []v1alpha1.APIWhere{v1alpha1.APIGit}}
@@ -266,7 +263,7 @@ func TestCollectDemo(t *testing.T) {
 	}
 	wantGitOps := []v1alpha1.GitOpsState{
 		{Kind: "Application", Namespace: "argocd", Name: "notifications", State: "OutOfSync", Revision: "9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d"},
-		{Kind: kustom, Namespace: fluxSystem, Name: "infra", State: "NotReady", Revision: "main@sha1:9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d"},
+		{Kind: kustom, Namespace: fluxSystem, Name: nInfra, State: stateNotReady},
 	}
 	if fmt.Sprint(res.Inventory.GitOps) != fmt.Sprint(wantGitOps) {
 		t.Errorf("gitops: %+v", res.Inventory.GitOps)
@@ -274,6 +271,7 @@ func TestCollectDemo(t *testing.T) {
 	for _, want := range []v1alpha1.NotSeen{
 		{Ref: watch, Reason: "offline watch, current as of 2026-11-27"},
 		{Ref: "charts", Reason: reasonCharts},
+		{Ref: cluster + ":" + fluxSystem + "/" + kustom, Reason: reasonFluxRevisions},
 	} {
 		if !slices.Contains(res.BlindSpots, want) {
 			t.Errorf("blind spots %+v: want %+v", res.BlindSpots, want)
@@ -289,32 +287,23 @@ func TestCollectDemo(t *testing.T) {
 }
 
 func TestClusterVersion(t *testing.T) {
-	forbidden := load(t, filepath.Join(recorded, "forbidden-ack-system-Deployment.json"))
-	t.Run("kube-apiserver static pod when nodes are not readable", func(t *testing.T) {
+	t.Run("unknown: a blind spot, and every namespaced removed apiVersion whose replacement is not served probed", func(t *testing.T) {
 		f, in := demo(t)
-		f.set(cluster, toolList, list("v1", "Node", ""), forbidden)
-		in.Clusters[0].Namespaces = append(in.Clusters[0].Namespaces, "kube-system")
-		f.set(cluster, toolList, list("v1", kindPod, "kube-system"), load(t, filepath.Join(shaped, "kube-system-Pod.json")))
-		f.set(cluster, toolGet, get("v1", kindPod, "kube-system", "kube-apiserver-cp-0"), load(t, filepath.Join(shaped, "kube-system-Pod-get-kube-apiserver.json")))
-		res := collect(t, f, in)
-		if res.ClusterVersion != "1.33.4" || res.VersionFrom != "kube-apiserver" {
-			t.Errorf("version %q from %q", res.ClusterVersion, res.VersionFrom)
-		}
-	})
-	t.Run("unknown: a blind spot, and every namespaced removed apiVersion probed", func(t *testing.T) {
-		f, in := demo(t)
-		f.set(cluster, toolList, list("v1", "Node", ""), forbidden)
+		f.set(cluster, toolList, list("v1", "Node", ""), load(t, filepath.Join(recorded, "forbidden-ack-system-Deployment.json")))
 		notServed := load(t, filepath.Join(recorded, "not-served-CronJob-v1beta1.json"))
-		f.set(cluster, toolList, list("batch/v1beta1", "CronJob", "argocd"), notServed)
+		// The replacements are probed in the first namespace, argocd.
+		f.set(cluster, toolList, list("batch/v1", cronJob, "argocd"), notServed)
+		f.set(cluster, toolList, list("batch/v1beta1", cronJob, "argocd"), notServed)
+		f.set(cluster, toolList, list("policy/v1", "PodDisruptionBudget", "argocd"), notServed)
 		f.answers[key(cluster, toolList, list("policy/v1beta1", "PodDisruptionBudget", demoApps))] = mcp.Result{
 			Structured: json.RawMessage(`{"items":[{"Name":"billing","Namespace":"demo-apps","apiVersion":"policy/v1beta1","kind":"PodDisruptionBudget","Labels":"<none>"}]}`)}
 		res := collect(t, f, in)
-		if res.ClusterVersion != "" || !slices.Contains(res.BlindSpots, v1alpha1.NotSeen{Ref: "cluster version", Reason: reasonNoVersion}) {
+		if res.ClusterVersion != "" || !slices.Contains(res.BlindSpots, v1alpha1.NotSeen{Ref: cluster + ":Node", Reason: reasonNoVersion}) {
 			t.Errorf("version %q, blind spots %+v", res.ClusterVersion, res.BlindSpots)
 		}
 		probes := 0
 		for _, c := range f.calls {
-			if strings.Contains(c, "batch/v1beta1") && strings.Contains(c, "CronJob") {
+			if strings.Contains(c, "batch/v1beta1") && strings.Contains(c, cronJob) {
 				probes++
 			}
 		}
@@ -337,38 +326,38 @@ func TestClusterVersion(t *testing.T) {
 // back to the dataset per component.
 func TestReleases(t *testing.T) {
 	sources := []map[string]any{
-		{kName: "quay", kKind: "oci", kHost: "quay.io", kURL: "https://quay.io", kComponents: []any{}},
-		{kName: "hub", kKind: "oci", kHost: "registry-1.docker.io", kURL: "https://registry-1.docker.io", kComponents: []any{}},
+		{kName: "quay", kKind: kindOCI, kHost: "quay.io", kURL: "https://quay.io", kComponents: []any{}},
+		{kName: hub, kKind: kindOCI, kHost: "registry-1.docker.io", kURL: "https://registry-1.docker.io", kComponents: []any{}},
 		{kName: "jetstack", kKind: "helm", kHost: "charts.jetstack.io", kURL: "https://charts.jetstack.io", kComponents: []any{}},
 		{kName: eolSource, kKind: "endoflife", kHost: "endoflife.date", kURL: "https://endoflife.date/api/v1",
-			kComponents: []any{map[string]string{"match": "quay.io/jetstack/cert-manager-controller", kName: certMgr}}},
+			kComponents: []any{map[string]string{"match": cmController, kName: certMgr}}},
 	}
 	versions := func(src, name string, v ...string) mcp.Result {
 		vs := make([]map[string]any, 0, len(v))
 		for _, x := range v {
 			vs = append(vs, map[string]any{"version": x, "prerelease": strings.Contains(x, "-")})
 		}
-		return text(t, map[string]any{kSource: src, kName: name, "fetched": "2026-11-28T08:00:00Z", "stale": false, "versions": vs})
+		return text(t, map[string]any{kSource: src, kName: name, "fetched": "2026-11-28T08:00:00Z", kStale: false, kVersions: vs})
 	}
 	f, in := demo(t)
 	in.Releases = []Source{{Connector: watch, Endpoint: mcp.Endpoint{URL: watch}}}
 	f.set(watch, toolSources, map[string]any{}, text(t, sources))
 	f.set(watch, toolVersions, map[string]any{kSource: "quay", kName: "jetstack/cert-manager-controller"}, versions("quay", "jetstack/cert-manager-controller", "v1.22.0-alpha.1", "v1.21.4"))
 	f.set(watch, toolCycles, map[string]any{kSource: eolSource, kProduct: certMgr}, text(t, map[string]any{
-		kSource: eolSource, kProduct: certMgr, "fetched": "2026-11-28T08:00:00Z", "stale": true,
+		kSource: eolSource, kProduct: certMgr, "fetched": "2026-11-28T08:00:00Z", kStale: true,
 		"cycles": []map[string]any{{kName: "1.21", "latest": "1.21.4", "maintained": true}, {kName: "1.16", "latest": "1.16.5", eolSource: true, "eolFrom": eol116}},
 	}))
-	f.set(watch, toolVersions, map[string]any{kSource: "hub", kName: "library/postgres"}, versions("hub", "library/postgres", "17.2.0", "16.6.0"))
+	f.set(watch, toolVersions, map[string]any{kSource: hub, kName: libPostgres}, versions(hub, libPostgres, pg172, "16.6.0"))
 	f.set(watch, toolVersions, map[string]any{kSource: "jetstack", kName: certMgr}, toolError("source jetstack, cert-manager: answer dropped: stale past 7 days"))
 	res := collect(t, f, in)
 	comp := map[string]v1alpha1.InventoryComponent{}
 	for _, c := range res.Inventory.Components {
 		comp[c.Key] = c
 	}
-	if c := comp["quay.io/jetstack/cert-manager-controller"]; c.Latest != "v1.21.4" || c.SupportEnds.Format(time.DateOnly) != eol116 {
+	if c := comp[cmController]; c.Latest != "v1.21.4" || c.SupportEnds.Format(time.DateOnly) != eol116 {
 		t.Errorf("cert-manager from its sources: latest %q, ends %v (the pre-release skipped)", c.Latest, c.SupportEnds)
 	}
-	if c := comp[postgres]; c.Latest != "17.2.0" {
+	if c := comp[postgres]; c.Latest != pg172 {
 		t.Errorf("postgres from Docker Hub: %q", c.Latest)
 	}
 	if c := comp[certMgr]; c.Latest != "1.21.3" {

@@ -24,8 +24,23 @@
 //     repository, since the index does not give its spec.path;
 //   - a chart's objects are compared by chart name and version only: the
 //     collector renders no template;
-//   - a component's key is its image repository or chart name: resolving
-//     it to a Map key needs the Map connector, read by the agent.
+//   - a component's key is its image repository, its chart name, or the
+//     product its app.kubernetes.io/part-of label names; when a chart and
+//     a product share a name, the product is kept and a blind spot says
+//     so. Resolving a key to a Map key needs the Map connector, read by
+//     the agent;
+//   - a cluster's version is read from its nodes only
+//     (addons.kubernetes.readNodes); without it, a blind spot, and every
+//     namespaced apiVersion the dataset lists is probed on that cluster;
+//   - a removed apiVersion is probed only when its replacement is not
+//     served, since a served replacement lists every object through both;
+//     the cluster-scoped removed apiVersions (FlowSchema, CRDs, webhooks,
+//     RBAC cluster roles, …) are not probed live, only found in Git;
+//   - a Flux Kustomization is read from its list only: Ready, and the
+//     revision its status message names as applied; whether its last
+//     attempted revision is its last applied one is not compared;
+//   - resources_get is called on cert-manager Certificates only, at most
+//     100 per collection, for status.notAfter and the Ready condition.
 package collect
 
 import (
@@ -72,7 +87,8 @@ type Input struct {
 	Copy *Cluster
 	// Components narrows the inventory to these keys; empty: the whole
 	// scope.
-	Components         []string
+	Components []string
+	// Dataset is the end-of-support dataset; nil: the embedded one.
 	Dataset            *eos.Dataset
 	CertificateWarning time.Duration
 	Now                time.Time
@@ -82,11 +98,10 @@ type Input struct {
 type Result struct {
 	Inventory  v1alpha1.MaintenanceInventory `json:"inventory"`
 	BlindSpots []v1alpha1.NotSeen            `json:"blindSpots"`
-	// ClusterVersion is the version read, empty when none could be;
-	// VersionFrom says where it was read: "kubelet" (the nodes' lowest,
-	// a lower bound of the control plane's) or "kube-apiserver".
+	// ClusterVersion is the lowest version of the clusters whose nodes
+	// could be read (each the lowest kubelet's, a lower bound of its
+	// control plane's), empty when none could be.
 	ClusterVersion string `json:"clusterVersion,omitempty"`
-	VersionFrom    string `json:"versionFrom,omitempty"`
 	// Copy is what the copy runs, per component.
 	Copy []CopyComponent `json:"copy"`
 }
@@ -107,9 +122,9 @@ const (
 	maxCertificates = 100
 	maxGitOps       = 100
 	maxEvidence     = 10
-	// maxGets bounds the resources_get calls of one collection
-	// (certificates, Kustomizations).
-	maxGets  = 200
+	// maxGets bounds the resources_get calls of one collection: one per
+	// Certificate.
+	maxGets  = 100
 	maxRef   = 253
 	maxField = 128
 )
@@ -135,29 +150,43 @@ const (
 
 // Reasons of a blind spot: fixed phrases, never a server's text.
 const (
-	reasonForbidden    = "forbidden: the connector's identity may not list it"
-	reasonNotServed    = "API not served"
-	reasonToolError    = "the tool reported an error"
-	reasonCallFailed   = "the call failed"
-	reasonNotAllowed   = "the operator may not call this tool on the connector"
-	reasonUnrecognized = "unrecognized %s output"
-	reasonNoVersion    = "the cluster's version could not be read: neither the nodes (addons.kubernetes.readNodes) nor the kube-apiserver static pod; every apiVersion of the dataset is probed"
-	reasonCharts       = "charts are compared by name and version only: their templates are not rendered"
-	reasonOffline      = "offline watch, current as of %s"
-	reasonDatasetOld   = "the end-of-support dataset is from %s"
-	reasonStaleSource  = "the source did not answer, or answered stale past 7 days: the dataset's facts are used for %s"
-	reasonGetsBound    = "more than %d objects to read one by one: the others are not read"
-	reasonNoCode       = "no code connector could be read: what Git declares is unknown, and so is the drift"
+	reasonForbidden     = "forbidden: the connector's identity may not list it"
+	reasonNotServed     = "API not served"
+	reasonToolError     = "the tool reported an error"
+	reasonCallFailed    = "the call failed"
+	reasonNotAllowed    = "the operator may not call this tool on the connector"
+	reasonUnrecognized  = "unrecognized %s output"
+	reasonNoVersion     = "the cluster's version could not be read from its nodes (addons.kubernetes.readNodes): every namespaced apiVersion of the dataset whose replacement is not served is probed"
+	reasonCharts        = "charts are compared by name and version only: their templates are not rendered"
+	reasonOffline       = "offline watch, current as of %s"
+	reasonDatasetOld    = "the end-of-support dataset is from %s"
+	reasonStaleSource   = "the source did not answer, or answered stale past 7 days: the dataset's facts are used for %s"
+	reasonGetsBound     = "more than %d Certificates to read one by one: the others are read from their list only (Ready, no expiry)"
+	reasonFluxRevisions = "Flux Kustomizations are read from their list only: the last attempted revision is not compared with the last applied one"
+	reasonAmbiguous     = "several documents declare the same object differently and none matches what runs: which one applies is not known"
+	reasonChartName     = "a chart shares this product's name: the product's version (app.kubernetes.io/version) is kept, the chart's is not compared"
+	reasonOlder         = "%s is older than the dataset's oldest line (%s): its end of support is not given"
+	reasonStaleAnswer   = "the source's last refresh failed: its previous answer is used for %s"
+	reasonNoAnswer      = "the source gave no version for %s: the next source, else the dataset, is used"
+	reasonNoCode        = "no code connector could be read: what Git declares is unknown, and so is the drift"
 )
 
-// errCtx wraps the context's end: the only error Collect returns.
+// errCtx wraps the context's end.
 var errCtx = errors.New("collection stopped")
 
 // Collect reads the sources and returns the inventory. It returns an
-// error only when ctx ends (the caller gives it half the run's deadline);
+// error only when ctx ends (the caller gives it half the run's deadline)
+// or when no dataset is given and the embedded one does not load;
 // everything else it could not read is a blind spot.
 func Collect(ctx context.Context, caller Caller, in Input) (Result, error) {
-	c := &collector{caller: caller, in: in, notServed: map[string]bool{}, charts: map[string]bool{}, chartRepos: map[string]string{}}
+	if in.Dataset == nil {
+		ds, err := eos.Load()
+		if err != nil {
+			return Result{}, err
+		}
+		in.Dataset = ds
+	}
+	c := &collector{caller: caller, in: in, origin: map[string]origin{}, chartRepos: map[string]string{}}
 	if err := c.run(ctx); err != nil {
 		return Result{}, err
 	}
@@ -165,49 +194,44 @@ func Collect(ctx context.Context, caller Caller, in Input) (Result, error) {
 }
 
 type collector struct {
-	caller    Caller
-	in        Input
-	blind     []v1alpha1.NotSeen
-	notServed map[string]bool
-	gets      int
+	caller Caller
+	in     Input
+	blind  []v1alpha1.NotSeen
+	gets   int
 
-	version, versionFrom string
-	// versionRef is the object the version was read on, versionTool the
-	// tool that read it (resources_list when empty).
-	versionRef, versionTool string
-	live                    []workload
-	copied                  []workload
-	git                     []document
-	gitRead                 bool
-	apis                    map[apiKey]*v1alpha1.DeprecatedAPIUse
-	certs                   []v1alpha1.CertificateState
-	gitops                  []v1alpha1.GitOpsState
-	components              []v1alpha1.InventoryComponent
-	// charts are the components that are charts; chartRepos a chart's
+	// clusters are the clusters' versions read, one per cluster whose
+	// nodes could be.
+	clusters   []clusterVersion
+	live       []workload
+	copied     []workload
+	git        []document
+	gitRead    bool
+	apis       map[apiKey]*v1alpha1.DeprecatedAPIUse
+	certs      []v1alpha1.CertificateState
+	gitops     []v1alpha1.GitOpsState
+	components []v1alpha1.InventoryComponent
+	// omitted counts the components past the bound.
+	omitted int32
+	// origin says what each component's key is; chartRepos a chart's
 	// repository URL as Git names it.
-	charts     map[string]bool
+	origin     map[string]origin
 	chartRepos map[string]string
 }
+
+// clusterVersion is one cluster's version and the node it was read on.
+type clusterVersion struct{ version, ref string }
 
 func (c *collector) run(ctx context.Context) error {
 	c.apis = map[apiKey]*v1alpha1.DeprecatedAPIUse{}
 	for _, cl := range c.in.Clusters {
-		if err := c.clusterVersion(ctx, cl); err != nil {
+		version, err := c.clusterVersion(ctx, cl)
+		if err != nil {
 			return err
 		}
-		if c.version != "" {
-			break
-		}
-	}
-	if c.version == "" && len(c.in.Clusters) > 0 {
-		c.blindSpot("cluster version", reasonNoVersion)
-	}
-	for _, cl := range c.in.Clusters {
-		var err error
 		if c.live, err = c.workloads(ctx, cl, c.live); err != nil {
 			return err
 		}
-		if err := c.liveAPIs(ctx, cl); err != nil {
+		if err := c.liveAPIs(ctx, cl, version); err != nil {
 			return err
 		}
 		if err := c.certificates(ctx, cl); err != nil {
@@ -265,21 +289,6 @@ func failure(res mcp.Result) string {
 	return reasonToolError
 }
 
-// get runs resources_get within the collection's bound; false when the
-// bound is reached (said once).
-func (c *collector) get(ctx context.Context, s Source, args map[string]any) (mcp.Result, string, bool, error) {
-	if c.gets >= maxGets {
-		if c.gets == maxGets {
-			c.blindSpot(s.Connector, fmt.Sprintf(reasonGetsBound, maxGets))
-			c.gets++
-		}
-		return mcp.Result{}, "", false, nil
-	}
-	c.gets++
-	res, why, err := c.call(ctx, s, toolGet, args)
-	return res, why, true, err
-}
-
 func (c *collector) blindSpot(ref, reason string) {
 	n := v1alpha1.NotSeen{Ref: cut(ref, maxRef), Reason: reason}
 	if !slices.Contains(c.blind, n) {
@@ -301,13 +310,12 @@ func cut(s string, n int) string {
 // result bounds the lists, counts what is past each bound, and orders
 // everything for a stable status.
 func (c *collector) result() Result {
-	out := Result{BlindSpots: c.blind, ClusterVersion: c.version, VersionFrom: c.versionFrom}
-	inv := &out.Inventory
-	comps := c.components
-	if len(c.in.Components) > 0 {
-		comps = slices.DeleteFunc(comps, func(x v1alpha1.InventoryComponent) bool { return !slices.Contains(c.in.Components, x.Key) })
+	out := Result{BlindSpots: c.blind}
+	if len(c.clusters) > 0 {
+		out.ClusterVersion = c.lowestCluster().version
 	}
-	inv.Components, inv.Omitted.Components = bound(comps, maxComponents)
+	inv := &out.Inventory
+	inv.Components, inv.Omitted.Components = c.components, c.omitted
 	apis := make([]v1alpha1.DeprecatedAPIUse, 0, len(c.apis))
 	for _, a := range c.apis {
 		apis = append(apis, *a)

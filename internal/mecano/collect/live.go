@@ -34,11 +34,12 @@ const (
 )
 
 const (
-	certManager   = "cert-manager.io/v1"
-	argoCD        = "argoproj.io/v1alpha1"
-	fluxKustomize = "kustomize.toolkit.fluxcd.io/v1"
-	kindPod       = "Pod"
-	conditionTrue = "True"
+	certManager     = "cert-manager.io/v1"
+	argoCD          = "argoproj.io/v1alpha1"
+	fluxKustomize   = "kustomize.toolkit.fluxcd.io/v1"
+	kindCertificate = "Certificate"
+	conditionTrue   = "True"
+	stateNotReady   = "NotReady"
 )
 
 var errUnrecognized = errors.New("unrecognized output")
@@ -66,7 +67,8 @@ type item struct {
 	Labels     *string         `json:"Labels"`
 	Ready      json.RawMessage `json:"Ready"`
 	Desired    json.RawMessage `json:"Desired"`
-	Sync       string          `json:"Sync Status"`
+	Sync       *string         `json:"Sync Status"`
+	Status     *string         `json:"Status"`
 	Revision   string          `json:"Revision"`
 	Version    string          `json:"Version"`
 }
@@ -185,87 +187,70 @@ func ready(it item) bool {
 	return json.Unmarshal(it.Ready, &have) == nil && json.Unmarshal(it.Desired, &want) == nil && want > 0 && have == want
 }
 
-// clusterVersion reads the cluster's version: the nodes' lowest kubelet
-// version (a lower bound of the control plane's, version skew policy),
-// otherwise the kube-apiserver static pod's image when kube-system is
-// read through the connector.
-func (c *collector) clusterVersion(ctx context.Context, cl Cluster) error {
+// clusterVersion reads a cluster's version from its nodes only: the
+// lowest kubelet version, a lower bound of the control plane's (version
+// skew policy). Nodes not readable (addons.kubernetes.readNodes off): a
+// blind spot, and "" for the version.
+func (c *collector) clusterVersion(ctx context.Context, cl Cluster) (string, error) {
 	nodes, why, err := c.list(ctx, cl.Source, "v1", "Node", "")
 	if err != nil {
-		return err
+		return "", err
 	}
+	version, ref := "", ""
 	if why == "" {
 		for _, n := range nodes {
 			v, _, _ := strings.Cut(strings.TrimPrefix(n.Version, "v"), "+")
-			if eos.MinorOf(v) != "" && (c.version == "" || eos.Compare(v, c.version) < 0) {
-				c.version, c.versionFrom, c.versionRef = v, "kubelet", cl.Connector+":Node/"+*n.Name
+			if eos.MinorOf(v) != "" && (version == "" || eos.Compare(v, version) < 0) {
+				version, ref = cut(v, maxField), cl.Connector+":Node/"+*n.Name
 			}
 		}
-		if c.version != "" {
-			return nil
-		}
 	}
-	if !slices.Contains(cl.Namespaces, "kube-system") {
-		return nil
+	if version == "" {
+		c.blindSpot(cl.Connector+":Node", reasonNoVersion)
+		return "", nil
 	}
-	pods, why, err := c.list(ctx, cl.Source, "v1", kindPod, "kube-system")
-	if err != nil || why != "" {
-		return err
-	}
-	for _, p := range pods {
-		if !strings.HasPrefix(*p.Name, "kube-apiserver-") {
-			continue
-		}
-		res, why, ok, err := c.get(ctx, cl.Source, map[string]any{argAPIVersion: "v1", argKind: kindPod, argNamespace: "kube-system", argName: *p.Name})
-		if err != nil || !ok || why != "" {
-			return err
-		}
-		var pod struct {
-			Spec struct {
-				Containers []struct {
-					Image string `json:"image"`
-				} `json:"containers"`
-			} `json:"spec"`
-		}
-		if json.Unmarshal(res.Structured, &pod) != nil {
-			return nil
-		}
-		for _, ct := range pod.Spec.Containers {
-			if im := parseImage(ct.Image); strings.HasSuffix(im.Repository, "/kube-apiserver") && eos.MinorOf(im.Tag) != "" {
-				c.version, c.versionFrom = strings.TrimPrefix(im.Tag, "v"), "kube-apiserver"
-				c.versionRef, c.versionTool = cl.Connector+":kube-system/Pod/"+*p.Name, toolGet
-				return nil
-			}
-		}
-		return nil
-	}
-	return nil
+	c.clusters = append(c.clusters, clusterVersion{version: version, ref: ref})
+	return version, nil
 }
 
 type apiKey struct{ apiVersion, kind, namespace, name string }
 
 // liveAPIs lists the scope's objects on each namespaced apiVersion the
-// dataset says is removed after the cluster's version, which the server
-// may still serve: every one of them when the version is unknown.
-func (c *collector) liveAPIs(ctx context.Context, cl Cluster) error {
-	minor := eos.MinorOf(c.version)
+// dataset says is removed after the cluster's version (every one of them
+// when the version is unknown), and only when its replacement is not
+// served: the API server serves an object through every served version, so
+// with the replacement served the old apiVersion lists every object of the
+// kind, whatever it was written with.
+func (c *collector) liveAPIs(ctx context.Context, cl Cluster, version string) error {
+	minor := eos.MinorOf(version)
+	if len(cl.Namespaces) == 0 {
+		return nil
+	}
 	for _, r := range c.in.Dataset.Kubernetes.RemovedAPIs.Entries {
 		if !r.Namespaced || (minor != "" && eos.Compare(r.RemovedIn, minor) <= 0) {
 			continue
 		}
-		served := cl.Connector + " " + r.APIVersion + " " + r.Kind
-		for _, ns := range cl.Namespaces {
-			if c.notServed[served] {
-				break
-			}
-			items, why, err := c.list(ctx, cl.Source, r.APIVersion, r.Kind, ns)
+		if r.Replacement != "" {
+			_, why, err := c.list(ctx, cl.Source, r.Replacement, r.Kind, cl.Namespaces[0])
 			switch {
 			case err != nil:
 				return err
-			case why == reasonNotServed:
-				c.notServed[served] = true
+			case why == "":
 				continue
-			case why != "":
+			case why != reasonNotServed:
+				c.blindSpot(cl.Connector+":"+r.Replacement+"/"+r.Kind, why)
+				continue
+			}
+		}
+		for _, ns := range cl.Namespaces {
+			items, why, err := c.list(ctx, cl.Source, r.APIVersion, r.Kind, ns)
+			if err != nil {
+				return err
+			}
+			if why == reasonNotServed {
+				break
+			}
+			if why != "" {
 				c.blindSpot(cl.Connector+":"+ns+"/"+r.APIVersion+"/"+r.Kind, why)
 				continue
 			}
@@ -291,18 +276,23 @@ func (c *collector) api(r eos.RemovedAPI, namespace, name string, where v1alpha1
 	}
 }
 
-// object is what resources_get's structuredContent gives of an object's
-// status, for the kinds the collector gets.
-type object struct {
+// certificate is what the collector decodes of a Certificate's
+// resources_get: who it is, status.notAfter and the conditions' type and
+// status; every other field is not decoded.
+type certificate struct {
+	APIVersion string `json:"apiVersion"`
+	Kind       string `json:"kind"`
+	Metadata   struct {
+		Name      string `json:"name"`
+		Namespace string `json:"namespace"`
+	} `json:"metadata"`
 	Status struct {
-		NotAfter              *metav1.Time `json:"notAfter"`
-		LastAppliedRevision   string       `json:"lastAppliedRevision"`
-		LastAttemptedRevision string       `json:"lastAttemptedRevision"`
-		Conditions            []condition  `json:"conditions"`
+		NotAfter   *metav1.Time `json:"notAfter"`
+		Conditions []condition  `json:"conditions"`
 	} `json:"status"`
 }
 
-func (o object) ready() bool {
+func (o certificate) ready() bool {
 	return slices.ContainsFunc(o.Status.Conditions, func(x condition) bool { return x.Type == "Ready" && x.Status == conditionTrue })
 }
 
@@ -311,13 +301,24 @@ type condition struct {
 	Status string `json:"status"`
 }
 
-func (c *collector) getObject(ctx context.Context, s Source, apiVersion, kind, namespace, name string) (*object, string, error) {
-	res, why, ok, err := c.get(ctx, s, map[string]any{argAPIVersion: apiVersion, argKind: kind, argNamespace: namespace, argName: name})
-	if err != nil || !ok || why != "" {
+// getCertificate reads one Certificate within the collection's bound; nil
+// with no reason past it. An answer about another object is not read.
+func (c *collector) getCertificate(ctx context.Context, s Source, namespace, name string) (*certificate, string, error) {
+	if c.gets >= maxGets {
+		if c.gets == maxGets {
+			c.blindSpot(s.Connector, fmt.Sprintf(reasonGetsBound, maxGets))
+			c.gets++
+		}
+		return nil, "", nil
+	}
+	c.gets++
+	res, why, err := c.call(ctx, s, toolGet, map[string]any{argAPIVersion: certManager, argKind: kindCertificate, argNamespace: namespace, argName: name})
+	if err != nil || why != "" {
 		return nil, why, err
 	}
-	var o object
-	if len(res.Structured) == 0 || json.Unmarshal(res.Structured, &o) != nil {
+	var o certificate
+	if len(res.Structured) == 0 || json.Unmarshal(res.Structured, &o) != nil ||
+		o.APIVersion != certManager || o.Kind != kindCertificate || o.Metadata.Name != name || o.Metadata.Namespace != namespace {
 		return nil, fmt.Sprintf(reasonUnrecognized, toolGet), nil
 	}
 	return &o, "", nil
@@ -328,33 +329,27 @@ func (c *collector) getObject(ctx context.Context, s Source, apiVersion, kind, n
 // expiring within the warning. A cluster without cert-manager has none.
 func (c *collector) certificates(ctx context.Context, cl Cluster) error {
 	for _, ns := range cl.Namespaces {
-		if c.notServed[cl.Connector+" Certificate"] {
-			return nil
-		}
-		items, why, err := c.list(ctx, cl.Source, certManager, "Certificate", ns)
+		items, why, err := c.list(ctx, cl.Source, certManager, kindCertificate, ns)
 		switch {
 		case err != nil:
 			return err
 		case why == reasonNotServed:
-			c.notServed[cl.Connector+" Certificate"] = true
-			continue
+			return nil
 		case why != "":
-			c.blindSpot(cl.Connector+":"+ns+"/Certificate", why)
+			c.blindSpot(cl.Connector+":"+ns+"/"+kindCertificate, why)
 			continue
 		}
 		for _, it := range items {
 			st := v1alpha1.CertificateState{Namespace: ns, Name: cut(*it.Name, maxRef)}
-			var listed string
-			_ = json.Unmarshal(it.Ready, &listed)
-			st.Ready = listed == conditionTrue
-			o, why, err := c.getObject(ctx, cl.Source, certManager, "Certificate", ns, *it.Name)
+			st.Ready = column(it.Ready) == conditionTrue
+			o, why, err := c.getCertificate(ctx, cl.Source, ns, *it.Name)
 			if err != nil {
 				return err
 			}
 			if o != nil {
 				st.NotAfter, st.Ready = o.Status.NotAfter, o.ready()
 			} else if why != "" && st.Ready {
-				c.blindSpot(cl.Connector+":"+ns+"/Certificate/"+*it.Name, why)
+				c.blindSpot(cl.Connector+":"+ns+"/"+kindCertificate+"/"+*it.Name, why)
 			}
 			if !st.Ready || (st.NotAfter != nil && st.NotAfter.Sub(c.in.Now) <= c.in.CertificateWarning) {
 				c.certs = append(c.certs, st)
@@ -364,70 +359,69 @@ func (c *collector) certificates(ctx context.Context, cl Cluster) error {
 	return nil
 }
 
-// gitOps lists Argo CD Applications not Synced and Flux Kustomizations not
-// Ready or whose last attempted revision is not their last applied one
-// (got one by one: the list gives neither revision).
+// column reads a text column, "" when it is absent or not text.
+func column(raw json.RawMessage) string {
+	var s string
+	_ = json.Unmarshal(raw, &s)
+	return s
+}
+
+// gitOps lists Argo CD Applications not Synced and Flux Kustomizations
+// not Ready, from their lists only. A Kustomization's revision is the one
+// its Status column names as applied, when it does; whether its last
+// attempted revision is its last applied one is not read, which a blind
+// spot says.
 func (c *collector) gitOps(ctx context.Context, cl Cluster) error {
 	for _, k := range [][2]string{{argoCD, "Application"}, {fluxKustomize, "Kustomization"}} {
-		key := cl.Connector + " " + k[1]
 		for _, ns := range cl.Namespaces {
-			if c.notServed[key] {
+			items, why, err := c.list(ctx, cl.Source, k[0], k[1], ns)
+			if err != nil {
+				return err
+			}
+			if why == reasonNotServed {
 				break
 			}
-			items, why, err := c.list(ctx, cl.Source, k[0], k[1], ns)
-			switch {
-			case err != nil:
-				return err
-			case why == reasonNotServed:
-				c.notServed[key] = true
-				continue
-			case why != "":
+			if why != "" {
 				c.blindSpot(cl.Connector+":"+ns+"/"+k[1], why)
 				continue
 			}
-			for _, it := range items {
-				st := v1alpha1.GitOpsState{Kind: k[1], Namespace: ns, Name: cut(*it.Name, maxRef)}
-				if k[1] == "Application" {
-					if it.Sync != "Synced" {
-						st.State, st.Revision = cut(it.Sync, 63), cut(it.Revision, maxRef)
-						c.gitops = append(c.gitops, st)
-					}
-					continue
-				}
-				if err := c.kustomization(ctx, cl, it, st); err != nil {
-					return err
-				}
+			if k[1] == "Kustomization" && len(items) > 0 {
+				c.blindSpot(cl.Connector+":"+ns+"/"+k[1], reasonFluxRevisions)
 			}
+			c.gitOpsItems(cl, k[1], ns, items)
 		}
 	}
 	return nil
 }
 
-func (c *collector) kustomization(ctx context.Context, cl Cluster, it item, st v1alpha1.GitOpsState) error {
-	o, why, err := c.getObject(ctx, cl.Source, fluxKustomize, "Kustomization", st.Namespace, *it.Name)
-	if err != nil {
-		return err
-	}
-	if o == nil {
-		var listed string
-		_ = json.Unmarshal(it.Ready, &listed)
-		if listed != conditionTrue {
-			st.State = "NotReady"
-			c.gitops = append(c.gitops, st)
-		} else if why != "" {
-			c.blindSpot(cl.Connector+":"+st.Namespace+"/Kustomization/"+*it.Name, why)
+func (c *collector) gitOpsItems(cl Cluster, kind, ns string, items []item) {
+	for _, it := range items {
+		st := v1alpha1.GitOpsState{Kind: kind, Namespace: ns, Name: cut(*it.Name, maxRef)}
+		if kind == "Application" {
+			if it.Sync == nil {
+				c.blindSpot(cl.Connector+":"+ns+"/"+kind, fmt.Sprintf(reasonUnrecognized, toolList))
+				return
+			}
+			if *it.Sync != "Synced" {
+				st.State, st.Revision = cut(*it.Sync, 63), cut(it.Revision, maxRef)
+				c.gitops = append(c.gitops, st)
+			}
+			continue
 		}
-		return nil
+		ready := column(it.Ready)
+		if ready == "" {
+			c.blindSpot(cl.Connector+":"+ns+"/"+kind, fmt.Sprintf(reasonUnrecognized, toolList))
+			return
+		}
+		if ready == conditionTrue {
+			continue
+		}
+		st.State = stateNotReady
+		if it.Status != nil {
+			if rev, ok := strings.CutPrefix(*it.Status, "Applied revision: "); ok {
+				st.Revision = cut(rev, maxRef)
+			}
+		}
+		c.gitops = append(c.gitops, st)
 	}
-	st.Revision = cut(o.Status.LastAttemptedRevision, maxRef)
-	switch {
-	case !o.ready():
-		st.State = "NotReady"
-	case o.Status.LastAttemptedRevision != o.Status.LastAppliedRevision:
-		st.State = "RevisionNotApplied"
-	default:
-		return nil
-	}
-	c.gitops = append(c.gitops, st)
-	return nil
 }

@@ -4,7 +4,6 @@
 package collect
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -36,19 +35,34 @@ type watched struct {
 // reads it.
 type answer struct {
 	Source   string                   `json:"source"`
+	Stale    bool                     `json:"stale"`
 	Versions []releasesserver.Version `json:"versions"`
 	Cycles   []releasesserver.Cycle   `json:"cycles"`
 }
 
 // versions fills each component's latest version and end of support: from
 // the dataset first, then from a releases source that answers, which wins
-// (spec 12 §7). It also adds the cluster itself, from the version read.
+// (spec 12 §7). It first adds the clusters (one `kubernetes` component, at
+// the lowest version read), then narrows to the components asked for and
+// bounds them, so that only those kept are looked up.
 func (c *collector) versions(ctx context.Context) error {
 	ds := c.in.Dataset
-	if c.version != "" {
-		c.components = append([]v1alpha1.InventoryComponent{{Key: keyKubernetes, Live: c.version, Drift: v1alpha1.DriftUnknown,
-			Evidence: []v1alpha1.Evidence{evidence(cmp.Or(c.versionTool, toolList), c.versionRef)}}}, c.components...)
+	if len(c.clusters) > 0 {
+		low := c.lowestCluster()
+		evs := []v1alpha1.Evidence{evidence(toolList, low.ref)}
+		for _, v := range c.clusters {
+			if ev := evidence(toolList, v.ref); len(evs) < maxEvidence && !slices.Contains(evs, ev) {
+				evs = append(evs, ev)
+			}
+		}
+		c.origin[keyKubernetes] = originCluster
+		c.components = append([]v1alpha1.InventoryComponent{{Key: keyKubernetes, Live: low.version, Drift: v1alpha1.DriftUnknown, Evidence: evs}},
+			c.components...)
 	}
+	if len(c.in.Components) > 0 {
+		c.components = slices.DeleteFunc(c.components, func(x v1alpha1.InventoryComponent) bool { return !slices.Contains(c.in.Components, x.Key) })
+	}
+	c.components, c.omitted = bound(c.components, maxComponents)
 	sources, err := c.sources(ctx)
 	if err != nil {
 		return err
@@ -61,12 +75,20 @@ func (c *collector) versions(ctx context.Context) error {
 	}
 	for i := range c.components {
 		comp := &c.components[i]
-		c.fromDataset(comp)
+		oldest := c.fromDataset(comp)
 		if err := c.fromSources(ctx, sources, comp); err != nil {
 			return err
 		}
+		if minor := eos.MinorOf(comp.Live); comp.SupportEnds == nil && minor != "" && oldest != "" && eos.Compare(minor, oldest) < 0 {
+			c.blindSpot(comp.Key, fmt.Sprintf(reasonOlder, comp.Live, oldest))
+		}
 	}
 	return nil
+}
+
+// lowestCluster is the cluster of the lowest version read.
+func (c *collector) lowestCluster() clusterVersion {
+	return slices.MinFunc(c.clusters, func(a, b clusterVersion) int { return eos.Compare(a.version, b.version) })
 }
 
 // sources lists every releases connector's sources; a connector that
@@ -95,29 +117,46 @@ func (c *collector) sources(ctx context.Context) ([]watched, error) {
 }
 
 // fromDataset sets what the dataset knows of a component: the newest
-// version, and the end of the line running.
-func (c *collector) fromDataset(comp *v1alpha1.InventoryComponent) {
+// version, and the end of the line running. A key matches by its origin
+// only: an image repository the entry's images, a chart name its charts,
+// a part-of product its name. It returns the oldest line the dataset
+// lists for the component, empty for none.
+func (c *collector) fromDataset(comp *v1alpha1.InventoryComponent) string {
 	ds := c.in.Dataset
-	if comp.Key == keyKubernetes {
-		if len(ds.Kubernetes.Minors) > 0 {
-			comp.Latest = ds.Kubernetes.Minors[0].Latest
+	if c.origin[comp.Key] == originCluster {
+		if len(ds.Kubernetes.Minors) == 0 {
+			return ""
 		}
+		comp.Latest = ds.Kubernetes.Minors[0].Latest
 		if m := ds.Minor(eos.MinorOf(comp.Live)); m != nil {
 			comp.SupportEnds = date(m.EndOfLife)
 		}
-		return
+		return ds.Kubernetes.Minors[len(ds.Kubernetes.Minors)-1].Minor
 	}
 	for i := range ds.Components {
 		d := &ds.Components[i]
-		if d.Name != comp.Key && !slices.Contains(d.Match.Images, comp.Key) && !slices.Contains(d.Match.Charts, comp.Key) {
+		var match bool
+		switch c.origin[comp.Key] {
+		case originImage:
+			match = slices.Contains(d.Match.Images, comp.Key)
+		case originChart:
+			match = slices.Contains(d.Match.Charts, comp.Key)
+		case originPartOf:
+			match = d.Name == comp.Key
+		}
+		if !match {
 			continue
 		}
 		comp.Latest = d.Latest
 		if l := d.LineOf(comp.Live); l != nil {
 			comp.SupportEnds = date(l.SupportEnds)
 		}
-		return
+		if len(d.Lines) == 0 {
+			return ""
+		}
+		return d.Lines[len(d.Lines)-1].Line
 	}
+	return ""
 }
 
 // fromSources asks the sources a component maps to (spec 12 §7.1): one
@@ -127,7 +166,8 @@ func (c *collector) fromDataset(comp *v1alpha1.InventoryComponent) {
 func (c *collector) fromSources(ctx context.Context, sources []watched, comp *v1alpha1.InventoryComponent) error {
 	versioned, cycled := false, false
 	for _, w := range sources {
-		name := w.mapped(comp.Key, c.charts[comp.Key], c.chartRepos[comp.Key])
+		chart := c.origin[comp.Key] == originChart
+		name := w.mapped(comp.Key, chart, c.chartRepos[comp.Key])
 		if name == "" || (w.Kind == releasesserver.KindEndOfLife && cycled) || (w.Kind != releasesserver.KindEndOfLife && versioned) {
 			continue
 		}
@@ -143,9 +183,18 @@ func (c *collector) fromSources(ctx context.Context, sources []watched, comp *v1
 		if why == "" && (json.Unmarshal([]byte(res.Text), &a) != nil || a.Source != w.Name) {
 			why = fmt.Sprintf(reasonUnrecognized, tool)
 		}
+		ref := w.via.Connector + "/" + w.Name
 		if why != "" {
-			c.blindSpot(w.via.Connector+"/"+w.Name, fmt.Sprintf(reasonStaleSource, comp.Key))
+			c.blindSpot(ref, fmt.Sprintf(reasonStaleSource, comp.Key))
 			continue
+		}
+		release := slices.IndexFunc(a.Versions, func(v releasesserver.Version) bool { return !v.Prerelease })
+		if (tool == toolCycles && len(a.Cycles) == 0) || (tool == toolVersions && release < 0) {
+			c.blindSpot(ref, fmt.Sprintf(reasonNoAnswer, comp.Key))
+			continue
+		}
+		if a.Stale {
+			c.blindSpot(ref, fmt.Sprintf(reasonStaleAnswer, comp.Key))
 		}
 		if tool == toolCycles {
 			cycled = true
@@ -153,12 +202,7 @@ func (c *collector) fromSources(ctx context.Context, sources []watched, comp *v1
 			continue
 		}
 		versioned = true
-		for _, v := range a.Versions {
-			if !v.Prerelease {
-				comp.Latest = cut(v.Version, maxField)
-				break
-			}
-		}
+		comp.Latest = cut(a.Versions[release].Version, maxField)
 	}
 	return nil
 }

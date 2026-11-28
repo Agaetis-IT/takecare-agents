@@ -185,36 +185,55 @@ type occurrence struct {
 	ev                             v1alpha1.Evidence
 }
 
+// origin is what a component's key is.
+type origin int
+
+const (
+	originImage origin = iota
+	originChart
+	originPartOf
+	originCluster
+)
+
+// compKey keeps image repositories, chart names and part-of products
+// apart.
+type compKey struct {
+	origin origin
+	name   string
+}
+
 type facts struct {
-	chart       bool
+	origin      origin
 	live, gitOf []occurrence
 }
 
 // compare groups what runs and what Git declares per component (an image
 // repository, a chart, a product named by its part-of label) and computes
-// each one's drift.
+// each one's drift. A chart sharing a product's name gives way to the
+// product.
 func (c *collector) compare() {
-	byKey := map[string]*facts{}
-	at := func(key string, chart bool) *facts {
-		f := byKey[key]
+	byKey := map[compKey]*facts{}
+	at := func(o origin, name string) *facts {
+		k := compKey{o, name}
+		f := byKey[k]
 		if f == nil {
-			f = &facts{chart: chart}
-			byKey[key] = f
+			f = &facts{origin: o}
+			byKey[k] = f
 		}
 		return f
 	}
 	for _, w := range c.live {
 		ev := evidence(toolList, w.ref())
 		for _, im := range w.Images {
-			f := at(im.Repository, false)
+			f := at(originImage, im.Repository)
 			f.live = append(f.live, occurrence{w.Namespace, w.Kind, w.Name, im.version(), ev})
 		}
 		if w.Chart != "" {
-			f := at(w.Chart, true)
+			f := at(originChart, w.Chart)
 			f.live = append(f.live, occurrence{w.Namespace, w.Kind, w.Name, w.ChartVersion, ev})
 		}
 		if p := c.partOf(w.PartOf); p != "" && w.Version != "" {
-			f := at(p, false)
+			f := at(originPartOf, p)
 			f.live = append(f.live, occurrence{w.Namespace, w.Kind, w.Name, w.Version, ev})
 		}
 	}
@@ -228,7 +247,7 @@ func (c *collector) compare() {
 		ev := evidence(toolIndex, d.record)
 		if isWorkload(d.Kind) && (d.Namespace == "" || scoped[d.Namespace]) {
 			for _, im := range d.images {
-				f := at(im.Repository, false)
+				f := at(originImage, im.Repository)
 				f.gitOf = append(f.gitOf, occurrence{d.Namespace, d.Kind, d.Name, im.version(), ev})
 			}
 		}
@@ -237,7 +256,7 @@ func (c *collector) compare() {
 				c.chartRepos[ch.Name] = strings.TrimSuffix(ch.Repository, "/")
 			}
 			if ch.Version != "" {
-				f := at(ch.Name, true)
+				f := at(originChart, ch.Name)
 				f.gitOf = append(f.gitOf, occurrence{d.Namespace, d.Kind, d.Name, ch.Version, ev})
 			}
 		}
@@ -247,14 +266,22 @@ func (c *collector) compare() {
 		if len(f.live) == 0 && len(f.gitOf) == 0 {
 			continue
 		}
-		comp := v1alpha1.InventoryComponent{Key: cut(key, maxRef), Live: lowest(f.live), Declared: lowest(f.gitOf), Drift: v1alpha1.DriftUnknown}
+		if key.origin == originChart && byKey[compKey{originPartOf, key.name}] != nil {
+			c.blindSpot(key.name, reasonChartName)
+			continue
+		}
+		comp := v1alpha1.InventoryComponent{Key: cut(key.name, maxRef), Live: lowest(f.live), Declared: lowest(f.gitOf), Drift: v1alpha1.DriftUnknown}
 		if c.gitRead {
-			comp.Drift = f.drift()
+			var declared []occurrence
+			var ambiguous bool
+			comp.Drift, declared, ambiguous = f.drift()
+			comp.Declared = lowest(declared)
+			if ambiguous {
+				c.blindSpot(comp.Key, reasonAmbiguous)
+			}
 		}
-		charts = charts || f.chart
-		if f.chart {
-			c.charts[comp.Key] = true
-		}
+		charts = charts || f.origin == originChart
+		c.origin[comp.Key] = f.origin
 		for _, o := range slices.Concat(f.live, f.gitOf) {
 			if len(comp.Evidence) < maxEvidence && !slices.Contains(comp.Evidence, o.ev) {
 				comp.Evidence = append(comp.Evidence, o.ev)
@@ -268,44 +295,64 @@ func (c *collector) compare() {
 	slices.SortFunc(c.components, func(a, b v1alpha1.InventoryComponent) int { return strings.Compare(a.Key, b.Key) })
 }
 
-// drift is the component's worst: a version differing on one object,
-// then an object Git does not declare, then a declared one not running. A
-// chart is compared by version only.
-func (f *facts) drift() v1alpha1.Drift {
+// drift is the component's worst: a version no declaring document agrees
+// with, then an object Git does not declare, then an object its documents
+// declare differently with none agreeing (unknown, and ambiguous is true),
+// then a declared one not running. An object matches when ANY document
+// declaring it agrees: overlays declare one object per environment. A
+// chart's documents all declare each of its objects (by version only). It
+// also returns the declarations that apply: for each object, the agreeing
+// one, else all of its own; then the documents no object matched.
+func (f *facts) drift() (v1alpha1.Drift, []occurrence, bool) {
 	switch {
 	case len(f.gitOf) == 0:
-		return v1alpha1.DriftNotInGit
+		return v1alpha1.DriftNotInGit, nil, false
 	case len(f.live) == 0:
-		return v1alpha1.DriftNotLive
-	case f.chart:
-		for _, l := range f.live {
-			if !slices.ContainsFunc(f.gitOf, func(g occurrence) bool { return same(g.version, l.version) }) {
-				return v1alpha1.DriftVersion
-			}
-		}
-		return v1alpha1.DriftNone
+		return v1alpha1.DriftNotLive, f.gitOf, false
 	}
-	drift := v1alpha1.DriftNone
+	version, notInGit, ambiguous := false, false, false
 	matched := make([]bool, len(f.gitOf))
+	var declared []occurrence
 	for _, l := range f.live {
-		found := false
+		var docs []occurrence
 		for i, g := range f.gitOf {
-			if g.kind != l.kind || g.name != l.name || (g.namespace != "" && g.namespace != l.namespace) {
+			if f.origin == originImage && (g.kind != l.kind || g.name != l.name || (g.namespace != "" && g.namespace != l.namespace)) {
 				continue
 			}
-			found, matched[i] = true, true
-			if !same(g.version, l.version) {
-				return v1alpha1.DriftVersion
-			}
+			matched[i] = true
+			docs = append(docs, g)
 		}
-		if !found {
-			drift = v1alpha1.DriftNotInGit
+		if len(docs) == 0 {
+			notInGit = true
+			continue
+		}
+		if i := slices.IndexFunc(docs, func(g occurrence) bool { return same(g.version, l.version) }); i >= 0 {
+			declared = append(declared, docs[i])
+			continue
+		}
+		declared = append(declared, docs...)
+		if slices.ContainsFunc(docs, func(g occurrence) bool { return !same(g.version, docs[0].version) }) {
+			ambiguous = true
+		} else {
+			version = true
 		}
 	}
-	if drift == v1alpha1.DriftNone && slices.Contains(matched, false) {
-		drift = v1alpha1.DriftNotLive
+	for i, g := range f.gitOf {
+		if !matched[i] {
+			declared = append(declared, g)
+		}
 	}
-	return drift
+	switch {
+	case version:
+		return v1alpha1.DriftVersion, declared, ambiguous
+	case notInGit:
+		return v1alpha1.DriftNotInGit, declared, ambiguous
+	case ambiguous:
+		return v1alpha1.DriftUnknown, declared, true
+	case slices.Contains(matched, false):
+		return v1alpha1.DriftNotLive, declared, false
+	}
+	return v1alpha1.DriftNone, declared, false
 }
 
 // same compares two versions as versions when both are ("v1.2.3" is

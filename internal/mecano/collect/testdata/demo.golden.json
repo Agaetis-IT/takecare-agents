@@ -174,13 +174,16 @@
         "kind": "Kustomization",
         "namespace": "flux-system",
         "name": "infra",
-        "state": "NotReady",
-        "revision": "main@sha1:9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d"
+        "state": "NotReady"
       }
     ],
     "omitted": {}
   },
   "blindSpots": [
+    {
+      "ref": "kubernetes:flux-system/Kustomization",
+      "reason": "Flux Kustomizations are read from their list only: the last attempted revision is not compared with the last applied one"
+    },
     {
       "ref": "charts",
       "reason": "charts are compared by name and version only: their templates are not rendered"
@@ -191,6 +194,5 @@
     }
   ],
   "clusterVersion": "1.32.8",
-  "versionFrom": "kubelet",
   "copy": []
 }
