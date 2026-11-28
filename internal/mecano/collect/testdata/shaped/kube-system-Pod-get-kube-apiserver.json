@@ -1,0 +1,31 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "(YAML of the object)"
+    }
+  ],
+  "structuredContent": {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+      "name": "kube-apiserver-cp-0",
+      "namespace": "kube-system"
+    },
+    "spec": {
+      "containers": [
+        {
+          "name": "kube-apiserver",
+          "image": "registry.k8s.io/kube-apiserver:v1.33.4",
+          "command": [
+            "kube-apiserver"
+          ]
+        }
+      ],
+      "nodeName": "cp-0"
+    },
+    "status": {
+      "phase": "Running"
+    }
+  }
+}

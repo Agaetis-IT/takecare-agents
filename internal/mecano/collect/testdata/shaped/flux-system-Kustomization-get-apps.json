@@ -1,0 +1,38 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "(YAML of the object)"
+    }
+  ],
+  "structuredContent": {
+    "apiVersion": "kustomize.toolkit.fluxcd.io/v1",
+    "kind": "Kustomization",
+    "metadata": {
+      "name": "apps",
+      "namespace": "flux-system"
+    },
+    "spec": {
+      "interval": "10m",
+      "path": "./apps",
+      "prune": true,
+      "sourceRef": {
+        "kind": "GitRepository",
+        "name": "flux-system"
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "Ready",
+          "status": "True",
+          "reason": "ReconciliationSucceeded",
+          "message": "x",
+          "lastTransitionTime": "2026-11-27T19:48:05Z"
+        }
+      ],
+      "lastAppliedRevision": "main@sha1:4f1c2a9e0b7d3c5a8e6f1b2c3d4e5f6a7b8c9d0e",
+      "lastAttemptedRevision": "main@sha1:4f1c2a9e0b7d3c5a8e6f1b2c3d4e5f6a7b8c9d0e"
+    }
+  }
+}
