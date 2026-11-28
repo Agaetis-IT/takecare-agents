@@ -82,9 +82,6 @@ report_path() {
   fi
 }
 
-# usd COST: the amount of an estimated cost ("0.0321 USD"), empty when none.
-usd() { [[ "$1" =~ ^([0-9.]+)\ USD$ ]] && echo "${BASH_REMATCH[1]}" || true; }
-
 [[ -f "$KUBECONFIG" ]] || die "no demo: make demo-up first"
 [[ -f "$SCENARIO_FILE" ]] || die "no scenario ${SCENARIO_FILE}"
 WORK="$(mktemp -d)"
