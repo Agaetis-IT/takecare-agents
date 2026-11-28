@@ -46,6 +46,7 @@ var Probes = []Probe{
 	// The kubelet's API through the API server: the nodes opt-in reads the
 	// node objects only (spec 12 §4), never these subresources.
 	{"", resourceNodes, "proxy", verbGet, "proxy to the nodes' kubelet"},
+	{"", resourceNodes, "proxy", verbCreate, "write through the nodes' kubelet proxy"},
 	{"", resourceNodes, "stats", verbGet, "read the nodes' stats"},
 	{"", resourceNodes, "log", verbGet, "read the nodes' logs"},
 	// A wildcard shows as a yes on a resource and a verb that do not exist.
