@@ -895,6 +895,7 @@ EOF
     test "$(kubectl -n "$NS" logs deploy/takecare-addon-report-log | grep -c 'logged for destination' || true)" = "$reports_before"
   local metrics
   metrics="$(operator_metrics)"
+  log "the run metrics: $(grep -E '^takecare_run(s_total|_cancels_total)' <<<"$metrics" | tr '\n' ' ')"
   check "takecare_runs_total counts the failed run, and no cancellation was requested" \
     bash -c "grep -Eq '^takecare_runs_total\{outcome=\"failed\",role=\"doc\"\} [1-9]' <<<\"\$1\" && ! grep -q '^takecare_run_cancels_total' <<<\"\$1\"" _ "$metrics"
   kubectl -n "$NS" delete takecareinvestigations -l "$run_sel" >/dev/null
@@ -1263,8 +1264,8 @@ EOF
   # other tool; a listed repository on a good branch reaches the propose
   # server, which answers ProtectionUnknown. Its cluster route lets the
   # collector's lists through and refuses the rest at the route or the
-  # server. No code add-on runs here (no Git host): the Mécano is not
-  # Ready, and its routes render all the same.
+  # server. No code add-on runs here (no Git host): its code connector is
+  # missing, so the Mécano is not Ready, and its routes render all the same.
   log "the Mécano's routes (spec 12 §6.4)"
   kubectl -n "$NS" apply -f - >/dev/null <<EOF
 apiVersion: takecare.agaetis.fr/v1alpha1
@@ -1274,7 +1275,7 @@ spec:
   level: Practitioner
   scope: { namespaces: [demo-apps] }
   schedule: none
-  connectors: { cluster: [kubernetes], propose: [code-propose], report: report }
+  connectors: { cluster: [kubernetes], code: [code], propose: [code-propose], report: report }
   maintenance: { repositories: [{ connector: code-propose, repository: smoke/listed }] }
 EOF
   check "the code-propose connector is Ready, propose_change classed propose" \
