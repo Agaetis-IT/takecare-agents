@@ -127,6 +127,12 @@ type Endpoint struct {
 	// HTTP, when set, replaces the client's for this endpoint: a remote
 	// cluster's client certificate (ADR 0016).
 	HTTP *http.Client
+	// Collector marks the Mécano collector's endpoint (spec 12 §4), set
+	// only by its runner: Allowed then admits the collector's shapes and
+	// nothing else (collectorAllowed). Namespaces are the Mécano's scope
+	// on that cluster, the only ones a cluster call may name.
+	Collector  bool
+	Namespaces []string
 }
 
 // Tool is a discovered tool and what its annotations say.
@@ -183,7 +189,13 @@ func (c *Client) ListTools(ctx context.Context, ep Endpoint) ([]Tool, error) {
 // discovery tool of a cluster connector, or the rules tool of a metrics
 // connector with the arguments rulesArgsAllowed admits, each when discovery
 // classed it read and not content; nothing else, whatever the caller asks.
+//
+// A collector endpoint (Collector) admits the Mécano collector's shapes
+// and nothing else.
 func (ep Endpoint) Allowed(tool string, args map[string]any) bool {
+	if ep.Collector {
+		return ep.collectorAllowed(tool, args)
+	}
 	if slices.Contains(ep.Types, v1alpha1.ConnectorReport) {
 		return true
 	}
