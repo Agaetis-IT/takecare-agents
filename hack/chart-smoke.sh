@@ -895,9 +895,14 @@ EOF
     test "$(kubectl -n "$NS" logs deploy/takecare-addon-report-log | grep -c 'logged for destination' || true)" = "$reports_before"
   local metrics
   metrics="$(operator_metrics)"
-  log "the run metrics: $(grep -E '^takecare_run(s_total|_cancels_total)' <<<"$metrics" | tr '\n' ' ')"
+  # Only the run lines go to the check: the whole page passes the 128 KiB
+  # a single argument may hold on Linux once every role's controller
+  # reports its metrics.
+  local run_metrics
+  run_metrics="$(grep -E '^takecare_run(s_total|_cancels_total)' <<<"$metrics" || true)"
+  log "the run metrics (of ${#metrics} bytes): $(tr '\n' ' ' <<<"$run_metrics")"
   check "takecare_runs_total counts the failed run, and no cancellation was requested" \
-    bash -c "grep -Eq '^takecare_runs_total\{outcome=\"failed\",role=\"doc\"\} [1-9]' <<<\"\$1\" && ! grep -q '^takecare_run_cancels_total' <<<\"\$1\"" _ "$metrics"
+    bash -c "grep -Eq '^takecare_runs_total\{outcome=\"failed\",role=\"doc\"\} [1-9]' <<<\"\$1\" && ! grep -q '^takecare_run_cancels_total' <<<\"\$1\"" _ "$run_metrics"
   kubectl -n "$NS" delete takecareinvestigations -l "$run_sel" >/dev/null
 
   # AC 4: a tool the Doc may no longer call is refused by the gateway at
