@@ -1,0 +1,40 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "NAMESPACE   APIVERSION   KIND         NAME           READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS                IMAGES                                                                                                                                                         SELECTOR          LABELS\ndemo-apps   apps/v1      Deployment   billing-api    0/1     0            0           3s    app,proxy                 ghcr.io/agaetis-it/takecare-agents-demo-app:0.2.0,docker.io/envoyproxy/envoy:v1.31.2@sha256:0000000000000000000000000000000000000000000000000000000000000000   app=billing-api   app.kubernetes.io/part-of=takecare-demo\ndemo-apps   apps/v1      Deployment   cert-manager   0/1     0            0           3s    cert-manager-controller   quay.io/jetstack/cert-manager-controller:v1.16.2                                                                                                               app=cm            app.kubernetes.io/name=cert-manager,app.kubernetes.io/version=v1.16.2,helm.sh/chart=cert-manager-v1.16.2\n"
+    }
+  ],
+  "structuredContent": {
+    "items": [
+      {
+        "Age": "3s",
+        "Available": 0,
+        "Containers": "app,proxy",
+        "Images": "ghcr.io/agaetis-it/takecare-agents-demo-app:0.2.0,docker.io/envoyproxy/envoy:v1.31.2@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "Labels": "app.kubernetes.io/part-of=takecare-demo",
+        "Name": "billing-api",
+        "Namespace": "demo-apps",
+        "Ready": "0/1",
+        "Selector": "app=billing-api",
+        "Up-to-date": 0,
+        "apiVersion": "apps/v1",
+        "kind": "Deployment"
+      },
+      {
+        "Age": "3s",
+        "Available": 0,
+        "Containers": "cert-manager-controller",
+        "Images": "quay.io/jetstack/cert-manager-controller:v1.16.2",
+        "Labels": "app.kubernetes.io/name=cert-manager,app.kubernetes.io/version=v1.16.2,helm.sh/chart=cert-manager-v1.16.2",
+        "Name": "cert-manager",
+        "Namespace": "demo-apps",
+        "Ready": "0/1",
+        "Selector": "app=cm",
+        "Up-to-date": 0,
+        "apiVersion": "apps/v1",
+        "kind": "Deployment"
+      }
+    ]
+  }
+}

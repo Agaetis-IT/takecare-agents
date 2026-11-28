@@ -1,0 +1,29 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "NAMESPACE   APIVERSION   KIND        NAME          DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE   CONTAINERS   IMAGES                                    SELECTOR          LABELS\ndemo-apps   apps/v1      DaemonSet   log-shipper   0         0         0       0            0           \u003cnone\u003e          3s    fluent-bit   cr.fluentbit.io/fluent/fluent-bit:3.1.9   app=log-shipper   \u003cnone\u003e\n"
+    }
+  ],
+  "structuredContent": {
+    "items": [
+      {
+        "Age": "3s",
+        "Available": 0,
+        "Containers": "fluent-bit",
+        "Current": 0,
+        "Desired": 0,
+        "Images": "cr.fluentbit.io/fluent/fluent-bit:3.1.9",
+        "Labels": "\u003cnone\u003e",
+        "Name": "log-shipper",
+        "Namespace": "demo-apps",
+        "Node Selector": "\u003cnone\u003e",
+        "Ready": 0,
+        "Selector": "app=log-shipper",
+        "Up-to-date": 0,
+        "apiVersion": "apps/v1",
+        "kind": "DaemonSet"
+      }
+    ]
+  }
+}

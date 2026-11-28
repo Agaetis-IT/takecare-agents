@@ -1,0 +1,34 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "NAMESPACE   APIVERSION             KIND          NAME            SYNC STATUS   HEALTH STATUS   REVISION                                   PROJECT   LABELS\nargocd      argoproj.io/v1alpha1   Application   billing         Synced        Healthy         4f1c2a9e0b7d3c5a8e6f1b2c3d4e5f6a7b8c9d0e   default   \u003cnone\u003e\nargocd      argoproj.io/v1alpha1   Application   notifications   OutOfSync     Degraded        9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d   default   \u003cnone\u003e\n"
+    }
+  ],
+  "structuredContent": {
+    "items": [
+      {
+        "Health Status": "Healthy",
+        "Labels": "\u003cnone\u003e",
+        "Name": "billing",
+        "Namespace": "argocd",
+        "Project": "default",
+        "Revision": "4f1c2a9e0b7d3c5a8e6f1b2c3d4e5f6a7b8c9d0e",
+        "Sync Status": "Synced",
+        "apiVersion": "argoproj.io/v1alpha1",
+        "kind": "Application"
+      },
+      {
+        "Health Status": "Degraded",
+        "Labels": "\u003cnone\u003e",
+        "Name": "notifications",
+        "Namespace": "argocd",
+        "Project": "default",
+        "Revision": "9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d",
+        "Sync Status": "OutOfSync",
+        "apiVersion": "argoproj.io/v1alpha1",
+        "kind": "Application"
+      }
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "NAMESPACE   APIVERSION   KIND      NAME             SCHEDULE    TIMEZONE   SUSPEND   ACTIVE   LAST SCHEDULE   AGE   CONTAINERS   IMAGES         SELECTOR   LABELS\ndemo-apps   batch/v1     CronJob   nightly-export   0 2 * * *   \u003cnone\u003e     False     0        \u003cnone\u003e          3s    export       busybox:1.37   \u003cnone\u003e     \u003cnone\u003e\n"
+    }
+  ],
+  "structuredContent": {
+    "items": [
+      {
+        "Active": 0,
+        "Age": "3s",
+        "Containers": "export",
+        "Images": "busybox:1.37",
+        "Labels": "\u003cnone\u003e",
+        "Last Schedule": "\u003cnone\u003e",
+        "Name": "nightly-export",
+        "Namespace": "demo-apps",
+        "Schedule": "0 2 * * *",
+        "Selector": "\u003cnone\u003e",
+        "Suspend": "False",
+        "Timezone": "\u003cnone\u003e",
+        "apiVersion": "batch/v1",
+        "kind": "CronJob"
+      }
+    ]
+  }
+}
