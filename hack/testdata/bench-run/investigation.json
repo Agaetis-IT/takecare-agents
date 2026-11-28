@@ -1,0 +1,10 @@
+{
+  "metadata": {"name": "doc-bench-fixture"},
+  "spec": {"alert": {"firedAt": "2026-01-15T14:00:00Z"}},
+  "status": {
+    "phase": "Completed",
+    "completedAt": "2026-01-15T14:00:42.517Z",
+    "diagnosis": "A fixed diagnosis, 33 characters.",
+    "usage": {"modelCalls": 5, "inputTokens": 52000, "outputTokens": 800, "estimatedCost": "0.0217 USD"}
+  }
+}

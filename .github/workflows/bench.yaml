@@ -1,19 +1,25 @@
 # SPDX-FileCopyrightText: 2026 Agaetis
 # SPDX-License-Identifier: Apache-2.0
 
-# The accuracy bench (spec 04) with a real model: the demo on k3d, the
-# proxy-timeout incident, then N silent investigations scored by
-# hack/bench.sh. Manual only; the model key is the repository secret
-# TAKECARE_MODEL_API_KEY. No Slack token: the demo reports to its log. The
-# report and the table are uploaded as artifacts, never committed.
+# The accuracy bench (spec 04, spec 14 §5) with a real model: the demo on
+# k3d, then, for each scenario asked, its incident and N silent
+# investigations scored by hack/bench.sh, through hack/bench-scenarios.sh.
+# Each scenario is judged against its own bar, never pooled. Manual only;
+# the model key is the repository secret TAKECARE_MODEL_API_KEY. No Slack
+# token: the demo reports to its log. The reports and the table are
+# uploaded as artifacts, never committed.
 name: bench
 
 on:
   workflow_dispatch:
     inputs:
       n:
-        description: Number of investigations
+        description: Number of investigations per scenario
         default: "5"
+        required: true
+      scenarios:
+        description: Scenarios to play, space-separated (proxy-timeout, bad-config-rollout, missing-secret-key)
+        default: proxy-timeout bad-config-rollout missing-secret-key
         required: true
 
 permissions:
@@ -33,6 +39,7 @@ jobs:
         env:
           TAKECARE_MODEL_API_KEY: ${{ secrets.TAKECARE_MODEL_API_KEY }}
           N: ${{ inputs.n }}
+          SCENARIOS: ${{ inputs.scenarios }}
         run: |
           if [ -z "$TAKECARE_MODEL_API_KEY" ]; then
             echo "the repository secret TAKECARE_MODEL_API_KEY is not set: the bench needs a real model" >&2
@@ -40,6 +47,10 @@ jobs:
           fi
           if ! [[ "$N" =~ ^[1-9][0-9]?$ ]]; then
             echo "n must be an integer from 1 to 99" >&2
+            exit 1
+          fi
+          if ! [[ "$SCENARIOS" =~ ^(proxy-timeout|bad-config-rollout|missing-secret-key)( (proxy-timeout|bad-config-rollout|missing-secret-key))*$ ]]; then
+            echo "scenarios must be a space-separated list of proxy-timeout, bad-config-rollout, missing-secret-key" >&2
             exit 1
           fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -75,18 +86,20 @@ jobs:
           DEMO_IMAGES: build
           DEMO_NO_DOTENV: "1"
         run: make demo-up
-      - run: make demo-incident
-      # Spec 04's threshold, 4 out of 5, scaled to N: ceil(4N/5).
+      # Each scenario's bar, set by the product owner, scaled to N by the
+      # runner (ceil(k*N/5)) and never pooled: proxy-timeout 5/5, the two
+      # scenarios ported from spike 001 4/5.
       - name: bench
         env:
           N: ${{ inputs.n }}
+          SCENARIOS: ${{ inputs.scenarios }}
+          BENCH_BARS: proxy-timeout=5/5 bad-config-rollout=4/5 missing-secret-key=4/5
           BENCH_DIR: bin/bench
           # A run that does not settle is dumped here before the bench stops.
           DUMP_DIR: ${{ runner.temp }}/takecare-dump
         run: |
           set -euo pipefail
-          export BENCH_MIN=$(( (4 * N + 4) / 5 ))
-          hack/bench.sh "$N" | tee bin/bench-table.md
+          hack/bench-scenarios.sh "$N" | tee bin/bench-table.md
       - name: table in the run's summary
         if: always()
         run: cat bin/bench-table.md >>"$GITHUB_STEP_SUMMARY" 2>/dev/null || true
@@ -96,6 +109,7 @@ jobs:
           name: bench-report
           path: |
             bin/bench/report-*.json
+            bin/bench/run-*.json
             bin/bench-table.md
             ${{ runner.temp }}/takecare-dump
           if-no-files-found: warn

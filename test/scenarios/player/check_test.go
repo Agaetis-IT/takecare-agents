@@ -178,8 +178,8 @@ func TestCheckVariants(t *testing.T) {
 			patch: "{variant: mute-source, blindSpots: [{key: datastore/billing-db, reason: NoAccess, mustDeclare: true}]}",
 		},
 		"a blind spot off the Map": {
-			patch: "blindSpots: [{key: datastore/orders-db, reason: NotInMap, mustDeclare: true}]",
-			want:  "datastore/orders-db is not a key",
+			patch: "blindSpots: [{key: datastore/payments-db, reason: NotInMap, mustDeclare: true}]",
+			want:  "datastore/payments-db is not a key",
 		},
 		"a replay without a cutoff": {patch: "fault: {injection: {mode: replay}}", want: "a replay names its cutoff"},
 		"a replay excluding a source with no blind spot": {

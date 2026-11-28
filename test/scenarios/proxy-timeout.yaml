@@ -21,7 +21,7 @@ fault:
     driver: takecare-demo
     steps:
       - apply the DBProxy billing-db-proxy with idleClientTimeout 600 (namespace ack-system)
-      - deploy billing-api in leaky mode with DB_POOL_IDLE_TIMEOUT_SECONDS=900
+      - deploy the Deployment billing-api in leaky mode with DB_POOL_IDLE_TIMEOUT_SECONDS=900 (namespace demo-apps)
       - regenerate the corpus with the incident's dates
   signals:
     trigger: alert

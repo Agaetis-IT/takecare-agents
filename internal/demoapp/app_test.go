@@ -4,10 +4,13 @@
 package demoapp
 
 import (
+	"context"
+	"errors"
 	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -107,7 +110,8 @@ func TestLogLines(t *testing.T) {
 	}
 }
 
-// The probes always pass: the pod stays Ready and never restarts.
+// Without a database host the probes always pass: the pod stays Ready and
+// never restarts.
 func TestHandler(t *testing.T) {
 	h := at(t, 4*time.Minute, nil).Handler()
 	for _, path := range []string{"/metrics", "/healthz", "/ready", "/api", "/"} {
@@ -116,5 +120,57 @@ func TestHandler(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Errorf("%s: %d", path, rec.Code)
 		}
+	}
+}
+
+// With a database host, the app is ready only while the host resolves
+// (bad-config-rollout), and says so in its logs; the port is not part of
+// the lookup.
+func TestReadyFollowsTheDatabaseHost(t *testing.T) {
+	a := at(t, 0, func(c *Config) {
+		c.Mode, c.Service, c.DBHost, c.Version = ModeHealthy, "orders-api", "orders-db-primary.demo-apps.svc:5432", "3.9.0"
+	})
+	var asked string
+	resolvable := map[string]bool{"orders-db.demo-apps.svc": true}
+	a.lookup = func(_ context.Context, host string) error {
+		asked = host
+		if !resolvable[host] {
+			return errors.New("no such host")
+		}
+		return nil
+	}
+	ready := func() int {
+		rec := httptest.NewRecorder()
+		a.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ready", nil))
+		return rec.Code
+	}
+	if got := ready(); got != http.StatusServiceUnavailable || asked != "orders-db-primary.demo-apps.svc" {
+		t.Errorf("an unresolvable host: /ready %d after looking up %q, want 503 after orders-db-primary.demo-apps.svc", got, asked)
+	}
+	if got := a.LogLines(); len(got) != 1 || got[0] != "WARN  db host orders-db-primary.demo-apps.svc:5432 unreachable: no such host; not ready" {
+		t.Errorf("log lines %v", got)
+	}
+	if got := a.Banner(); len(got) != 1 || got[0] != "orders-api: version=3.9.0 mode=healthy ramp=4min db_host=orders-db-primary.demo-apps.svc:5432 port=8080" {
+		t.Errorf("banner %v", got)
+	}
+	a.cfg.DBHost = "orders-db.demo-apps.svc:5432"
+	if got := ready(); got != http.StatusOK {
+		t.Errorf("a resolvable host: /ready %d", got)
+	}
+	if got := a.LogLines(); len(got) != 1 || !strings.HasPrefix(got[0], "INFO  orders-api serving") {
+		t.Errorf("log lines once resolvable %v", got)
+	}
+}
+
+// The required settings the environment leaves empty, in order
+// (missing-secret-key: an optional secretKeyRef whose key is absent leaves
+// its variable unset).
+func TestMissing(t *testing.T) {
+	env := map[string]string{"SMTP_HOST": "smtp.example.invalid:587", "SMTP_USER": "notifications", "SMTP_PASS": "x"}
+	if got := Missing("SMTP_HOST, SMTP_USER,SMTP_PASSWORD,", func(k string) string { return env[k] }); !slices.Equal(got, []string{"SMTP_PASSWORD"}) {
+		t.Errorf("missing %v, want [SMTP_PASSWORD]", got)
+	}
+	if got := Missing("", func(string) string { return "" }); len(got) != 0 {
+		t.Errorf("nothing required, missing %v", got)
 	}
 }

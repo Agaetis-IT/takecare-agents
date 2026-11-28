@@ -3,12 +3,13 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The demo (spec 03): a k3d cluster with TakeCare, the scenery and the Doc,
-# and the incident proxy-timeout to replay. Never touches the user's kube
+# and the incident of the demo's scenario to replay (proxy-timeout unless
+# `scenario <id>` picks another, spec 14 §5). Never touches the user's kube
 # context: the cluster's kubeconfig is bin/takecare-demo.kubeconfig, passed
 # explicitly to every command. Secrets come from the environment, or from an
 # optional .env (git-ignored) sourced here and never printed.
 # DEMO_VALUES names an extra values file (the end-to-end tests' fakes).
-# Usage: hack/demo.sh cluster|up|incident|verdict|screens|screens-stop|reset|down
+# Usage: hack/demo.sh cluster|up|scenario ID|incident|verdict|screens|screens-stop|reset|down
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -225,14 +226,37 @@ incident() {
     Ready) ;;
     *) die "the demo is not Ready (phase '${phase}'): make demo-up" ;;
   esac
+  local scenario
+  scenario="$(demo_field '{.spec.scenario}')"
   kubectl -n "$NS" annotate takecaredemo demo takecare.agaetis.fr/incident="$(date +%s)" --overwrite >/dev/null
-  log "incident started: DBProxy idleClientTimeout 600 s, billing-api leaky; waiting for the leaky pod"
+  log "incident of ${scenario} started: waiting for its fault to be in place"
   for _ in $(seq 36); do
     [[ -n "$(demo_field '{.status.expectedAlertWindow.from}')" ]] && break
     sleep 5
   done
-  [[ -n "$(demo_field '{.status.expectedAlertWindow.from}')" ]] || die "the leaky pod did not start in 3 minutes: kubectl -n ${APP_NS} get pods"
-  log "HighErrorRate expected between $(demo_field '{.status.expectedAlertWindow.from}') and $(demo_field '{.status.expectedAlertWindow.to}') (UTC)"
+  [[ -n "$(demo_field '{.status.expectedAlertWindow.from}')" ]] || die "the fault of ${scenario} is not in place after 3 minutes: kubectl -n ${APP_NS} get pods"
+  log "$(scenario_alerts "$scenario") expected between $(demo_field '{.status.expectedAlertWindow.from}') and $(demo_field '{.status.expectedAlertWindow.to}') (UTC)"
+}
+
+# scenario_alerts ID: the alerts the scenario's file expects, read without
+# Go (the demo runs without it).
+scenario_alerts() {
+  local alerts
+  alerts="$(sed -n 's/^    alerts: \[\(.*\)\]$/\1/p' "test/scenarios/$1.yaml" 2>/dev/null | head -1)"
+  alerts="${alerts:-the alert}"
+  echo "${alerts//, / or }"
+}
+
+# scenario ID: the demo plays another scenario, from a healthy scenery
+# (spec 14 §5; the enum of TakeCareDemo lists them).
+scenario() {
+  local id="${1:-}"
+  [[ -n "$id" ]] || die "usage: $0 scenario ID (proxy-timeout, bad-config-rollout or missing-secret-key)"
+  [[ -f "test/scenarios/${id}.yaml" ]] || die "no scenario file test/scenarios/${id}.yaml"
+  kubectl -n "$NS" patch takecaredemo demo --type=merge -p "{\"spec\":{\"scenario\":\"${id}\"}}" >/dev/null ||
+    die "the demo refused scenario ${id}"
+  reset
+  log "the demo plays ${id}: make demo-incident"
 }
 
 # verdict waits for the Doc's next ended investigation of the app
@@ -388,7 +412,7 @@ screens_stop() {
 
 reset() {
   kubectl -n "$NS" annotate takecaredemo demo takecare.agaetis.fr/reset="$(date +%s)" --overwrite >/dev/null
-  log "resetting: billing-api healthy, DBProxy on AWS's default, the Doc's investigations of ${APP_NS} deleted"
+  log "resetting: the workloads healthy, DBProxy on AWS's default, the Doc's investigations of ${APP_NS} deleted"
   for _ in $(seq 36); do
     [[ "$(demo_field '{.status.phase}')" == Ready ]] && { log "the demo is Ready"; return 0; }
     sleep 5
@@ -412,11 +436,12 @@ case "${1:-}" in
     cluster
     ;;
   up) up ;;
+  scenario) scenario "${2:-}" ;;
   incident) incident ;;
   verdict) verdict ;;
   screens) screens ;;
   screens-stop) screens_stop ;;
   reset) reset ;;
   down) down ;;
-  *) die "usage: $0 cluster|up|incident|verdict|screens|screens-stop|reset|down" ;;
+  *) die "usage: $0 cluster|up|scenario ID|incident|verdict|screens|screens-stop|reset|down" ;;
 esac

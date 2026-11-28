@@ -1,0 +1,11 @@
+key: compute/orders-api
+provenance: declared
+status: validated
+created: 2026-11-27
+lastValidated: 2026-11-27
+owner: team/platform
+sources:
+  - kubernetes: demo-apps/Deployment/orders-api
+relations:
+  deployedIn: [environment/demo-apps]
+  dependsOn: [datastore/orders-db]

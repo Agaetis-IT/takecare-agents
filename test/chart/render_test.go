@@ -50,6 +50,7 @@ const (
 	verbWatch        = "watch"
 	tokenSecret      = "takecare-alerting"
 	operatorName     = "takecare-operator"
+	demoAppsNS       = "demo-apps"
 )
 
 var repoRoot = filepath.Join("..", "..")
@@ -542,7 +543,7 @@ func TestAddonSandboxAgentsOptIn(t *testing.T) {
 func kagentAgentsRule(t *testing.T, objs []*unstructured.Unstructured) *rbacv1.PolicyRule {
 	t.Helper()
 	for _, o := range ofKind(objs, kindRole) {
-		if o.GetName() != "takecare-addon-kubernetes" || o.GetNamespace() != "demo-apps" {
+		if o.GetName() != "takecare-addon-kubernetes" || o.GetNamespace() != demoAppsNS {
 			continue
 		}
 		for _, r := range rulesByRole(t, []*unstructured.Unstructured{o})[kindRole+"/"+o.GetName()] {
@@ -770,7 +771,7 @@ func TestMapAddon(t *testing.T) {
 	t.Run("the demo's Map", func(t *testing.T) {
 		args, egress, cm := deployment(render(t, releaseName, profileArgs("demo")...))
 		data, _, _ := unstructured.NestedStringMap(cm.Object, "data")
-		if len(data) != 10 || data["map__service__billing-api.yaml"] == "" || !strings.Contains(args, "--dir=/map") || egress != "[]" {
+		if len(data) != 14 || data["map__service__billing-api.yaml"] == "" || !strings.Contains(args, "--dir=/map") || egress != "[]" {
 			t.Errorf("%d files, args %s, egress %s", len(data), args, egress)
 		}
 	})

@@ -31,14 +31,6 @@ const (
 // demoCorpus add-on).
 func CorpusConfigMap(source string) string { return "takecare-demo-corpus-" + source }
 
-// corpusScenario is the corpus of a phase: the incident's, or none.
-func corpusScenario(incident bool) string {
-	if incident {
-		return corpus.ScenarioProxyTimeout
-	}
-	return corpus.ScenarioNone
-}
-
 // scenarioName records a corpus's scenario; "none" for the healthy one.
 func scenarioName(scenario string) string {
 	if scenario == corpus.ScenarioNone {
@@ -77,7 +69,7 @@ func corpusConfigMaps(d *v1alpha1.TakeCareDemo, scenario string, at time.Time) (
 // generate was edited: that is drift, reported, and the corpus is written
 // again with the same time, so that its dates do not move.
 func (r *Reconciler) syncCorpus(ctx context.Context, d *v1alpha1.TakeCareDemo, incident, action bool, now time.Time) ([]string, error) {
-	scenario := corpusScenario(incident)
+	scenario := injected(d, incident)
 	at, rewrite := now, action
 	var drift []string
 	if !action {

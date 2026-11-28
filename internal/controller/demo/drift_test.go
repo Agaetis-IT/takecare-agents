@@ -118,3 +118,22 @@ func TestAppDrift(t *testing.T) {
 		}
 	}
 }
+
+// missing-secret-key's fault is the key a variable reads, not a value: a
+// worker reading another key is drift.
+func TestWorkerDriftNamesTheSecretKey(t *testing.T) {
+	want := workerDeployment(testDemo(), "demo-app:test", false)
+	if drift := appDrift(workerDeployment(testDemo(), "demo-app:test", false), want); len(drift) != 0 {
+		t.Errorf("no drift reported as %v", drift)
+	}
+	got := workerDeployment(testDemo(), "demo-app:test", false)
+	for i, e := range got.Spec.Template.Spec.Containers[0].Env {
+		if e.ValueFrom != nil {
+			got.Spec.Template.Spec.Containers[0].Env[i].ValueFrom.SecretKeyRef.Key = "SMTP_PASSWORD"
+		}
+	}
+	drift := strings.Join(appDrift(got, want), "; ")
+	if !strings.Contains(drift, `notifications-worker's SMTP_PASS reads key "notifications-smtp/SMTP_PASSWORD", the phase wants "notifications-smtp/SMTP_PASS"`) {
+		t.Errorf("drift %q", drift)
+	}
+}

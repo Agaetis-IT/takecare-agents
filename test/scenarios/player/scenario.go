@@ -322,9 +322,7 @@ func (m *Matcher) compile() error {
 			}
 		}
 		if m.Record != "" {
-			// The id alone, not inside a longer one (CI-SEED-INFRA is not
-			// CI-SEED-INFRA-2).
-			m.record = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_-])` + regexp.QuoteMeta(recordID(m.Record)) + `(?:$|[^A-Za-z0-9_-])`)
+			m.record = recordRE(recordID(m.Record))
 		}
 		if len(m.Args) > 0 {
 			m.args = map[string]*regexp.Regexp{}
@@ -334,6 +332,12 @@ func (m *Matcher) compile() error {
 		}
 	})
 	return errors.Join(errs...)
+}
+
+// recordRE matches a record id alone, not inside a longer one
+// (CI-SEED-INFRA is not CI-SEED-INFRA-2).
+func recordRE(id string) *regexp.Regexp {
+	return regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_-])` + regexp.QuoteMeta(id) + `(?:$|[^A-Za-z0-9_-])`)
 }
 
 // recordID is the id of <connector>/<id>.

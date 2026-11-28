@@ -17,6 +17,13 @@
 //	         time out. The app states only what it observes; linking it to
 //	         the proxy's idle timeout is the Doc's job.
 //
+// The same binary plays orders-api and notifications-worker, healthy, with
+// two checks a real service has: with a database host, it is ready only
+// while that host resolves (bad-config-rollout points it at an endpoint
+// that does not exist yet); with required settings, it refuses to start
+// without them (missing-secret-key leaves one out, and the pod restarts in
+// a loop). It logs what it observes, never why.
+//
 // Prometheus scrapes in real time and cannot invent history: the curve builds
 // up scrape after scrape.
 package demoapp
@@ -26,6 +33,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -69,6 +77,11 @@ type Config struct {
 	// ErrorBase and ErrorPeak shape the 504 ratio: base + peak * p², p the
 	// ramp's progress from 0 to 1.
 	ErrorBase, ErrorPeak float64
+	// DBHost is the database's host[:port]; when set, the app is ready only
+	// while the host resolves.
+	DBHost string
+	// Version is the application's version, for the banner.
+	Version string
 }
 
 // DefaultConfig is the spike's.
@@ -87,13 +100,56 @@ type App struct {
 	now     func() time.Time
 	log     io.Writer
 
+	// lookup resolves the database host; the system's resolver by default.
+	lookup func(ctx context.Context, host string) error
+
 	mu      sync.Mutex
 	ballast [][]byte
+	dbErr   error
 }
 
 // New starts the clock of the scenario.
 func New(cfg Config, log io.Writer) *App {
-	return &App{cfg: cfg, started: time.Now(), now: time.Now, log: log}
+	return &App{cfg: cfg, started: time.Now(), now: time.Now, log: log, lookup: resolve}
+}
+
+// dbLookupTimeout bounds a resolution of the database host.
+const dbLookupTimeout = 2 * time.Second
+
+func resolve(ctx context.Context, host string) error {
+	_, err := net.DefaultResolver.LookupHost(ctx, host)
+	return err
+}
+
+// CheckDB resolves the database host, records the outcome for the logs,
+// and returns it; nil without a database host.
+func (a *App) CheckDB(ctx context.Context) error {
+	if a.cfg.DBHost == "" {
+		return nil
+	}
+	host := a.cfg.DBHost
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	ctx, cancel := context.WithTimeout(ctx, dbLookupTimeout)
+	defer cancel()
+	err := a.lookup(ctx, host)
+	a.mu.Lock()
+	a.dbErr = err
+	a.mu.Unlock()
+	return err
+}
+
+// Missing returns the required settings (a comma-separated list) that
+// getenv finds empty, in order.
+func Missing(required string, getenv func(string) string) []string {
+	var out []string
+	for name := range strings.SplitSeq(required, ",") {
+		if name = strings.TrimSpace(name); name != "" && getenv(name) == "" {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // Progress is the degradation's progress, 0 to 1, bounded and monotonic;
@@ -194,6 +250,12 @@ func (a *App) Metrics() string {
 // `kubectl logs`, never the root cause's name.
 func (a *App) LogLines() []string {
 	p := a.Progress()
+	a.mu.Lock()
+	dbErr := a.dbErr
+	a.mu.Unlock()
+	if dbErr != nil {
+		return []string{fmt.Sprintf("WARN  db host %s unreachable: %v; not ready", a.cfg.DBHost, dbErr)}
+	}
 	if a.cfg.Mode != ModeLeaky || p <= 0.3 {
 		return []string{fmt.Sprintf("INFO  %s serving, p99=%.2fs", a.cfg.Service, lerp(latencyP99, p))}
 	}
@@ -213,7 +275,14 @@ func (a *App) LogLines() []string {
 // Banner is what the application logs at start; the application half of
 // the diagnosis (the pool's idle timeout) must be observable, not told.
 func (a *App) Banner() []string {
-	lines := []string{fmt.Sprintf("%s: mode=%s ramp=%.0fmin db_host=- port=8080", a.cfg.Service, a.cfg.Mode, a.cfg.Ramp.Minutes())}
+	host, version := a.cfg.DBHost, ""
+	if host == "" {
+		host = "-"
+	}
+	if a.cfg.Version != "" {
+		version = " version=" + a.cfg.Version
+	}
+	lines := []string{fmt.Sprintf("%s:%s mode=%s ramp=%.0fmin db_host=%s port=8080", a.cfg.Service, version, a.cfg.Mode, a.cfg.Ramp.Minutes(), host)}
 	if a.cfg.Mode == ModeLeaky {
 		lines = append(lines, fmt.Sprintf("%s: db pool min_size=5 max_size=20 idle_timeout=%.0fs", a.cfg.Service, a.cfg.PoolIdleTimeout.Seconds()))
 	}
@@ -223,6 +292,7 @@ func (a *App) Banner() []string {
 // Chatter logs LogLines every interval until ctx ends.
 func (a *App) Chatter(ctx context.Context, every time.Duration) {
 	for {
+		_ = a.CheckDB(ctx) // recorded for LogLines
 		for _, l := range a.LogLines() {
 			_, _ = fmt.Fprintln(a.log, l)
 		}
@@ -244,10 +314,16 @@ func (a *App) Handler() http.Handler {
 	ok := func(body string) http.HandlerFunc {
 		return func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, body) }
 	}
-	// Liveness and readiness always pass: the pod stays Ready and never
-	// restarts, whatever the scenario.
+	// Liveness always passes: the pod never restarts on its own. Readiness
+	// passes too, unless the database host does not resolve.
 	mux.HandleFunc("/healthz", ok("alive\n"))
-	mux.HandleFunc("/ready", ok("ready\n"))
+	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+		if err := a.CheckDB(r.Context()); err != nil {
+			http.Error(w, fmt.Sprintf("db host %s unreachable", a.cfg.DBHost), http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = io.WriteString(w, "ready\n")
+	})
 	mux.HandleFunc("/api", ok("ok\n"))
 	mux.HandleFunc("/{$}", ok("ok\n"))
 	return mux

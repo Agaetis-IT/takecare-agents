@@ -184,10 +184,15 @@ func (m matching) match(x *Matcher) bool {
 	case x.Text != nil:
 		return m.text(x)
 	case x.Record != "":
-		if x.record.MatchString(m.p.Diagnosis) {
+		// The seed id, or the id the ground serves the record under.
+		cites := x.record.MatchString
+		if served := m.w.served(x.Record); served != nil {
+			cites = func(s string) bool { return x.record.MatchString(s) || served.MatchString(s) }
+		}
+		if cites(m.p.Diagnosis) {
 			return true
 		}
-		return x.RequiresContent && slices.ContainsFunc(m.p.Results, x.record.MatchString)
+		return x.RequiresContent && slices.ContainsFunc(m.p.Results, cites)
 	case x.Entity != "":
 		return m.names(x.Entity)
 	case x.Tool != "":
@@ -207,6 +212,15 @@ func (m matching) match(x *Matcher) bool {
 		}
 	}
 	return false
+}
+
+// served matches the id a record is served under; nil when it is served
+// under its own.
+func (w *World) served(ref string) *regexp.Regexp {
+	if w == nil {
+		return nil
+	}
+	return w.Served[ref]
 }
 
 func (m matching) text(x *Matcher) bool {

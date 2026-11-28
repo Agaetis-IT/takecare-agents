@@ -100,6 +100,8 @@ test: setup-envtest chart-deps ## Run unit, golden, envtest and chart tests.
 	hack/power-window-test.sh
 	hack/demo-images-test.sh
 	hack/ci-changes-test.sh
+	hack/bench-score-run-test.sh
+	hack/bench-scenarios-test.sh
 	hack/changelog-assemble-test.sh
 	@# setup-envtest installs its binaries read-only: writable, a worktree's bin/ can be removed.
 	"$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(abspath $(LOCALBIN))" >/dev/null && chmod -R u+w "$(LOCALBIN)/k8s"
@@ -223,6 +225,11 @@ demo-images-test: ## Check that make demo-up stops when building or importing it
 .PHONY: ci-changes-test
 ci-changes-test: ## Check which pull requests skip CI's heavy jobs (hack/ci-changes.sh).
 	hack/ci-changes-test.sh
+
+.PHONY: bench-score-run-test
+bench-score-run-test: ## Check the line the accuracy bench writes for each run (hack/bench-score-run.sh), stdin closed as when unattended.
+	hack/bench-score-run-test.sh
+	hack/bench-scenarios-test.sh
 
 .PHONY: changelog-assemble-test
 changelog-assemble-test: ## Check hack/changelog-assemble.sh and hack/changelog-check.sh against their fixture.
@@ -395,16 +402,20 @@ fakellm-record: ## Replace the fake model's fixtures with a real model's convers
 
 ##@ Demo (spec 03; never changes your kube context)
 
-.PHONY: demo-up demo-incident demo-verdict demo-bench demo-bench-intendant demo-bench-kine demo-screens demo-screens-stop demo-reset demo-down
+.PHONY: demo-up demo-scenario demo-incident demo-verdict demo-bench demo-bench-scenarios demo-bench-intendant demo-bench-kine demo-screens demo-screens-stop demo-reset demo-down
 demo-up: ## Create the k3d demo and install everything (TAKECARE_MODEL_API_KEY; DEMO_IMAGES=build until the first release).
 	hack/demo.sh up
-demo-incident: ## Start the proxy-timeout incident and print the expected alert window.
+demo-scenario: ## Play another scenario from a healthy scenery: SCENARIO=proxy-timeout|bad-config-rollout|missing-secret-key.
+	hack/demo.sh scenario $(SCENARIO)
+demo-incident: ## Start the incident of the demo's scenario and print the expected alert window.
 	hack/demo.sh incident
 demo-verdict: ## Wait for the Doc's diagnosis of the incident and its usage (read one scrape wait after the end), print them with the scenario's verdict lines, then the Kiné's review.
 	hack/demo.sh verdict
 N ?= 5
 demo-bench: ## Accuracy bench: N silent investigations of the ongoing incident, scored against test/scenarios/<scenario>.yaml (the Doc's cooldown is 1 s meanwhile; BENCH_MIN=k fails under k; BENCH_BASELINE=report compares).
 	hack/bench.sh $(N)
+demo-bench-scenarios: ## Multi-scenario bench: N passes of each of SCENARIOS, a report each and a run summary (BENCH_BARS="id=k/5 ..." judged per scenario, never pooled; BENCH_MAX_COST=usd caps the run).
+	hack/bench-scenarios.sh $(N)
 demo-bench-intendant: ## Intendant bench: N surveys of the demo against the bench's Map, scored against test/bench/intendant/expected.yaml (BENCH_MIN=k fails under k).
 	hack/bench-intendant.sh $(N)
 demo-bench-kine: ## Kiné bench: N silent reviews at Practitioner of a fixed investigation, scored against test/bench/kine/expected.yaml (BENCH_MIN=k fails under k; BENCH_CHAIN=1 reviews live Doc runs, not counted; BENCH_MAX_COST=usd stops before the cap).

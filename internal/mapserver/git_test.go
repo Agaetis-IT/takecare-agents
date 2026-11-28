@@ -208,7 +208,7 @@ func TestGitPath(t *testing.T) {
 	c1 := r.commit("the demo Map under ops/catalog", 1)
 	s, g := gitServer(t, GitConfig{URL: r.url(), Path: "ops/catalog"})
 	g.sync(context.Background())
-	if m, err := s.snapshot(); err != nil || m.Revision != c1 || len(m.Entries) != 10 {
+	if m, err := s.snapshot(); err != nil || m.Revision != c1 || len(m.Entries) != 14 {
 		t.Errorf("snapshot %v, %v", m, err)
 	}
 }

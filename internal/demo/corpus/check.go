@@ -24,12 +24,23 @@ import (
 //   - the application's pool value (900 s) is never in the corpus: it is read
 //     in the cluster, from the pod's banner and environment.
 //
-// The other scenarios stay neutral: no recent change on the services they
-// break. Every date is at or before the incident, every identifier unique.
+// bad-config-rollout's (spec 14 §5): ONE recent orders-api configmap change
+// moving DB_HOST to orders-db-primary, the database team's plan saying that
+// endpoint comes later, and RB-021 for a pod stuck out of Ready.
+// missing-secret-key's: ONE recent notifications-worker release naming
+// SMTP_PASSWORD, the rotation record saying the Secret's key is SMTP_PASS,
+// and RB-026 for a restart loop after a release. Neither tells the cause:
+// the Doc reads the cluster and puts the records together.
+//
+// A scenario not composed stays neutral: no recent change on the service
+// it breaks. Every date is at or before the incident, every identifier
+// unique.
 func Check(c Corpus, scenario string, incident time.Time) error {
 	var errs []error
 	fail := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
 	checkSignal(c, scenario, incident, fail)
+	checkBadConfig(c, scenario, incident, fail)
+	checkMissingKey(c, scenario, incident, fail)
 	checkNeutral(c, incident, fail)
 	checkShape(c, incident, fail)
 	return errors.Join(errs...)
@@ -82,18 +93,77 @@ func checkSignal(c Corpus, scenario string, incident time.Time, fail failFunc) {
 	}
 }
 
+// checkBadConfig checks the bad-config-rollout facts: its live change when
+// composed, none otherwise.
+func checkBadConfig(c Corpus, scenario string, incident time.Time, fail failFunc) {
+	changes := recent(c[SourceDeployments], "orders-api", liveWindow, incident)
+	if scenario != ScenarioBadConfigRollout {
+		if len(changes) > 0 {
+			fail("orders-api: no change < 6 h outside bad-config-rollout, found %v", ids(changes))
+		}
+		return
+	}
+	if len(changes) != 1 || changes[0]["type"] != "configmap" ||
+		!strings.Contains(changes[0]["diff"], "DB_HOST") || !strings.Contains(changes[0]["diff"], "-> orders-db-primary") {
+		fail("bad-config-rollout: want exactly one orders-api configmap change < 6 h moving DB_HOST to orders-db-primary, found %v", ids(changes))
+	}
+	split := byTitle(c[SourceDeployments], splitTitle)
+	if split[keyStatus] != "scheduled" || !strings.Contains(split[keySummary], "orders-db-primary") {
+		fail("bad-config-rollout: %q must say the primary endpoint is only scheduled", splitTitle)
+	}
+	if !strings.Contains(byID(c[SourceRunbooks])["RB-021"][keyTags], "readiness") {
+		fail("bad-config-rollout: RB-021 lost the signal %q", "readiness")
+	}
+}
+
+// checkMissingKey checks the missing-secret-key facts: its live change
+// when composed, none otherwise.
+func checkMissingKey(c Corpus, scenario string, incident time.Time, fail failFunc) {
+	changes := recent(c[SourceDeployments], "notifications-worker", liveWindow, incident)
+	if scenario != ScenarioMissingSecretKey {
+		if len(changes) > 0 {
+			fail("notifications-worker: no change < 6 h outside missing-secret-key, found %v", ids(changes))
+		}
+		return
+	}
+	if len(changes) != 1 || changes[0]["type"] != typeImage || !strings.Contains(changes[0][keySummary], "SMTP_PASSWORD") {
+		fail("missing-secret-key: want exactly one notifications-worker release < 6 h naming SMTP_PASSWORD, found %v", ids(changes))
+	}
+	if rot := byTitle(c[SourceDeployments], rotationTitle)[keySummary]; !strings.Contains(rot, "SMTP_PASS.") || strings.Contains(rot, "SMTP_PASSWORD") {
+		fail("missing-secret-key: %q must name the Secret's key SMTP_PASS, never SMTP_PASSWORD", rotationTitle)
+	}
+	if !strings.Contains(byID(c[SourceRunbooks])["RB-026"][keyTags], "secret") {
+		fail("missing-secret-key: RB-026 lost the signal %q", "secret")
+	}
+}
+
+// Deployment records are found by title: the served log renumbers them.
+const (
+	splitTitle    = "orders-db read/write split scheduled"
+	rotationTitle = "Secret rotation on notifications-worker"
+)
+
+// byTitle is the first record of a title; nil when none.
+func byTitle(records []Record, title string) Record {
+	for _, r := range records {
+		if r[keyTitle] == title {
+			return r
+		}
+	}
+	return nil
+}
+
+// liveWindow is how recent a live change is; the noise leaves it quiet
+// on the services the scenarios break.
+const liveWindow = 6 * time.Hour
+
 // ongoingTitle is the vendor's false lead: an ongoing storage degradation in
 // the region, true and unrelated.
 const ongoingTitle = "Degraded performance of EBS gp3 volumes - eu-west-3a"
 
-// checkNeutral checks that the other scenarios leave no live change and that
-// the vendor's false lead is the only ongoing bulletin.
-func checkNeutral(c Corpus, incident time.Time, fail failFunc) {
-	for _, service := range []string{"orders-api", "notifications-worker"} {
-		if r := recent(c[SourceDeployments], service, 6*time.Hour, incident); len(r) > 0 {
-			fail("%s: no change < 6 h, its scenario is not carried; found %v", service, ids(r))
-		}
-	}
+// checkNeutral checks that the vendor's false lead is the only ongoing
+// bulletin.
+func checkNeutral(c Corpus, _ time.Time, fail failFunc) {
 	var ongoing []Record
 	for _, r := range c[SourceVendor] {
 		if r[keyStatus] == "ongoing" {

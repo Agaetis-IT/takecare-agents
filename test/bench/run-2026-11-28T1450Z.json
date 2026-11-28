@@ -1,0 +1,61 @@
+{
+  "date": "2026-11-28T15:20:15Z",
+  "commit": "a7471389f970b33108faefb78275c8d7eae44845",
+  "n": 5,
+  "bars": "proxy-timeout=5/5 bad-config-rollout=4/5 missing-secret-key=4/5",
+  "maxCost": 0.8,
+  "totalCost": 0.4561,
+  "scenarios": [
+    {
+      "id": "proxy-timeout",
+      "scenario": "proxy-timeout@1",
+      "report": "report-2026-11-28T1450Z-proxy-timeout.json",
+      "played": true,
+      "notPlayed": null,
+      "n": 5,
+      "planned": 5,
+      "correct": 5,
+      "totalCost": 0.1591,
+      "stopped": null,
+      "dump": null,
+      "invalid": null,
+      "bar": "5/5",
+      "min": 5,
+      "meetsBar": true
+    },
+    {
+      "id": "bad-config-rollout",
+      "scenario": "bad-config-rollout@1",
+      "report": "report-2026-11-28T1450Z-bad-config-rollout.json",
+      "played": true,
+      "notPlayed": null,
+      "n": 5,
+      "planned": 5,
+      "correct": 5,
+      "totalCost": 0.1388,
+      "stopped": null,
+      "dump": null,
+      "invalid": null,
+      "bar": "4/5",
+      "min": 4,
+      "meetsBar": true
+    },
+    {
+      "id": "missing-secret-key",
+      "scenario": "missing-secret-key@1",
+      "report": "report-2026-11-28T1450Z-missing-secret-key.json",
+      "played": true,
+      "notPlayed": null,
+      "n": 5,
+      "planned": 5,
+      "correct": 5,
+      "totalCost": 0.1582,
+      "stopped": null,
+      "dump": null,
+      "invalid": null,
+      "bar": "4/5",
+      "min": 4,
+      "meetsBar": true
+    }
+  ]
+}

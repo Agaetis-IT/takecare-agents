@@ -131,6 +131,11 @@ func endpoint(url string) mcp.Endpoint {
 		StateTools: map[string]bool{toolNamespaces: true, toolList: true}}
 }
 
+// notRecorded are the demo Map's entries for objects the recorded ground
+// (testdata/kms-v0.0.67, captured before the demo ran orders-api) does not
+// hold: left out of the index, they would read as objects removed.
+var notRecorded = []string{"service/orders-api", "compute/orders-api", "datastore/orders-db"}
+
 func demoIndex(t *testing.T, extra ...mapserver.Entry) *Index {
 	t.Helper()
 	m, err := mapserver.Load(os.DirFS("../mapserver/testdata/demo"))
@@ -138,8 +143,10 @@ func demoIndex(t *testing.T, extra ...mapserver.Entry) *Index {
 		t.Fatal(err)
 	}
 	var entries []mapserver.Entry
-	for _, e := range m.Entries {
-		entries = append(entries, *e)
+	for key, e := range m.Entries {
+		if !slices.Contains(notRecorded, key) {
+			entries = append(entries, *e)
+		}
 	}
 	return NewIndex(append(entries, extra...))
 }
@@ -174,7 +181,7 @@ func TestImportDemo(t *testing.T) {
 	if diff := cmp.Diff(string(asJSON(t, res)), string(asJSON(t, again))); diff != "" {
 		t.Errorf("a second survey of the same ground differs (-first +second):\n%s", diff)
 	}
-	if got := ProposalID(v1alpha1.ProposalAdd, "compute/notifications-worker"); got != idOf(res, "compute/notifications-worker") || len(got) != 16 {
+	if got := ProposalID(v1alpha1.ProposalAdd, "network/billing-api"); got != idOf(res, "network/billing-api") || len(got) != 16 {
 		t.Errorf("id %q is not the first 16 hex characters of sha256(action+key)", got)
 	}
 }

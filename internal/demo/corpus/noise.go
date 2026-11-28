@@ -84,19 +84,46 @@ type generator struct {
 // Generate composes the corpus of a scenario: the seeds plus the noise,
 // numbered, sorted, and checked.
 func Generate(scenario string, incident time.Time) (Corpus, error) {
+	c, _, err := build(scenario, incident)
+	return c, err
+}
+
+// Served maps, for a scenario, the id of each curated record the servers
+// serve under another id to that id, by source: the deployment log and the
+// support tickets are numbered by rank, so CI-SEED-INFRA is served as a
+// CI-<n>. Ranks follow ages relative to the incident: the map is the same
+// at every incident time. A scenario names records by their seed id; its
+// player reads the served one in a diagnosis.
+func Served(scenario string) (map[string]map[string]string, error) {
+	_, served, err := build(scenario, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	return served, err
+}
+
+func build(scenario string, incident time.Time) (Corpus, map[string]map[string]string, error) {
 	c, err := Seeds(scenario, incident)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	// The curated records are renumbered in place: keep their seed ids.
+	type seeded struct {
+		r  Record
+		id string
+	}
+	var curated []seeded
+	for _, source := range []string{SourceDeployments, SourceSupport} {
+		for _, r := range c[source] {
+			curated = append(curated, seeded{r, source + "/" + r["id"]})
+		}
 	}
 	g := &generator{rng: rand.New(rand.NewPCG(seed, seed)), incident: incident, team: map[string]string{}} //nolint:gosec // reproducible noise, not a secret
 	if err := json.Unmarshal(poolsJSON, &g.p); err != nil {
-		return nil, fmt.Errorf("parse pools: %w", err)
+		return nil, nil, fmt.Errorf("parse pools: %w", err)
 	}
 	for _, s := range g.p.Services {
 		g.team[s.Name] = s.Team
 	}
 	if len(g.p.Vendor) < volume[SourceVendor]-len(c[SourceVendor]) {
-		return nil, fmt.Errorf("vendor: %d bulletins in the pool, %d wanted", len(g.p.Vendor), volume[SourceVendor]-len(c[SourceVendor]))
+		return nil, nil, fmt.Errorf("vendor: %d bulletins in the pool, %d wanted", len(g.p.Vendor), volume[SourceVendor]-len(c[SourceVendor]))
 	}
 	oldestFirst := func(a, b entry) int { return -cmpFloat(a.age, b.age) }
 	out := Corpus{}
@@ -108,9 +135,17 @@ func Generate(scenario string, incident time.Time) (Corpus, error) {
 	out[SourceIncidents] = g.compose(SourceIncidents, c, g.incidents, oldestFirst)
 	out[SourceRunbooks] = g.compose(SourceRunbooks, c, g.runbooks, func(a, b entry) int { return strings.Compare(a.r["id"], b.r["id"]) })
 	if err := Check(out, scenario, incident); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return out, checkSequence(out)
+	served := map[string]map[string]string{}
+	for _, s := range curated {
+		source, id, _ := strings.Cut(s.id, "/")
+		if served[source] == nil {
+			served[source] = map[string]string{}
+		}
+		served[source][id] = s.r["id"]
+	}
+	return out, served, checkSequence(out)
 }
 
 func cmpFloat(a, b float64) int {
@@ -187,7 +222,7 @@ func (g *generator) deployments(n int, curated []Record) []entry {
 		status := "success"
 		switch roll := g.rng.Float64(); {
 		case roll < 0.06:
-			t, kind, status, title = pick(g, d.Fail), "image", "failed", "Deployment failed: "+svc+" "+v
+			t, kind, status, title = pick(g, d.Fail), typeImage, "failed", "Deployment failed: "+svc+" "+v
 			if strings.HasPrefix(t.Summary, "Canceled") {
 				status = "canceled"
 			}
@@ -198,7 +233,7 @@ func (g *generator) deployments(n int, curated []Record) []entry {
 		case roll < 0.30:
 			t, kind, title = pick(g, d.Helm), "helm", "Helm revision of "+svc
 		default:
-			t, kind, title = pick(g, d.Image), "image", svc+" "+v+" rolled out"
+			t, kind, title = pick(g, d.Image), typeImage, svc+" "+v+" rolled out"
 		}
 		if reserved[title] || reserved[v] {
 			continue

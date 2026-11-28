@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -23,12 +24,13 @@ import (
 	sigsyaml "sigs.k8s.io/yaml"
 
 	"github.com/agaetis-it/takecare-agents/api/v1alpha1"
+	"github.com/agaetis-it/takecare-agents/internal/demo/corpus"
 )
 
 // Drift is the lesson of the POC: most demo failures were outdated objects
 // (an old app, rules edited and never loaded), not missing ones. The
 // controller tells what drifted from what it would write. What it writes
-// itself (the app, the DBProxy, the corpus) it writes again, and reports
+// itself (the workloads, orders-config, the DBProxy, the corpus) it writes again, and reports
 // as an event; what the chart owns (the alerting rules Prometheus loaded)
 // it can only report, in SceneryReady.
 
@@ -48,14 +50,27 @@ func (r *Reconciler) sceneryDrift(ctx context.Context, d *v1alpha1.TakeCareDemo,
 		return nil, nil
 	}
 	var drift []string
-	var dep appsv1.Deployment
-	err := r.Reader.Get(ctx, client.ObjectKey{Namespace: string(d.Spec.AppNamespace), Name: appName}, &dep)
+	want := scenery(d, r.AppImage, injected(d, incident))
+	for _, w := range deployments(want) {
+		var dep appsv1.Deployment
+		err := r.Reader.Get(ctx, client.ObjectKey{Namespace: w.Namespace, Name: w.Name}, &dep)
+		switch {
+		case apierrors.IsNotFound(err):
+		case err != nil:
+			return nil, fmt.Errorf("read %s: %w", w.Name, err)
+		default:
+			drift = append(drift, appDrift(&dep, w)...)
+		}
+	}
+	var config corev1.ConfigMap
+	wantConfig := ordersConfigMap(d, injected(d, incident) == corpus.ScenarioBadConfigRollout)
+	err := r.Reader.Get(ctx, client.ObjectKey{Namespace: wantConfig.Namespace, Name: wantConfig.Name}, &config)
 	switch {
 	case apierrors.IsNotFound(err):
 	case err != nil:
-		return nil, fmt.Errorf("read the app: %w", err)
-	default:
-		drift = append(drift, appDrift(&dep, appDeployment(d, r.AppImage, incident))...)
+		return nil, fmt.Errorf("read %s: %w", wantConfig.Name, err)
+	case !maps.Equal(config.Data, wantConfig.Data):
+		drift = append(drift, fmt.Sprintf("ConfigMap %s differs from what the phase writes (DB_HOST %q, the phase wants %q)", wantConfig.Name, config.Data["DB_HOST"], wantConfig.Data["DB_HOST"]))
 	}
 	proxy := &unstructured.Unstructured{}
 	proxy.SetGroupVersionKind(DBProxyGVK)
@@ -67,9 +82,9 @@ func (r *Reconciler) sceneryDrift(ctx context.Context, d *v1alpha1.TakeCareDemo,
 	default:
 		got, set, _ := unstructured.NestedInt64(proxy.Object, "spec", "idleClientTimeout")
 		switch {
-		case incident && (!set || got != proxyIdleTimeout):
+		case injected(d, incident) == corpus.ScenarioProxyTimeout && (!set || got != proxyIdleTimeout):
 			drift = append(drift, fmt.Sprintf("DBProxy %s idleClientTimeout is %s, the incident wants %d", proxyName, timeoutString(got, set), proxyIdleTimeout))
-		case !incident && set:
+		case injected(d, incident) != corpus.ScenarioProxyTimeout && set:
 			drift = append(drift, fmt.Sprintf("DBProxy %s idleClientTimeout is %d, healthy wants AWS's default (field absent)", proxyName, got))
 		}
 	}
@@ -83,26 +98,39 @@ func timeoutString(v int64, set bool) string {
 	return fmt.Sprint(v)
 }
 
-// appDrift names what differs in the app's pod template: its mode, its
-// image, its environment.
+// appDrift names what differs in a workload's pod template: its mode, its
+// image, its environment, the Secret keys it reads.
 func appDrift(got, want *appsv1.Deployment) []string {
 	var drift []string
+	name := want.Name
 	if g, w := got.Spec.Template.Annotations[annotationMode], want.Spec.Template.Annotations[annotationMode]; g != w {
-		drift = append(drift, fmt.Sprintf("%s runs in mode %q, the phase wants %q", appName, g, w))
+		drift = append(drift, fmt.Sprintf("%s runs in mode %q, the phase wants %q", name, g, w))
 	}
 	gc, wc := container(got), container(want)
 	if gc == nil {
-		return append(drift, fmt.Sprintf("%s has no app container", appName))
+		return append(drift, fmt.Sprintf("%s has no app container", name))
 	}
 	if gc.Image != wc.Image {
-		drift = append(drift, fmt.Sprintf("%s runs image %s, the operator's is %s", appName, gc.Image, wc.Image))
+		drift = append(drift, fmt.Sprintf("%s runs image %s, the operator's is %s", name, gc.Image, wc.Image))
 	}
 	for _, e := range wc.Env {
-		if i := slices.IndexFunc(gc.Env, func(g corev1.EnvVar) bool { return g.Name == e.Name }); i < 0 || gc.Env[i].Value != e.Value {
-			drift = append(drift, fmt.Sprintf("%s's %s differs from %q", appName, e.Name, e.Value))
+		i := slices.IndexFunc(gc.Env, func(g corev1.EnvVar) bool { return g.Name == e.Name })
+		switch {
+		case i < 0 || gc.Env[i].Value != e.Value:
+			drift = append(drift, fmt.Sprintf("%s's %s differs from %q", name, e.Name, e.Value))
+		case secretKey(e) != secretKey(gc.Env[i]):
+			drift = append(drift, fmt.Sprintf("%s's %s reads key %q, the phase wants %q", name, e.Name, secretKey(gc.Env[i]), secretKey(e)))
 		}
 	}
 	return drift
+}
+
+// secretKey is the Secret key a variable reads, empty for none.
+func secretKey(e corev1.EnvVar) string {
+	if e.ValueFrom == nil || e.ValueFrom.SecretKeyRef == nil {
+		return ""
+	}
+	return e.ValueFrom.SecretKeyRef.Name + "/" + e.ValueFrom.SecretKeyRef.Key
 }
 
 func container(dep *appsv1.Deployment) *corev1.Container {

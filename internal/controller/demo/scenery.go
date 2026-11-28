@@ -5,6 +5,7 @@ package demo
 
 import (
 	"fmt"
+	"maps"
 	"strconv"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -19,7 +20,8 @@ import (
 	"github.com/agaetis-it/takecare-agents/internal/demoapp"
 )
 
-// The scenery of proxy-timeout (spec 03), as spike 001 deployed it.
+// The scenery of proxy-timeout (spec 03), as spike 001 deployed it; the
+// other workloads are in workloads.go.
 const (
 	appName   = "billing-api"
 	appPort   = 8080
@@ -61,51 +63,74 @@ func ownerLabels(d *v1alpha1.TakeCareDemo) map[string]string {
 // Recreate: one pod at a time, so that the metrics never mix two pods; the
 // ramp starts with the new pod.
 func appDeployment(d *v1alpha1.TakeCareDemo, image string, incident bool) *appsv1.Deployment {
-	mode := mode(incident)
+	return workload(d, image, incident, workloadSpec{
+		name: appName, mode: mode(incident), memoryLimit: memoryLimitMB,
+		strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
+		env: []corev1.EnvVar{
+			{Name: "RAMP_MINUTES", Value: strconv.Itoa(int(d.Spec.RampMinutes))},
+			{Name: "LEAK_CEILING_MB", Value: strconv.Itoa(leakCeilingMB)},
+			{Name: "MEMORY_LIMIT_MB", Value: strconv.Itoa(memoryLimitMB)},
+			{Name: "DB_POOL_IDLE_TIMEOUT_SECONDS", Value: strconv.Itoa(poolIdleTimeout)},
+		},
+	})
+}
+
+// workloadSpec is what differs between the demo's workloads; they all run
+// the demo-app image, one replica, scraped by Prometheus.
+type workloadSpec struct {
+	name, mode  string
+	memoryLimit int
+	strategy    appsv1.DeploymentStrategy
+	env         []corev1.EnvVar
+	envFrom     []corev1.EnvFromSource
+	// labels and annotations are added to the pod template's.
+	labels, annotations map[string]string
+}
+
+// workload is one of the demo's Deployments. faulty puts the incident last
+// handled on the pod template, so that every new incident rolls a fresh
+// pod, whose start is the incident's.
+func workload(d *v1alpha1.TakeCareDemo, image string, faulty bool, w workloadSpec) *appsv1.Deployment {
 	handled := ""
-	if incident {
+	if faulty {
 		handled = d.Status.LastHandled.Incident
 	}
-	labels := map[string]string{labelApp: appName, labelPartOf: partOf}
-	env := []corev1.EnvVar{
-		{Name: "MODE", Value: mode},
-		{Name: "SERVICE", Value: appName},
-		{Name: "RAMP_MINUTES", Value: strconv.Itoa(int(d.Spec.RampMinutes))},
-		{Name: "LEAK_CEILING_MB", Value: strconv.Itoa(leakCeilingMB)},
-		{Name: "MEMORY_LIMIT_MB", Value: strconv.Itoa(memoryLimitMB)},
-		{Name: "DB_POOL_IDLE_TIMEOUT_SECONDS", Value: strconv.Itoa(poolIdleTimeout)},
+	labels := map[string]string{labelApp: w.name, labelPartOf: partOf}
+	maps.Copy(labels, w.labels)
+	annotations := map[string]string{
+		"prometheus.io/scrape": "true",
+		"prometheus.io/port":   strconv.Itoa(appPort),
+		"prometheus.io/path":   "/metrics",
+		annotationMode:         w.mode,
+		annotationIncident:     handled,
 	}
+	maps.Copy(annotations, w.annotations)
+	env := append([]corev1.EnvVar{{Name: "MODE", Value: w.mode}, {Name: "SERVICE", Value: w.name}}, w.env...)
 	probe := func(path string, period int32) *corev1.Probe {
 		return &corev1.Probe{PeriodSeconds: period, HTTPGet: &corev1.HTTPGetAction{Path: path, Port: intstr.FromInt32(appPort)}}
 	}
 	return &appsv1.Deployment{
 		APIVersion: "apps/v1", Kind: "Deployment",
-		Name: appName, Namespace: string(d.Spec.AppNamespace), Labels: ownerLabels(d),
+		Name: w.name, Namespace: string(d.Spec.AppNamespace), Labels: ownerLabels(d),
 		Spec: appsv1.DeploymentSpec{
 			Replicas: new(int32(1)),
-			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
-			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{labelApp: appName}},
+			Strategy: w.strategy,
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{labelApp: w.name}},
 			Template: corev1.PodTemplateSpec{
-				Labels: labels, Annotations: map[string]string{
-					"prometheus.io/scrape": "true",
-					"prometheus.io/port":   strconv.Itoa(appPort),
-					"prometheus.io/path":   "/metrics",
-					annotationMode:         mode,
-					annotationIncident:     handled,
-				},
+				Labels: labels, Annotations: annotations,
 				Spec: corev1.PodSpec{
 					AutomountServiceAccountToken: new(false),
 					SecurityContext: &corev1.PodSecurityContext{
 						RunAsNonRoot: new(true), SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
 					},
 					Containers: []corev1.Container{{
-						Name: "app", Image: image, Env: env,
+						Name: "app", Image: image, Env: env, EnvFrom: w.envFrom,
 						Ports:          []corev1.ContainerPort{{Name: "http", ContainerPort: appPort}},
 						ReadinessProbe: probe("/ready", 10),
 						LivenessProbe:  probe("/healthz", 20),
 						Resources: corev1.ResourceRequirements{
 							Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("20m"), corev1.ResourceMemory: resource.MustParse("64Mi")},
-							Limits:   corev1.ResourceList{corev1.ResourceMemory: resource.MustParse(fmt.Sprintf("%dMi", memoryLimitMB))},
+							Limits:   corev1.ResourceList{corev1.ResourceMemory: resource.MustParse(fmt.Sprintf("%dMi", w.memoryLimit))},
 						},
 						SecurityContext: &corev1.SecurityContext{
 							AllowPrivilegeEscalation: new(false), ReadOnlyRootFilesystem: new(true),
@@ -118,12 +143,15 @@ func appDeployment(d *v1alpha1.TakeCareDemo, image string, incident bool) *appsv
 	}
 }
 
-func appService(d *v1alpha1.TakeCareDemo) *corev1.Service {
+func appService(d *v1alpha1.TakeCareDemo) *corev1.Service { return service(d, appName) }
+
+// service is a workload's Service, on its HTTP port.
+func service(d *v1alpha1.TakeCareDemo, name string) *corev1.Service {
 	return &corev1.Service{
 		APIVersion: "v1", Kind: "Service",
-		Name: appName, Namespace: string(d.Spec.AppNamespace), Labels: ownerLabels(d),
+		Name: name, Namespace: string(d.Spec.AppNamespace), Labels: ownerLabels(d),
 		Spec: corev1.ServiceSpec{
-			Selector: map[string]string{labelApp: appName},
+			Selector: map[string]string{labelApp: name},
 			Ports:    []corev1.ServicePort{{Name: "http", Port: appPort, TargetPort: intstr.FromInt32(appPort)}},
 		},
 	}

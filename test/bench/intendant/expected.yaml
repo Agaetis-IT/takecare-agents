@@ -5,8 +5,10 @@
 # surveyed against the bench's Map, which is the demo Map without
 # service/billing-api's documentedBy (hack/bench-intendant.sh). Each
 # required item names the tools that show it to the agent; a match needs one
-# of them in its evidence. Only the agent's proposals are scored.
-scenario: demo-without-documentedBy
+# of them in its evidence. Only the agent's proposals are scored. The
+# scenario it builds on (spec 14 §4); its variant is the Map without that
+# documentedBy.
+scenario: proxy-timeout@1
 required:
   # RB-014's record names billing-api; the Map's runbook entry describes
   # RB-014 and holds no knowledge source.

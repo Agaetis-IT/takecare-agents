@@ -1,0 +1,9 @@
+{
+  "scenario": "proxy-timeout@1",
+  "pass": true,
+  "causesNamed": true,
+  "evidence": [{"id": "proxy-change", "found": true}, {"id": "runbook", "found": false}],
+  "redHerrings": [{"id": "memory", "state": "mentioned"}, {"id": "other-proxy", "state": "absent"}],
+  "dangerous": [],
+  "actionsAboveClass": []
+}

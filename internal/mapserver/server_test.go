@@ -84,7 +84,7 @@ func TestTools(t *testing.T) {
 		{"blast radius of the database", toolBlastRadius, map[string]any{argKey: keyDB},
 			`[{"key":"network/billing-db-proxy","type":"network","status":"validated","depth":1,"via":"dependsOn"},{"key":"service/billing-api","type":"service","status":"validated","depth":1,"via":"dependsOn"},{"key":"compute/billing-api","type":"compute","status":"validated","depth":2,"via":"dependsOn"}]`, false},
 		{"blast radius of an environment", toolBlastRadius, map[string]any{argKey: "environment/demo-apps"},
-			`[{"key":"compute/billing-api","type":"compute","status":"validated","depth":1,"via":"deployedIn"},{"key":"service/billing-api","type":"service","status":"validated","depth":2,"via":"runsAs"}]`, false},
+			`[{"key":"compute/billing-api","type":"compute","status":"validated","depth":1,"via":"deployedIn"},{"key":"compute/notifications-worker","type":"compute","status":"validated","depth":1,"via":"deployedIn"},{"key":"compute/orders-api","type":"compute","status":"validated","depth":1,"via":"deployedIn"},{"key":"datastore/orders-db","type":"datastore","status":"validated","depth":1,"via":"deployedIn"},{"key":"service/billing-api","type":"service","status":"validated","depth":2,"via":"runsAs"},{"key":"service/orders-api","type":"service","status":"validated","depth":2,"via":"runsAs"}]`, false},
 		{"blast radius cut at a depth", toolBlastRadius, map[string]any{argKey: keyDB, "maxDepth": 1},
 			`[{"key":"network/billing-db-proxy","type":"network","status":"validated","depth":1,"via":"dependsOn"},{"key":"service/billing-api","type":"service","status":"validated","depth":1,"via":"dependsOn"}]`, false},
 		{"path from a runbook to an environment", toolPath, map[string]any{argFrom: "runbook/proxy-timeout", "to": "environment/demo-apps"},
@@ -92,7 +92,7 @@ func TestTools(t *testing.T) {
 		{"no path to an isolated entry", toolPath, map[string]any{argFrom: keyService, "to": "service/notifications"}, `{"found":false,"steps":[]}`, false},
 		{"path to itself", toolPath, map[string]any{argFrom: keyService, "to": keyService}, `{"found":true,"steps":[]}`, false},
 		{"map_at the day of the load", toolMapAt, map[string]any{argKey: "team/platform", argDate: "2026-11-06"},
-			`{"created":"2026-11-05","inbound":{"belongsTo":["service/billing-api"]},"key":"team/platform","provenance":"declared","revision":"470725dee572","status":"validated"}`, false},
+			`{"created":"2026-11-05","inbound":{"belongsTo":["service/billing-api","service/orders-api"]},"key":"team/platform","provenance":"declared","revision":"03da55b523a5","status":"validated"}`, false},
 		{"map_at before the load", toolMapAt, map[string]any{argDate: "2026-11-06T08:59:00Z"}, "date before the first revision", true},
 		{"map_at with a bad date", toolMapAt, map[string]any{argDate: "yesterday"}, `date "yesterday" is neither`, true},
 	} {
@@ -109,7 +109,7 @@ func TestTools(t *testing.T) {
 			Revision string
 			Entries  []struct{ Key, Type, Status string }
 		}
-		if err := json.Unmarshal([]byte(got), &out); err != nil || len(out.Entries) != 10 || out.Entries[0].Key != keyCompute || out.Revision == "" {
+		if err := json.Unmarshal([]byte(got), &out); err != nil || len(out.Entries) != 14 || out.Entries[0].Key != keyCompute || out.Revision == "" {
 			t.Errorf("map_at = %s (%v)", got, err)
 		}
 	})

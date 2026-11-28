@@ -25,7 +25,7 @@ func generate(t *testing.T, scenario string, at time.Time) Corpus {
 }
 
 func TestGenerateVolumes(t *testing.T) {
-	for _, scenario := range []string{ScenarioProxyTimeout, ScenarioNone} {
+	for _, scenario := range append([]string{ScenarioNone}, Scenarios...) {
 		c := generate(t, scenario, incident)
 		for _, source := range Sources {
 			if got := len(c[source]); got != volume[source] {
@@ -121,5 +121,30 @@ func TestVendorIDsAgreeWithTheirDates(t *testing.T) {
 		if want := "AWS-" + day[:4] + "-" + day[4:] + "-"; !strings.HasPrefix(r["id"], want) {
 			t.Errorf("%s dated %s", r["id"], r[keyDate])
 		}
+	}
+}
+
+// A scenario names the deployment and ticket records by their seed id; the
+// servers serve them numbered by rank, the same at every incident time.
+func TestServed(t *testing.T) {
+	served, err := Served(ScenarioProxyTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := served["deployments"]["CI-SEED-INFRA"]; got != "CI-2448" {
+		t.Errorf("CI-SEED-INFRA is served as %q, want CI-2448", got)
+	}
+	for _, at := range []time.Time{incident, incident.Add(36 * time.Hour)} {
+		c := generate(t, ScenarioProxyTimeout, at)
+		r := find(c, "deployments", served["deployments"]["CI-SEED-INFRA"])
+		if r == nil || r["title"] != "infra-aws: idleClientTimeout set on the billing DBProxy" {
+			t.Errorf("at %s the served id names %v, not the DBProxy change", at, r)
+		}
+		if got := find(c, "support", served["support"]["SUP-4471"]); got == nil {
+			t.Errorf("at %s the anchor ticket SUP-4471 is not served under its id", at)
+		}
+	}
+	if _, err := Served("disk-full"); err == nil {
+		t.Error("a scenario the demo does not carry was mapped")
 	}
 }

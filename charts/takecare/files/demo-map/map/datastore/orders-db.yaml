@@ -1,0 +1,11 @@
+key: datastore/orders-db
+provenance: declared
+status: validated
+created: 2026-11-27
+lastValidated: 2026-11-27
+owner: team/platform
+description: The orders database, reached by its Service name.
+sources:
+  - kubernetes: demo-apps/Service/orders-db
+relations:
+  deployedIn: [environment/demo-apps]

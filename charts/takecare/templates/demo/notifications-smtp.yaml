@@ -1,0 +1,20 @@
+{{- if .Values.demo.enabled }}
+{{- /*
+DEMO ONLY: the SMTP Secret notifications-worker reads (scenario
+missing-secret-key, spec 14 §5). Rendered by the chart, not by the
+TakeCareDemo controller, so that the operator holds no right on Secrets.
+Its key is SMTP_PASS; notifications-worker 2.0.0 reads SMTP_PASSWORD, which
+it does not hold. The value is a placeholder: the worker sends no mail.
+*/}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: notifications-smtp
+  namespace: {{ .Values.demo.appNamespace }}
+  labels:
+    {{- include "takecare.labels" . | nindent 4 }}
+    app.kubernetes.io/component: demo-scenery
+type: Opaque
+stringData:
+  SMTP_PASS: demo-placeholder
+{{- end }}
