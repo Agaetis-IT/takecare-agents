@@ -181,12 +181,12 @@
   },
   "blindSpots": [
     {
-      "ref": "kubernetes:flux-system/Kustomization",
-      "reason": "Flux Kustomizations are read from their list only: the last attempted revision is not compared with the last applied one"
-    },
-    {
       "ref": "charts",
       "reason": "charts are compared by name and version only: their templates are not rendered"
+    },
+    {
+      "ref": "kubernetes:flux-system/Kustomization",
+      "reason": "Flux Kustomizations are read from their list only: the last attempted revision is not compared with the last applied one"
     },
     {
       "ref": "releases",
