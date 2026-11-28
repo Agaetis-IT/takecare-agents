@@ -1,0 +1,42 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "APIVERSION   KIND   NAME                STATUS    ROLES    AGE   VERSION        INTERNAL-IP   EXTERNAL-IP   OS-IMAGE   KERNEL-VERSION   CONTAINER-RUNTIME   LABELS\nv1           Node   k3d-demo-agent-0    Unknown   \u003cnone\u003e   1s    v1.32.8+k3s1   \u003cnone\u003e        \u003cnone\u003e        K3s        6.10 (arm64)     containerd://2.0    \u003cnone\u003e\nv1           Node   k3d-demo-server-0   Unknown   \u003cnone\u003e   1s    v1.33.4+k3s1   \u003cnone\u003e        \u003cnone\u003e        K3s        6.10 (arm64)     containerd://2.0    \u003cnone\u003e\n"
+    }
+  ],
+  "structuredContent": {
+    "items": [
+      {
+        "Age": "1s",
+        "Container-Runtime": "containerd://2.0",
+        "External-IP": "\u003cnone\u003e",
+        "Internal-IP": "\u003cnone\u003e",
+        "Kernel-Version": "6.10 (arm64)",
+        "Labels": "\u003cnone\u003e",
+        "Name": "k3d-demo-agent-0",
+        "OS-Image": "K3s",
+        "Roles": "\u003cnone\u003e",
+        "Status": "Unknown",
+        "Version": "v1.32.8+k3s1",
+        "apiVersion": "v1",
+        "kind": "Node"
+      },
+      {
+        "Age": "1s",
+        "Container-Runtime": "containerd://2.0",
+        "External-IP": "\u003cnone\u003e",
+        "Internal-IP": "\u003cnone\u003e",
+        "Kernel-Version": "6.10 (arm64)",
+        "Labels": "\u003cnone\u003e",
+        "Name": "k3d-demo-server-0",
+        "OS-Image": "K3s",
+        "Roles": "\u003cnone\u003e",
+        "Status": "Unknown",
+        "Version": "v1.33.4+k3s1",
+        "apiVersion": "v1",
+        "kind": "Node"
+      }
+    ]
+  }
+}

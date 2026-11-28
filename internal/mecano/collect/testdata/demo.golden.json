@@ -1,0 +1,198 @@
+{
+  "inventory": {
+    "components": [
+      {
+        "key": "kubernetes",
+        "live": "1.32.8",
+        "latest": "1.37.2",
+        "supportEnds": "2026-02-28T00:00:00Z",
+        "drift": "Unknown",
+        "evidence": [
+          {
+            "tool": "resources_list",
+            "record": "kubernetes:Node/k3d-demo-agent-0"
+          }
+        ]
+      },
+      {
+        "key": "cert-manager",
+        "live": "v1.16.2",
+        "declared": "v1.16.2",
+        "latest": "1.21.3",
+        "supportEnds": "2025-06-10T00:00:00Z",
+        "drift": "None",
+        "evidence": [
+          {
+            "tool": "resources_list",
+            "record": "kubernetes:demo-apps/Deployment/cert-manager"
+          },
+          {
+            "tool": "manifests_index",
+            "record": "code:demo@4f1c2a9:infra/cert-manager.yaml"
+          }
+        ]
+      },
+      {
+        "key": "cr.fluentbit.io/fluent/fluent-bit",
+        "live": "3.1.9",
+        "declared": "3.2.0",
+        "drift": "Version",
+        "evidence": [
+          {
+            "tool": "resources_list",
+            "record": "kubernetes:demo-apps/DaemonSet/log-shipper"
+          },
+          {
+            "tool": "manifests_index",
+            "record": "code:demo@4f1c2a9:apps/logs/daemonset.yaml"
+          }
+        ]
+      },
+      {
+        "key": "docker.io/envoyproxy/envoy",
+        "live": "v1.31.2",
+        "declared": "v1.31.2",
+        "drift": "None",
+        "evidence": [
+          {
+            "tool": "resources_list",
+            "record": "kubernetes:demo-apps/Deployment/billing-api"
+          },
+          {
+            "tool": "manifests_index",
+            "record": "code:demo@4f1c2a9:apps/billing/deployment.yaml"
+          }
+        ]
+      },
+      {
+        "key": "docker.io/library/busybox",
+        "live": "1.37",
+        "declared": "1.37",
+        "drift": "None",
+        "evidence": [
+          {
+            "tool": "resources_list",
+            "record": "kubernetes:demo-apps/CronJob/nightly-export"
+          },
+          {
+            "tool": "manifests_index",
+            "record": "code:demo@4f1c2a9:apps/export/cronjob.yaml"
+          }
+        ]
+      },
+      {
+        "key": "docker.io/library/postgres",
+        "live": "16.4",
+        "declared": "16.4",
+        "drift": "None",
+        "evidence": [
+          {
+            "tool": "resources_list",
+            "record": "kubernetes:demo-apps/StatefulSet/ledger-db"
+          },
+          {
+            "tool": "manifests_index",
+            "record": "code:demo@4f1c2a9:apps/ledger/statefulset.yaml"
+          }
+        ]
+      },
+      {
+        "key": "ghcr.io/agaetis-it/legacy",
+        "declared": "1.0.0",
+        "drift": "NotLive",
+        "evidence": [
+          {
+            "tool": "manifests_index",
+            "record": "code:demo@4f1c2a9:apps/old/deployment.yaml"
+          }
+        ]
+      },
+      {
+        "key": "ghcr.io/agaetis-it/takecare-agents-demo-app",
+        "live": "0.2.0",
+        "declared": "0.3.0",
+        "drift": "Version",
+        "evidence": [
+          {
+            "tool": "resources_list",
+            "record": "kubernetes:demo-apps/Deployment/billing-api"
+          },
+          {
+            "tool": "manifests_index",
+            "record": "code:demo@4f1c2a9:apps/billing/deployment.yaml"
+          }
+        ]
+      },
+      {
+        "key": "quay.io/jetstack/cert-manager-controller",
+        "live": "v1.16.2",
+        "latest": "1.21.3",
+        "supportEnds": "2025-06-10T00:00:00Z",
+        "drift": "NotInGit",
+        "evidence": [
+          {
+            "tool": "resources_list",
+            "record": "kubernetes:demo-apps/Deployment/cert-manager"
+          }
+        ]
+      }
+    ],
+    "apis": [
+      {
+        "apiVersion": "batch/v1beta1",
+        "kind": "CronJob",
+        "name": "nightly-export",
+        "removedIn": "1.25",
+        "replacement": "batch/v1",
+        "where": [
+          "Git"
+        ]
+      }
+    ],
+    "certificates": [
+      {
+        "namespace": "demo-apps",
+        "name": "billing-tls",
+        "notAfter": "2026-12-10T08:00:00Z",
+        "ready": true
+      },
+      {
+        "namespace": "demo-apps",
+        "name": "notifications-tls",
+        "ready": false
+      }
+    ],
+    "gitops": [
+      {
+        "kind": "Application",
+        "namespace": "argocd",
+        "name": "notifications",
+        "state": "OutOfSync",
+        "revision": "9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d"
+      },
+      {
+        "kind": "Kustomization",
+        "namespace": "flux-system",
+        "name": "infra",
+        "state": "NotReady"
+      }
+    ],
+    "omitted": {}
+  },
+  "blindSpots": [
+    {
+      "ref": "kubernetes:flux-system/Kustomization",
+      "reason": "Flux Kustomizations are read from their list only: the last attempted revision is not compared with the last applied one"
+    },
+    {
+      "ref": "charts",
+      "reason": "charts are compared by name and version only: their templates are not rendered"
+    },
+    {
+      "ref": "releases",
+      "reason": "offline watch, current as of 2026-11-27"
+    }
+  ],
+  "clusterVersion": "1.32.8",
+  "copy": []
+}

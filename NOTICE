@@ -3,6 +3,40 @@ Copyright 2026 Agaetis
 
 Licensed under the Apache License, Version 2.0 (see LICENSE).
 
+The Mécano's end-of-support dataset (internal/mecano/eos/dataset.yaml)
+includes data from the following sources, reformatted as YAML:
+
+- The Kubernetes documentation, "Releases" (https://kubernetes.io/releases/)
+  and "Deprecated API Migration Guide"
+  (https://kubernetes.io/docs/reference/using-api/deprecation-guide/):
+  Copyright The Kubernetes Authors, licensed under the Creative Commons
+  Attribution 4.0 International License (CC BY 4.0,
+  https://creativecommons.org/licenses/by/4.0/).
+
+- endoflife.date (https://endoflife.date), the release cycles of
+  cert-manager, Argo CD and Flux, under the MIT License:
+
+  Copyright 2020 endoflife.date contributors
+
+  Permission is hereby granted, free of charge, to any person obtaining a
+  copy of this software and associated documentation files (the
+  "Software"), to deal in the Software without restriction, including
+  without limitation the rights to use, copy, modify, merge, publish,
+  distribute, sublicense, and/or sell copies of the Software, and to
+  permit persons to whom the Software is furnished to do so, subject to
+  the following conditions:
+
+  The above copyright notice and this permission notice shall be included
+  in all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+  OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 This product includes the third-party Go modules listed below, each under
 its own license. The full license texts, and the modules' own NOTICE files,
 ship in the release images under /licenses and the release archives under
