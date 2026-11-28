@@ -23,7 +23,13 @@ fail() { printf 'FAIL  %s\n%s\n' "$1" "$2"; failed=1; }
 
 tmp="$(mktemp -d)"
 # The status survives the cleanup: a test that died midway never passes.
-trap 'st=$?; rm -rf "$tmp"; exit "$st"' EXIT
+# shellcheck disable=SC2329 # invoked by the EXIT trap
+cleanup() {
+  local st=$?
+  rm -rf "$tmp"
+  exit "$st"
+}
+trap cleanup EXIT
 checked=0
 
 # play NAME PLAN [VAR=value...]: runs the bench in a scratch repository on
