@@ -99,7 +99,10 @@ for id in "${scenarios[@]}"; do
   BENCH_REPORT="$report" BENCH_MAX_COST="$left" SCENARIO="$id" BENCH_MIN="" hack/bench.sh "$N" || rc=$?
   case "$rc" in
     0 | 3) ;;
-    2) die "the machine slept during ${id}'s bench: the run is invalid (its report is marked)" ;;
+    2)
+      printf '\033[1;31merror:\033[0m %s\n' "the machine slept during ${id}'s bench: the run is invalid (its report is marked)" >&2
+      exit 2
+      ;;
     *) stop="the bench of an earlier scenario failed (exit ${rc})" ;;
   esac
   if [[ ! -f "$report" ]]; then
