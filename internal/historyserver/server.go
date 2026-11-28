@@ -1,17 +1,17 @@
 // SPDX-FileCopyrightText: 2026 Agaetis
 // SPDX-License-Identifier: Apache-2.0
 
-// Package historyserver serves TakeCare's own records, the investigations
-// and the reviews of the release namespace, as a read-only MCP server: the
-// history the Kiné reads (spec 11 §4). Four tools, all read and none
-// taking a free text: two lists that return state only, never the
-// diagnosis nor any model text, and two gets by name that return it, the
-// content tools (ADR 0014 §5) a role reads only when its contentTools
-// list them.
+// Package historyserver serves TakeCare's own records, the investigations,
+// the reviews and the maintenances of the release namespace, as a
+// read-only MCP server: the history the Kiné and the Mécano read (spec 11
+// §4, spec 12 §3). Six tools, all read and none taking a free text: three
+// lists that return state only, never the diagnosis nor any model text,
+// and three gets by name that return it, the content tools (ADR 0014 §5)
+// a role reads only when its contentTools list them.
 //
 // The records come from an informer cache scoped to the release namespace,
 // filled under the add-on's own ServiceAccount, which may get, list and
-// watch the two kinds there and nothing else (spec 11 §10). The lists
+// watch the three kinds there and nothing else (spec 11 §10, spec 12 §13). The lists
 // leave silent records out, the benches' runs; a get by name still serves
 // them, as an on-demand review may name one (spec 11 §3).
 package historyserver
@@ -49,10 +49,13 @@ const (
 	ToolInvestigationGet   = "investigation_get"
 	ToolReviewsList        = "reviews_list"
 	ToolReviewGet          = "review_get"
+	ToolMaintenancesList   = "maintenances_list"
+	ToolMaintenanceGet     = "maintenance_get"
 )
 
-// ContentTools are the tools that return model text (spec 11 §4).
-var ContentTools = []string{ToolInvestigationGet, ToolReviewGet}
+// ContentTools are the tools that return model text (spec 11 §4, spec 12
+// §3).
+var ContentTools = []string{ToolInvestigationGet, ToolReviewGet, ToolMaintenanceGet}
 
 // Bounds of the lists.
 const (
@@ -60,6 +63,8 @@ const (
 	// maxName bounds a name argument: an object's name.
 	maxName                     = 253
 	argSince, argUntil, argName = "since", "until", "name"
+	// keyOmitted counts what a list left out past its limit.
+	keyOmitted = "omitted"
 )
 
 // Config is where the records are read.
@@ -119,6 +124,10 @@ func New(cfg Config) (*Server, error) {
 			with(window, map[string]any{"kine": prop("string", "Only the reviews of this Kiné.")}), []string{argSince, argUntil}, s.reviewsList},
 		{ToolReviewGet, "One review by name: what reviews_list returns, plus the investigations it reviewed, its problem statement and recurrences, its actions with their text and evidence, and its post-mortem draft.",
 			name, []string{argName}, s.reviewGet},
+		{ToolMaintenancesList, "The Mécano's past maintenances created in the window, newest first: name, Mécano, trigger, phase, the ids and severities of its findings, its counts, and whether it was published. Never the findings' text nor the plan: read them with maintenance_get.",
+			with(window, map[string]any{"mecano": prop("string", "Only the maintenances of this Mécano.")}), []string{argSince, argUntil}, s.maintenancesList},
+		{ToolMaintenanceGet, "One maintenance by name: what maintenances_list returns, plus the components it narrowed to, its inventory, its findings with their text and evidence, its plan with its pull requests, and its blind spots.",
+			name, []string{argName}, s.maintenanceGet},
 	} {
 		s.mcp.AddTool(&sdk.Tool{Name: t.name, Description: t.description, InputSchema: schema(t.props, t.required...), Annotations: ro}, s.serve(t.handler))
 	}
@@ -326,7 +335,7 @@ func (s *Server) investigationsList(ctx context.Context, raw json.RawMessage) (a
 	for _, inv := range kept[:min(len(kept), w.limit)] {
 		out = append(out, summarizeInvestigation(inv))
 	}
-	return map[string]any{"investigations": out, "omitted": len(kept) - len(out)}, nil
+	return map[string]any{"investigations": out, keyOmitted: len(kept) - len(out)}, nil
 }
 
 // investigationGet is one investigation with its diagnosis, silent or not.
@@ -426,7 +435,7 @@ func (s *Server) reviewsList(ctx context.Context, raw json.RawMessage) (any, err
 	for _, r := range kept[:min(len(kept), w.limit)] {
 		out = append(out, summarizeReview(r))
 	}
-	return map[string]any{"reviews": out, "omitted": len(kept) - len(out)}, nil
+	return map[string]any{"reviews": out, keyOmitted: len(kept) - len(out)}, nil
 }
 
 // reviewGet is one review with its text, silent or not.
@@ -450,5 +459,114 @@ func (s *Server) reviewGet(ctx context.Context, raw json.RawMessage) (any, error
 		Actions:        r.Status.Actions,
 		ActionsOmitted: r.Status.ActionsOmitted,
 		PostMortem:     r.Status.PostMortem,
+	}, nil
+}
+
+// FindingState is what a list says of a finding: its id and severity,
+// never its text.
+type FindingState struct {
+	ID       string            `json:"id"`
+	Severity v1alpha1.Severity `json:"severity"`
+}
+
+// MaintenanceSummary is what a list says of a maintenance.
+type MaintenanceSummary struct {
+	Name      string                      `json:"name"`
+	Mecano    string                      `json:"mecano"`
+	Trigger   v1alpha1.MaintenanceTrigger `json:"trigger,omitempty"`
+	Level     v1alpha1.Level              `json:"level,omitempty"`
+	Phase     string                      `json:"phase,omitempty"`
+	Created   metav1.Time                 `json:"created"`
+	Findings  []FindingState              `json:"findings,omitempty"`
+	Counts    *v1alpha1.MaintenanceCounts `json:"counts,omitempty"`
+	Published bool                        `json:"published"`
+}
+
+// Maintenance is maintenance_get's answer.
+type Maintenance struct {
+	MaintenanceSummary
+	Components      []string                       `json:"components,omitempty"`
+	Inventory       *v1alpha1.MaintenanceInventory `json:"inventory,omitempty"`
+	Findings        []v1alpha1.MaintenanceFinding  `json:"findings,omitempty"`
+	FindingsOmitted int32                          `json:"findingsOmitted,omitempty"`
+	Plan            *v1alpha1.MaintenancePlan      `json:"plan,omitempty"`
+	BlindSpots      []v1alpha1.NotSeen             `json:"blindSpots,omitempty"`
+}
+
+func summarizeMaintenance(m *v1alpha1.TakeCareMaintenance) MaintenanceSummary {
+	out := MaintenanceSummary{
+		Name:      m.Name,
+		Mecano:    m.Spec.MecanoRef.Name,
+		Trigger:   m.Spec.Trigger,
+		Level:     m.Spec.Level,
+		Phase:     string(m.Status.Phase),
+		Created:   m.CreationTimestamp,
+		Counts:    m.Status.Counts,
+		Published: m.Status.Published != nil && m.Status.Published.OK,
+	}
+	for _, f := range m.Status.Findings {
+		out.Findings = append(out.Findings, FindingState{ID: f.ID, Severity: f.Severity})
+	}
+	return out
+}
+
+// maintenancesList is the maintenances created in the window, silent ones
+// left out, newest first.
+func (s *Server) maintenancesList(ctx context.Context, raw json.RawMessage) (any, error) {
+	var args struct {
+		windowArgs
+		Mecano string `json:"mecano"`
+	}
+	if err := decode(raw, &args); err != nil {
+		return nil, err
+	}
+	w, err := args.parse()
+	if err != nil {
+		return nil, err
+	}
+	var list v1alpha1.TakeCareMaintenanceList
+	if err := s.cfg.Reader.List(ctx, &list, client.InNamespace(s.cfg.Namespace)); err != nil {
+		return nil, fmt.Errorf("list the maintenances: %w", err)
+	}
+	var kept []*v1alpha1.TakeCareMaintenance
+	for i := range list.Items {
+		m := &list.Items[i]
+		if m.Spec.Silent || !w.holds(m.CreationTimestamp.Time) || (args.Mecano != "" && m.Spec.MecanoRef.Name != args.Mecano) {
+			continue
+		}
+		kept = append(kept, m)
+	}
+	slices.SortFunc(kept, func(a, b *v1alpha1.TakeCareMaintenance) int {
+		return cmp.Or(b.CreationTimestamp.Compare(a.CreationTimestamp.Time), cmp.Compare(a.Name, b.Name))
+	})
+	out := make([]MaintenanceSummary, 0, min(len(kept), w.limit))
+	for _, m := range kept[:min(len(kept), w.limit)] {
+		out = append(out, summarizeMaintenance(m))
+	}
+	return map[string]any{"maintenances": out, keyOmitted: len(kept) - len(out)}, nil
+}
+
+// maintenanceGet is one maintenance with its findings and plan, silent or
+// not.
+func (s *Server) maintenanceGet(ctx context.Context, raw json.RawMessage) (any, error) {
+	name, err := nameArg(raw)
+	if err != nil {
+		return nil, err
+	}
+	var m v1alpha1.TakeCareMaintenance
+	if err := s.cfg.Reader.Get(ctx, client.ObjectKey{Namespace: s.cfg.Namespace, Name: name}, &m); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, fmt.Errorf("no maintenance named %s", name)
+		}
+		return nil, fmt.Errorf("get the maintenance %s: %w", name, err)
+	}
+	return Maintenance{
+		MaintenanceSummary: summarizeMaintenance(&m),
+		Components:         m.Spec.Components,
+		Inventory:          m.Status.Inventory,
+		Findings:           m.Status.Findings,
+		FindingsOmitted:    m.Status.FindingsOmitted,
+		Plan:               m.Status.Plan,
+		BlindSpots:         m.Status.BlindSpots,
 	}, nil
 }

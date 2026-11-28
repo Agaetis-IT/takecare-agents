@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	sigsyaml "sigs.k8s.io/yaml"
 
@@ -110,6 +112,36 @@ func TestClusterChart(t *testing.T) {
 			t.Errorf("ingress ports %v", ports)
 		}
 	})
+}
+
+// The nodes opt-in (spec 12 §4, cluster.readNodes): off by default; when
+// on, one ClusterRole with exactly get, list and watch on nodes, bound to
+// the chart's ServiceAccount, and the server's nodes_* tools still
+// disabled.
+func TestClusterChartReadNodes(t *testing.T) {
+	name := releaseName + "-nodes"
+	for _, o := range render(t, clusterChart, clusterSets...) {
+		if o.GetName() == name {
+			t.Errorf("readNodes is off by default, yet %s %s renders", o.GetKind(), o.GetName())
+		}
+	}
+	objs := render(t, clusterChart, append(clusterSets, flagSet, "cluster.readNodes=true")...)
+	rules := rulesByRole(t, objs)
+	if diff := cmp.Diff([]rbacv1.PolicyRule{nodesRule}, rules[kindClusterRole+"/"+name]); diff != "" {
+		t.Errorf("the nodes opt-in's rules (-want +got):\n%s", diff)
+	}
+	var bound bool
+	for _, b := range ofKind(objs, kindClusterBinding) {
+		ref, _, _ := unstructured.NestedString(b.Object, "roleRef", "name")
+		subjects, _, _ := unstructured.NestedSlice(b.Object, "subjects")
+		if ref == name {
+			bound = jsonOf(subjects) == `[{"kind":"ServiceAccount","name":"`+ofKind(objs, kindSA)[0].GetName()+`","namespace":"`+releaseNamespace+`"}]`
+		}
+	}
+	if !bound {
+		t.Errorf("no ClusterRoleBinding binds %s to the chart's ServiceAccount alone", name)
+	}
+	checkHardening(t, objs, ofKind(objs, "ConfigMap")[0].GetName())
 }
 
 func toStrings(v any) []string {

@@ -255,6 +255,12 @@ addons:
     #    resource: agents
     #  - group: kagent.dev
     #    resource: sandboxagents
+    # -- Read the nodes, cluster-wide: get, list and watch on `nodes` only,
+    # in a ClusterRole of its own (spec 12 §4). The Mécano reads the
+    # cluster's version from the nodes' kubelet version; without it, that
+    # version is a blind spot. Never nodes/proxy, nodes/stats or nodes/log,
+    # and the server's nodes_* tools stay disabled.
+    readNodes: false
     # -- Tools whose result carries payload (ADR 0014): a role reads them only
     # when it lists them in spec.contentTools.
     contentTools: [pods_log]
@@ -388,7 +394,15 @@ addons:
       # Empty: the chart's appVersion.
       tag: ""
       pullPolicy: IfNotPresent
-    # -- Requests and limits of the Map server container.
+    # -- Requests and limits of the Map server container. Between polls it
+    # keeps the Map's own history (the files of map/ at every revision and
+    # a few dozen bytes per commit), never the rest of the repository. When
+    # the branch's head moves it clones the branch again, with all its
+    # history, reads it and drops it: for that moment it needs about twice
+    # the size of the repository's history (all files of all revisions,
+    # uncompressed). The default 128Mi holds a history of about 45Mi;
+    # raise limits.memory for a larger repository, or the pod is killed
+    # out of memory when the head moves.
     resources:
       requests: { cpu: 10m, memory: 32Mi }
       limits: { memory: 128Mi }
@@ -417,10 +431,11 @@ addons:
     # -- DEMO ONLY: serve the chart's demo Map from a ConfigMap instead of
     # Git. Requires demo.enabled.
     demo: false
-  # -- TakeCare's history (spec 11 §4): our takecare-agents-mcp-history, four
-  # read tools over the investigations and reviews of the release namespace,
-  # for the Kiné. One connector `history`. Its ServiceAccount may get, list
-  # and watch those two kinds in the release namespace, nothing else; its
+  # -- TakeCare's history (spec 11 §4, spec 12 §3): our
+  # takecare-agents-mcp-history, six read tools over the investigations,
+  # reviews and maintenances of the release namespace, for the Kiné and the
+  # Mécano. One connector `history`. Its ServiceAccount may get, list and
+  # watch those three kinds in the release namespace, nothing else; its
   # egress is the API server only.
   # @default -- see the keys below
   history:
@@ -433,10 +448,10 @@ addons:
       # Empty: the chart's appVersion.
       tag: ""
       pullPolicy: IfNotPresent
-    # -- Tools whose result carries model text (ADR 0014): the diagnoses and
-    # the reviews. A role reads them only when it lists them in
-    # spec.contentTools.
-    contentTools: [investigation_get, review_get]
+    # -- Tools whose result carries model text (ADR 0014): the diagnoses,
+    # the reviews and the maintenances. A role reads them only when it lists
+    # them in spec.contentTools.
+    contentTools: [investigation_get, review_get, maintenance_get]
     # -- Tool overrides (spec 05), as for the kubernetes add-on.
     tools: []
     # -- Requests and limits of the history server container. Its cache
@@ -528,6 +543,70 @@ addons:
     repositories: []
     # -- Egress to the forges' APIs: DNS, then TCP 443 outside the cluster,
     # or the proxy pods only.
+    egress:
+      excludedCIDRs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      proxy: null
+  # -- The version watch (spec 12 §7.1): our takecare-agents-mcp-releases,
+  # three read tools over the versions an OCI registry, a Helm repository,
+  # a GitHub or GitLab project publish and the release cycles of
+  # endoflife.date products. One connector `releases`, read by the Mécano's
+  # collector, never by an agent. It calls only its sources' hosts, each
+  # name at most once a day. No ServiceAccount token: it reads no
+  # Kubernetes object. Without it, the Mécano uses the end-of-support
+  # dataset shipped with the release (the offline watch).
+  # @default -- see the keys below
+  releases:
+    # -- Deploy the releases server and the connector releases.
+    enabled: false
+    # -- The releases server's image; its tag empty: the chart's appVersion.
+    image:
+      registry: ghcr.io/agaetis-it
+      repository: takecare-agents-mcp-releases
+      # Empty: the chart's appVersion.
+      tag: ""
+      pullPolicy: IfNotPresent
+    # -- No tool carries content: versions and dates only.
+    contentTools: []
+    # -- Tool overrides (spec 05), as for the kubernetes add-on.
+    tools: []
+    # -- Requests and limits of the releases server container. It streams
+    # a Helm index.yaml of 16 MiB at most, one at a time server-wide, and
+    # decodes only the asked chart's entries, 4 MiB at most (about 75 MiB
+    # of heap at that bound), well under the limit.
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits: { memory: 256Mi }
+    # -- The cache: each (source, name) refreshed at most once per refresh
+    # after an answer; a failed fetch is retried after 15 min, 30 min, then
+    # once an hour at most, and keeps the last answer, stale, until
+    # staleMax, then drops it; at most maxEntries names (up to 4096).
+    cache:
+      refresh: 24h
+      staleMax: 168h
+      maxEntries: 512
+    # -- REQUIRED when enabled: 1 to 32 sources, each {name (lower-case
+    # letters, digits, hyphens), kind (oci, helm, github, gitlab or
+    # endoflife), url (https, port 443 only, no user information, query or
+    # fragment: a registry `https://ghcr.io`, a Helm repository's directory
+    # of its index.yaml, a forge's API `https://api.github.com` or
+    # `https://gitlab.com/api/v4`, `https://endoflife.date/api/v1`),
+    # authHost (oci only: the token realm's host when the registry names
+    # another, `auth.docker.io` for Docker Hub, called on port 443),
+    # tokenSecretRef {name, key: token, username} (a read token mounted on
+    # this pod only; with a username, sent as basic credentials, oci and
+    # helm only, and the one way a token reaches an oci token realm; else
+    # Bearer to the registry only, PRIVATE-TOKEN on GitLab), components [{match, name}] (match: a Map
+    # key, an image repository or a chart name; name: this source's name for
+    # it; required on github, gitlab and endoflife, whose only names they
+    # are)}. A helm source on oci:// is refused: use an oci source.
+    sources: []
+    # -- The CIDRs the sources resolve to (an internal mirror): egress goes
+    # to them only, TCP 443. Empty: the proxy pods when egress.proxy is set,
+    # else every address outside the cluster, the private ranges excluded,
+    # so that a mirror on a private address needs its CIDR here. A
+    # NetworkPolicy cannot name hosts: the server holds the host list.
+    egressCIDRs: []
+    # -- Egress through a proxy, or the private ranges excluded by default.
     egress:
       excludedCIDRs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
       proxy: null

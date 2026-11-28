@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # The release (spec 04), on a tag v<SemVer> pushed by a maintainer
-# (docs/release.md): the eight images for amd64 and arm64, the three charts as
+# (docs/release.md): the nine images for amd64 and arm64, the three charts as
 # OCI artifacts, the takecare command's binaries for linux, darwin and
 # windows on amd64 and arm64, with their checksums and one SBOM per binary
 # (spec 13), and the GitHub release with the tag's CHANGELOG section and
@@ -202,7 +202,7 @@ jobs:
             printf 'cannot tell whether %s %s is published:\n%s\n' "$1" "$VERSION" "$out" >&2
             return 1
           }
-          for image in operator mcp-report-slack demo-app mcp-corpus mcp-map mcp-front mcp-history mcp-code; do
+          for image in operator mcp-report-slack demo-app mcp-corpus mcp-map mcp-front mcp-history mcp-code mcp-releases; do
             absent "image takecare-agents-${image}" docker buildx imagetools inspect "${REGISTRY}/takecare-agents-${image}:${VERSION}"
           done
           for chart in takecare-crds takecare takecare-cluster; do
@@ -238,7 +238,7 @@ jobs:
           set -euo pipefail
           source hack/versions.env
           mkdir -p bin/sbom
-          for image in operator mcp-report-slack demo-app mcp-corpus mcp-map mcp-front mcp-history mcp-code; do
+          for image in operator mcp-report-slack demo-app mcp-corpus mcp-map mcp-front mcp-history mcp-code mcp-releases; do
             ref="${REGISTRY}/takecare-agents-${image}:${VERSION}"
             digest="$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' | jq -er .digest)"
             for platform in ${IMAGE_PLATFORMS//,/ }; do
@@ -247,7 +247,7 @@ jobs:
                 "bin/sbom/takecare-agents-${image}-${VERSION}-${platform//\//-}.spdx.json"
             done
           done
-          test "$(find bin/sbom -name '*.spdx.json' | wc -l)" -eq 16
+          test "$(find bin/sbom -name '*.spdx.json' | wc -l)" -eq 18
       - name: GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -257,7 +257,7 @@ jobs:
           {
             cat "$RUNNER_TEMP/notes.md"
             printf '\n### Artifacts\n\nImages (linux/amd64, linux/arm64):\n\n'
-            for image in operator mcp-report-slack demo-app mcp-corpus mcp-map mcp-front mcp-history mcp-code; do
+            for image in operator mcp-report-slack demo-app mcp-corpus mcp-map mcp-front mcp-history mcp-code mcp-releases; do
               printf -- "- \`%s/takecare-agents-%s:%s\`\n" "$REGISTRY" "$image" "$VERSION"
             done
             printf '\nCharts:\n\n'

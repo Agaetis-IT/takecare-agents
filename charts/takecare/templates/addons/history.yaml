@@ -2,12 +2,13 @@
 {{- if $a.enabled }}
 {{- $ctx := dict "root" . "name" "history" "port" 8080 }}
 {{- $image := printf "%s/%s:%s" (.Values.global.imageRegistry | default $a.image.registry) $a.image.repository ($a.image.tag | default .Chart.AppVersion) }}
-# Add-on history: takecare-agents-mcp-history (ours), four read tools over
-# TakeCare's own investigations and reviews of the release namespace, the
-# history the Kiné reads (spec 11 §4). It reads them with this
-# ServiceAccount, never the operator's: one Role, in the release namespace
-# only, with get, list and watch on the two kinds and nothing else; no
-# ClusterRole. The token is mounted on the pod only.
+# Add-on history: takecare-agents-mcp-history (ours), six read tools over
+# TakeCare's own investigations, reviews and maintenances of the release
+# namespace, the history the Kiné and the Mécano read (spec 11 §4, spec 12
+# §3). It reads them with this ServiceAccount, never the operator's: one
+# Role, in the release namespace only, with get, list and watch on the
+# three kinds and nothing else; no ClusterRole. The token is mounted on
+# the pod only.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -26,7 +27,7 @@ metadata:
     {{- include "takecare.addon.labels" $ctx | nindent 4 }}
 rules:
   - apiGroups: [takecare.agaetis.fr]
-    resources: [takecareinvestigations, takecarereviews]
+    resources: [takecareinvestigations, takecarereviews, takecaremaintenances]
     verbs: [get, list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -154,7 +155,7 @@ metadata:
     {{- include "takecare.addon.labels" $ctx | nindent 4 }}
 spec:
   types: [history]
-  description: "TakeCare's history: past investigations and reviews of this release (read-only)"
+  description: "TakeCare's history: past investigations, reviews and maintenances of this release (read-only)"
   mcp:
     addon: history
   {{- with include "takecare.addon.tools" (dict "contentTools" $a.contentTools "tools" $a.tools) | trim }}{{ . | nindent 2 }}{{ end }}

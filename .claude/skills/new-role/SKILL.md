@@ -21,4 +21,4 @@ A role is a kind `TakeCare<Role>` (ASCII, ADR 0003) whose agent runs on kagent (
 5. **Partners**: add the role's A2A partners (the "natural partners" of the concept) to the allow-list, both directions as specified.
 6. **Telemetry**: root span `invoke_agent <role>`, attributes through `internal/telemetry/semconv`.
 7. **Tests**: envtest for level transitions and missing connectors; golden files for the rendered `Agent`, routes and policies; extend the read-only guard to the new kind.
-8. **Docs**: README staff table if needed, CHANGELOG, chart values for the role.
+8. **Docs**: README staff table if needed, a CHANGELOG fragment under `changes/unreleased/` (see its `README.md`), chart values for the role.

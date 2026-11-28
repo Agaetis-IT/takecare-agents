@@ -17,6 +17,7 @@
 !internal/kine/instructions.md
 !internal/kine/message.tmpl
 !internal/kine/answer.schema.json
+!internal/mecano/instructions.md
 !internal/demo/corpus/pools.json
 !internal/demo/corpus/seed/*.json
 !api/map/entry.schema.json

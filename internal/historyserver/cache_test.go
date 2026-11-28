@@ -24,7 +24,7 @@ import (
 
 // The server reads the records with the add-on's own identity, bound to
 // the RBAC the chart renders (templates/addons/history.yaml): its cache
-// lists and watches both kinds in the release namespace, a record created
+// lists and watches the three kinds in the release namespace, a record created
 // after the sync is served, and the same identity is refused anything
 // else. envtest as admin would hide a missing right (0.3.0).
 func TestServesUnderTheChartsRole(t *testing.T) {
@@ -61,6 +61,9 @@ func TestServesUnderTheChartsRole(t *testing.T) {
 	create(investigation("inv-other-ns", 0, func(i *v1alpha1.TakeCareInvestigation) { i.Namespace = otherNS }))
 	// The API server sets its creation time: now.
 	if err := admin.Create(ctx, review("review-a", 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := admin.Create(ctx, maintenance("maintenance-a", 0)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -113,6 +116,9 @@ func TestServesUnderTheChartsRole(t *testing.T) {
 	if text, isErr := call(t, session, ToolReviewsList, span(-30, now+1)); isErr || !strings.Contains(text, `"review-a"`) {
 		t.Errorf("reviews_list: %v %s", isErr, text)
 	}
+	if text, isErr := call(t, session, ToolMaintenancesList, span(-30, now+1)); isErr || !strings.Contains(text, `"maintenance-a"`) {
+		t.Errorf("maintenances_list: %v %s", isErr, text)
+	}
 
 	// The same identity reads nothing else.
 	addon, err := client.New(env.Addon, client.Options{Scheme: scheme})
@@ -134,6 +140,9 @@ func TestServesUnderTheChartsRole(t *testing.T) {
 		},
 		"the Kinés": func() error {
 			return addon.List(ctx, &v1alpha1.TakeCareKineList{}, client.InNamespace(releaseNS))
+		},
+		"the Mécanos": func() error {
+			return addon.List(ctx, &v1alpha1.TakeCareMecanoList{}, client.InNamespace(releaseNS))
 		},
 	} {
 		if err := list(); !apierrors.IsForbidden(err) {

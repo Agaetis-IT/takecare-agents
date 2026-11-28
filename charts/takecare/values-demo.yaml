@@ -55,6 +55,8 @@ addons:
       - group: rds.services.k8s.aws
         resource: dbproxies
       - resource: configmaps
+    # The Mécano reads the cluster's version from the nodes (spec 12 §16).
+    readNodes: true
   # Without a Slack token the demo publishes to the report server's log;
   # make demo-up switches to reportSlack when a token is given (PR 5).
   reportLog:

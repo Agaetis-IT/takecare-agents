@@ -16,15 +16,15 @@ import (
 
 // kineTools are the tools the demo Kiné's agent is offered at
 // Practitioner (demo/manifests/kine.yaml, patched by hack/e2e.sh): the
-// corpus's three tools of each of its four sources, the history's two
-// lists and the two content gets listed in contentTools, and ask_user,
-// which kagent gives every agent.
+// corpus's three tools of each of its four sources, the history's three
+// lists (maintenances_list since spec 12 §3) and the two content gets
+// listed in contentTools, and ask_user, which kagent gives every agent.
 var kineTools = []string{
 	"incidents_search", "incidents_get", "incidents_recent",
 	"runbooks_search", "runbooks_get", "runbooks_recent",
 	"support_search", "support_get", "support_recent",
 	"deployments_search", "deployments_get", "deployments_recent",
-	"investigations_list", "reviews_list", "investigation_get", "review_get",
+	"investigations_list", "reviews_list", "maintenances_list", "investigation_get", "review_get",
 	"ask_user",
 }
 

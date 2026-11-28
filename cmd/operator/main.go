@@ -454,6 +454,17 @@ func setupControllers(mgr ctrl.Manager, cfg config) (*telemetry.Provider, error)
 	}); err != nil {
 		return nil, err
 	}
+	// The Mécano (spec 12): its conditions, its scope, its routes on the
+	// gateway and its agent in the engine. Its maintenances come with lot
+	// M3.
+	if err := (&mecano.Reconciler{
+		Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("takecare-operator"),
+		OperatorNamespace: cfg.operatorNamespace, EngineNamespace: cfg.engineNamespace,
+		Engine: &kagent0103.Agents{Client: mgr.GetClient()}, Models: &kagent0103.Models{Client: mgr.GetClient()},
+		Lookup: &coverage.Lookup{MCP: &mcp.Client{HTTP: mcpClient}},
+	}).SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("set up the Mécano controller: %w", err)
+	}
 	caBundle, err := parseCABundle(cfg.caBundle)
 	if err != nil {
 		return nil, err

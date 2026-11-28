@@ -58,6 +58,7 @@ addons:
     namespaces: []         # REQUIRED: the namespaces the Doc may read (workloads, events, logs)
     extraResources: []     # custom resources the Doc must see; add {resource: configmaps} only if none holds credentials
     # contentTools: [pods_log]   # the default: log tools reach a role only when it lists them (ADR 0014)
+    # readNodes: true          # lets the Mécano read the cluster's version from the nodes: get, list and watch on nodes, cluster-wide
   reportSlack:
     enabled: true
     tokenSecret:

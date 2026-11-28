@@ -16,7 +16,7 @@ const MaxConnectorName = 63
 const MessageConnectorName = "a connector's name is at most 63 characters unless its only type is report: its gateway backend carries the name as a label"
 
 // ConnectorType says what a connector gives access to (ADR 0008).
-// +kubebuilder:validation:Enum=cluster;metrics;logs;knowledge;changes;tickets;report;map;history;cloud;code
+// +kubebuilder:validation:Enum=cluster;metrics;logs;knowledge;changes;tickets;report;map;history;cloud;code;releases
 type ConnectorType string
 
 // Connector types.
@@ -40,6 +40,9 @@ const (
 	// definitions (spec 12 §5). A code connector with spec.propose set
 	// opens pull requests instead (spec 12 §6).
 	ConnectorCode ConnectorType = "code"
+	// ConnectorReleases reads what versions exist and when release cycles
+	// end (spec 12 §7.1): the Mécano's collector reads it, never an agent.
+	ConnectorReleases ConnectorType = "releases"
 )
 
 // ToolClass classifies an MCP tool.

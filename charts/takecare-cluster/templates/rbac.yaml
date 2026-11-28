@@ -66,3 +66,33 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "takecare-cluster.name" . }}
     namespace: {{ .Release.Namespace }}
+{{- if .Values.cluster.readNodes }}
+---
+# Opt-in (cluster.readNodes, spec 12 §4): the nodes, cluster-wide, for the
+# cluster's version (the kubelet's, in status.nodeInfo). get, list and
+# watch on nodes only: never nodes/proxy, nodes/stats or nodes/log; the
+# server's nodes_* tools stay disabled.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-nodes
+  labels:
+    {{- include "takecare-cluster.labels" . | nindent 4 }}
+rules:
+  {{- include "takecare.kubernetes.nodeRules" . | nindent 2 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-nodes
+  labels:
+    {{- include "takecare-cluster.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Name }}-nodes
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "takecare-cluster.name" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
